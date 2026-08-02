@@ -1,0 +1,118 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) 
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data 
+        : null;
+    }
+    
+    function getRole() {
+      let data = getUserData();
+      return data != null ? data.role : null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && getRole() == 'admin';
+    }
+    
+    function isAssistant() {
+      return isSignedIn() && getRole() == 'assistant';
+    }
+    
+    function isStaffOrTeacher() {
+      return isSignedIn() && (getRole() == 'teacher' || getRole() == 'staff');
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      // User can read their own doc, admin can read any
+      allow read: if isOwner(userId) || isAdmin();
+      // Only admin can create or delete users
+      allow create: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+      // User can update their own doc EXCEPT the role field, admin can update any
+      allow update: if isAdmin() || (
+        isOwner(userId) && 
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))
+      );
+    }
+
+    // Clients Collection
+    match /clients/{clientId} {
+      allow read: if isAdmin() || isAssistant() || isStaffOrTeacher();
+      allow write: if isAdmin() || isAssistant();
+    }
+
+    // Tasks Collection
+    match /tasks/{taskId} {
+      allow read: if isAdmin() || isAssistant() || (
+        isStaffOrTeacher() && resource.data.assignedTo == request.auth.uid
+      );
+      // Create: admin/assistant can create for anyone. staff can only create for themselves?
+      // Actually, requirement: teacher/staff can read/write tasks where assignedTo == their own uid.
+      allow create: if isAdmin() || isAssistant() || (
+        isStaffOrTeacher() && request.resource.data.assignedTo == request.auth.uid
+      );
+      allow update, delete: if isAdmin() || isAssistant() || (
+        isStaffOrTeacher() && resource.data.assignedTo == request.auth.uid && request.resource.data.assignedTo == request.auth.uid
+      );
+    }
+
+    // Meetings Collection
+    match /meetings/{meetingId} {
+      allow read: if isAdmin() || isAssistant() || isStaffOrTeacher();
+      allow write: if isAdmin() || isAssistant();
+    }
+
+    // Documents Collection
+    match /documents/{docId} {
+      allow read: if isAdmin() || isAssistant() || isStaffOrTeacher();
+      allow write: if isAdmin() || isAssistant();
+    }
+
+    // Notifications Collection
+    match /notifications/{notifId} {
+      allow read, write: if isOwner(resource.data.userId) || (
+        // For creation, check incoming data
+        request.method == 'create' && isOwner(request.resource.data.userId)
+      ) || isAdmin(); // Allow admins to create notifications for others
+    }
+
+    // Finance Collection
+    match /finance/{entryId} {
+      allow read, write: if isAdmin();
+    }
+    // Inbox Collection
+    match /inbox/{itemId} {
+      allow read, write: if (resource != null && isOwner(resource.data.createdBy)) || (
+        request.method == 'create' && isOwner(request.resource.data.createdBy)
+      ) || isAdmin() || isAssistant();
+    }
+
+    // Recurring Task Templates Collection
+    match /recurringTaskTemplates/{templateId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin() || isAssistant();
+      allow update: if isAdmin() || isAssistant() || (
+        isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastGeneratedDate'])
+      );
+    }
+  }
+}
