@@ -88,7 +88,7 @@ export function AdminUsers() {
         createdAt: new Date().toISOString()
       };
       
-      await addDoc(collection(db, 'users'), newUser);
+      await setDoc(doc(db, 'users', email.toLowerCase()), newUser);
       
       alert("User created successfully!");
       setShowCreateUser(false);

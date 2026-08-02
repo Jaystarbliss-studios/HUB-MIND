@@ -30,11 +30,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfile({ id: docSnap.id, ...docSnap.data() } as User);
           } else {
             // 2. Try to find the user by email (created by admin)
-            const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
-            const querySnapshot = await getDocs(q);
-
-            if (!querySnapshot.empty) {
-              const userDoc = querySnapshot.docs[0];
+            const emailDocRef = doc(db, 'users', firebaseUser.email.toLowerCase());
+            const emailDocSnap = await getDoc(emailDocRef);
+            let userDoc = null;
+            if (emailDocSnap.exists()) {
+              userDoc = emailDocSnap;
+            } else {
+              const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
+              const querySnapshot = await getDocs(q);
+              if (!querySnapshot.empty) {
+                userDoc = querySnapshot.docs[0];
+              }
+            }
+            if (userDoc) {
               setProfile({ id: userDoc.id, ...userDoc.data() } as User);
             } else {
               // 3. Check if there are any users in the DB

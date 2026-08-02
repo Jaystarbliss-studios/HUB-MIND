@@ -21,6 +21,8 @@ export function Dashboard() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notes, setNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -78,6 +80,8 @@ export function Dashboard() {
         content: notes,
         updatedAt: new Date().toISOString()
       }, { merge: true });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
     } catch (error) {
       console.error("Error saving notes:", error);
     } finally {
@@ -346,7 +350,7 @@ export function Dashboard() {
                   disabled={savingNotes}
                   className="text-xs text-slate-500 hover:text-accent flex items-center gap-1 transition-colors"
                  >
-                   {savingNotes ? 'Saving...' : <><span className="text-lg leading-none mb-0.5">+</span> Save note</>}
+                   {savingNotes ? 'Saving...' : saveSuccess ? <><Check className="w-4 h-4 text-emerald-500" /> Saved!</> : <><span className="text-lg leading-none mb-0.5">+</span> Save note</>}
                  </button>
               </div>
             </div>

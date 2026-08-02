@@ -9,9 +9,14 @@ service cloud.firestore {
     }
     
     function getUserData() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) 
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data 
-        : null;
+      let data = exists(/databases/$(database)/documents/users/$(request.auth.uid))
+         ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+         : null;
+      return data != null ? data : (
+         exists(/databases/$(database)/documents/users/$(request.auth.token.email))
+         ? get(/databases/$(database)/documents/users/$(request.auth.token.email)).data
+         : null
+      );
     }
     
     function getRole() {
@@ -32,7 +37,7 @@ service cloud.firestore {
     }
     
     function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+      return isSignedIn() && (request.auth.uid == userId || request.auth.token.email == userId);
     }
 
     // Default deny all
