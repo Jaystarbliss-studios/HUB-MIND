@@ -14,11 +14,18 @@ export function Inbox() {
 
   useEffect(() => {
     if (!profile) return;
-    const q = query(
-      collection(db, 'inbox'),
-      where('status', '==', 'unprocessed'),
-      orderBy('createdAt', 'desc')
-    );
+    const q = profile.role === 'admin' || profile.role === 'assistant'
+      ? query(
+          collection(db, 'inbox'),
+          where('status', '==', 'unprocessed'),
+          orderBy('createdAt', 'desc')
+        )
+      : query(
+          collection(db, 'inbox'),
+          where('status', '==', 'unprocessed'),
+          where('createdBy', '==', profile.id),
+          orderBy('createdAt', 'desc')
+        );
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as InboxItem));
       setItems(data);

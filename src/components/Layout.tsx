@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, Users, Calendar, Folder, Bell, LogOut, Settings, Inbox, Plus, X } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Users, Calendar, Folder, Bell, LogOut, Settings, Inbox, Plus, X, Brain } from 'lucide-react';
 import { auth, db } from '../firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { collection, addDoc, query, where, onSnapshot } from 'firebase/firestore';
@@ -41,10 +41,16 @@ export function Layout() {
 
   useEffect(() => {
     if (!profile) return;
-    const q = query(
-      collection(db, 'inbox'),
-      where('status', '==', 'unprocessed')
-    );
+    const q = profile.role === 'admin' || profile.role === 'assistant'
+      ? query(
+          collection(db, 'inbox'),
+          where('status', '==', 'unprocessed')
+        )
+      : query(
+          collection(db, 'inbox'),
+          where('status', '==', 'unprocessed'),
+          where('createdBy', '==', profile.id)
+        );
     const unsub = onSnapshot(q, (snap) => {
       setUnprocessedCount(snap.docs.length);
     });
@@ -96,7 +102,7 @@ export function Layout() {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 border-r border-slate-800 bg-slate-900 shrink-0">
         <div className="p-6 flex items-center gap-3">
-          <img src="/logo.png" alt="Jaystarbliss Logo" className="w-8 h-8 object-contain" />
+          <Brain className="w-8 h-8 text-accent" />
           <h1 className="text-xl font-semibold tracking-tight text-white">Hub-Mind</h1>
         </div>
         
@@ -189,7 +195,7 @@ export function Layout() {
         {/* Header - Mobile */}
         <header className="md:hidden flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950/80 backdrop-blur z-10 shrink-0">
           <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-            <img src="/logo.png" alt="Jaystarbliss Logo" className="w-6 h-6 object-contain" />
+            <Brain className="w-6 h-6 text-accent" />
             Hub-Mind
           </h1>
           <div className="flex items-center gap-4">

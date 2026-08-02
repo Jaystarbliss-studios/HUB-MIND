@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, query, getDocs } from 'firebase/firestore';
+import { collection, query, getDocs, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task, Meeting } from '../types';
 import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -17,9 +17,15 @@ export function Calendar() {
     const fetchData = async () => {
       setLoading(true);
       try {
+        const tasksQuery = profile.role === 'admin' || profile.role === 'assistant'
+          ? query(collection(db, 'tasks'))
+          : query(collection(db, 'tasks'), where('assignedTo', '==', user.uid));
+          
+        const meetingsQuery = query(collection(db, 'meetings'));
+
         const [tasksSnap, meetingsSnap] = await Promise.all([
-          getDocs(query(collection(db, 'tasks'))),
-          getDocs(query(collection(db, 'meetings')))
+          getDocs(tasksQuery),
+          getDocs(meetingsQuery)
         ]);
         
         setTasks(tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task)));

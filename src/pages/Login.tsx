@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 import { useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Brain } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 
 export function Login() {
@@ -34,7 +34,7 @@ export function Login() {
     <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
       <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
         <div className="flex flex-col items-center mb-8">
-          <img src="/logo.png" alt="Jaystarbliss Logo" className="w-16 h-16 object-contain mb-4" />
+          <Brain className="w-16 h-16 text-accent mb-4" />
           <h1 className="text-2xl font-bold text-slate-100">Hub-Mind</h1>
           <p className="text-slate-400 text-sm mt-1">Operations Workspace</p>
         </div>
