@@ -50,7 +50,7 @@ export function Inbox() {
       });
     } catch (err) {
       console.error(err);
-      alert('Failed to archive item.');
+      console.log('Failed to archive item.');
     } finally {
       setProcessingId(null);
     }
@@ -74,7 +74,7 @@ export function Inbox() {
       });
     } catch (err) {
       console.error(err);
-      alert('Failed to convert to knowledge.');
+      console.log('Failed to convert to knowledge.');
     } finally {
       setProcessingId(null);
     }
@@ -96,7 +96,7 @@ export function Inbox() {
       });
     } catch (err) {
       console.error(err);
-      alert('Failed to convert to client.');
+      console.log('Failed to convert to client.');
     } finally {
       setProcessingId(null);
     }
@@ -157,7 +157,7 @@ export function Inbox() {
       setActionTime('');
     } catch (err) {
       console.error(err);
-      alert(`Failed to convert to ${actionType}.`);
+      console.log(`Failed to convert to ${actionType}.`);
     } finally {
       setProcessingId(null);
     }

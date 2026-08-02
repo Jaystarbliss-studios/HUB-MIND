@@ -23,7 +23,7 @@ export function AdminUsers() {
   const handleRunSync = async () => {
     setSyncing(true);
     await processRecurringTasks();
-    alert('Daily sync completed.');
+    console.log("alert removed");
     setSyncing(false);
   };
 
@@ -100,11 +100,11 @@ export function AdminUsers() {
       
       await setDoc(doc(db, 'users', email.toLowerCase()), newUser);
       
-      alert("User created successfully!");
+      console.log("alert removed");
       setShowCreateUser(false);
       fetchUsers();
     } catch (error: any) {
-      alert(error.message);
+      console.log("alert removed");
     } finally {
       setCreatingUser(false);
     }
@@ -131,7 +131,7 @@ export function AdminUsers() {
       setTempDesc('');
       fetchTemplates();
     } catch (error: any) {
-      alert(error.message);
+      console.log("alert removed");
     } finally {
       setSavingTemplate(false);
     }
@@ -149,7 +149,7 @@ export function AdminUsers() {
   };
 
   const deleteTemplate = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this template?')) return;
+    
     try {
       await deleteDoc(doc(db, 'recurringTaskTemplates', id));
       fetchTemplates();
@@ -259,7 +259,7 @@ export function AdminUsers() {
                             fetchUsers();
                           } catch (err) {
                             console.error(err);
-                            alert("Failed to update role");
+                            console.log("alert removed");
                           }
                         }}
                         className="text-xs font-bold px-2 py-1 rounded uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700 focus:outline-none"
@@ -278,7 +278,7 @@ export function AdminUsers() {
                             fetchUsers();
                           } catch (err) {
                             console.error(err);
-                            alert("Failed to update status");
+                            console.log("alert removed");
                           }
                         }}
                         className={`text-xs font-bold px-2 py-1 rounded uppercase tracking-wider focus:outline-none ${

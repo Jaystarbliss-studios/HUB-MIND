@@ -39,14 +39,14 @@ export function MeetingDetail() {
   }, [id]);
 
   const handleDelete = async () => {
-    if (!id || !window.confirm("Are you sure you want to delete this meeting?")) return;
-    setIsDeleting(true);
+    
+    if (!id) return; setIsDeleting(true);
     try {
       await deleteDoc(doc(db, 'meetings', id));
-      navigate(-1);
+      navigate('/calendar');
     } catch (error) {
       console.error("Error deleting meeting:", error);
-      alert("Failed to delete meeting.");
+      console.log("alert removed");
     } finally {
       setIsDeleting(false);
     }
@@ -60,7 +60,7 @@ export function MeetingDetail() {
     return (
       <div className="p-8 text-center">
         <h2 className="text-xl text-slate-200 font-bold mb-4">Meeting not found</h2>
-        <button onClick={() => navigate(-1)} className="text-accent hover:underline">Go back</button>
+        <button onClick={() => navigate('/calendar')} className="text-accent hover:underline">Go back</button>
       </div>
     );
   }
@@ -68,7 +68,7 @@ export function MeetingDetail() {
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6 flex flex-col h-full min-h-0 pb-20 md:pb-0">
       <div className="flex items-center justify-between mb-4">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
+        <button onClick={() => navigate('/calendar')} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
           <ArrowLeft className="w-4 h-4" />
           Back
         </button>

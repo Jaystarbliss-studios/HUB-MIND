@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, query, getDocs, where, addDoc } from 'firebase/firestore';
+import { collection, query, getDocs, where, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task, Meeting } from '../types';
 import { Link } from 'react-router-dom';
@@ -24,31 +24,47 @@ export function Calendar() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchData();
-  }, [currentDate, profile]);
-
-  const fetchData = async () => {
+    if (!profile) return;
     setLoading(true);
-    try {
-      const tasksQuery = profile?.role === 'admin' || profile?.role === 'assistant'
-        ? query(collection(db, 'tasks'))
-        : query(collection(db, 'tasks'), where('assignedTo', '==', profile?.id));
-        
-      const meetingsQuery = query(collection(db, 'meetings'));
 
-      const [tasksSnap, meetingsSnap] = await Promise.all([
-        getDocs(tasksQuery),
-        getDocs(meetingsQuery)
-      ]);
+    const tasksQuery = profile.role === 'admin' || profile.role === 'assistant'
+      ? query(collection(db, 'tasks'))
+      : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
       
-      setTasks(tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task)));
-      setMeetings(meetingsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Meeting)));
-    } catch (error) {
-      console.error("Error fetching calendar data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const meetingsQuery = query(collection(db, 'meetings'));
+
+    let tasksLoaded = false;
+    let meetingsLoaded = false;
+
+    const checkLoading = () => {
+      if (tasksLoaded && meetingsLoaded) setLoading(false);
+    };
+
+    const unsubTasks = onSnapshot(tasksQuery, (snap) => {
+      setTasks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task)));
+      tasksLoaded = true;
+      checkLoading();
+    }, (error) => {
+      console.error("Error fetching tasks:", error);
+      tasksLoaded = true;
+      checkLoading();
+    });
+
+    const unsubMeetings = onSnapshot(meetingsQuery, (snap) => {
+      setMeetings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Meeting)));
+      meetingsLoaded = true;
+      checkLoading();
+    }, (error) => {
+      console.error("Error fetching meetings:", error);
+      meetingsLoaded = true;
+      checkLoading();
+    });
+
+    return () => {
+      unsubTasks();
+      unsubMeetings();
+    };
+  }, [profile]);
 
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
@@ -95,13 +111,13 @@ export function Calendar() {
         });
       }
       
-      await fetchData();
+      // await  // now using onSnapshot
       setSelectedDay(null);
       setFormType(null);
       setTitle('');
     } catch (err) {
       console.error(err);
-      alert('Failed to create item');
+      console.log('Failed to create item');
     } finally {
       setIsSubmitting(false);
     }

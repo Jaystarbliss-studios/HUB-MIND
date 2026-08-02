@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task } from '../types';
 import { Loader2, Plus, Filter, Search } from 'lucide-react';
@@ -18,31 +18,28 @@ export function Tasks() {
 
   useEffect(() => {
     if (!user || !profile) return;
-
-    const fetchTasks = async () => {
-      setLoading(true);
-      try {
-        let q;
-        if (profile.role === 'admin' || profile.role === 'assistant') {
-          q = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
-        } else {
-          q = query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
-        }
-        
-        const snapshot = await getDocs(q);
-        let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Task));
-        if (profile.role !== 'admin' && profile.role !== 'assistant') {
-          data = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        }
-        setTasks(data);
-      } catch (error) {
-        console.error("Error fetching tasks:", error);
-      } finally {
-        setLoading(false);
+    
+    setLoading(true);
+    let q;
+    if (profile.role === 'admin' || profile.role === 'assistant') {
+      q = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
+    } else {
+      q = query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
+    }
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Task));
+      if (profile.role !== 'admin' && profile.role !== 'assistant') {
+        data = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       }
-    };
+      setTasks(data);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching tasks:", error);
+      setLoading(false);
+    });
 
-    fetchTasks();
+    return () => unsubscribe();
   }, [user, profile]);
 
   const filteredTasks = tasks.filter(t => {
