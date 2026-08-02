@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { collection, query, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, getAuth, signOut } from 'firebase/auth';
+import { getApps, getApp, initializeApp } from 'firebase/app';
 import { db, auth } from '../firebaseConfig';
+import firebaseConfigData from '../../firebase-applet-config.json';
 import { User, Role, UserStatus, RecurringTaskTemplate } from '../types';
 import { Loader2, Plus, User as UserIcon, RefreshCw, Trash2 } from 'lucide-react';
 import { useUsers } from '../lib/useUsers';
@@ -78,7 +80,12 @@ export function AdminUsers() {
     e.preventDefault();
     setCreatingUser(true);
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const secondaryApp = getApps().length > 1 && getApps().find(app => app.name === 'SecondaryApp') 
+        ? getApp('SecondaryApp') 
+        : initializeApp(firebaseConfigData, 'SecondaryApp');
+      const secondaryAuth = getAuth(secondaryApp);
+      
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
       const newUser: Omit<User, 'id'> = {
         name,
         email,
@@ -86,8 +93,11 @@ export function AdminUsers() {
         status,
         createdAt: new Date().toISOString()
       };
+      
       await setDoc(doc(db, 'users', cred.user.uid), newUser);
-      alert("User created successfully! You may need to log in again as Admin.");
+      await signOut(secondaryAuth);
+      
+      alert("User created successfully!");
       setShowCreateUser(false);
       fetchUsers();
     } catch (error: any) {
@@ -171,13 +181,58 @@ export function AdminUsers() {
 
       {activeTab === 'users' && (
         <div className="flex flex-col h-full min-h-0 space-y-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
-            <h2 className="font-semibold text-lg text-white mb-2">Adding Users</h2>
-            <p className="text-sm text-slate-400">
-              To add a new user to the organization, ask them to sign in using their Google account on the login page.
-              Their account will automatically appear in this list, and you can assign them the appropriate role.
-            </p>
+          <div className="flex justify-end shrink-0">
+            <button 
+              onClick={() => setShowCreateUser(!showCreateUser)}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold px-4 py-2 rounded-lg transition-colors text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              {showCreateUser ? 'Cancel' : 'Add User'}
+            </button>
           </div>
+
+          {showCreateUser && (
+            <form onSubmit={handleCreateUser} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm space-y-4 shrink-0">
+              <h2 className="font-semibold text-lg text-white">Create New User</h2>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Full Name</label>
+                  <input required type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Email</label>
+                  <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Password</label>
+                  <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Role</label>
+                  <select value={role} onChange={(e) => setRole(e.target.value as Role)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none">
+                    <option value="assistant">Assistant</option>
+                    <option value="admin">Admin</option>
+                    <option value="teacher">Teacher</option>
+                    <option value="staff">Staff</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Status</label>
+                  <select value={status} onChange={(e) => setStatus(e.target.value as UserStatus)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none">
+                    <option value="active">Active</option>
+                    <option value="training">Training</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+              
+              <button type="submit" disabled={creatingUser} className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold px-4 py-2 rounded-lg transition-colors text-sm mt-6">
+                {creatingUser && <Loader2 className="w-4 h-4 animate-spin" />}
+                Create User
+              </button>
+            </form>
+          )}
 
           {loadingUsers ? (
             <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>

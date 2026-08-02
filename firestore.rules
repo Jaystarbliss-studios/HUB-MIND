@@ -52,6 +52,10 @@ service cloud.firestore {
         isOwner(userId) && 
         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))
       );
+      
+      match /private/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
 
     // Clients Collection
