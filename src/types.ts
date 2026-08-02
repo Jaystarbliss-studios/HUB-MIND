@@ -19,6 +19,7 @@ export interface User {
 }
 
 export interface Client {
+  projectId?: string;
   id: string;
   name: string;
   type: ClientType;
@@ -32,6 +33,7 @@ export interface Client {
 }
 
 export interface Task {
+  projectId?: string;
   id: string;
   title: string;
   description: string;
@@ -49,6 +51,9 @@ export interface Task {
 }
 
 export interface Meeting {
+  projectId?: string;
+  decisions?: string[];
+  openQuestions?: string[];
   id: string;
   clientId?: string;
   ownerId?: string; // userId
@@ -62,6 +67,7 @@ export interface Meeting {
 }
 
 export interface DocumentInfo {
+  projectId?: string;
   id: string;
   title: string;
   category: string; // contract | report | invoice | exam | certificate | other
@@ -89,7 +95,7 @@ export interface InboxItem {
   createdAt: string;
   status: 'unprocessed' | 'processed';
   convertedTo: {
-    type: 'task' | 'meeting' | 'client' | 'reminder' | 'archived';
+    type: 'task' | 'meeting' | 'client' | 'reminder' | 'archived' | 'knowledge';
     id: string;
   } | null;
 }
@@ -105,5 +111,36 @@ export interface RecurringTaskTemplate {
   dayOfMonth?: number; // 1-31 for monthly
   lastGeneratedDate?: string;
   active: boolean;
+  createdAt: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  status: 'active' | 'completed' | 'on_hold';
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Knowledge {
+  id: string;
+  title: string;
+  content: string;
+  category: 'sop' | 'template' | 'faq' | 'lesson';
+  tags: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  entityId: string;
+  entityType: 'task' | 'meeting' | 'client' | 'document' | 'project' | 'knowledge';
+  action: string;
+  userId: string;
+  details: string;
   createdAt: string;
 }

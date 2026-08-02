@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, query, getDocs, orderBy, addDoc } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, addDoc, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { DocumentInfo, Client } from '../types';
 import { Loader2, FileText, Search, ExternalLink } from 'lucide-react';
@@ -44,8 +44,8 @@ export function Documents() {
         getDocs(clientsQuery)
       ]);
       
-      let docsData = docsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentInfo));
-      let clientsData = clientsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+      let docsData = docsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as DocumentInfo));
+      let clientsData = clientsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
       
       if (profile?.role !== 'admin' && profile?.role !== 'assistant') {
         docsData = docsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

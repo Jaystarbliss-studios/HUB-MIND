@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, query, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Client } from '../types';
 import { Loader2, Plus, Search, Building2, User, Users as UsersIcon } from 'lucide-react';
@@ -26,7 +26,7 @@ export function Clients() {
           q = query(collection(db, 'clients'), where('ownerId', '==', profile?.id));
         }
         const snapshot = await getDocs(q);
-        let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+        let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
         if (profile?.role !== 'admin' && profile?.role !== 'assistant') {
           data = data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         }

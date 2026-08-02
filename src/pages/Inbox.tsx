@@ -3,7 +3,7 @@ import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, addDoc }
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { InboxItem } from '../types';
-import { Loader2, Archive, CheckSquare, Users, Calendar, ArrowRight } from 'lucide-react';
+import { Loader2, Archive, CheckSquare, Users, Calendar, ArrowRight, Book } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 export function Inbox() {
@@ -30,7 +30,32 @@ export function Inbox() {
       setItems(data);
       setLoading(false);
     });
-    return () => unsub();
+    
+  const convertToKnowledge = async (item: InboxItem) => {
+    setProcessingId(item.id);
+    try {
+      const docRef = await addDoc(collection(db, 'knowledge'), {
+        title: item.text.split('\n')[0].substring(0, 50) || 'New Knowledge',
+        content: item.text,
+        category: 'faq',
+        tags: [],
+        createdBy: profile?.id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      await updateDoc(doc(db, 'inbox', item.id), {
+        status: 'processed',
+        convertedTo: { type: 'knowledge', id: docRef.id }
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Failed to convert to knowledge.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  return () => unsub();
   }, [profile]);
 
   const handleArchive = async (item: InboxItem) => {

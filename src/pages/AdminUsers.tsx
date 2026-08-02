@@ -4,6 +4,7 @@ import { collection, query, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc }
 import { createUserWithEmailAndPassword, getAuth, signOut } from 'firebase/auth';
 import { getApps, getApp, initializeApp } from 'firebase/app';
 import { db, auth } from '../firebaseConfig';
+import { processRecurringTasks } from '../lib/recurringTasks';
 import firebaseConfigData from '../../firebase-applet-config.json';
 import { User, Role, UserStatus, RecurringTaskTemplate } from '../types';
 import { Loader2, Plus, User as UserIcon, RefreshCw, Trash2 } from 'lucide-react';
@@ -17,6 +18,15 @@ export function AdminUsers() {
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleRunSync = async () => {
+    setSyncing(true);
+    await processRecurringTasks();
+    alert('Daily sync completed.');
+    setSyncing(false);
+  };
+
   const [creatingUser, setCreatingUser] = useState(false);
 
   // Recurring state

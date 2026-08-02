@@ -1,104 +1,84 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, query, where, getDocs, doc, updateDoc, orderBy } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, limit } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { Notification } from '../types';
-import { Loader2, Bell, CheckCircle2 } from 'lucide-react';
+import { ActivityLog } from '../types';
 import { format, parseISO } from 'date-fns';
+import { Activity, Loader2 } from 'lucide-react';
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 export function Notifications() {
   const { profile } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!profile) return;
-    const fetchNotifs = async () => {
+    
+    const fetchLogs = async () => {
       try {
-        const q = query(collection(db, 'notifications'), where('userId', '==', profile.id));
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
-        setNotifications(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-      } catch (err) {
-        console.error(err);
+        const q = query(collection(db, 'activityLogs'), orderBy('createdAt', 'desc'), limit(50));
+        const snap = await getDocs(q);
+        setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as ActivityLog)));
+      } catch (error) {
+        console.error("Error fetching logs", error);
       } finally {
         setLoading(false);
       }
     };
-    fetchNotifs();
-  }, [user]);
+    
+    fetchLogs();
+  }, [profile]);
 
-  const markAsRead = async (id: string) => {
-    try {
-      await updateDoc(doc(db, 'notifications', id), { read: true });
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const markAllAsRead = async () => {
-    const unread = notifications.filter(n => !n.read);
-    for (const notif of unread) {
-      await markAsRead(notif.id);
-    }
-  };
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center text-slate-500">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6 flex flex-col h-full min-h-0 pb-20 md:pb-0">
-      <div className="flex justify-between items-center shrink-0">
-        <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Notifications</h1>
-        </div>
-        {notifications.some(n => !n.read) && (
-          <button onClick={markAllAsRead} className="text-sm font-bold text-accent hover:text-accent-hover transition-colors">
-            Mark all as read
-          </button>
-        )}
+    <div className="p-4 md:p-8 max-w-4xl mx-auto h-full overflow-y-auto">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+          <Activity className="w-6 h-6 text-accent" />
+          Activity Center
+        </h1>
+        <p className="text-sm text-slate-400 mt-1">Operational feed and audit trail.</p>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>
-      ) : (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
-          {notifications.length === 0 ? (
-            <div className="p-12 text-center text-slate-500 flex flex-col items-center">
-              <Bell className="w-12 h-12 mb-4 opacity-20" />
-              <p>You're all caught up!</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-800 overflow-y-auto">
-              {notifications.map(n => (
-                <div key={n.id} className={`p-5 flex gap-4 transition-colors ${!n.read ? 'bg-slate-800/30' : ''}`}>
-                  <div className="mt-1 shrink-0">
-                    {!n.read ? (
-                      <div className="w-2.5 h-2.5 rounded-full bg-accent mt-2" />
-                    ) : (
-                      <CheckCircle2 className="w-5 h-5 text-slate-600 mt-0.5" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm ${!n.read ? 'text-slate-200 font-medium' : 'text-slate-400'}`}>
-                      {n.message}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      {format(parseISO(n.createdAt), 'MMM d, h:mm a')}
-                    </p>
-                  </div>
-                  {!n.read && (
-                    <button 
-                      onClick={() => markAsRead(n.id)}
-                      className="shrink-0 text-xs font-bold text-slate-500 hover:text-accent transition-colors self-start mt-1"
-                    >
-                      Mark Read
-                    </button>
-                  )}
+      <div className="space-y-4">
+        {logs.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl">
+            No recent activity.
+          </div>
+        ) : (
+          logs.map(log => (
+            <div key={log.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-700 transition-colors">
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-300 uppercase shrink-0">
+                  {log.userId.substring(0, 2)}
                 </div>
-              ))}
+                <div>
+                  <p className="text-sm text-slate-300">
+                    <span className="font-bold text-white">{log.userId}</span> {log.action} <span className="font-bold text-white">{log.details}</span>
+                  </p>
+                  <p className="text-xs text-slate-500 capitalize mt-0.5">{log.entityType}</p>
+                </div>
+              </div>
+              <span className="text-xs text-slate-500 font-medium shrink-0 ml-12 sm:ml-0">
+                {format(parseISO(log.createdAt), 'MMM d, h:mm a')}
+              </span>
             </div>
-          )}
-        </div>
-      )}
+          ))
+        )}
+      </div>
     </div>
   );
 }

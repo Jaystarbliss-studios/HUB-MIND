@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, Users, Calendar, Folder, Bell, LogOut, Settings, Inbox, Plus, X, Brain } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Users, Calendar, Folder, Bell, LogOut, Settings, Inbox, Plus, X, Brain, Book, Briefcase } from 'lucide-react';
 import { auth, db } from '../firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { collection, addDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../lib/auth';
-import { processRecurringTasks } from '../lib/recurringTasks';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -17,9 +16,11 @@ const navItems = [
   { to: '/', label: 'Today', icon: LayoutDashboard },
   { to: '/inbox', label: 'Inbox', icon: Inbox },
   { to: '/tasks', label: 'Tasks', icon: CheckSquare },
+  { to: '/projects', label: 'Projects', icon: Briefcase },
   { to: '/clients', label: 'Clients', icon: Users },
   { to: '/calendar', label: 'Calendar', icon: Calendar },
   { to: '/documents', label: 'Documents', icon: Folder },
+  { to: '/knowledge', label: 'Knowledge', icon: Book },
 ];
 
 export function Layout() {
@@ -35,8 +36,7 @@ export function Layout() {
   useEffect(() => {
     if (profile && !recurringChecked.current) {
       recurringChecked.current = true;
-      processRecurringTasks();
-    }
+          }
   }, [profile]);
 
   useEffect(() => {

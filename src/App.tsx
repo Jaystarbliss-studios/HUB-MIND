@@ -16,6 +16,9 @@ import { Documents } from './pages/Documents';
 import { Calendar } from './pages/Calendar';
 import { AdminUsers } from './pages/AdminUsers';
 import { Notifications } from './pages/Notifications';
+import { Projects } from './pages/Projects';
+import { ProjectDetail } from './pages/ProjectDetail';
+import { Knowledge } from './pages/Knowledge';
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) {
   const { user, profile, loading } = useAuth();
@@ -45,6 +48,9 @@ export default function App() {
             <Route path="tasks" element={<Tasks />} />
             <Route path="tasks/:id" element={<div className="p-6">Task Detail (Coming Soon)</div>} />
             
+            <Route path="projects" element={<Projects />} />
+            <Route path="projects/:id" element={<ProjectDetail />} />
+            <Route path="knowledge" element={<Knowledge />} />
             <Route path="clients" element={<Clients />} />
             <Route path="clients/:id" element={<div className="p-6">Client Detail (Coming Soon)</div>} />
             
