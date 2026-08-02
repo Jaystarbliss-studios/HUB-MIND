@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, getDoc, limit } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { User } from '../types';
 
@@ -22,23 +22,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(firebaseUser);
       if (firebaseUser) {
         try {
+          // 1. Try to find the user by UID
           const docRef = doc(db, 'users', firebaseUser.uid);
           const docSnap = await getDoc(docRef);
+
           if (docSnap.exists()) {
             setProfile({ id: docSnap.id, ...docSnap.data() } as User);
           } else {
-            console.warn("No user profile found in Firestore for:", firebaseUser.uid);
-            // Create default admin profile if doesn't exist
-            const { setDoc } = await import('firebase/firestore');
-            const newProfile = {
-              name: firebaseUser.displayName || 'New User',
-              email: firebaseUser.email,
-              role: 'admin',
-              status: 'active',
-              createdAt: new Date().toISOString()
-            };
-            await setDoc(docRef, newProfile);
-            setProfile({ id: firebaseUser.uid, ...newProfile } as User);
+            // 2. Try to find the user by email (created by admin)
+            const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
+            const querySnapshot = await getDocs(q);
+
+            if (!querySnapshot.empty) {
+              const userDoc = querySnapshot.docs[0];
+              setProfile({ id: userDoc.id, ...userDoc.data() } as User);
+            } else {
+              // 3. Check if there are any users in the DB
+              const allUsersQ = query(collection(db, 'users'), limit(1));
+              const allUsersSnap = await getDocs(allUsersQ);
+              
+              if (allUsersSnap.empty) {
+                // First user! Make them admin.
+                const newProfile = {
+                  name: firebaseUser.displayName || 'New User',
+                  email: firebaseUser.email,
+                  role: 'admin',
+                  status: 'active',
+                  createdAt: new Date().toISOString()
+                };
+                await setDoc(docRef, newProfile);
+                setProfile({ id: firebaseUser.uid, ...newProfile } as User);
+              } else {
+                // Not the first user, and not registered by admin. Deny access.
+                console.warn("User not registered in the system.");
+                const { signOut } = await import('firebase/auth');
+                await signOut(auth);
+                window.dispatchEvent(new CustomEvent('auth-error', { detail: 'Your email is not registered. Please contact an administrator.' }));
+                setProfile(null);
+              }
+            }
           }
         } catch (error) {
           console.error("Error fetching user profile:", error);

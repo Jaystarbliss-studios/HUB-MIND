@@ -7,15 +7,15 @@ import { Loader2, Bell, CheckCircle2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 export function Notifications() {
-  const { user } = useAuth();
+  const { profile } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!profile) return;
     const fetchNotifs = async () => {
       try {
-        const q = query(collection(db, 'notifications'), where('userId', '==', user.uid));
+        const q = query(collection(db, 'notifications'), where('userId', '==', profile.id));
         const snapshot = await getDocs(q);
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
         setNotifications(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));

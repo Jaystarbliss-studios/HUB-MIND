@@ -19,7 +19,7 @@ export function Calendar() {
       try {
         const tasksQuery = profile.role === 'admin' || profile.role === 'assistant'
           ? query(collection(db, 'tasks'))
-          : query(collection(db, 'tasks'), where('assignedTo', '==', user.uid));
+          : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
           
         const meetingsQuery = query(collection(db, 'meetings'));
 

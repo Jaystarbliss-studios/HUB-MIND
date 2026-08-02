@@ -19,9 +19,18 @@ export function Clients() {
     const fetchClients = async () => {
       setLoading(true);
       try {
-        const q = query(collection(db, 'clients'), orderBy('name'));
+        let q;
+        if (profile?.role === 'admin' || profile?.role === 'assistant') {
+          q = query(collection(db, 'clients'), orderBy('name'));
+        } else {
+          q = query(collection(db, 'clients'), where('ownerId', '==', profile?.id));
+        }
         const snapshot = await getDocs(q);
-        setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
+        let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+        if (profile?.role !== 'admin' && profile?.role !== 'assistant') {
+          data = data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        }
+        setClients(data);
       } catch (error) {
         console.error("Error fetching clients:", error);
       } finally {

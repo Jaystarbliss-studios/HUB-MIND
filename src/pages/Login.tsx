@@ -17,6 +17,15 @@ export function Login() {
     }
   }, [user, profile, navigate]);
 
+  useEffect(() => {
+    const handleAuthError = (e: any) => {
+      setError(e.detail);
+      setLoading(false);
+    };
+    window.addEventListener('auth-error', handleAuthError);
+    return () => window.removeEventListener('auth-error', handleAuthError);
+  }, []);
+
   const handleLogin = async () => {
     setLoading(true);
     setError('');

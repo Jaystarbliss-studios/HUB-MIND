@@ -17,17 +17,16 @@ export function Inbox() {
     const q = profile.role === 'admin' || profile.role === 'assistant'
       ? query(
           collection(db, 'inbox'),
-          where('status', '==', 'unprocessed'),
-          orderBy('createdAt', 'desc')
+          where('status', '==', 'unprocessed')
         )
       : query(
           collection(db, 'inbox'),
           where('status', '==', 'unprocessed'),
-          where('createdBy', '==', profile.id),
-          orderBy('createdAt', 'desc')
+          where('createdBy', '==', profile.id)
         );
     const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as InboxItem));
+      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as InboxItem));
+      data = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setItems(data);
       setLoading(false);
     });

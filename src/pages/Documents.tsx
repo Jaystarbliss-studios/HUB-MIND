@@ -30,12 +30,30 @@ export function Documents() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      let docsQuery, clientsQuery;
+      if (profile?.role === 'admin' || profile?.role === 'assistant') {
+        docsQuery = query(collection(db, 'documents'), orderBy('createdAt', 'desc'));
+        clientsQuery = query(collection(db, 'clients'), orderBy('name'));
+      } else {
+        docsQuery = query(collection(db, 'documents'), where('ownerId', '==', profile?.id));
+        clientsQuery = query(collection(db, 'clients'), where('ownerId', '==', profile?.id));
+      }
+
       const [docsSnap, clientsSnap] = await Promise.all([
-        getDocs(query(collection(db, 'documents'), orderBy('createdAt', 'desc'))),
-        getDocs(query(collection(db, 'clients'), orderBy('name')))
+        getDocs(docsQuery),
+        getDocs(clientsQuery)
       ]);
-      setDocsList(docsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentInfo)));
-      setClients(clientsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
+      
+      let docsData = docsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentInfo));
+      let clientsData = clientsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+      
+      if (profile?.role !== 'admin' && profile?.role !== 'assistant') {
+        docsData = docsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        clientsData = clientsData.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      }
+      
+      setDocsList(docsData);
+      setClients(clientsData);
     } catch (error) {
       console.error("Error fetching documents:", error);
     } finally {
@@ -53,8 +71,8 @@ export function Documents() {
         clientId: newClientId || null,
         fileRef: webViewLink,
         version: 1,
-        createdBy: user.uid,
-        ownerId: user.uid,
+        createdBy: profile.id,
+        ownerId: profile.id,
         createdAt: new Date().toISOString()
       };
       await addDoc(collection(db, 'documents'), newDoc);

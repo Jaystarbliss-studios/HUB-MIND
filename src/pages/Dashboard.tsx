@@ -32,7 +32,7 @@ export function Dashboard() {
         // Fetch tasks
         const tasksQuery = profile.role === 'admin' || profile.role === 'assistant' 
           ? query(collection(db, 'tasks')) 
-          : query(collection(db, 'tasks'), where('assignedTo', '==', user.uid));
+          : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
         const tasksSnapshot = await getDocs(tasksQuery);
         const tasksData = tasksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
         setTasks(tasksData);
@@ -51,12 +51,12 @@ export function Dashboard() {
         setDocuments(docsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentInfo)));
 
         // Fetch notifications
-        const notifQuery = query(collection(db, 'notifications'), where('userId', '==', user.uid), where('read', '==', false));
+        const notifQuery = query(collection(db, 'notifications'), where('userId', '==', profile.id), where('read', '==', false));
         const notifSnapshot = await getDocs(notifQuery);
         setNotifications(notifSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification)));
 
         // Fetch quick notes
-        const notesDoc = await getDoc(doc(db, 'users', user.uid, 'private', 'quickNotes'));
+        const notesDoc = await getDoc(doc(db, 'users', profile.id, 'private', 'quickNotes'));
         if (notesDoc.exists()) {
           setNotes(notesDoc.data().content || '');
         }
@@ -71,10 +71,10 @@ export function Dashboard() {
   }, [user, profile]);
 
   const handleSaveNotes = async () => {
-    if (!user) return;
+    if (!profile) return;
     setSavingNotes(true);
     try {
-      await setDoc(doc(db, 'users', user.uid, 'private', 'quickNotes'), {
+      await setDoc(doc(db, 'users', profile.id, 'private', 'quickNotes'), {
         content: notes,
         updatedAt: new Date().toISOString()
       }, { merge: true });

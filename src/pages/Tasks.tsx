@@ -26,11 +26,15 @@ export function Tasks() {
         if (profile.role === 'admin' || profile.role === 'assistant') {
           q = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
         } else {
-          q = query(collection(db, 'tasks'), where('assignedTo', '==', user.uid), orderBy('createdAt', 'desc'));
+          q = query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
         }
         
         const snapshot = await getDocs(q);
-        setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Task)));
+        let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Task));
+        if (profile.role !== 'admin' && profile.role !== 'assistant') {
+          data = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        }
+        setTasks(data);
       } catch (error) {
         console.error("Error fetching tasks:", error);
       } finally {

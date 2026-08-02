@@ -80,12 +80,6 @@ export function AdminUsers() {
     e.preventDefault();
     setCreatingUser(true);
     try {
-      const secondaryApp = getApps().length > 1 && getApps().find(app => app.name === 'SecondaryApp') 
-        ? getApp('SecondaryApp') 
-        : initializeApp(firebaseConfigData, 'SecondaryApp');
-      const secondaryAuth = getAuth(secondaryApp);
-      
-      const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
       const newUser: Omit<User, 'id'> = {
         name,
         email,
@@ -94,8 +88,7 @@ export function AdminUsers() {
         createdAt: new Date().toISOString()
       };
       
-      await setDoc(doc(db, 'users', cred.user.uid), newUser);
-      await signOut(secondaryAuth);
+      await addDoc(collection(db, 'users'), newUser);
       
       alert("User created successfully!");
       setShowCreateUser(false);
@@ -203,10 +196,6 @@ export function AdminUsers() {
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Email</label>
                   <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Password</label>
-                  <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Role</label>
