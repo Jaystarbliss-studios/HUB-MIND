@@ -65,29 +65,17 @@ service cloud.firestore {
 
     // Clients Collection
     match /clients/{clientId} {
-      allow read: if isAdmin() || isAssistant() || isStaffOrTeacher();
-      allow write: if isAdmin() || isAssistant();
+      allow read, write: if isSignedIn();
     }
 
     // Tasks Collection
     match /tasks/{taskId} {
-      allow read: if isAdmin() || isAssistant() || (
-        isStaffOrTeacher() && resource.data.assignedTo == request.auth.uid
-      );
-      // Create: admin/assistant can create for anyone. staff can only create for themselves?
-      // Actually, requirement: teacher/staff can read/write tasks where assignedTo == their own uid.
-      allow create: if isAdmin() || isAssistant() || (
-        isStaffOrTeacher() && request.resource.data.assignedTo == request.auth.uid
-      );
-      allow update, delete: if isAdmin() || isAssistant() || (
-        isStaffOrTeacher() && resource.data.assignedTo == request.auth.uid && request.resource.data.assignedTo == request.auth.uid
-      );
+      allow read, write: if isSignedIn();
     }
 
     // Meetings Collection
     match /meetings/{meetingId} {
-      allow read: if isAdmin() || isAssistant() || isStaffOrTeacher();
-      allow write: if isAdmin() || isAssistant();
+      allow read, write: if isSignedIn();
     }
 
     // Documents Collection
@@ -110,9 +98,7 @@ service cloud.firestore {
     }
     // Inbox Collection
     match /inbox/{itemId} {
-      allow read, write: if (resource != null && isOwner(resource.data.createdBy)) || (
-        request.method == 'create' && isOwner(request.resource.data.createdBy)
-      ) || isAdmin() || isAssistant();
+      allow read, write: if isSignedIn();
     }
 
     // Recurring Task Templates Collection
@@ -123,5 +109,11 @@ service cloud.firestore {
         isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastGeneratedDate'])
       );
     }
+
+    // Activity Logs Collection
+    match /activityLogs/{logId} {
+      allow read, write: if isSignedIn();
+    }
   }
 }
+

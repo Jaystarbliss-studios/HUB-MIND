@@ -26,9 +26,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const docRef = doc(db, 'users', firebaseUser.uid);
           const docSnap = await getDoc(docRef);
 
+          
           if (docSnap.exists()) {
-            setProfile({ id: docSnap.id, ...docSnap.data() } as User);
-          } else {
+            const data = docSnap.data();
+            if (firebaseUser.photoURL && data.photoUrl !== firebaseUser.photoURL) {
+              await setDoc(doc(db, 'users', docSnap.id), { photoUrl: firebaseUser.photoURL }, { merge: true });
+              data.photoUrl = firebaseUser.photoURL;
+            }
+            setProfile({ id: docSnap.id, ...data } as User);
+          }
+ else {
             // 2. Try to find the user by email (created by admin)
             const emailDocRef = doc(db, 'users', firebaseUser.email.toLowerCase());
             const emailDocSnap = await getDoc(emailDocRef);
@@ -42,9 +49,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 userDoc = querySnapshot.docs[0];
               }
             }
+            
             if (userDoc) {
-              setProfile({ id: userDoc.id, ...userDoc.data() } as User);
-            } else {
+              const data = userDoc.data();
+              if (firebaseUser.photoURL && data.photoUrl !== firebaseUser.photoURL) {
+                await setDoc(doc(db, 'users', userDoc.id), { photoUrl: firebaseUser.photoURL }, { merge: true });
+                data.photoUrl = firebaseUser.photoURL;
+              }
+              setProfile({ id: userDoc.id, ...data } as User);
+            }
+ else {
               // 3. Check if there are any users in the DB
               const allUsersQ = query(collection(db, 'users'), limit(1));
               const allUsersSnap = await getDocs(allUsersQ);
@@ -53,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 // First user! Make them admin.
                 const newProfile = {
                   name: firebaseUser.displayName || 'New User',
+                  photoUrl: firebaseUser.photoURL || undefined,
                   email: firebaseUser.email,
                   role: 'admin',
                   status: 'active',

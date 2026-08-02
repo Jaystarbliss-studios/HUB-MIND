@@ -1,4 +1,5 @@
-
+const fs = require('fs');
+const content = `
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, addDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
@@ -60,7 +61,7 @@ export function Inbox() {
     setProcessingId(item.id);
     try {
       const docRef = await addDoc(collection(db, 'knowledge'), {
-        title: item.text.split('\n')[0].substring(0, 50) || 'New Knowledge',
+        title: item.text.split('\\n')[0].substring(0, 50) || 'New Knowledge',
         content: item.text,
         category: 'faq',
         tags: [],
@@ -110,7 +111,7 @@ export function Inbox() {
       let isoString = new Date().toISOString();
       if (actionDate) {
         if (actionTime) {
-          isoString = new Date(`${actionDate}T${actionTime}`).toISOString();
+          isoString = new Date(\`\${actionDate}T\${actionTime}\`).toISOString();
         } else {
           isoString = new Date(actionDate).toISOString();
         }
@@ -157,7 +158,7 @@ export function Inbox() {
       setActionTime('');
     } catch (err) {
       console.error(err);
-      alert(`Failed to convert to ${actionType}.`);
+      alert(\`Failed to convert to \${actionType}.\`);
     } finally {
       setProcessingId(null);
     }
@@ -221,7 +222,7 @@ export function Inbox() {
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
                       />
                     </div>
-                    {(actionType === 'meeting' || actionType === 'task') && (
+                    {actionType === 'meeting' && (
                       <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Time</label>
                         <input 
@@ -302,3 +303,5 @@ export function Inbox() {
     </div>
   );
 }
+`;
+fs.writeFileSync('src/pages/Inbox.tsx', content);

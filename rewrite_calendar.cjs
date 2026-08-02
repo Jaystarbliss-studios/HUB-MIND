@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+const fs = require('fs');
+
+const content = `import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { collection, query, getDocs, where, addDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task, Meeting } from '../types';
-import { Link } from 'react-router-dom';
 import { Loader2, ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, CheckSquare, X } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, parseISO, startOfDay, endOfDay } from 'date-fns';
 import * as Popover from '@radix-ui/react-popover';
@@ -151,7 +152,7 @@ export function Calendar() {
         {/* Grid offset for first day */}
         <div className="grid grid-cols-7 auto-rows-[minmax(120px,1fr)] divide-y divide-x divide-slate-800 overflow-y-auto flex-1">
           {Array.from({ length: monthStart.getDay() }).map((_, i) => (
-            <div key={`empty-${i}`} className="bg-slate-950/30" />
+            <div key={\`empty-\${i}\`} className="bg-slate-950/30" />
           ))}
           
           {days.map(day => {
@@ -176,14 +177,14 @@ export function Calendar() {
               >
                 <Popover.Trigger asChild>
                   <button 
-                    className={`p-3 transition-colors hover:bg-slate-800/50 flex flex-col items-stretch text-left h-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent ${
+                    className={\`p-3 transition-colors hover:bg-slate-800/50 flex flex-col items-stretch text-left h-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent \${
                       !isSameMonth(day, currentDate) ? 'bg-slate-950/30 opacity-50' : ''
-                    } ${isToday ? 'bg-accent/5' : ''}`}
+                    } \${isToday ? 'bg-accent/5' : ''}\`}
                   >
                     <div className="flex justify-between items-start mb-2">
-                      <div className={`text-xs font-bold w-7 h-7 flex items-center justify-center rounded-lg ${
+                      <div className={\`text-xs font-bold w-7 h-7 flex items-center justify-center rounded-lg \${
                         isToday ? 'bg-accent text-slate-950 ring-2 ring-accent ring-offset-2 ring-offset-slate-900' : 'text-slate-400'
-                      }`}>
+                      }\`}>
                         {format(day, 'd')}
                       </div>
                       
@@ -201,12 +202,12 @@ export function Calendar() {
                         </div>
                       ))}
                       {dayTasks.map(t => (
-                        <div key={t.id} className={`text-[10px] px-2 py-1 border rounded font-semibold truncate ${
+                        <div key={t.id} className={\`text-[10px] px-2 py-1 border rounded font-semibold truncate \${
                           t.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
                           t.priority === 'urgent' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
                           t.priority === 'high' ? 'bg-accent/10 text-accent border-accent/20' :
                           'bg-slate-800 text-slate-300 border-slate-700'
-                        }`}>
+                        }\`}>
                           {t.title}
                         </div>
                       ))}
@@ -220,7 +221,7 @@ export function Calendar() {
                     align="start" 
                     sideOffset={10} 
                     collisionPadding={20}
-                    className="z-50 w-[calc(100vw-32px)] sm:w-80 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 outline-none max-sm:!fixed max-sm:!bottom-4 max-sm:!top-auto max-sm:!left-4 max-sm:!right-4 max-sm:!transform-none max-sm:!w-auto"
+                    className="z-50 w-[calc(100vw-32px)] sm:w-80 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 outline-none fixed sm:absolute bottom-4 sm:bottom-auto left-4 sm:left-auto right-4 sm:right-auto"
                   >
                     <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
                       <h3 className="font-bold text-white">
@@ -238,22 +239,22 @@ export function Calendar() {
                             <div className="space-y-2 mb-4">
                               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Existing Items</h4>
                               {dayMeetings.map(m => (
-                                <Link to={`/meetings/${m.id}`} key={m.id} className="flex items-center gap-3 p-2 rounded-lg bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 transition-colors">
+                                <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg bg-slate-800/50 border border-slate-700/50">
                                   <CalendarIcon className="w-4 h-4 text-blue-400 shrink-0" />
                                   <div className="min-w-0">
-                                    <p className="text-sm font-medium text-slate-200 truncate">{m.notesRaw.split('\n')[0] || 'Meeting'}</p>
+                                    <p className="text-sm font-medium text-slate-200 truncate">{m.notesRaw.split('\\n')[0] || 'Meeting'}</p>
                                     <p className="text-xs text-slate-400">{format(parseISO(m.date), 'h:mm a')}</p>
                                   </div>
-                                </Link>
+                                </div>
                               ))}
                               {dayTasks.map(t => (
-                                <Link to={`/tasks/${t.id}`} key={t.id} className="flex items-center gap-3 p-2 rounded-lg bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 transition-colors">
+                                <div key={t.id} className="flex items-center gap-3 p-2 rounded-lg bg-slate-800/50 border border-slate-700/50">
                                   <CheckSquare className="w-4 h-4 text-emerald-400 shrink-0" />
                                   <div className="min-w-0">
                                     <p className="text-sm font-medium text-slate-200 truncate">{t.title}</p>
                                     <p className="text-xs text-slate-400">{t.status.replace('_', ' ')}</p>
                                   </div>
-                                </Link>
+                                </div>
                               ))}
                             </div>
                           ) : (
@@ -350,3 +351,6 @@ export function Calendar() {
     </div>
   );
 }
+`;
+
+fs.writeFileSync('src/pages/Calendar.tsx', content);

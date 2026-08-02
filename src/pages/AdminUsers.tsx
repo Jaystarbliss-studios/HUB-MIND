@@ -242,7 +242,7 @@ export function AdminUsers() {
                   <div key={u.id} className="p-4 md:p-5 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-slate-800 flex items-center justify-center border border-slate-700 shrink-0">
-                        <UserIcon className="w-5 h-5 text-slate-400" />
+                        {u.photoUrl ? <img src={u.photoUrl} alt="" className="w-full h-full rounded-xl object-cover" /> : <UserIcon className="w-5 h-5 text-slate-400" />}
                       </div>
                       <div className="min-w-0 pr-4">
                         <h3 className="font-semibold text-slate-200 truncate">{u.name}</h3>
@@ -368,8 +368,8 @@ export function AdminUsers() {
                   <label className="block text-sm font-medium text-slate-300 mb-1">Assign To (Optional User ID)</label>
                   <select value={tempAssignedTo} onChange={(e) => setTempAssignedTo(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none">
                     <option value="">-- System/Unassigned --</option>
-                    {Object.entries(userLookup).map(([id, name]) => (
-                      <option key={id} value={id}>{name}</option>
+                    {Object.entries(userLookup).map(([id, u]: [string, any]) => (
+                      <option key={id} value={id}>{u.name}</option>
                     ))}
                   </select>
                 </div>
@@ -403,7 +403,7 @@ export function AdminUsers() {
                             {t.frequency === 'weekly' && <span className="text-slate-400 border border-slate-700 px-1 rounded">Day {t.dayOfWeek}</span>}
                             {t.frequency === 'monthly' && <span className="text-slate-400 border border-slate-700 px-1 rounded">Day {t.dayOfMonth}</span>}
                             <span className="text-slate-500 bg-slate-950 px-1 rounded">{t.priority}</span>
-                            {t.assignedTo && <span className="text-emerald-400 border border-emerald-900 px-1 rounded truncate max-w-[100px]">{userLookup[t.assignedTo] || 'User'}</span>}
+                            {t.assignedTo && <span className="text-emerald-400 border border-emerald-900 px-1 rounded truncate max-w-[100px]">{userLookup[t.assignedTo]?.name || 'User'}</span>}
                           </div>
                         </div>
                       </div>

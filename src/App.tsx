@@ -11,6 +11,8 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Inbox } from './pages/Inbox';
 import { Tasks } from './pages/Tasks';
+import { TaskDetail } from './pages/TaskDetail';
+import { MeetingDetail } from './pages/MeetingDetail';
 import { Clients } from './pages/Clients';
 import { Documents } from './pages/Documents';
 import { Calendar } from './pages/Calendar';
@@ -46,13 +48,14 @@ export default function App() {
             <Route path="inbox" element={<Inbox />} />
             
             <Route path="tasks" element={<Tasks />} />
-            <Route path="tasks/:id" element={<div className="p-6">Task Detail (Coming Soon)</div>} />
+            <Route path="tasks/:id" element={<TaskDetail />} />
             
             <Route path="projects" element={<Projects />} />
             <Route path="projects/:id" element={<ProjectDetail />} />
             <Route path="knowledge" element={<Knowledge />} />
             <Route path="clients" element={<Clients />} />
             <Route path="clients/:id" element={<div className="p-6">Client Detail (Coming Soon)</div>} />
+            <Route path="meetings/:id" element={<MeetingDetail />} />
             
             <Route path="calendar" element={<Calendar />} />
             <Route path="documents" element={<Documents />} />

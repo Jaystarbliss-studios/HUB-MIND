@@ -119,7 +119,16 @@ export function Tasks() {
                       </span>
                       {task.assignedTo && (
                         <span className="text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider bg-slate-800 text-slate-400 ml-auto md:ml-0 border border-slate-700">
-                          {users[task.assignedTo] || 'Unassigned'}
+                          {users[task.assignedTo] ? (
+      <span className="flex items-center gap-1.5">
+        {users[task.assignedTo].photoUrl ? (
+          <img src={users[task.assignedTo].photoUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
+        ) : (
+          <span className="w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center text-[8px] text-white font-bold">{users[task.assignedTo].name.charAt(0)}</span>
+        )}
+        {users[task.assignedTo].name}
+      </span>
+    ) : 'Unassigned'}
                         </span>
                       )}
                     </div>

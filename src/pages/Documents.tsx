@@ -190,7 +190,16 @@ export function Documents() {
                           <h3 className="font-semibold text-slate-200 truncate">{doc.title}</h3>
                           {doc.ownerId && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700">
-                              {users[doc.ownerId] || 'Owner'}
+                              {users[doc.ownerId] ? (
+      <span className="flex items-center gap-1.5">
+        {users[doc.ownerId].photoUrl ? (
+          <img src={users[doc.ownerId].photoUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
+        ) : (
+          <span className="w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center text-[8px] text-white font-bold">{users[doc.ownerId].name.charAt(0)}</span>
+        )}
+        {users[doc.ownerId].name}
+      </span>
+    ) : 'Owner'}
                             </span>
                           )}
                         </div>

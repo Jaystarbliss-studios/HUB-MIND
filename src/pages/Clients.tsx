@@ -104,7 +104,16 @@ export function Clients() {
                 
                 {client.ownerId && (
                   <div className="absolute top-4 right-4 bg-slate-800 px-2 py-1 rounded text-[10px] font-bold text-slate-400">
-                    {users[client.ownerId] || 'Owner'}
+                    {users[client.ownerId] ? (
+      <span className="flex items-center gap-1.5">
+        {users[client.ownerId].photoUrl ? (
+          <img src={users[client.ownerId].photoUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
+        ) : (
+          <span className="w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center text-[8px] text-white font-bold">{users[client.ownerId].name.charAt(0)}</span>
+        )}
+        {users[client.ownerId].name}
+      </span>
+    ) : 'Owner'}
                   </div>
                 )}
                 

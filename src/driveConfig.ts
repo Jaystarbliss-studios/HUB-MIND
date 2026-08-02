@@ -1,3 +1,4 @@
+import firebaseConfig from '../firebase-applet-config.json';
 export const driveConfig = {
-  clientId: "YOUR_GOOGLE_DRIVE_CLIENT_ID", // Replace with your OAuth 2.0 Client ID
+  clientId: (firebaseConfig as any).oAuthClientId || (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || "",
 };
