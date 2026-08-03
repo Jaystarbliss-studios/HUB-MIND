@@ -14,6 +14,7 @@ import { Tasks } from './pages/Tasks';
 import { TaskDetail } from './pages/TaskDetail';
 import { MeetingDetail } from './pages/MeetingDetail';
 import { Clients } from './pages/Clients';
+import { ClientDetail } from './pages/ClientDetail';
 import { Documents } from './pages/Documents';
 import { Calendar } from './pages/Calendar';
 import { AdminUsers } from './pages/AdminUsers';
@@ -60,7 +61,7 @@ export default function App() {
             <Route path="projects/:id" element={<ProjectDetail />} />
             <Route path="knowledge" element={<Knowledge />} />
             <Route path="clients" element={<Clients />} />
-            <Route path="clients/:id" element={<div className="p-6">Client Detail (Coming Soon)</div>} />
+            <Route path="clients/:id" element={<ClientDetail />} />
             <Route path="meetings/:id" element={<MeetingDetail />} />
             
             <Route path="calendar" element={<Calendar />} />
