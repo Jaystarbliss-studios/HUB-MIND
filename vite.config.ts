@@ -12,11 +12,29 @@ export default defineConfig(() => {
       VitePWA({
         registerType: 'prompt',
         injectRegister: 'auto',
+        devOptions: {
+          enabled: true,
+          type: 'module'
+        },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
           cleanupOutdatedCaches: true,
           clientsClaim: true,
           runtimeCaching: [
+            
+            {
+              urlPattern: /\/api\/tasks/i,
+              handler: 'NetworkOnly',
+              method: 'POST',
+              options: {
+                backgroundSync: {
+                  name: 'task-sync-queue',
+                  options: {
+                    maxRetentionTime: 24 * 60 // 24 hours
+                  }
+                }
+              }
+            },
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
               handler: 'CacheFirst',
@@ -57,6 +75,7 @@ export default defineConfig(() => {
           orientation: 'portrait',
           scope: '/',
           start_url: '/',
+          
           icons: [
             { src: '/icon-72x72.png', sizes: '72x72', type: 'image/png' },
             { src: '/icon-96x96.png', sizes: '96x96', type: 'image/png' },
@@ -68,7 +87,23 @@ export default defineConfig(() => {
             { src: '/icon-384x384.png', sizes: '384x384', type: 'image/png' },
             { src: '/icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
             { src: '/maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
-          ]
+          ],
+          share_target: {
+            action: '/share-target',
+            method: 'POST',
+            enctype: 'multipart/form-data',
+            params: {
+              title: 'title',
+              text: 'text',
+              url: 'url',
+              files: [
+                {
+                  name: 'file',
+                  accept: ['image/*', 'text/plain', 'application/pdf', '.docx', '.doc']
+                }
+              ]
+            }
+          }
         }
       })
     ],

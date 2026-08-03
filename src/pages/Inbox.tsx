@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, addDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
+import { useLocation } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { InboxItem } from '../types';
 import { Loader2, Archive, CheckSquare, Users, Calendar, Book, X } from 'lucide-react';
@@ -11,6 +12,8 @@ import { format, parseISO } from 'date-fns';
 export function Inbox() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isShared = new URLSearchParams(location.search).get('shared') === 'true';
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
