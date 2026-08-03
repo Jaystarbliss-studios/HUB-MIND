@@ -181,9 +181,9 @@ export function Calendar() {
         </div>
         
         {/* Grid offset for first day */}
-        <div className="grid grid-cols-7 auto-rows-[minmax(120px,1fr)] divide-y divide-x divide-slate-800 overflow-y-auto flex-1">
+        <div className="grid grid-cols-7 auto-rows-fr divide-y divide-x divide-slate-800 overflow-y-auto flex-1">
           {Array.from({ length: monthStart.getDay() }).map((_, i) => (
-            <div key={`empty-${i}`} className="bg-slate-950/30" />
+            <div key={`empty-${i}`} className="bg-slate-950/30 aspect-square" />
           ))}
           
           {days.map(day => {
@@ -208,7 +208,7 @@ export function Calendar() {
               >
                 <Popover.Trigger asChild>
                   <button 
-                    className={`p-3 transition-colors hover:bg-slate-800/50 flex flex-col items-stretch text-left h-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent ${
+                    className={`aspect-square p-3 transition-colors hover:bg-slate-800/50 flex flex-col items-stretch text-left h-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent ${
                       !isSameMonth(day, currentDate) ? 'bg-slate-950/30 opacity-50' : ''
                     } ${isToday ? 'bg-accent/5' : ''}`}
                   >
@@ -254,11 +254,12 @@ export function Calendar() {
 
                 <Popover.Portal>
                   <Popover.Content 
-                    side="right" 
-                    align="start" 
+                    side="bottom"
+                    align="center"
+                    avoidCollisions={true} 
                     sideOffset={10} 
                     collisionPadding={20}
-                    className="z-50 w-[calc(100vw-32px)] sm:w-80 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 outline-none max-sm:!fixed max-sm:!bottom-4 max-sm:!top-auto max-sm:!left-4 max-sm:!right-4 max-sm:!transform-none max-sm:!w-auto"
+                    className="z-50 w-[calc(100vw-32px)] max-w-sm sm:w-80 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 outline-none"
                   >
                     <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
                       <h3 className="font-bold text-white">
