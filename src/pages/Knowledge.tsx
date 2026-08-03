@@ -11,6 +11,7 @@ export function Knowledge() {
   const { profile } = useAuth();
   const [items, setItems] = useState<KnowledgeType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [articleToDelete, setArticleToDelete] = useState<{id: string, title: string} | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
@@ -58,8 +59,9 @@ export function Knowledge() {
   };
 
   
+  const confirmDelete = (id: string, title: string) => { setArticleToDelete({id, title}); };
   const handleDelete = async (id: string, title: string) => {
-    // Removed window.confirm due to iframe restrictions
+    setArticleToDelete(null);
     try {
       await deleteDoc(doc(db, 'knowledge', id));
       await logActivity(id, 'knowledge', 'deleted knowledge article', title, profile?.name || 'User');
@@ -161,7 +163,7 @@ export function Knowledge() {
                 
                 {profile?.role === 'admin' && (
                   <button
-                    onClick={() => handleDelete(item.id, item.title)}
+                    onClick={() => confirmDelete(item.id, item.title)}
                     className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -180,6 +182,30 @@ export function Knowledge() {
           )}
         </div>
       )}
+
+      {articleToDelete && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-sm p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-white mb-2">Delete Article</h3>
+            <p className="text-sm text-slate-300 mb-6">Are you sure you want to delete this article? This action cannot be undone.</p>
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setArticleToDelete(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => { if(articleToDelete) handleDelete(articleToDelete.id, articleToDelete.title); }}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
