@@ -190,10 +190,27 @@ export function Inbox() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6 md:space-y-8 h-full flex flex-col min-h-0">
+      
       <div className="shrink-0">
         <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Inbox</h1>
-        <p className="text-sm text-slate-400 mt-1">Unprocessed quick captures</p>
+        <p className="text-sm text-slate-400 mt-1">Quick captures and notes</p>
       </div>
+      
+      <div className="flex border-b border-slate-800 shrink-0">
+        <button 
+          onClick={() => setViewMode('unprocessed')}
+          className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${viewMode === 'unprocessed' ? 'border-accent text-accent' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+        >
+          Unprocessed
+        </button>
+        <button 
+          onClick={() => setViewMode('processed')}
+          className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${viewMode === 'processed' ? 'border-accent text-accent' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+        >
+          Archived
+        </button>
+      </div>
+
 
       {loading ? (
         <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>
@@ -202,9 +219,9 @@ export function Inbox() {
           <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-4">
             <CheckSquare className="w-8 h-8 text-slate-500" />
           </div>
-          <h2 className="text-xl font-bold text-white mb-2">Inbox Zero</h2>
+          <h2 className="text-xl font-bold text-white mb-2">{viewMode === 'unprocessed' ? 'Inbox Zero' : 'No Archived Items'}</h2>
           <p className="text-slate-400 text-center text-sm max-w-sm">
-            All your captured thoughts have been processed. Tap the Quick Capture button to add more.
+            {viewMode === 'unprocessed' ? 'All your captured thoughts have been processed. Tap the Quick Capture button to add more.' : 'You have not archived any items yet.'}
           </p>
         </div>
       ) : (

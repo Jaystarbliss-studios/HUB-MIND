@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, addDoc, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { Knowledge as KnowledgeType } from '../types';
 import { logActivity } from '../lib/activity';
-import { Loader2, Plus, Book, Search, FileText, Bookmark } from 'lucide-react';
+import { Loader2, Plus, Book, Search, FileText, Bookmark, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 export function Knowledge() {
@@ -57,6 +57,18 @@ export function Knowledge() {
     }
   };
 
+  
+  const handleDelete = async (id: string, title: string) => {
+    if (!window.confirm('Are you sure you want to delete this article?')) return;
+    try {
+      await deleteDoc(doc(db, 'knowledge', id));
+      await logActivity(id, 'knowledge', 'deleted knowledge article', title, profile?.name || 'User');
+      setItems(items.filter(item => item.id !== id));
+    } catch (error) {
+      console.error("Error deleting knowledge", error);
+    }
+  };
+  
   const filtered = items.filter(i => 
     i.title.toLowerCase().includes(search.toLowerCase()) || 
     i.content.toLowerCase().includes(search.toLowerCase())
@@ -146,6 +158,16 @@ export function Knowledge() {
                   {item.category}
                 </span>
                 <span className="text-xs text-slate-500">{format(parseISO(item.createdAt), 'MMM d, yyyy')}</span>
+                
+                {profile?.role === 'admin' && (
+                  <button
+                    onClick={() => handleDelete(item.id, item.title)}
+                    className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+  
               </div>
               <h3 className="text-lg font-bold text-white mb-2">{item.title}</h3>
               <p className="text-sm text-slate-400 line-clamp-3 mb-4 flex-1 whitespace-pre-wrap">{item.content}</p>

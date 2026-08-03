@@ -5,6 +5,7 @@ import { auth, db } from '../firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { collection, addDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../lib/auth';
+import { usePushNotifications } from '../lib/usePushNotifications';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -32,6 +33,7 @@ export function Layout() {
   const [unprocessedCount, setUnprocessedCount] = useState(0);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const recurringChecked = useRef(false);
+  const { permission, requestPermission } = usePushNotifications(profile?.id);
 
   useEffect(() => {
     if (profile && !recurringChecked.current) {
@@ -173,6 +175,15 @@ export function Layout() {
         {/* Header - Desktop */}
         <header className="hidden md:flex h-16 border-b border-slate-800 items-center justify-end px-8 bg-slate-950/50 backdrop-blur-sm z-10 shrink-0">
           <div className="flex items-center gap-6">
+            
+            {permission === 'default' && (
+              <button 
+                onClick={requestPermission}
+                className="text-xs font-bold text-accent border border-accent/30 bg-accent/10 px-2 py-1 rounded hover:bg-accent/20 transition-colors hidden sm:block"
+              >
+                Enable Push
+              </button>
+            )}
             <NavLink to="/notifications" className="relative cursor-pointer group">
               <Bell className="w-6 h-6 text-slate-400 group-hover:text-slate-200 transition-colors" />
               {unreadNotifCount > 0 && (
@@ -195,6 +206,15 @@ export function Layout() {
             Hub-Mind
           </h1>
           <div className="flex items-center gap-4">
+            
+            {permission === 'default' && (
+              <button 
+                onClick={requestPermission}
+                className="text-[10px] font-bold text-accent border border-accent/30 bg-accent/10 px-2 py-1 rounded hover:bg-accent/20 transition-colors"
+              >
+                Enable Push
+              </button>
+            )}
             <NavLink to="/notifications" className="relative group">
               <Bell className="w-5 h-5 text-slate-400 group-hover:text-slate-200 transition-colors" />
               {unreadNotifCount > 0 && (
