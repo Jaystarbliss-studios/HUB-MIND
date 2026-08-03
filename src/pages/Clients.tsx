@@ -13,6 +13,7 @@ export function Clients() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<'all' | 'school' | 'parent' | 'partner'>('all');
   const { users } = useUsers();
 
   useEffect(() => {
@@ -68,6 +69,23 @@ export function Clients() {
             New Client
           </button>
         )}
+      </div>
+
+      
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 shrink-0 hide-scrollbar">
+        {['all', 'school', 'parent', 'partner'].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab as any)}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize whitespace-nowrap transition-colors ${
+              activeTab === tab 
+                ? 'bg-accent text-slate-950' 
+                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
       </div>
 
       <div className="relative shrink-0">

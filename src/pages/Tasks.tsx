@@ -45,6 +45,9 @@ export function Tasks() {
   const filteredTasks = tasks.filter(t => {
     if (filter === 'active' && (t.status === 'completed' || t.status === 'archived')) return false;
     if (filter === 'completed' && t.status !== 'completed') return false;
+    if (filter === 'archived' && t.status !== 'archived') return false;
+    if (filter === 'all' && t.status === 'archived') return false; // Hide archived from 'All Tasks' by default
+    
     if (searchQuery && !(t.title || '').toLowerCase().includes(searchQuery.toLowerCase()) && !(t.description || '').toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
@@ -76,6 +79,7 @@ export function Tasks() {
             <option value="all">All Tasks</option>
             <option value="active">Active</option>
             <option value="completed">Completed</option>
+            <option value="archived">Archived</option>
           </select>
           
           <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold px-4 py-2 rounded-lg transition-colors text-sm">
@@ -101,7 +105,7 @@ export function Tasks() {
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider ${
                         task.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' :
-                        task.status === 'waiting_review' ? 'bg-purple-500/10 text-purple-400' :
+                        task.status === 'under_review' ? 'bg-purple-500/10 text-purple-400' :
                         task.status === 'in_progress' ? 'bg-blue-500/10 text-blue-400' :
                         'bg-slate-800 text-slate-400'
                       }`}>

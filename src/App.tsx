@@ -24,25 +24,15 @@ import { Knowledge } from './pages/Knowledge';
 
 
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
 
-let hasAppLoaded = false;
-
-function RedirectOnReload() {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  useEffect(() => {
-    if (!hasAppLoaded) {
-      hasAppLoaded = true;
-      if (location.pathname !== '/' && location.pathname !== '/login') {
-        navigate('/');
-      }
-    }
-  }, [location, navigate]);
-
-  return null;
+if (typeof window !== 'undefined') {
+  if (window.location.pathname !== '/' && window.location.pathname !== '/login') {
+    window.history.replaceState(null, '', '/');
+  }
 }
+
+
+
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) {
   const { user, profile, loading } = useAuth();
@@ -61,7 +51,6 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <RedirectOnReload />
         <Routes>
           <Route path="/login" element={<Login />} />
           

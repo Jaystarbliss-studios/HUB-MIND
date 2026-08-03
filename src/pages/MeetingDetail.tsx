@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Meeting } from '../types';
 import { Loader2, ArrowLeft, Trash2, Calendar as CalendarIcon, Clock, Users, AlignLeft } from 'lucide-react';
@@ -16,6 +16,7 @@ export function MeetingDetail() {
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -37,6 +38,23 @@ export function MeetingDetail() {
     };
     fetchMeeting();
   }, [id]);
+
+  
+  const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (!id || !meeting) return;
+    setIsUpdating(true);
+    try {
+      const newStatus = e.target.value as any;
+      await updateDoc(doc(db, 'meetings', id), {
+        status: newStatus
+      });
+      setMeeting({ ...meeting, status: newStatus });
+    } catch (error) {
+      console.error("Error updating meeting status:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const handleDelete = async () => {
     
@@ -73,7 +91,31 @@ export function MeetingDetail() {
           Back
         </button>
         <div className="flex items-center gap-3">
-          {(profile?.role === 'admin' || profile?.role === 'assistant') && (
+          
+          <select
+            value={meeting.status || 'scheduled'}
+            onChange={handleStatusChange}
+            disabled={isUpdating}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors text-sm border focus:outline-none focus:ring-2 focus:ring-accent ${
+              meeting.status === 'in_session'
+                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                : meeting.status === 'completed'
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                : meeting.status === 'canceled'
+                ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                : meeting.status === 'rescheduled'
+                ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                : 'bg-slate-800 text-slate-300 border-slate-700'
+            }`}
+          >
+            <option value="scheduled">Scheduled</option>
+            <option value="in_session">In Session</option>
+            <option value="completed">Completed</option>
+            <option value="canceled">Canceled</option>
+            <option value="rescheduled">Rescheduled</option>
+          </select>
+
+          {true && (
             <button 
               onClick={handleDelete}
               disabled={isDeleting}
@@ -88,6 +130,19 @@ export function MeetingDetail() {
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm p-6 space-y-6">
         <div className="space-y-4">
+          
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${
+              meeting.status === 'in_session' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+              meeting.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+              meeting.status === 'canceled' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+              meeting.status === 'rescheduled' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' :
+              'bg-slate-800 text-slate-400 border border-slate-700'
+            }`}>
+              {(meeting.status || 'scheduled').replace('_', ' ')}
+            </span>
+          </div>
+
           <h1 className="text-3xl font-bold text-white tracking-tight">{meeting.notesRaw?.split('\n')[0] || 'Untitled Meeting'}</h1>
         </div>
 

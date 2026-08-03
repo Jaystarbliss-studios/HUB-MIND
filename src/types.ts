@@ -3,7 +3,7 @@ export type UserStatus = 'active' | 'training' | 'inactive';
 export type ClientType = 'school' | 'parent' | 'partner';
 export type ClientStatus = 'active' | 'lead' | 'inactive';
 export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
-export type TaskStatus = 'pending' | 'in_progress' | 'waiting_review' | 'completed' | 'archived';
+export type TaskStatus = 'pending' | 'in_progress' | 'under_review' | 'completed' | 'archived';
 
 export interface User {
   id: string;
@@ -50,7 +50,9 @@ export interface Task {
   updatedAt: string;
 }
 
+export type MeetingStatus = 'scheduled' | 'in_session' | 'completed' | 'canceled' | 'rescheduled';
 export interface Meeting {
+  status?: MeetingStatus;
   projectId?: string;
   decisions?: string[];
   openQuestions?: string[];

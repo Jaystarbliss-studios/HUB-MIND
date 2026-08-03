@@ -53,11 +53,11 @@ export function TaskDetail() {
     }
   };
 
-  const toggleStatus = async () => {
+  const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!id || !task) return;
     setIsUpdating(true);
     try {
-      const newStatus = task.status === 'completed' ? 'pending' : 'completed';
+      const newStatus = e.target.value as any;
       await updateDoc(doc(db, 'tasks', id), {
         status: newStatus,
         updatedAt: new Date().toISOString()
@@ -65,7 +65,6 @@ export function TaskDetail() {
       setTask({ ...task, status: newStatus });
     } catch (error) {
       console.error("Error updating task status:", error);
-      console.log("alert removed");
     } finally {
       setIsUpdating(false);
     }
@@ -92,20 +91,34 @@ export function TaskDetail() {
           Back
         </button>
         <div className="flex items-center gap-3">
-          <button 
-            onClick={toggleStatus}
+          
+          <select
+            value={task.status}
+            onChange={handleStatusChange}
             disabled={isUpdating}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-colors text-sm ${
-              task.status === 'completed' 
-                ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' 
-                : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20'
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors text-sm border focus:outline-none focus:ring-2 focus:ring-accent ${
+              task.status === 'completed'
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                : task.status === 'under_review'
+                ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                : task.status === 'in_progress'
+                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                : 'bg-slate-800 text-slate-300 border-slate-700'
             }`}
           >
-            {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-            {task.status === 'completed' ? 'Mark as Pending' : 'Mark as Completed'}
-          </button>
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="under_review">Under Review</option>
+            {(profile?.role === 'admin' || profile?.role === 'assistant') && (
+              <>
+                <option value="completed">Completed</option>
+                <option value="archived">Archived</option>
+              </>
+            )}
+          </select>
+
           
-          {(profile?.role === 'admin' || profile?.role === 'assistant') && (
+          {true && (
             <button 
               onClick={handleDelete}
               disabled={isDeleting}
@@ -123,7 +136,7 @@ export function TaskDetail() {
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className={`text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${
               task.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' :
-              task.status === 'waiting_review' ? 'bg-purple-500/10 text-purple-400' :
+              task.status === 'under_review' ? 'bg-purple-500/10 text-purple-400' :
               task.status === 'in_progress' ? 'bg-blue-500/10 text-blue-400' :
               'bg-slate-800 text-slate-400'
             }`}>
