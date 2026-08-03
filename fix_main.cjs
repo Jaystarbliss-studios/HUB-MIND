@@ -1,4 +1,7 @@
+const fs = require('fs');
+let code = fs.readFileSync('src/main.tsx', 'utf8');
 
+const cleanupCode = `
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
@@ -28,3 +31,6 @@ root.render(
 
 // We can remove the splash screen right after render, or wait a bit
 setTimeout(removeSplash, 100);
+`;
+
+fs.writeFileSync('src/main.tsx', cleanupCode);

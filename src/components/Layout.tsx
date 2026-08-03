@@ -200,7 +200,7 @@ export function Layout() {
         </header>
 
         {/* Header - Mobile */}
-        <header className="md:hidden flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950/80 backdrop-blur z-10 shrink-0">
+        <header className="md:hidden flex items-center justify-between p-4 pt-[calc(1rem+env(safe-area-inset-top))] border-b border-slate-800 bg-slate-950/80 backdrop-blur z-10 shrink-0">
           <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
             <Brain className="w-6 h-6 text-accent" />
             Hub-Mind

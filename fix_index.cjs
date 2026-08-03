@@ -1,39 +1,7 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Hub-Mind</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    
-    <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#0f172a" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Hub-Mind" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180.png" />
-    
-    <!-- Primary Meta Tags -->
-    <meta name="title" content="Hub Mind" />
-    <meta name="description" content="Your central operations hub for tasks, meetings, clients, and projects." />
+const fs = require('fs');
+let code = fs.readFileSync('index.html', 'utf8');
 
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://hub-mind.netlify.app/" />
-    <meta property="og:title" content="Hub Mind" />
-    <meta property="og:description" content="Your central operations hub for tasks, meetings, clients, and projects." />
-    <meta property="og:image" content="https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=1200&auto=format&fit=crop" />
-
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content="https://hub-mind.netlify.app/" />
-    <meta property="twitter:title" content="Hub Mind" />
-    <meta property="twitter:description" content="Your central operations hub for tasks, meetings, clients, and projects." />
-    <meta property="twitter:image" content="https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=1200&auto=format&fit=crop" />
-  </head>
-  <body>
-    
+const splashScreen = `
     <div id="root">
       <style>
         #pwa-splash {
@@ -86,7 +54,7 @@
         <p class="pwa-subtitle">Loading Workspace...</p>
       </div>
     </div>
+`;
 
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+code = code.replace('<div id="root"></div>', splashScreen);
+fs.writeFileSync('index.html', code);
