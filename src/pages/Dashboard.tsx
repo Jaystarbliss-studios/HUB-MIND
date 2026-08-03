@@ -14,6 +14,57 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function getGreeting(name: string) {
+  const hour = new Date().getHours();
+  
+  if (hour >= 0 && hour < 5) {
+    const greetings = [
+      `Welcome Midnight Owl, ${name}!`,
+      `Working late, ${name}?`,
+      `The world sleeps, but you conquer, ${name}.`,
+      `Early wee hours, ${name}!`,
+      `Still awake, ${name}?`
+    ];
+    return greetings[Math.floor(Math.random() * greetings.length)];
+  } else if (hour >= 5 && hour < 12) {
+    const greetings = [
+      `GOOD MORNING, ${name}!`,
+      `Early work, ${name}?`,
+      `Rise and shine, ${name}!`,
+      `Ready to seize the day, ${name}?`,
+      `A fresh start, ${name}!`
+    ];
+    return greetings[Math.floor(Math.random() * greetings.length)];
+  } else if (hour >= 12 && hour < 18) {
+    const greetings = [
+      `Afternoon! ${name}.`,
+      `Keep up the momentum, ${name}!`,
+      `Hope your day is going well, ${name}.`,
+      `Afternoon hustle, ${name}!`,
+      `Halfway there, ${name}!`
+    ];
+    return greetings[Math.floor(Math.random() * greetings.length)];
+  } else if (hour >= 18 && hour < 20) {
+    const greetings = [
+      `A cool evening, ${name}.`,
+      `Good evening, ${name}!`,
+      `Winding down the day, ${name}?`,
+      `Evening productivity, ${name}!`,
+      `Hope you had a great day, ${name}.`
+    ];
+    return greetings[Math.floor(Math.random() * greetings.length)];
+  } else {
+    const greetings = [
+      `Good night, ${name}!`,
+      `Late night hustle, ${name}?`,
+      `Nighttime productivity, ${name}!`,
+      `Almost time to rest, ${name}.`,
+      `Wrapping up the night, ${name}?`
+    ];
+    return greetings[Math.floor(Math.random() * greetings.length)];
+  }
+}
+
 export function Dashboard() {
   const { user, profile } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -30,6 +81,14 @@ export function Dashboard() {
   const [notes, setNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [greeting, setGreeting] = useState('Welcome!');
+
+  useEffect(() => {
+    if (profile?.name) {
+      const firstName = profile.name.split(' ')[0];
+      setGreeting(getGreeting(firstName));
+    }
+  }, [profile?.name]);
 
   useEffect(() => {
     if (!profile) return;
@@ -137,7 +196,7 @@ export function Dashboard() {
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto h-full overflow-y-auto">
       <div className="mb-10">
-        <h2 className="text-3xl font-bold text-white tracking-tight">GOOD MORNING</h2>
+        <h2 className="text-3xl font-bold text-white tracking-tight">{greeting}</h2>
         <p className="text-slate-400">Welcome to your Operations Hub.</p>
       </div>
 
