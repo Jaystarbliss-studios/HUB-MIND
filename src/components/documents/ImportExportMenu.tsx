@@ -11,6 +11,19 @@ interface ImportExportMenuProps {
 
 export function ImportExportMenu({ editor, docTitle }: ImportExportMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
    
 
   const [driveToken, setDriveToken] = useState<string | null>(null);
@@ -85,17 +98,36 @@ export function ImportExportMenu({ editor, docTitle }: ImportExportMenuProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   
-  const handleExportDOCX = () => {
-    const html = editor.getHTML();
-    const docHTML = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head><meta charset='utf-8'><title>Export HTML To Doc</title></head><body>` + html + `</body></html>`;
-    const blob = new Blob([docHTML], { type: 'application/vnd.ms-word' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${docTitle || 'Document'}.doc`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleExportDOCX = async () => {
+    try {
+      // @ts-ignore
+      const htmlToDocx = (await import('html-to-docx')).default;
+      const html = editor.getHTML();
+      const blob = await htmlToDocx(html, null, {
+        table: { row: { cantSplit: true } },
+        footer: true,
+        pageNumber: true,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${docTitle || 'Document'}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Failed to export DOCX', e);
+      // Fallback
+      const html = editor.getHTML();
+      const docHTML = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>Export HTML To Doc</title></head><body>` + html + `</body></html>`;
+      const blob = new Blob([docHTML], { type: 'application/vnd.ms-word' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${docTitle || 'Document'}.doc`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
     setIsOpen(false);
   };
 
@@ -144,7 +176,30 @@ export function ImportExportMenu({ editor, docTitle }: ImportExportMenuProps) {
         editor.commands.setContent(html);
       } else if (file.name.endsWith('.docx')) {
         const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
+        const options = {
+          convertImage: mammoth.images.imgElement(function(image) {
+            return image.read("base64").then(function(imageBuffer) {
+              return {
+                src: "data:" + image.contentType + ";base64," + imageBuffer
+              };
+            });
+          }),
+          styleMap: [
+            "p[style-name='Heading 1'] => h1:fresh",
+            "p[style-name='Heading 2'] => h2:fresh",
+            "p[style-name='Heading 3'] => h3:fresh",
+            "p[style-name='Heading 4'] => h4:fresh",
+            "p[style-name='Heading 5'] => h5:fresh",
+            "p[style-name='Heading 6'] => h6:fresh",
+            "p[style-name='Title'] => h1:fresh",
+            "p[style-name='Subtitle'] => h2:fresh",
+            "r[style-name='Strong'] => strong",
+            "r[style-name='Emphasis'] => em",
+            "p[style-name='Normal'] => p:fresh",
+          ],
+          includeDefaultStyleMap: true
+        };
+        const result = await mammoth.convertToHtml({ arrayBuffer }, options);
         editor.commands.setContent(result.value);
       } else {
         setDriveError('Unsupported file format'); setTimeout(() => setDriveError(null), 3000);
@@ -159,7 +214,7 @@ export function ImportExportMenu({ editor, docTitle }: ImportExportMenuProps) {
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={menuRef}>
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 text-slate-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium"
@@ -169,7 +224,7 @@ export function ImportExportMenu({ editor, docTitle }: ImportExportMenuProps) {
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl py-1 z-50">
+        <div className="absolute top-full right-0 mt-1 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl py-1 z-50">
           <div className="px-3 py-1 text-xs font-semibold text-slate-500 uppercase tracking-wider">Export</div>
           
           <button onClick={handleExportDOCX} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors">

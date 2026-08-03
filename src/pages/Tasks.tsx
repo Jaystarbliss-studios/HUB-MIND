@@ -218,8 +218,8 @@ export function Tasks() {
           ) : (
             <div className="divide-y divide-slate-800 overflow-y-auto">
               {filteredTasks.map(task => (
-                <div key={task.id} className="p-4 md:p-5 hover:bg-slate-800/30 transition-colors flex items-center justify-between gap-4">
-                  <div className="flex-1 min-w-0">
+                <div key={task.id} className="p-4 md:p-5 hover:bg-slate-800/30 transition-colors flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex-1 min-w-0 w-full sm:w-auto">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider ${
                         task.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' :
@@ -259,12 +259,11 @@ export function Tasks() {
                       <span className="hidden sm:inline">{task.checklist?.filter(c => c.done).length || 0}/{task.checklist?.length || 0} checks</span>
                     </div>
                   </div>
-                  <Link 
-                    to={`/tasks/${task.id}`}
-                    className="text-sm font-bold text-slate-950 bg-accent hover:bg-accent-hover px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
-                  >
+                  <div className="w-full sm:w-auto flex justify-end mt-3 sm:mt-0 pt-3 sm:pt-0 border-t border-slate-800 sm:border-0">
+<Link to={`/tasks/${task.id}`} className="text-sm font-bold text-slate-950 bg-accent hover:bg-accent-hover px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
                     View
                   </Link>
+</div>
                 </div>
               ))}
             </div>

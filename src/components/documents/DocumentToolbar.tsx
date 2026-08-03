@@ -83,8 +83,9 @@ export function DocumentToolbar({ editor }: ToolbarProps) {
   const fontSizes = ['12px', '14px', '16px', '18px', '24px', '32px', '48px'];
 
   return (
-    <div className="flex flex-wrap items-center gap-1 p-2 bg-slate-900 border-b border-slate-800 sticky top-0 z-10 shrink-0">
-      <div className="flex items-center gap-1 pr-2 border-r border-slate-800">
+    <div className="flex items-center gap-1 shrink-0 p-2 bg-slate-900 border-b border-slate-800 sticky top-0 z-10 shrink-0 overflow-x-auto whitespace-nowrap scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+<style>{`.scrollbar-hide::-webkit-scrollbar { display: none; }`}</style>
+      <div className="flex items-center gap-1 shrink-0 pr-2 border-r border-slate-800">
         <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Undo (Ctrl+Z)">
           <Undo className="w-4 h-4" />
         </ToolbarButton>
@@ -93,7 +94,7 @@ export function DocumentToolbar({ editor }: ToolbarProps) {
         </ToolbarButton>
       </div>
 
-      <div className="flex items-center gap-1 px-2 border-r border-slate-800">
+      <div className="flex items-center gap-1 shrink-0 px-2 border-r border-slate-800">
         <select 
           onChange={(e) => editor.chain().focus().setFontFamily(e.target.value).run()}
           value={editor.getAttributes('textStyle').fontFamily || fontFamilies[0].value}
@@ -115,7 +116,7 @@ export function DocumentToolbar({ editor }: ToolbarProps) {
         </select>
       </div>
 
-      <div className="flex items-center gap-1 px-2 border-r border-slate-800">
+      <div className="flex items-center gap-1 shrink-0 px-2 border-r border-slate-800">
         <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive('bold')} title="Bold (Ctrl+B)">
           <Bold className="w-4 h-4" />
         </ToolbarButton>
@@ -135,7 +136,7 @@ export function DocumentToolbar({ editor }: ToolbarProps) {
           <Superscript className="w-4 h-4" />
         </ToolbarButton>
         
-        <div className="flex items-center gap-1 relative group">
+        <div className="flex items-center gap-1 shrink-0 relative group">
           <ToolbarButton onClick={() => {}} title="Text Color">
             <Baseline className="w-4 h-4" />
             <input 
@@ -147,7 +148,7 @@ export function DocumentToolbar({ editor }: ToolbarProps) {
           </ToolbarButton>
         </div>
         
-        <div className="flex items-center gap-1 relative group">
+        <div className="flex items-center gap-1 shrink-0 relative group">
           <ToolbarButton onClick={() => {}} isActive={editor.isActive('highlight')} title="Highlight Color">
             <Highlighter className="w-4 h-4" />
             <input 
@@ -164,7 +165,7 @@ export function DocumentToolbar({ editor }: ToolbarProps) {
         </ToolbarButton>
       </div>
 
-      <div className="flex items-center gap-1 px-2 border-r border-slate-800">
+      <div className="flex items-center gap-1 shrink-0 px-2 border-r border-slate-800">
         <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('left').run()} isActive={editor.isActive({ textAlign: 'left' })}>
           <AlignLeft className="w-4 h-4" />
         </ToolbarButton>
@@ -179,7 +180,7 @@ export function DocumentToolbar({ editor }: ToolbarProps) {
         </ToolbarButton>
       </div>
 
-      <div className="flex items-center gap-1 px-2 border-r border-slate-800">
+      <div className="flex items-center gap-1 shrink-0 px-2 border-r border-slate-800">
         <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} isActive={editor.isActive('bulletList')}>
           <List className="w-4 h-4" />
         </ToolbarButton>
@@ -197,7 +198,7 @@ export function DocumentToolbar({ editor }: ToolbarProps) {
         </ToolbarButton>
       </div>
       
-      <div className="flex items-center gap-1 px-2">
+      <div className="flex items-center gap-1 shrink-0 px-2">
         <ToolbarButton onClick={setLink} isActive={editor.isActive('link')}>
           <LinkIcon className="w-4 h-4" />
         </ToolbarButton>
@@ -210,7 +211,7 @@ export function DocumentToolbar({ editor }: ToolbarProps) {
       </div>
 
       {editor.isActive('table') && (
-        <div className="flex items-center gap-1 px-2 border-l border-slate-800 bg-accent/10 rounded-lg ml-2">
+        <div className="flex items-center gap-1 shrink-0 px-2 border-l border-slate-800 bg-accent/10 rounded-lg ml-2">
           <span className="text-xs font-semibold text-accent px-1">Table:</span>
           <ToolbarButton onClick={() => editor.chain().focus().addColumnBefore().run()} title="Add Column Before">
             <span className="text-[10px] font-bold">+C&lt;</span>

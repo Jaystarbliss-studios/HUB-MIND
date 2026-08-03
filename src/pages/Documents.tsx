@@ -297,16 +297,16 @@ useEffect(() => {
               filteredDocs.map(doc => {
                 const client = clients.find(c => c.id === doc.clientId);
                 return (
-                  <div key={doc.id} className="p-4 md:p-5 hover:bg-slate-800/30 transition-colors flex items-center justify-between gap-4">
-                    <div className="flex items-start gap-4 min-w-0">
-                      <div className="p-3 bg-slate-800 rounded-xl text-slate-400 hidden sm:block">
+                  <div key={doc.id} className="p-4 md:p-5 hover:bg-slate-800/30 transition-colors flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-4 min-w-0 w-full sm:w-auto">
+                      <div className="p-3 bg-slate-800 rounded-xl text-slate-400 hidden sm:block shrink-0">
                         <FileText className="w-5 h-5" />
                       </div>
                       <div>
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           
                           {editingDocId === doc.id ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start mt-2 sm:mt-0 pt-2 sm:pt-0 border-t border-slate-800 sm:border-0">
                               <input 
                                 type="text"
                                 value={editTitle}
