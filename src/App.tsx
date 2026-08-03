@@ -16,6 +16,7 @@ import { MeetingDetail } from './pages/MeetingDetail';
 import { Clients } from './pages/Clients';
 import { ClientDetail } from './pages/ClientDetail';
 import { Documents } from './pages/Documents';
+import { DocumentEditor } from './pages/DocumentEditor';
 import { Calendar } from './pages/Calendar';
 import { AdminUsers } from './pages/AdminUsers';
 import { Notifications } from './pages/Notifications';
@@ -66,6 +67,7 @@ export default function App() {
             
             <Route path="calendar" element={<Calendar />} />
             <Route path="documents" element={<Documents />} />
+            <Route path="documents/:id" element={<DocumentEditor />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
           </Route>

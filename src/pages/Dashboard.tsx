@@ -35,7 +35,7 @@ function getGreeting(name: string) {
       `A fresh start, ${name}!`
     ];
     return greetings[Math.floor(Math.random() * greetings.length)];
-  } else if (hour >= 12 && hour < 18) {
+  } else if (hour >= 12 && hour < 17) {
     const greetings = [
       `Afternoon! ${name}.`,
       `Keep up the momentum, ${name}!`,
@@ -44,7 +44,7 @@ function getGreeting(name: string) {
       `Halfway there, ${name}!`
     ];
     return greetings[Math.floor(Math.random() * greetings.length)];
-  } else if (hour >= 18 && hour < 20) {
+  } else if (hour >= 17 && hour < 21) {
     const greetings = [
       `A cool evening, ${name}.`,
       `Good evening, ${name}!`,

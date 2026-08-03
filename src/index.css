@@ -38,3 +38,61 @@ body {
     scrollbar-width: none;
   }
 }
+
+/* TipTap Editor Styles */
+.ProseMirror {
+  @apply min-h-[500px] outline-none p-8 md:p-12 mx-auto bg-slate-900 border border-slate-800 rounded-lg shadow-sm w-full max-w-4xl text-slate-300 leading-relaxed;
+}
+.ProseMirror > * + * {
+  @apply mt-4;
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  @apply text-slate-500 float-left h-0 pointer-events-none;
+}
+.ProseMirror ul {
+  @apply list-disc list-inside;
+}
+.ProseMirror ol {
+  @apply list-decimal list-inside;
+}
+.ProseMirror blockquote {
+  @apply border-l-4 border-accent pl-4 italic text-slate-400;
+}
+.ProseMirror a {
+  @apply text-accent hover:underline cursor-pointer;
+}
+.ProseMirror img {
+  @apply max-w-full h-auto rounded-lg;
+}
+.ProseMirror hr {
+  @apply border-slate-700 my-8;
+}
+.ProseMirror table {
+  @apply border-collapse table-auto w-full my-4 overflow-hidden rounded-lg;
+}
+.ProseMirror table td,
+.ProseMirror table th {
+  @apply border border-slate-700 p-2 min-w-[100px] relative;
+}
+.ProseMirror table th {
+  @apply bg-slate-800 text-left font-bold text-slate-200;
+}
+.ProseMirror table .selectedCell:after {
+  @apply z-10 absolute inset-0 bg-accent/20 content-[""] pointer-events-none;
+}
+.ProseMirror table .column-resize-handle {
+  @apply absolute right-[-2px] top-0 bottom-0 w-[4px] bg-accent/50 pointer-events-none;
+}
+ul[data-type="taskList"] {
+  @apply list-none p-0;
+}
+ul[data-type="taskList"] li {
+  @apply flex items-start gap-2;
+}
+ul[data-type="taskList"] li > label {
+  @apply flex-shrink-0 mt-1;
+}
+ul[data-type="taskList"] li > div {
+  @apply flex-1;
+}

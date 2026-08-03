@@ -1,12 +1,14 @@
+import { useNavigate } from 'react-router-dom';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { collection, query, getDocs, orderBy, addDoc, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { DocumentInfo, Client } from '../types';
-import { Loader2, FileText, Search, ExternalLink, Edit2, Trash2, Check, X } from 'lucide-react';
+import { Loader2, FileText, Search, Copy, ExternalLink, Edit2, Trash2, Check, X } from 'lucide-react';
 import { DriveUpload } from '../components/DriveUpload';
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
+import { TemplateSelector } from '../components/documents/TemplateSelector';
 
 export function Documents() {
   const { profile, user } = useAuth();
@@ -14,8 +16,10 @@ export function Documents() {
   const [clients, setClients] = useState<Client[]>([]);
   const [projectsList, setProjectsList] = useState<{id: string, name: string}[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const { users } = useUsers();
 
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
@@ -41,6 +45,26 @@ export function Documents() {
     }
   };
 
+  
+  const handleDuplicateDoc = async (docToDuplicate: DocumentInfo) => {
+    if (!profile) return;
+    try {
+      const { ...docData } = docToDuplicate;
+      delete (docData as any).id;
+      
+      const newDocRef = await addDoc(collection(db, 'documents'), {
+        ...docData,
+        title: `${docData.title} (Copy)`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ownerId: profile.id
+      });
+      // Optionally redirect to it, or just let the list update
+    } catch (error) {
+      console.error('Error duplicating doc:', error);
+    }
+  };
+
   const handleDeleteDoc = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this document?')) return;
     setDeletingId(id);
@@ -63,7 +87,27 @@ export function Documents() {
   const [newProjectId, setNewProjectId] = useState('');
   const [showUploadForm, setShowUploadForm] = useState(false);
 
-  useEffect(() => {
+  
+  
+  const handleCreateDocument = async (title: string = 'Untitled Document', content: string = '') => {
+    if (!profile) return;
+    try {
+      const newDocRef = await addDoc(collection(db, 'documents'), {
+        title: title,
+        type: 'internal',
+        content: JSON.stringify(content ? content : { type: 'doc', content: [{ type: 'paragraph' }] }),
+        category: 'other',
+        ownerId: profile.id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      setShowTemplates(false);
+      navigate('/documents/' + newDocRef.id);
+    } catch (error) {
+      console.error('Error creating doc:', error);
+    }
+  };
+useEffect(() => {
     fetchData();
   }, []);
 
@@ -139,14 +183,26 @@ export function Documents() {
           <p className="text-sm text-slate-400">Company and client files</p>
         </div>
         
-        {(profile?.role === 'admin' || profile?.role === 'assistant') && (
-          <button 
-            onClick={() => setShowUploadForm(!showUploadForm)}
-            className="w-full sm:w-auto bg-accent hover:bg-accent-hover text-slate-950 font-bold px-4 py-2 rounded-lg transition-colors text-sm"
-          >
-            {showUploadForm ? 'Cancel Upload' : 'Upload Document'}
-          </button>
-        )}
+        
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {(profile?.role === 'admin' || profile?.role === 'assistant') && (
+            <>
+              <button 
+                onClick={() => setShowTemplates(true)}
+                className="flex-1 sm:flex-none bg-accent hover:bg-accent-hover text-slate-950 font-bold px-4 py-2 rounded-lg transition-colors text-sm"
+              >
+                Create Document
+              </button>
+              <button 
+                onClick={() => setShowUploadForm(!showUploadForm)}
+                className="flex-1 sm:flex-none bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-2 rounded-lg transition-colors text-sm"
+              >
+                {showUploadForm ? 'Cancel Upload' : 'Upload File'}
+              </button>
+            </>
+          )}
+        </div>
+
       </div>
 
       {showUploadForm && (
@@ -226,6 +282,7 @@ export function Documents() {
         />
       </div>
 
+      {showTemplates && <TemplateSelector onSelect={handleCreateDocument} onClose={() => setShowTemplates(false)} />}
       {loading ? (
         <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>
       ) : (
@@ -291,8 +348,17 @@ export function Documents() {
                     <div className="flex items-center gap-2">
                       {editingDocId !== doc.id && (profile?.role === 'admin' || profile?.role === 'assistant' || doc.ownerId === profile?.id) && (
                         <>
+                          
+                          <button 
+                            onClick={() => handleDuplicateDoc(doc)}
+                            title="Duplicate"
+                            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
                           <button 
                             onClick={() => { setEditingDocId(doc.id); setEditTitle(doc.title); }}
+
                             className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -306,14 +372,25 @@ export function Documents() {
                           </button>
                         </>
                       )}
-                      <a 
-                        href={doc.fileRef} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm font-bold text-slate-950 bg-accent hover:bg-accent-hover px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
-                      >
-                        Open <ExternalLink className="w-4 h-4 hidden sm:inline" />
-                      </a>
+                      
+                      {doc.type === 'internal' ? (
+                        <button 
+                          onClick={() => navigate('/documents/' + doc.id)}
+                          className="flex items-center gap-2 text-sm font-bold text-slate-950 bg-accent hover:bg-accent-hover px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+                        >
+                          Open Editor
+                        </button>
+                      ) : (
+                        <a 
+                           href={doc.fileRef} 
+                           target="_blank" 
+                           rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-sm font-bold text-slate-950 bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+                        >
+                          View File <ExternalLink className="w-4 h-4 hidden sm:inline" />
+                        </a>
+                      )}
+
                     </div>
   
                   </div>

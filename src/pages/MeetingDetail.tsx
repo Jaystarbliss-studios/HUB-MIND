@@ -205,7 +205,7 @@ export function MeetingDetail() {
             <h3 className="text-slate-200 font-semibold mb-3">Action Points</h3>
             <ul className="list-disc pl-5 space-y-1">
               {meeting.actionPoints.map((point, idx) => (
-                <li key={idx} className="text-sm text-slate-300">{point}</li>
+                <li key={idx} className="text-sm text-slate-300">{typeof point === "string" ? point : point.text}</li>
               ))}
             </ul>
           </div>

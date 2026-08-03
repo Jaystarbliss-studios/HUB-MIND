@@ -72,7 +72,8 @@ export interface DocumentInfo {
   projectId?: string;
   id: string;
   title: string;
-  category: string; // contract | report | invoice | exam | certificate | other
+  category: string;
+  type?: 'internal' | 'external'; // contract | report | invoice | exam | certificate | other
   clientId?: string;
   ownerId?: string; // userId
   fileRef: string; // Drive link

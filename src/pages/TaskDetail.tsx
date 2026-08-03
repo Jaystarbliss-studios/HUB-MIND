@@ -336,7 +336,7 @@ export function TaskDetail() {
                     <CheckCircle2 className="w-3.5 h-3.5" />
                   </div>
                   <span className={`text-sm ${item.done ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
-                    {item.title}
+                    {(item as any).title || (item as any).item || ''}
                   </span>
                 </div>
               ))}
