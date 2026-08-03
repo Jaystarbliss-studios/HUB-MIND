@@ -17,29 +17,31 @@ export function Inbox() {
   const [actionType, setActionType] = useState<'task' | 'meeting' | null>(null);
   const [actionDate, setActionDate] = useState('');
   const [actionTime, setActionTime] = useState('');
+  const [viewMode, setViewMode] = useState<'unprocessed' | 'processed'>('unprocessed');
 
   useEffect(() => {
     if (!profile) return;
     const q = profile.role === 'admin' || profile.role === 'assistant'
       ? query(
           collection(db, 'inbox'),
-          where('status', '==', 'unprocessed')
+          where('status', '==', viewMode)
         )
       : query(
           collection(db, 'inbox'),
-          where('status', '==', 'unprocessed'),
+          where('status', '==', viewMode),
           where('createdBy', '==', profile.id)
         );
-
-    const unsub = onSnapshot(q, (snap) => {
-      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as InboxItem));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as InboxItem));
       data = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setItems(data);
       setLoading(false);
+    }, (error) => {
+      console.error("Error fetching inbox:", error);
+      setLoading(false);
     });
-
-    return () => unsub();
-  }, [profile]);
+    return () => unsubscribe();
+  }, [profile, viewMode]);
 
   const handleArchive = async (item: InboxItem) => {
     setProcessingId(item.id);

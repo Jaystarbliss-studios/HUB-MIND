@@ -25,12 +25,6 @@ import { Knowledge } from './pages/Knowledge';
 
 import { useLocation, useNavigate } from 'react-router-dom';
 
-if (typeof window !== 'undefined') {
-  if (window.location.pathname !== '/' && window.location.pathname !== '/login') {
-    window.history.replaceState(null, '', '/');
-  }
-}
-
 
 
 
