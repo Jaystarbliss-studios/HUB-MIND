@@ -3,7 +3,7 @@ import { useAuth } from '../lib/auth';
 import { collection, query, getDocs, orderBy, addDoc, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { DocumentInfo, Client } from '../types';
-import { Loader2, FileText, Search, ExternalLink } from 'lucide-react';
+import { Loader2, FileText, Search, ExternalLink, Edit2, Trash2, Check, X } from 'lucide-react';
 import { DriveUpload } from '../components/DriveUpload';
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
@@ -12,15 +12,55 @@ export function Documents() {
   const { profile, user } = useAuth();
   const [docsList, setDocsList] = useState<DocumentInfo[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [projectsList, setProjectsList] = useState<{id: string, name: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const { users } = useUsers();
 
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleUpdateTitle = async (id: string) => {
+    if (!editTitle.trim()) return;
+    setIsUpdating(true);
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      await updateDoc(doc(db, 'documents', id), {
+        title: editTitle.trim(),
+        updatedAt: new Date().toISOString()
+      });
+      setDocsList(docsList.map(d => d.id === id ? { ...d, title: editTitle.trim() } : d));
+      setEditingDocId(null);
+    } catch (error) {
+      console.error("Error updating document:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleDeleteDoc = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this document?')) return;
+    setDeletingId(id);
+    try {
+      const { doc, deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'documents', id));
+      setDocsList(docsList.filter(d => d.id !== id));
+    } catch (error) {
+      console.error("Error deleting document:", error);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+  
+
   // New Doc Form
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState('other');
   const [newClientId, setNewClientId] = useState('');
+  const [newProjectId, setNewProjectId] = useState('');
   const [showUploadForm, setShowUploadForm] = useState(false);
 
   useEffect(() => {
@@ -69,6 +109,7 @@ export function Documents() {
         title: newTitle || 'Untitled Document',
         category: newCategory,
         clientId: newClientId || null,
+        projectId: newProjectId || null,
         fileRef: webViewLink,
         version: 1,
         createdBy: profile.id,
@@ -79,6 +120,7 @@ export function Documents() {
       setShowUploadForm(false);
       setNewTitle('');
       setNewClientId('');
+      setNewProjectId('');
       fetchData();
     } catch (error) {
       console.error("Error saving document record:", error);
@@ -136,6 +178,21 @@ export function Documents() {
                 <option value="other">Other</option>
               </select>
             </div>
+            
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-slate-300 mb-1">Link to Project (Optional)</label>
+              <select 
+                value={newProjectId}
+                onChange={(e) => setNewProjectId(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors"
+              >
+                <option value="">None</option>
+                {projectsList.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+  
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-slate-300 mb-1">Link to Client (Optional)</label>
               <select 
@@ -187,7 +244,27 @@ export function Documents() {
                       </div>
                       <div>
                         <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-slate-200 truncate">{doc.title}</h3>
+                          
+                          {editingDocId === doc.id ? (
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="text"
+                                value={editTitle}
+                                onChange={e => setEditTitle(e.target.value)}
+                                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-accent"
+                                autoFocus
+                              />
+                              <button onClick={() => handleUpdateTitle(doc.id)} disabled={isUpdating} className="text-emerald-400 hover:text-emerald-300">
+                                {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                              </button>
+                              <button onClick={() => setEditingDocId(null)} disabled={isUpdating} className="text-slate-400 hover:text-slate-200">
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <h3 className="font-semibold text-slate-200 truncate">{doc.title}</h3>
+                          )}
+  
                           {doc.ownerId && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700">
                               {users[doc.ownerId] ? (
@@ -210,14 +287,35 @@ export function Documents() {
                         </div>
                       </div>
                     </div>
-                    <a 
-                      href={doc.fileRef} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-sm font-bold text-slate-950 bg-accent hover:bg-accent-hover px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
-                    >
-                      Open <ExternalLink className="w-4 h-4 hidden sm:inline" />
-                    </a>
+                    
+                    <div className="flex items-center gap-2">
+                      {editingDocId !== doc.id && (profile?.role === 'admin' || profile?.role === 'assistant' || doc.ownerId === profile?.id) && (
+                        <>
+                          <button 
+                            onClick={() => { setEditingDocId(doc.id); setEditTitle(doc.title); }}
+                            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteDoc(doc.id)}
+                            disabled={deletingId === doc.id}
+                            className="p-2 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
+                          >
+                            {deletingId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          </button>
+                        </>
+                      )}
+                      <a 
+                        href={doc.fileRef} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm font-bold text-slate-950 bg-accent hover:bg-accent-hover px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+                      >
+                        Open <ExternalLink className="w-4 h-4 hidden sm:inline" />
+                      </a>
+                    </div>
+  
                   </div>
                 );
               })

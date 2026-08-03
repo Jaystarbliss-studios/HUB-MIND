@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth';
 import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task } from '../types';
-import { Loader2, ArrowLeft, Trash2, CheckCircle2, Clock, Calendar as CalendarIcon, Tag, AlignLeft, User } from 'lucide-react';
+import { Loader2, ArrowLeft, Trash2, CheckCircle2, Clock, Calendar as CalendarIcon, Tag, AlignLeft, User, Edit } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
 
@@ -17,6 +17,16 @@ export function TaskDetail() {
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editPriority, setEditPriority] = useState<any>('medium');
+  const [editDeadline, setEditDeadline] = useState('');
+  const [editAssignedTo, setEditAssignedTo] = useState('');
+  const [editProjectId, setEditProjectId] = useState('');
+  const [editClientId, setEditClientId] = useState('');
+  const [projectsList, setProjectsList] = useState<{id: string, name: string}[]>([]);
+  const [clientsList, setClientsList] = useState<{id: string, name: string}[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -25,8 +35,21 @@ export function TaskDetail() {
       try {
         const docRef = doc(db, 'tasks', id);
         const docSnap = await getDoc(docRef);
+        const { getDocs, collection } = await import('firebase/firestore');
+        const pSnap = await getDocs(collection(db, 'projects'));
+        const cSnap = await getDocs(collection(db, 'clients'));
+        setProjectsList(pSnap.docs.map(d => ({id: d.id, name: d.data().name})));
+        setClientsList(cSnap.docs.map(d => ({id: d.id, name: d.data().name})));
         if (docSnap.exists()) {
-          setTask({ id: docSnap.id, ...docSnap.data() } as Task);
+          const t = { id: docSnap.id, ...docSnap.data() } as Task;
+          setTask(t);
+          setEditTitle(t.title);
+          setEditDesc(t.description || '');
+          setEditPriority(t.priority);
+          setEditDeadline(t.deadline ? t.deadline.substring(0, 10) : '');
+          setEditAssignedTo(t.assignedTo || '');
+          setEditProjectId(t.projectId || '');
+          setEditClientId(t.clientId || '');
         } else {
           console.error("Task not found");
         }
@@ -39,6 +62,36 @@ export function TaskDetail() {
     fetchTask();
   }, [id]);
 
+  
+  const handleUpdateDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !task) return;
+    setIsUpdating(true);
+    try {
+      const updates: any = {
+        title: editTitle,
+        description: editDesc,
+        priority: editPriority,
+        assignedTo: editAssignedTo,
+        projectId: editProjectId || null,
+        clientId: editClientId || null,
+        updatedAt: new Date().toISOString()
+      };
+      if (editDeadline) {
+        updates.deadline = new Date(editDeadline).toISOString();
+      } else {
+        updates.deadline = null;
+      }
+      await updateDoc(doc(db, 'tasks', id), updates);
+      setTask({ ...task, ...updates });
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error updating task:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+  
   const handleDelete = async () => {
     
     if (!id) return; setIsDeleting(true);
@@ -118,6 +171,14 @@ export function TaskDetail() {
           </select>
 
           
+          
+          {!isEditing && (
+            <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-semibold transition-colors text-sm border border-slate-700">
+              <Edit className="w-4 h-4" />
+              Edit
+            </button>
+          )}
+  
           {true && (
             <button 
               onClick={handleDelete}
@@ -131,7 +192,74 @@ export function TaskDetail() {
         </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm p-6 space-y-6">
+      
+      {isEditing ? (
+        <form onSubmit={handleUpdateDetails} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+          <h2 className="text-xl font-bold text-white mb-4">Edit Task Details</h2>
+          <div>
+            <label className="block text-sm font-medium text-slate-400 mb-1">Title</label>
+            <input type="text" required value={editTitle} onChange={e => setEditTitle(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-400 mb-1">Description</label>
+            <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={4} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-1">Priority</label>
+              <select value={editPriority} onChange={e => setEditPriority(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-1">Deadline</label>
+              <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent [color-scheme:dark]" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-1">Assigned To</label>
+              <select value={editAssignedTo} onChange={e => setEditAssignedTo(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent">
+                <option value="">Unassigned</option>
+                {Object.values(users).map((u: any) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-1">Related Project</label>
+              <select value={editProjectId} onChange={e => setEditProjectId(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent">
+                <option value="">None</option>
+                {projectsList.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-1">Related Client</label>
+              <select value={editClientId} onChange={e => setEditClientId(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent">
+                <option value="">None</option>
+                {clientsList.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+  
+          <div className="flex justify-end gap-2 mt-6">
+            <button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 text-slate-400 hover:text-white font-semibold">Cancel</button>
+            <button type="submit" disabled={isUpdating} className="flex items-center gap-2 bg-accent hover:bg-accent-hover text-slate-950 px-4 py-2 rounded-lg font-bold transition-colors">
+              {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm p-6 space-y-6">
+  
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className={`text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${
@@ -215,7 +343,8 @@ export function TaskDetail() {
             </div>
           </div>
         )}
-      </div>
+            </div>
+      )}
     </div>
   );
 }

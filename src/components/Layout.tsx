@@ -224,13 +224,13 @@ export function Layout() {
         </button>
 
         {/* Mobile Bottom Nav */}
-        <nav className="md:hidden fixed bottom-0 w-full border-t border-slate-800 bg-slate-950/90 backdrop-blur flex justify-around p-2 pb-safe z-30">
-          {navItems.slice(0, 5).map((item) => (
+        <nav className="md:hidden fixed bottom-0 w-full border-t border-slate-800 bg-slate-950/90 backdrop-blur flex overflow-x-auto snap-x hide-scrollbar p-2 pb-safe z-30">
+          {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) => cn(
-                "flex flex-col items-center p-2 text-[10px] font-medium transition-colors relative",
+                "flex flex-col items-center p-2 text-[10px] font-medium transition-colors relative min-w-[72px] snap-center shrink-0",
                 isActive ? "text-accent" : "text-slate-500"
               )}
             >

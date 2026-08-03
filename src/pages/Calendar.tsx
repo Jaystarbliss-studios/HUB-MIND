@@ -21,11 +21,22 @@ export function Calendar() {
   // Form states
   const [title, setTitle] = useState('');
   const [time, setTime] = useState('09:00');
+  const [clientId, setClientId] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [projectsList, setProjectsList] = useState<{id: string, name: string}[]>([]);
+  const [clients, setClients] = useState<{id: string, name: string}[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
     setLoading(true);
+    const fetchClients = async () => {
+      const pSnap = await getDocs(collection(db, 'projects'));
+      setProjectsList(pSnap.docs.map(d => ({id: d.id, name: d.data().name})));
+      const snap = await getDocs(collection(db, 'clients'));
+      setClients(snap.docs.map(d => ({id: d.id, name: d.data().name})));
+    };
+    fetchClients();
 
     const tasksQuery = profile.role === 'admin' || profile.role === 'assistant'
       ? query(collection(db, 'tasks'))
@@ -90,6 +101,8 @@ export function Calendar() {
           priority: 'medium',
           status: 'pending',
           assignedTo: profile.id,
+          clientId: clientId || null,
+          projectId: projectId || null,
           createdBy: profile.id,
           deadline: deadline.toISOString(),
           createdAt: new Date().toISOString(),
@@ -107,6 +120,7 @@ export function Calendar() {
           actionPoints: [],
           generatedDocs: [],
           ownerId: profile.id,
+          projectId: projectId || null,
           createdAt: new Date().toISOString()
         });
       }
@@ -127,6 +141,8 @@ export function Calendar() {
     setFormType(type);
     setTitle('');
     setTime('09:00');
+    setClientId('');
+    setProjectId('');
   };
 
   if (loading && tasks.length === 0) {
@@ -368,8 +384,39 @@ export function Calendar() {
                             )}
                           </div>
 
-                          <button 
-                            onClick={handleCreate}
+                          
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Related Project (Optional)</label>
+                        <select 
+                          value={projectId}
+                          onChange={(e) => setProjectId(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-accent text-sm"
+                        >
+                          <option value="">None</option>
+                          {projectsList.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                      </div>
+  
+{formType === 'task' && (
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400 mb-1">Related Client (Optional)</label>
+                          <select 
+                            value={clientId}
+                            onChange={(e) => setClientId(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-accent text-sm"
+                          >
+                            <option value="">None</option>
+                            {clients.map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+  
+<button onClick={handleCreate}
                             disabled={!title.trim() || isSubmitting}
                             className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-slate-950 font-bold px-4 py-2 rounded-lg transition-colors text-sm mt-4"
                           >

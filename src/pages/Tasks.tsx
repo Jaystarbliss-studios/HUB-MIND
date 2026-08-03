@@ -26,6 +26,8 @@ export function Tasks() {
   const [newTaskAssignee, setNewTaskAssignee] = useState('');
   const [newTaskDeadline, setNewTaskDeadline] = useState('');
   const [clientsList, setClientsList] = useState<{id: string, name: string}[]>([]);
+  const [projectsList, setProjectsList] = useState<{id: string, name: string}[]>([]);
+  const [newTaskProject, setNewTaskProject] = useState('');
 
   const { users } = useUsers();
 
@@ -77,6 +79,7 @@ export function Tasks() {
         assignedTo: newTaskAssignee || profile.id,
         createdBy: profile.id,
         clientId: newTaskClient || null,
+        projectId: newTaskProject || null,
         deadline: newTaskDeadline ? new Date(newTaskDeadline).toISOString() : null,
         checklist: [],
         comments: [],
@@ -88,6 +91,7 @@ export function Tasks() {
       setNewTaskDesc('');
       setNewTaskPriority('medium');
       setNewTaskClient('');
+      setNewTaskProject('');
       setNewTaskAssignee('');
       setNewTaskDeadline('');
     } catch (error) {

@@ -3,12 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, addDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
+import { useNavigate } from 'react-router-dom';
 import { InboxItem } from '../types';
 import { Loader2, Archive, CheckSquare, Users, Calendar, Book, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 export function Inbox() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -17,9 +19,17 @@ export function Inbox() {
   const [actionType, setActionType] = useState<'task' | 'meeting' | null>(null);
   const [actionDate, setActionDate] = useState('');
   const [actionTime, setActionTime] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [clients, setClients] = useState<{id: string, name: string}[]>([]);
   const [viewMode, setViewMode] = useState<'unprocessed' | 'processed'>('unprocessed');
 
   useEffect(() => {
+    const fetchClients = async () => {
+      const { getDocs, collection } = await import('firebase/firestore');
+      const snap = await getDocs(collection(db, 'clients'));
+      setClients(snap.docs.map(d => ({id: d.id, name: d.data().name})));
+    };
+    fetchClients();
     if (!profile) return;
     const q = profile.role === 'admin' || profile.role === 'assistant'
       ? query(
@@ -90,8 +100,8 @@ export function Inbox() {
         type: 'lead',
         status: 'active',
         ownerId: profile?.id,
-        createdAt: new Date().toISOString()
-      });
+          createdAt: new Date().toISOString()
+        });
       await updateDoc(doc(db, 'inbox', item.id), {
         status: 'processed',
         convertedTo: { type: 'client', id: docRef.id }
@@ -128,6 +138,7 @@ export function Inbox() {
           status: 'pending',
           assignedTo: profile?.id,
           createdBy: profile?.id,
+          clientId: clientId || null,
           checklist: [],
           comments: [],
           deadline: actionDate ? isoString : null,
@@ -143,6 +154,7 @@ export function Inbox() {
           actionPoints: [],
           generatedDocs: [],
           ownerId: profile?.id,
+          clientId: clientId || null,
           createdAt: new Date().toISOString()
         });
         docRefId = docRef.id;
@@ -155,8 +167,12 @@ export function Inbox() {
 
       setActiveItem(null);
       setActionType(null);
+      if (actionType === 'task' && docRefId) {
+        navigate('/tasks/' + docRefId);
+      }
       setActionDate('');
       setActionTime('');
+    setClientId('');
     } catch (err) {
       console.error(err);
       console.log(`Failed to convert to ${actionType}.`);
@@ -236,7 +252,22 @@ export function Inbox() {
                     )}
                   </div>
                   
-                  <div className="flex justify-end gap-2">
+                  
+                  <div className="mb-4">
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Related Client (Optional)</label>
+                    <select 
+                      value={clientId}
+                      onChange={(e) => setClientId(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                    >
+                      <option value="">None</option>
+                      {clients.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+  
+<div className="flex justify-end gap-2">
                     <button 
                       onClick={() => setActiveItem(null)}
                       className="px-4 py-2 text-sm font-bold text-slate-400 hover:text-white"
