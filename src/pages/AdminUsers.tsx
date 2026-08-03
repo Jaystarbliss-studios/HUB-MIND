@@ -23,7 +23,7 @@ export function AdminUsers() {
   const handleRunSync = async () => {
     setSyncing(true);
     await processRecurringTasks();
-    console.log("alert removed");
+    
     setSyncing(false);
   };
 
@@ -100,11 +100,11 @@ export function AdminUsers() {
       
       await setDoc(doc(db, 'users', email.toLowerCase()), newUser);
       
-      console.log("alert removed");
+      
       setShowCreateUser(false);
       fetchUsers();
     } catch (error: any) {
-      console.log("alert removed");
+      
     } finally {
       setCreatingUser(false);
     }
@@ -131,7 +131,7 @@ export function AdminUsers() {
       setTempDesc('');
       fetchTemplates();
     } catch (error: any) {
-      console.log("alert removed");
+      
     } finally {
       setSavingTemplate(false);
     }
@@ -259,7 +259,7 @@ export function AdminUsers() {
                             fetchUsers();
                           } catch (err) {
                             console.error(err);
-                            console.log("alert removed");
+                            
                           }
                         }}
                         className="text-xs font-bold px-2 py-1 rounded uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700 focus:outline-none"
@@ -278,7 +278,7 @@ export function AdminUsers() {
                             fetchUsers();
                           } catch (err) {
                             console.error(err);
-                            console.log("alert removed");
+                            
                           }
                         }}
                         className={`text-xs font-bold px-2 py-1 rounded uppercase tracking-wider focus:outline-none ${

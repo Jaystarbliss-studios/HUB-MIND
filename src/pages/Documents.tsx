@@ -26,6 +26,7 @@ export function Documents() {
   const [editTitle, setEditTitle] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [docToDelete, setDocToDelete] = useState<string | null>(null);
 
   const handleUpdateTitle = async (id: string) => {
     if (!editTitle.trim()) return;
@@ -65,8 +66,10 @@ export function Documents() {
     }
   };
 
+  const confirmDelete = (id: string) => { setDocToDelete(id); };
   const handleDeleteDoc = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this document?')) return;
+    setDocToDelete(null);
+
     setDeletingId(id);
     try {
       const { doc, deleteDoc } = await import('firebase/firestore');
@@ -364,7 +367,7 @@ useEffect(() => {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button 
-                            onClick={() => handleDeleteDoc(doc.id)}
+                            onClick={() => confirmDelete(doc.id)}
                             disabled={deletingId === doc.id}
                             className="p-2 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
                           >

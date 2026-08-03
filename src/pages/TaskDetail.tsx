@@ -100,7 +100,7 @@ export function TaskDetail() {
       navigate('/tasks');
     } catch (error) {
       console.error("Error deleting task:", error);
-      console.log("alert removed");
+      
     } finally {
       setIsDeleting(false);
     }

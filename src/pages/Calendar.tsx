@@ -131,7 +131,7 @@ export function Calendar() {
       setTitle('');
     } catch (err) {
       console.error(err);
-      console.log('Failed to create item');
+      
     } finally {
       setIsSubmitting(false);
     }

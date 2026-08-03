@@ -147,11 +147,11 @@ export function ImportExportMenu({ editor, docTitle }: ImportExportMenuProps) {
         const result = await mammoth.convertToHtml({ arrayBuffer });
         editor.commands.setContent(result.value);
       } else {
-        alert("Unsupported file format");
+        setDriveError('Unsupported file format'); setTimeout(() => setDriveError(null), 3000);
       }
     } catch (error) {
       console.error("Import error:", error);
-      alert("Failed to import document");
+      setDriveError('Failed to import document'); setTimeout(() => setDriveError(null), 3000);
     } finally {
       setIsImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

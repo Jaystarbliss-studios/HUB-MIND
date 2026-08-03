@@ -62,7 +62,7 @@ export function Inbox() {
       });
     } catch (err) {
       console.error(err);
-      console.log('Failed to archive item.');
+      
     } finally {
       setProcessingId(null);
     }
@@ -86,7 +86,7 @@ export function Inbox() {
       });
     } catch (err) {
       console.error(err);
-      console.log('Failed to convert to knowledge.');
+      
     } finally {
       setProcessingId(null);
     }
@@ -108,7 +108,7 @@ export function Inbox() {
       });
     } catch (err) {
       console.error(err);
-      console.log('Failed to convert to client.');
+      
     } finally {
       setProcessingId(null);
     }
@@ -175,7 +175,7 @@ export function Inbox() {
     setClientId('');
     } catch (err) {
       console.error(err);
-      console.log(`Failed to convert to ${actionType}.`);
+      
     } finally {
       setProcessingId(null);
     }

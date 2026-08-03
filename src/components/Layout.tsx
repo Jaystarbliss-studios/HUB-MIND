@@ -93,7 +93,7 @@ export function Layout() {
       setShowCapture(false);
     } catch (err) {
       console.error(err);
-      console.log('Failed to save to inbox.');
+      
     } finally {
       setSavingCapture(false);
     }

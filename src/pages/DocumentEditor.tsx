@@ -110,6 +110,9 @@ export function DocumentEditor() {
       }
     };
     fetchDoc();
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, [id, editor, navigate]);
 
   if (loading) {

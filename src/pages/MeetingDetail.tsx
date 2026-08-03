@@ -64,7 +64,7 @@ export function MeetingDetail() {
       navigate('/calendar');
     } catch (error) {
       console.error("Error deleting meeting:", error);
-      console.log("alert removed");
+      
     } finally {
       setIsDeleting(false);
     }

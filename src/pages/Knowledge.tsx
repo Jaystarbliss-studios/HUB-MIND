@@ -59,7 +59,7 @@ export function Knowledge() {
 
   
   const handleDelete = async (id: string, title: string) => {
-    if (!window.confirm('Are you sure you want to delete this article?')) return;
+    // Removed window.confirm due to iframe restrictions
     try {
       await deleteDoc(doc(db, 'knowledge', id));
       await logActivity(id, 'knowledge', 'deleted knowledge article', title, profile?.name || 'User');

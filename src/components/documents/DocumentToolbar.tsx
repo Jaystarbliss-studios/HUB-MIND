@@ -42,24 +42,30 @@ export function DocumentToolbar({ editor }: ToolbarProps) {
     return null;
   }
 
+  
+  
+  const [promptState, setPromptState] = React.useState<{type: 'image' | 'link' | null, defaultVal: string}>({type: null, defaultVal: ''});
+
   const addImage = () => {
-    const url = window.prompt('URL');
-    if (url) {
-      editor.chain().focus().setImage({ src: url }).run();
-    }
+    setPromptState({type: 'image', defaultVal: ''});
   };
 
   const setLink = () => {
-    const previousUrl = editor.getAttributes('link').href;
-    const url = window.prompt('URL', previousUrl);
-    if (url === null) {
-      return;
+    const previousUrl = editor.getAttributes('link').href || '';
+    setPromptState({type: 'link', defaultVal: previousUrl});
+  };
+
+  const handlePromptSubmit = (val: string) => {
+    if (promptState.type === 'image') {
+      if (val) editor.chain().focus().setImage({ src: val }).run();
+    } else if (promptState.type === 'link') {
+      if (val === '') {
+        editor.chain().focus().extendMarkRange('link').unsetLink().run();
+      } else if (val !== null) {
+        editor.chain().focus().extendMarkRange('link').setLink({ href: val }).run();
+      }
     }
-    if (url === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run();
-      return;
-    }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    setPromptState({type: null, defaultVal: ''});
   };
 
   const insertTable = () => {

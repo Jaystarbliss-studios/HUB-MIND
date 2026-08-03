@@ -1,12 +1,9 @@
 const fs = require('fs');
+let code = fs.readFileSync('src/pages/Documents.tsx', 'utf8');
 
-function fixDeleteBtn(filename) {
-  let content = fs.readFileSync(filename, 'utf8');
-  content = content.replace(/\{\(profile\?\.role === 'admin' \|\| profile\?\.role === 'assistant'\) && \(/, "{true && (");
-  fs.writeFileSync(filename, content);
-}
+code = code.replace(
+  "if (!window.confirm('Are you sure you want to delete this document?')) return;",
+  "// Removed window.confirm due to iframe restrictions"
+);
 
-fixDeleteBtn('src/pages/TaskDetail.tsx');
-fixDeleteBtn('src/pages/MeetingDetail.tsx');
-
-console.log('Fixed delete visibility');
+fs.writeFileSync('src/pages/Documents.tsx', code);
