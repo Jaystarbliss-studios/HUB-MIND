@@ -28,9 +28,72 @@ export function HubAI() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
 
+  const [fabPos, setFabPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ isDragging: boolean; startX: number; startY: number; initialX: number; initialY: number; hasMoved: boolean }>({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    initialX: 0,
+    initialY: 0,
+    hasMoved: false
+  });
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const handleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+    const currentX = fabPos?.x ?? (window.innerWidth < 640 ? 24 : window.innerWidth - 80);
+    const currentY = fabPos?.y ?? (window.innerHeight - 88);
+
+    dragRef.current = {
+      isDragging: true,
+      startX: clientX,
+      startY: clientY,
+      initialX: currentX,
+      initialY: currentY,
+      hasMoved: false
+    };
+  };
+
+  useEffect(() => {
+    const handleMove = (e: TouchEvent | MouseEvent) => {
+      if (!dragRef.current.isDragging) return;
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      const deltaX = clientX - dragRef.current.startX;
+      const deltaY = clientY - dragRef.current.startY;
+
+      if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+        dragRef.current.hasMoved = true;
+      }
+
+      const newX = Math.max(12, Math.min(window.innerWidth - 68, dragRef.current.initialX + deltaX));
+      const newY = Math.max(12, Math.min(window.innerHeight - 68, dragRef.current.initialY + deltaY));
+      setFabPos({ x: newX, y: newY });
+    };
+
+    const handleEnd = () => {
+      if (dragRef.current.isDragging) {
+        dragRef.current.isDragging = false;
+      }
+    };
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleMove);
+    window.addEventListener('touchend', handleEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleEnd);
+    };
+  }, [fabPos]);
 
   useEffect(() => {
     initGoogleApi();
@@ -356,19 +419,33 @@ Current Workspace Context:
       {/* Floating Action Button */}
       {!isOpen && (
         <button
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-[100] bg-accent hover:bg-accent-hover text-slate-950 p-4 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105"
+          onClick={() => {
+            if (!dragRef.current.hasMoved) {
+              setIsOpen(true);
+            }
+          }}
+          onTouchStart={handleTouchStart}
+          onMouseDown={handleTouchStart}
+          style={
+            fabPos
+              ? { left: `${fabPos.x}px`, top: `${fabPos.y}px` }
+              : undefined
+          }
+          className={`fixed z-[100] bg-accent hover:bg-accent-hover text-slate-950 p-3.5 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 touch-none select-none ${
+            !fabPos ? 'bottom-20 left-4 sm:bottom-6 sm:left-auto sm:right-6' : ''
+          }`}
+          title="Drag to move or tap to open Hub AI"
         >
-          <Sparkles className="w-6 h-6" />
+          <LogoIcon className="w-6 h-6 text-slate-950" />
         </button>
       )}
 
       {/* Chat Window */}
       {isOpen && (
-        <div className={`fixed z-[100] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col transition-all duration-300 overflow-hidden ${
-          isMinimized ? 'bottom-6 right-6 w-72 h-14' : 
-          isFullScreen ? 'inset-4 md:inset-8 lg:inset-12' : 
-          'bottom-6 right-6 w-96 h-[32rem]'
+        <div className={`fixed z-[100] bg-slate-900 border border-slate-700 sm:rounded-2xl shadow-2xl flex flex-col transition-all duration-300 overflow-hidden ${
+          isMinimized ? 'bottom-20 left-4 sm:left-auto sm:right-6 w-72 h-14 rounded-2xl' : 
+          isFullScreen ? 'inset-2 sm:inset-4 md:inset-8 lg:inset-12 rounded-2xl' : 
+          'inset-0 sm:inset-auto sm:bottom-6 sm:right-6 sm:w-96 sm:h-[32rem]'
         }`}>
           {/* Header */}
           <div className="bg-slate-800 p-3 flex items-center justify-between border-b border-slate-700">

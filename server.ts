@@ -29,14 +29,31 @@ async function startServer() {
       const ai = new GoogleGenAI({ apiKey });
       const { messages, tools, systemInstruction } = req.body;
       
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: messages,
-        config: {
-          tools: tools,
-          systemInstruction: systemInstruction
+      const candidateModels = ["gemini-3.5-flash", "gemini-2.5-flash"];
+      let lastError: any = null;
+      let response = null;
+
+      for (const modelName of candidateModels) {
+        try {
+          response = await ai.models.generateContent({
+            model: modelName,
+            contents: messages,
+            config: {
+              tools: tools,
+              systemInstruction: systemInstruction
+            }
+          });
+          if (response) break;
+        } catch (err: any) {
+          console.warn(`Model ${modelName} failed or rate limited:`, err?.message || err);
+          lastError = err;
+          // If rate limited or quota exceeded, try next candidate model
         }
-      });
+      }
+
+      if (!response) {
+        throw lastError || new Error("All AI models are currently busy.");
+      }
 
       res.json({ 
         text: response.text, 
