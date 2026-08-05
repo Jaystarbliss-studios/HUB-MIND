@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UploadCloud, Loader2, FileText, CheckCircle2 } from 'lucide-react';
-import { driveConfig } from '../driveConfig';
+import { driveConfig, initDriveConfig } from '../driveConfig';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -21,30 +21,42 @@ export function DriveUpload({ onUploadSuccess, className, label = "Upload to Dri
   const [client, setClient] = useState<any>(null);
   
   useEffect(() => {
-    // Load Google Identity Services script
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      // @ts-ignore
-      const tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: driveConfig.clientId,
-        scope: 'https://www.googleapis.com/auth/drive.file',
-        callback: (response: any) => {
-          if (response.error !== undefined) {
-            setError(response.error);
-            return;
-          }
-          setToken(response.access_token);
-        },
-      });
-      setClient(tokenClient);
-    };
-    document.body.appendChild(script);
+    let isMounted = true;
+    
+    async function loadScript() {
+      await initDriveConfig();
+      if (!isMounted) return;
+
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        // @ts-ignore
+        const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+          client_id: driveConfig.clientId,
+          scope: 'https://www.googleapis.com/auth/drive.file',
+          callback: (response: any) => {
+            if (response.error !== undefined) {
+              setError(response.error);
+              return;
+            }
+            setToken(response.access_token);
+          },
+        });
+        setClient(tokenClient);
+      };
+      document.body.appendChild(script);
+    }
+    
+    loadScript();
     
     return () => {
-      document.body.removeChild(script);
+      isMounted = false;
+      const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+      if (script && script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
     };
   }, []);
 

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, setDoc, getDoc, limit } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { User } from '../types';
@@ -78,7 +78,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               } else {
                 // Not the first user, and not registered by admin. Deny access.
                 console.warn("User not registered in the system.");
-                const { signOut } = await import('firebase/auth');
                 await signOut(auth);
                 window.dispatchEvent(new CustomEvent('auth-error', { detail: 'Your email is not registered. Please contact an administrator.' }));
                 setProfile(null);

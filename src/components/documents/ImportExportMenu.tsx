@@ -1,4 +1,4 @@
-import { driveConfig } from '../../driveConfig'; 
+import { driveConfig, initDriveConfig } from '../../driveConfig'; 
 import React, { useRef, useState } from 'react';
 import { Editor } from '@tiptap/react';
 import { Download, Upload, FileText, File, Code, FileImage, Loader2, Cloud } from 'lucide-react';
@@ -33,27 +33,37 @@ export function ImportExportMenu({ editor, docTitle }: ImportExportMenuProps) {
   const [driveSuccess, setDriveSuccess] = useState(false);
 
   React.useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      // @ts-ignore
-      const tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: driveConfig.clientId,
-        scope: 'https://www.googleapis.com/auth/drive.file',
-        callback: (response: any) => {
-          if (response.error !== undefined) {
-            setDriveError(response.error);
-            return;
-          }
-          setDriveToken(response.access_token);
-        },
-      });
-      setDriveClient(tokenClient);
+    let isMounted = true;
+    async function loadScript() {
+      await initDriveConfig();
+      if (!isMounted) return;
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        // @ts-ignore
+        const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+          client_id: driveConfig.clientId,
+          scope: 'https://www.googleapis.com/auth/drive.file',
+          callback: (response: any) => {
+            if (response.error !== undefined) {
+              setDriveError(response.error);
+              return;
+            }
+            setDriveToken(response.access_token);
+          },
+        });
+        setDriveClient(tokenClient);
+      };
+      document.body.appendChild(script);
+    }
+    loadScript();
+    return () => {
+      isMounted = false;
+      const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+      if (script && script.parentNode) script.parentNode.removeChild(script);
     };
-    document.body.appendChild(script);
-    return () => { document.body.removeChild(script); };
   }, []);
 
   const handleDriveExport = async () => {

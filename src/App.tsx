@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { Layout } from './components/Layout';
 import { PWAPrompt } from './components/PWAPrompt';
+import { HubAI } from './components/HubAI';
 import { Loader2 } from 'lucide-react';
 
 // Lazy loaded pages
@@ -46,8 +47,9 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
 export default function App() {
   return (
     <AuthProvider>
-      <PWAPrompt />
       <BrowserRouter>
+        <PWAPrompt />
+        <HubAI />
         <Suspense fallback={<LoadingScreen />}>
           <Routes>
             <Route path="/login" element={<Login />} />

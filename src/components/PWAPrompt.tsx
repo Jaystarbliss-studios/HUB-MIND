@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { X, Download, Smartphone } from 'lucide-react';
+import { useAuth } from '../lib/auth';
 
 export function PWAPrompt() {
+  const { user } = useAuth();
   const {
     offlineReady: [offlineReady, setOfflineReady],
     needRefresh: [needRefresh, setNeedRefresh],
@@ -31,20 +33,13 @@ export function PWAPrompt() {
     setIsStandalone(isStandaloneMode);
 
     if (isIosDevice && !isStandaloneMode) {
-      // Show iOS prompt after a small delay
-      const timer = setTimeout(() => {
-        const hasSeenPrompt = localStorage.getItem('iosPwaPromptSeen');
-        if (!hasSeenPrompt) {
-          setShowInstallPrompt(true);
-        }
-      }, 3000);
-      return () => clearTimeout(timer);
+      // We will let the second useEffect handle showing the prompt for iOS
     }
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setShowInstallPrompt(true);
+      // We will only show it if the user is authenticated (handled in another effect)
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -52,15 +47,54 @@ export function PWAPrompt() {
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
-  }, []);
+  }, [user]);
+
+  useEffect(() => {
+    // Trigger prompt when user is logged in, not standalone, and we have the deferredPrompt or are on iOS
+    if (user && !isStandalone) {
+      if (isIOS || deferredPrompt) {
+        setShowInstallPrompt(true);
+
+        // Also trigger a browser notification as requested
+        if ('Notification' in window) {
+          Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+              const hasNotified = sessionStorage.getItem('pwaNotified');
+              if (!hasNotified) {
+                const notification = new Notification('Add Hub-Mind to Home Screen', {
+                  body: 'Click here to easily access Hub-Mind directly from your device.',
+                  icon: '/icon-192x192.png',
+                  requireInteraction: true
+                });
+                
+                notification.onclick = () => {
+                  window.focus();
+                  if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then((choiceResult: any) => {
+                      if (choiceResult.outcome === 'accepted') {
+                        setShowInstallPrompt(false);
+                      }
+                      setDeferredPrompt(null);
+                    });
+                  }
+                  notification.close();
+                };
+                sessionStorage.setItem('pwaNotified', 'true');
+              }
+            }
+          });
+        }
+      }
+    } else {
+      setShowInstallPrompt(false);
+    }
+  }, [user, deferredPrompt, isStandalone, isIOS]);
 
   const closePrompt = () => {
     setShowInstallPrompt(false);
     setOfflineReady(false);
     setNeedRefresh(false);
-    if (isIOS) {
-      localStorage.setItem('iosPwaPromptSeen', 'true');
-    }
   };
 
   const handleInstallClick = async () => {
@@ -76,8 +110,8 @@ export function PWAPrompt() {
 
   return (
     <>
-      {/* Update Prompt */}
-      { (offlineReady || needRefresh) && (
+      {/* Update Prompt */
+      (offlineReady || needRefresh) && (
         <div className="fixed bottom-4 right-4 z-[100] bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-2xl max-w-sm w-[calc(100%-2rem)] flex flex-col gap-3 animate-in slide-in-from-bottom-5">
           <div className="flex justify-between items-start gap-4">
             <div>
@@ -105,53 +139,56 @@ export function PWAPrompt() {
         </div>
       )}
 
-      {/* Install Prompt for non-iOS or custom install button */}
-      {showInstallPrompt && deferredPrompt && (
-        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:w-96 z-[100] bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-2xl flex flex-col gap-3 animate-in slide-in-from-bottom-5">
-          <div className="flex items-start gap-3">
-            <div className="bg-slate-900 p-2 rounded-lg shrink-0">
-              <Download className="w-6 h-6 text-accent" />
+      {/* Prominent Modal for Install */
+      showInstallPrompt && (deferredPrompt || isIOS) && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
+            <div className="relative h-32 bg-gradient-to-br from-accent/20 to-slate-800 flex items-center justify-center border-b border-slate-800">
+              <div className="absolute top-4 right-4">
+                <button onClick={closePrompt} className="bg-slate-900/50 hover:bg-slate-900 text-slate-400 hover:text-white rounded-full p-2 backdrop-blur transition-all">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center shadow-lg border border-slate-700">
+                 {isIOS ? <Smartphone className="w-8 h-8 text-accent" /> : <Download className="w-8 h-8 text-accent" />}
+              </div>
             </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-white">Install Hub-Mind</h3>
-              <p className="text-sm text-slate-300 mt-1">Install our app for a better experience, offline access, and quick launching.</p>
-            </div>
-            <button onClick={closePrompt} className="text-slate-400 hover:text-white shrink-0">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <button 
-            onClick={handleInstallClick}
-            className="w-full bg-accent hover:bg-accent/90 text-slate-950 font-semibold py-2 rounded-lg transition-colors mt-1"
-          >
-            Install App
-          </button>
-        </div>
-      )}
+            
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-white mb-2 text-center">
+                Install Hub-Mind
+              </h3>
+              <p className="text-slate-300 text-center mb-6">
+                Add Hub-Mind to your home screen for a seamless full-screen experience, offline access, and quick launching.
+              </p>
 
-      {/* iOS Install Prompt */}
-      {showInstallPrompt && isIOS && (
-        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:w-96 z-[100] bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-2xl flex flex-col gap-3 animate-in slide-in-from-bottom-5">
-          <div className="flex items-start justify-between mb-1">
-            <h3 className="font-semibold text-white flex items-center gap-2">
-              <Smartphone className="w-5 h-5 text-accent" />
-              Install Hub-Mind
-            </h3>
-            <button onClick={closePrompt} className="text-slate-400 hover:text-white">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <p className="text-sm text-slate-300">
-            Install this application on your home screen for quick and easy access when you're on the go.
-          </p>
-          <div className="bg-slate-900 rounded-lg p-3 text-sm text-slate-200 flex flex-col gap-2 border border-slate-700">
-            <div className="flex items-center gap-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded bg-slate-800 text-xs font-bold text-slate-400">1</span>
-              <span>Tap the <b className="text-white">Share</b> icon at the bottom</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded bg-slate-800 text-xs font-bold text-slate-400">2</span>
-              <span>Scroll and tap <b className="text-white">Add to Home Screen</b></span>
+              {isIOS ? (
+                <div className="bg-slate-950 rounded-xl p-4 text-sm text-slate-200 flex flex-col gap-3 border border-slate-800">
+                  <p className="text-slate-400 font-medium mb-1">To install on iOS:</p>
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center w-6 h-6 rounded bg-slate-800 text-xs font-bold text-slate-400 shrink-0">1</span>
+                    <span>Tap the <b className="text-white">Share</b> icon at the bottom of Safari</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center w-6 h-6 rounded bg-slate-800 text-xs font-bold text-slate-400 shrink-0">2</span>
+                    <span>Scroll down and tap <b className="text-white">Add to Home Screen</b></span>
+                  </div>
+                </div>
+              ) : (
+                <button 
+                  onClick={handleInstallClick}
+                  className="w-full bg-accent hover:bg-accent-hover text-slate-950 font-bold py-3 px-4 rounded-xl transition-all active:scale-[0.98] shadow-lg shadow-accent/20"
+                >
+                  Add to Home Screen
+                </button>
+              )}
+              
+              <button 
+                onClick={closePrompt}
+                className="w-full mt-3 py-2 text-slate-400 hover:text-slate-300 font-medium transition-colors"
+              >
+                Not right now
+              </button>
             </div>
           </div>
         </div>
