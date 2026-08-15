@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { Layout } from './components/Layout';
 import { PWAPrompt } from './components/PWAPrompt';
-import { HubAI } from './components/HubAI';
+import { Shawn } from './components/Shawn';
 import { Loader2 } from 'lucide-react';
 
 // Lazy loaded pages
@@ -49,7 +49,7 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <PWAPrompt />
-        <HubAI />
+        <Shawn />
         <Suspense fallback={<LoadingScreen />}>
           <Routes>
             <Route path="/login" element={<Login />} />

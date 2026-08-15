@@ -97,3 +97,22 @@ export const sendEmail = async (to: string, subject: string, body: string) => {
   if (!res.ok) throw new Error("Failed to send email");
   return res.json();
 };
+
+export const createCalendarEvent = async (summary: string, description: string, start: string, end: string) => {
+  const token = await getGoogleToken();
+  const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      summary,
+      description,
+      start: { dateTime: start },
+      end: { dateTime: end }
+    })
+  });
+  if (!res.ok) throw new Error("Failed to create calendar event");
+  return res.json();
+};
