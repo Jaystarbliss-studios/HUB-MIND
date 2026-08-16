@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { addDoc } from 'firebase/firestore';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
 
@@ -254,7 +255,7 @@ export function Tasks() {
                     <h3 className="font-medium text-slate-200 truncate pr-4">{task.title}</h3>
                     <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
                       {task.deadline && (
-                        <span>Due {format(parseISO(task.deadline), 'MMM d')}</span>
+                        <span>Due {safeFormat(task.deadline, 'MMM d')}</span>
                       )}
                       <span className="hidden sm:inline">{task.checklist?.filter(c => c.done).length || 0}/{task.checklist?.length || 0} checks</span>
                     </div>

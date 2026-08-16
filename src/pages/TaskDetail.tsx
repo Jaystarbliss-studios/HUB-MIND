@@ -5,6 +5,7 @@ import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task } from '../types';
 import { Loader2, ArrowLeft, Trash2, CheckCircle2, Clock, Calendar as CalendarIcon, Tag, AlignLeft, User, Edit } from 'lucide-react';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
 
@@ -288,7 +289,7 @@ export function TaskDetail() {
             <div>
               <p className="text-xs text-slate-500 font-medium">Deadline</p>
               <p className="text-sm text-slate-200">
-                {task.deadline ? format(parseISO(task.deadline), 'MMMM d, yyyy') : 'No deadline'}
+                {task.deadline ? safeFormat(task.deadline, 'MMMM d, yyyy') : 'No deadline'}
               </p>
             </div>
           </div>

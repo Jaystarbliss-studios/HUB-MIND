@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { Knowledge as KnowledgeType } from '../types';
 import { logActivity } from '../lib/activity';
 import { Loader2, Plus, Book, Search, FileText, Bookmark, Trash2 } from 'lucide-react';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 
 export function Knowledge() {
@@ -159,7 +160,7 @@ export function Knowledge() {
                   <Bookmark className="w-3 h-3" />
                   {item.category}
                 </span>
-                <span className="text-xs text-slate-500">{format(parseISO(item.createdAt), 'MMM d, yyyy')}</span>
+                <span className="text-xs text-slate-500">{safeFormat(item.createdAt, 'MMM d, yyyy')}</span>
                 
                 {profile?.role === 'admin' && (
                   <button

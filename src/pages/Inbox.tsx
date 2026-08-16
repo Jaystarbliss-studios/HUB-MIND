@@ -7,6 +7,7 @@ import { useLocation } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { InboxItem } from '../types';
 import { Loader2, Archive, CheckSquare, Users, Calendar, Book, X } from 'lucide-react';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 
 export function Inbox() {
@@ -234,7 +235,7 @@ export function Inbox() {
               <div className="flex justify-between items-start gap-4">
                 <p className="text-white text-lg leading-relaxed whitespace-pre-wrap flex-1">{item.text}</p>
                 <span className="text-xs font-medium text-slate-500 shrink-0">
-                  {format(parseISO(item.createdAt), 'MMM d, h:mm a')}
+                  {safeFormat(item.createdAt, 'MMM d, h:mm a')}
                 </span>
               </div>
               

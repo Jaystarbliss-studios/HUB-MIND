@@ -5,6 +5,7 @@ import { doc, getDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Meeting } from '../types';
 import { Loader2, ArrowLeft, Trash2, Calendar as CalendarIcon, Clock, Users, AlignLeft } from 'lucide-react';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
 
@@ -152,7 +153,7 @@ export function MeetingDetail() {
             <div>
               <p className="text-xs text-slate-500 font-medium">Date</p>
               <p className="text-sm text-slate-200">
-                {meeting.date ? format(parseISO(meeting.date), 'EEEE, MMMM d, yyyy') : 'No date'}
+                {meeting.date ? safeFormat(meeting.date, 'EEEE, MMMM d, yyyy') : 'No date'}
               </p>
             </div>
           </div>
@@ -161,7 +162,7 @@ export function MeetingDetail() {
             <div>
               <p className="text-xs text-slate-500 font-medium">Time</p>
               <p className="text-sm text-slate-200">
-                {meeting.date ? format(parseISO(meeting.date), 'h:mm a') : 'No time'}
+                {meeting.date ? safeFormat(meeting.date, 'h:mm a') : 'No time'}
               </p>
             </div>
           </div>

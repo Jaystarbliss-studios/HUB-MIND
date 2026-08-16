@@ -3,6 +3,10 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import OpenAI from "openai";
+import { WebSocketServer } from "ws";
+
+
+const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
 async function startServer() {
   const app = express();
@@ -19,11 +23,73 @@ async function startServer() {
     res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || "" });
   });
 
+  let memories = [];
+  let conversations = [];
+
+  app.get("/api/memories", (req, res) => {
+    res.json({ memories });
+  });
+
+  app.post("/api/memories", (req, res) => {
+    const memory = { id: Date.now().toString(), ...req.body, timestamp: new Date().toISOString() };
+    memories.unshift(memory);
+    res.json({ memory });
+  });
+
+  app.delete("/api/memories/:id", (req, res) => {
+    memories = memories.filter(m => m.id !== req.params.id);
+    res.json({ success: true });
+  });
+
+  app.get("/api/conversations", (req, res) => {
+    res.json({ conversations });
+  });
+
+  app.post("/api/conversations", (req, res) => {
+    const conversation = { id: Date.now().toString(), ...req.body, createdAt: new Date().toISOString() };
+    conversations.unshift(conversation);
+    res.json({ conversation });
+  });
+
+  app.delete("/api/conversations/:id", (req, res) => {
+    conversations = conversations.filter(c => c.id !== req.params.id);
+    res.json({ success: true });
+  });
+
+  app.get("/api/world-pulse", (req, res) => {
+    res.json({
+      pulse: [
+        {
+          id: "1",
+          region: "Space",
+          title: "Jupiter's Giant Storm",
+          summary: "The Great Red Spot on Jupiter is a storm so big that Earth could fit inside it!",
+          shawnNote: "Woah! Imagine flying a spaceship right through that giant red storm!"
+        },
+        {
+          id: "2",
+          region: "Prehistoric",
+          title: "T-Rex Had Feathers?",
+          summary: "Scientists think that many dinosaurs, even relatives of the T-Rex, might have been covered in fluffy feathers.",
+          shawnNote: "A giant fluffy T-Rex? That's hilarious and awesome at the same time!"
+        },
+        {
+          id: "3",
+          region: "Oceans",
+          title: "The Immortal Jellyfish",
+          summary: "There is a type of jellyfish that can revert back to its baby stage when it gets old, meaning it can technically live forever.",
+          shawnNote: "A real-life cheat code for infinite lives! I want an immortal jellyfish as a pet."
+        }
+      ]
+    });
+  });
+
+
   
   app.post("/api/tts", async (req, res) => {
     try {
       const { text } = req.body;
-      const geminiApiKey = process.env.GEMINI_API_KEY;
+      const geminiApiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6JOlxQQsN_s73bCi6BDbifJ20H1v3dOptXYMNCcMhjFQA";
       if (!geminiApiKey) {
         return res.status(500).json({ error: "GEMINI_API_KEY is required for voice model." });
       }
@@ -35,7 +101,7 @@ async function startServer() {
         model: "gemini-3.1-flash-tts-preview",
         contents: [{ parts: [{ text }] }],
         config: {
-          responseModalities: ["AUDIO"],
+          responseModalities: ["AUDIO"] as any,
           speechConfig: {
               voiceConfig: {
                 prebuiltVoiceConfig: { voiceName: 'Kore' },
@@ -202,8 +268,10 @@ async function startServer() {
       let response = null;
 
       for (const modelName of candidateModels) {
-        try {
-          response = await ai.models.generateContent({
+        let attempts = 0;
+        while (attempts < 2) {
+          try {
+            response = await ai.models.generateContent({
             model: modelName,
             contents: messages,
             config: {
@@ -219,11 +287,19 @@ async function startServer() {
                 parts: [{ text: coreIdentity + "\n" + geminiAdapter + "\n\n--- Context ---\n" + (typeof systemInstruction === 'string' ? systemInstruction : (systemInstruction.parts?.[0]?.text || "")) }]
               } : undefined
             }
-          });
-          if (response) break;
-        } catch (err: any) {
-          lastError = err;
+            });
+            if (response) break;
+          } catch (err: any) {
+            lastError = err;
+            if (err.message && (err.message.includes("503") || err.message.includes("429"))) {
+              attempts++;
+              if (attempts < 2) await delay(2000);
+            } else {
+              break; // break the retry loop for other errors
+            }
+          }
         }
+        if (response) break; // break the model loop if successful
       }
 
       if (!response) {
@@ -262,8 +338,170 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+    const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+  });
+
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (request, socket, head) => {
+    try {
+      const url = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
+      if (url.pathname === "/api/live-ws") {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit("connection", ws, request);
+        });
+      }
+    } catch (err) {
+      console.error("WebSocket upgrade parse error:", err);
+    }
+  });
+
+  wss.on("connection", async (clientWs, request) => {
+    console.log("Client connected to Live WebSocket");
+    let liveSession = null;
+    let isSessionActive = false;
+    
+    try {
+      const { GoogleGenAI } = await import("@google/genai");
+      const geminiApiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6JOlxQQsN_s73bCi6BDbifJ20H1v3dOptXYMNCcMhjFQA";
+      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
+      // Connect to Gemini Live API
+      liveSession = await ai.live.connect({
+        model: "gemini-3.1-flash-live-preview",
+        config: {
+          responseModalities: ['AUDIO'] as any,
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } },
+          systemInstruction: {
+            parts: [{ text: "You are Shawn, a playful, energetic, and highly imaginative AI boy. You love video games, space, dinosaurs, and telling fun stories. You speak casually, like a kid, but you are very helpful and smart. Keep your answers relatively short and engaging." }]
+          },
+        },
+        callbacks: {
+          onmessage: (message) => {
+            if (clientWs.readyState !== 1) return;
+
+            // Check for audio parts
+            const parts = message.serverContent?.modelTurn?.parts;
+            if (parts && parts.length > 0) {
+              for (const part of parts) {
+                if (part.inlineData?.data) {
+                  clientWs.send(
+                    JSON.stringify({
+                      type: "audio",
+                      audio: Buffer.isBuffer(part.inlineData.data) ? part.inlineData.data.toString('base64') : ((part.inlineData.data as any) instanceof Uint8Array ? Buffer.from((part.inlineData.data as any)).toString('base64') : part.inlineData.data),
+                      mimeType: part.inlineData.mimeType || "audio/pcm;rate=24000",
+                    })
+                  );
+                }
+              }
+            }
+
+            // Check for user speech transcription
+            const inputTx = (message as any).serverContent?.inputTranscription?.text || (message as any).inputTranscription?.text || (message as any).serverContent?.inputAudioTranscription?.text;
+            if (inputTx) {
+              clientWs.send(
+                JSON.stringify({
+                  type: "input_transcription",
+                  text: inputTx,
+                })
+              );
+            }
+
+            // Check for model speech transcription
+            const outputTx = (message as any).serverContent?.outputTranscription?.text || (message as any).outputTranscription?.text || (message as any).serverContent?.outputAudioTranscription?.text;
+            if (outputTx) {
+              clientWs.send(
+                JSON.stringify({
+                  type: "output_transcription",
+                  text: outputTx,
+                })
+              );
+            }
+
+            // Check for model turnaround done
+            if (message.serverContent?.turnComplete) {
+              clientWs.send(
+                JSON.stringify({
+                  type: "turn_complete",
+                })
+              );
+            }
+
+            // Check for interruption event
+            if (message.serverContent?.interrupted) {
+              clientWs.send(
+                JSON.stringify({
+                  type: "interrupted",
+                })
+              );
+            }
+          },
+          onclose: () => {
+            console.log("Gemini Live session closed, reason known?");
+            isSessionActive = false;
+            if (clientWs.readyState === 1) {
+              clientWs.send(JSON.stringify({ type: "session_closed" }));
+            }
+          },
+          onerror: (err) => {
+            console.error("Gemini Live session error:", err);
+            if (clientWs.readyState === 1) {
+              clientWs.send(
+                JSON.stringify({
+                  type: "error",
+                  message: err.message || "Live API streaming error",
+                })
+              );
+            }
+          },
+        },
+      });
+
+      isSessionActive = true;
+      clientWs.send(JSON.stringify({ type: "ready", message: "Connected to Live Voice" }));
+
+      clientWs.on("message", (data) => {
+        try {
+          const payload = JSON.parse(data.toString());
+          if (!isSessionActive || !liveSession) return;
+
+          if (payload.type === "audio") {
+            liveSession.sendRealtimeInput({
+              audio: { mimeType: "audio/pcm;rate=16000", data: payload.audio }
+            });
+          } else if (payload.type === "text") {
+            liveSession.sendRealtimeInput({ text: payload.text });
+          } else if (payload.type === "video") {
+            liveSession.sendRealtimeInput({
+              video: { mimeType: "image/jpeg", data: payload.image }
+            });
+          }
+        } catch (err) {
+          console.error("Error processing client message:", err);
+        }
+      });
+
+      clientWs.on("close", () => {
+        console.log("Client WebSocket closed");
+        if (isSessionActive && liveSession) {
+          // Send close message or similar if API supports it, though usually disconnecting socket is enough
+        }
+        isSessionActive = false;
+      });
+
+    } catch (err) {
+      console.error("Failed to initialize Gemini Live session:", err);
+      if (clientWs.readyState === 1) {
+        clientWs.send(
+          JSON.stringify({
+            type: "error",
+            message: err.message || "Failed to start Live session",
+          })
+        );
+        clientWs.close();
+      }
+    }
   });
 }
 

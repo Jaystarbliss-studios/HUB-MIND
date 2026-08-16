@@ -3,6 +3,7 @@ import { useAuth } from '../lib/auth';
 import { collection, query, orderBy, getDocs, limit } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { ActivityLog } from '../types';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { Activity, Loader2 } from 'lucide-react';
 import { clsx, type ClassValue } from "clsx";
@@ -73,7 +74,7 @@ export function Notifications() {
                 </div>
               </div>
               <span className="text-xs text-slate-500 font-medium shrink-0 ml-12 sm:ml-0">
-                {format(parseISO(log.createdAt), 'MMM d, h:mm a')}
+                {safeFormat(log.createdAt, 'MMM d, h:mm a')}
               </span>
             </div>
           ))

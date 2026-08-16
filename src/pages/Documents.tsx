@@ -6,6 +6,7 @@ import { db } from '../firebaseConfig';
 import { DocumentInfo, Client } from '../types';
 import { Loader2, FileText, Search, Copy, ExternalLink, Edit2, Trash2, Check, X } from 'lucide-react';
 import { DriveUpload } from '../components/DriveUpload';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
 import { TemplateSelector } from '../components/documents/TemplateSelector';
@@ -343,7 +344,7 @@ useEffect(() => {
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium">
                           <span className="uppercase tracking-wider text-accent">{doc.category}</span>
                           {client && <span>• {client.name}</span>}
-                          <span>• {format(parseISO(doc.createdAt), 'MMM d')}</span>
+                          <span>• {safeFormat(doc.createdAt, 'MMM d')}</span>
                         </div>
                       </div>
                     </div>

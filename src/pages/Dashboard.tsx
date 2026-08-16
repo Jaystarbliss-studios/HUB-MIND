@@ -3,6 +3,7 @@ import { useAuth } from '../lib/auth';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task, Meeting, Client, DocumentInfo, InboxItem, ActivityLog } from '../types';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { isToday, isBefore, startOfDay, parseISO, format, startOfWeek, endOfWeek } from 'date-fns';
 import { CheckCircle2, Clock, Calendar as CalendarIcon, FileText, Loader2, Bell, Users, Inbox, Activity, Check } from 'lucide-react';
 import { setDoc, doc, getDoc } from 'firebase/firestore';
@@ -111,7 +112,7 @@ export function Dashboard() {
           const t = doc.data() as Task;
           if (t.status !== 'completed' && t.status !== 'archived') {
             if (t.priority === 'urgent') urgentTasks++;
-            if (t.deadline && isBefore(parseISO(t.deadline), startOfToday)) overdueTasks++;
+            if (t.deadline && isBefore(safeParseISO(t.deadline), startOfToday)) overdueTasks++;
           }
         });
         setUrgentTasksCount(urgentTasks);
@@ -126,7 +127,7 @@ export function Dashboard() {
         let meetingsWeek = 0;
         meetingsSnap.docs.forEach(doc => {
           const m = doc.data() as Meeting;
-          const mDate = parseISO(m.date);
+          const mDate = safeParseISO(m.date);
           if (isToday(mDate)) meetingsToday++;
           if (mDate >= weekStart && mDate <= weekEnd) meetingsWeek++;
         });
@@ -274,7 +275,7 @@ export function Dashboard() {
                       <p className="text-xs text-slate-500 capitalize">{log.entityType}</p>
                     </div>
                     <span className="text-xs text-slate-500 shrink-0">
-                      {format(parseISO(log.createdAt), 'MMM d, h:mm a')}
+                      {safeFormat(log.createdAt, 'MMM d, h:mm a')}
                     </span>
                   </div>
                 ))}

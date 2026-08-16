@@ -5,6 +5,7 @@ import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { Project, Task, Meeting, DocumentInfo, ActivityLog } from '../types';
 import { Loader2, ArrowLeft, Folder, CheckSquare, Calendar, FileText, Activity } from 'lucide-react';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 
 export function ProjectDetail() {
@@ -101,7 +102,7 @@ export function ProjectDetail() {
                 {meetings.map(m => (
                   <div key={m.id} className="p-3 border border-slate-800 rounded-xl bg-slate-950/50 flex justify-between items-center">
                     <span className="text-sm font-medium text-slate-200">{m.notesRaw.split('\n')[0] || 'Meeting'}</span>
-                    <span className="text-xs text-slate-500">{format(parseISO(m.date), 'MMM d')}</span>
+                    <span className="text-xs text-slate-500">{safeFormat(m.date, 'MMM d')}</span>
                   </div>
                 ))}
               </div>
@@ -140,7 +141,7 @@ export function ProjectDetail() {
                     <p className="text-sm text-slate-300">
                       <span className="font-bold text-white">{log.userId}</span> {log.action} <span className="font-bold text-white">{log.details}</span>
                     </p>
-                    <p className="text-xs text-slate-500 mt-1">{format(parseISO(log.createdAt), 'MMM d, h:mm a')}</p>
+                    <p className="text-xs text-slate-500 mt-1">{safeFormat(log.createdAt, 'MMM d, h:mm a')}</p>
                   </div>
                 ))}
               </div>

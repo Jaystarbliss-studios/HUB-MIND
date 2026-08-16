@@ -7,6 +7,7 @@ import { Client, Task, Meeting } from '../types';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { Loader2, ArrowLeft, Mail, Phone, Building2, User, Users as UsersIcon, Calendar as CalendarIcon, CheckSquare, Edit, Trash2 } from 'lucide-react';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
 import { getThumbnailUrl } from '../lib/cloudinary';
@@ -281,7 +282,7 @@ export function ClientDetail() {
                       }`}>
                         {task.status.replace('_', ' ')}
                       </span>
-                      {task.deadline && <span className="text-xs text-slate-500">{format(parseISO(task.deadline), 'MMM d, yyyy')}</span>}
+                      {task.deadline && <span className="text-xs text-slate-500">{safeFormat(task.deadline, 'MMM d, yyyy')}</span>}
                     </div>
                     <h3 className="text-sm font-semibold text-slate-200">{task.title}</h3>
                   </Link>
@@ -316,7 +317,7 @@ export function ClientDetail() {
                       }`}>
                         {(meeting.status || 'scheduled').replace('_', ' ')}
                       </span>
-                      {meeting.date && <span className="text-xs text-slate-500">{format(parseISO(meeting.date), 'MMM d, h:mm a')}</span>}
+                      {meeting.date && <span className="text-xs text-slate-500">{safeFormat(meeting.date, 'MMM d, h:mm a')}</span>}
                     </div>
                     <h3 className="text-sm font-semibold text-slate-200">{meeting.notesRaw.split('\\n')[0] || 'Meeting'}</h3>
                   </Link>

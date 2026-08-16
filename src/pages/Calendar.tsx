@@ -5,6 +5,7 @@ import { db } from '../firebaseConfig';
 import { Task, Meeting } from '../types';
 import { Link } from 'react-router-dom';
 import { Loader2, ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, CheckSquare, X } from 'lucide-react';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, parseISO, startOfDay, endOfDay } from 'date-fns';
 import * as Popover from '@radix-ui/react-popover';
 
@@ -187,8 +188,8 @@ export function Calendar() {
           ))}
           
           {days.map(day => {
-            const dayTasks = tasks.filter(t => t.deadline && isSameDay(parseISO(t.deadline), day));
-            const dayMeetings = meetings.filter(m => m.date && isSameDay(parseISO(m.date), day));
+            const dayTasks = tasks.filter(t => t.deadline && isSameDay(safeParseISO(t.deadline), day));
+            const dayMeetings = meetings.filter(m => m.date && isSameDay(safeParseISO(m.date), day));
             
             const isSelected = selectedDay && isSameDay(selectedDay, day);
             const isToday = isSameDay(day, new Date());
@@ -235,7 +236,7 @@ export function Calendar() {
                           m.status === 'rescheduled' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' :
                           'bg-slate-800/50 text-slate-400 border-slate-700/50'
                         }`}>
-                          {format(parseISO(m.date), 'HH:mm')} {(m.status || 'Scheduled').replace('_', ' ')}
+                          {safeFormat(m.date, 'HH:mm')} {(m.status || 'Scheduled').replace('_', ' ')}
                         </div>
                       ))}
                       {dayTasks.map(t => (
@@ -288,7 +289,7 @@ export function Calendar() {
                                     }`} />
                                     <div className="min-w-0">
                                       <p className="text-sm font-medium text-slate-200 truncate">{m.notesRaw.split('\n')[0] || 'Meeting'}</p>
-                                      <p className="text-xs text-slate-400">{format(parseISO(m.date), 'h:mm a')}</p>
+                                      <p className="text-xs text-slate-400">{safeFormat(m.date, 'h:mm a')}</p>
                                     </div>
                                   </div>
                                   <span className={`text-[10px] w-fit font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
@@ -363,7 +364,7 @@ export function Calendar() {
                                 type="date"
                                 value={format(selectedDay, 'yyyy-MM-dd')}
                                 onChange={e => {
-                                  const newDate = parseISO(e.target.value);
+                                  const newDate = safeParseISO(e.target.value);
                                   if (!isNaN(newDate.getTime())) {
                                     setSelectedDay(newDate);
                                   }

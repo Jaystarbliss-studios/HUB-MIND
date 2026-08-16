@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { Project } from '../types';
 import { logActivity } from '../lib/activity';
 import { Loader2, Plus, Folder, Search } from 'lucide-react';
+import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { Link } from 'react-router-dom';
 
@@ -145,7 +146,7 @@ export function Projects() {
               <p className="text-sm text-slate-400 line-clamp-2 mb-6 flex-1">{project.description || 'No description provided.'}</p>
               
               <div className="pt-4 border-t border-slate-800 flex justify-between items-center mt-auto">
-                <span className="text-xs text-slate-500">{format(parseISO(project.createdAt), 'MMM d, yyyy')}</span>
+                <span className="text-xs text-slate-500">{safeFormat(project.createdAt, 'MMM d, yyyy')}</span>
                 <Link to={`/projects/${project.id}`} className="text-sm font-bold text-accent hover:underline">View Project</Link>
               </div>
             </div>
