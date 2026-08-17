@@ -11,6 +11,7 @@ export interface LiveAudioCallbacks {
   onTurnComplete: () => void;
   onError?: (errorMsg: string) => void;
   onAudioLevel?: (inputLevel: number, outputLevel: number) => void;
+  onFunctionCall?: (functionCall: any) => void;
 }
 
 export class LiveAudioClient {
@@ -134,6 +135,11 @@ export class LiveAudioClient {
             }
           } else if (data.type === 'interrupted') {
             this.handleInterruption();
+          } else if (data.type === 'tool_call' || data.type === 'function_call') {
+            const fcs = data.functionCalls || (data.functionCall ? [data.functionCall] : []);
+            for (const fc of fcs) {
+              if (this.callbacks.onFunctionCall) this.callbacks.onFunctionCall(fc);
+            }
           } else if (data.type === 'error') {
             if (this.callbacks.onError) this.callbacks.onError(data.message || 'Live session error');
             this.callbacks.onStatusChange('error');
@@ -329,6 +335,7 @@ export class LiveAudioClient {
     }
   }
 
+  
   public setPushToTalk(enabled: boolean): void {
     this.pushToTalkMode = enabled;
     if (enabled && !this.isPushToTalkActive) {
@@ -343,6 +350,16 @@ export class LiveAudioClient {
           track.enabled = true;
         });
       }
+    }
+  }
+
+  
+  public sendFunctionResponse(functionResponse: any) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'function_response',
+        functionResponse
+      }));
     }
   }
 

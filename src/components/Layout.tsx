@@ -53,18 +53,30 @@ export function Layout() {
           where('status', '==', 'unprocessed'),
           where('createdBy', '==', profile.id)
         );
-    const unsub = onSnapshot(q, (snap) => {
-      setUnprocessedCount(snap.docs.length);
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setUnprocessedCount(snap.docs.length);
+      },
+      (err) => {
+        console.warn('Inbox listener warning:', err);
+      }
+    );
     
     const notifQ = query(
       collection(db, 'notifications'),
       where('userId', '==', profile.id),
       where('read', '==', false)
     );
-    const notifUnsub = onSnapshot(notifQ, (snap) => {
-      setUnreadNotifCount(snap.docs.length);
-    });
+    const notifUnsub = onSnapshot(
+      notifQ,
+      (snap) => {
+        setUnreadNotifCount(snap.docs.length);
+      },
+      (err) => {
+        console.warn('Notifications listener warning:', err);
+      }
+    );
     
     return () => {
       unsub();

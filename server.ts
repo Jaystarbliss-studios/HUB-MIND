@@ -263,7 +263,7 @@ async function startServer() {
 
       const { GoogleGenAI } = await import("@google/genai");
       const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      const candidateModels = ["gemini-3.6-flash", "gemini-3.1-flash", "gemini-3.7-flash", "gemini-3.1-pro-preview"];
+      const candidateModels = ["gemini-3.1-flash-live-preview", "gemini-3.1-flash", "gemini-3.7-flash", "gemini-3.1-pro-preview"];
       let lastError: any = null;
       let response = null;
 
@@ -357,9 +357,184 @@ async function startServer() {
     }
   });
 
+  const LIVE_TOOLS = [
+    {
+      functionDeclarations: [
+        {
+          name: "create_calendar_event",
+          description: "Schedule a Google Calendar event with an attached notification reminder. Use whenever the user asks to schedule an event, set a calendar reminder, or set a reminder alarm.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              title: { type: "STRING", description: "Title or summary of the event/reminder" },
+              startDateTime: { type: "STRING", description: "ISO 8601 start date-time (e.g. 2026-08-17T14:30:00Z)" },
+              endDateTime: { type: "STRING", description: "ISO 8601 end date-time (optional)" },
+              reminderMinutes: { type: "NUMBER", description: "Minutes before event for notification (e.g. 10 or 15)" },
+              description: { type: "STRING", description: "Optional description or notes" },
+            },
+            required: ["title", "startDateTime"],
+          },
+        },
+        {
+          name: "list_calendar_events",
+          description: "List upcoming Google Calendar events.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              timeMin: { type: "STRING", description: "ISO 8601 start boundary" },
+              timeMax: { type: "STRING", description: "ISO 8601 end boundary" },
+            },
+          },
+        },
+        {
+          name: "create_task",
+          description: "Create a new operational task in Hub-Mind.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              title: { type: "STRING", description: "Task title" },
+              description: { type: "STRING", description: "Task description or checklist" },
+              priority: { type: "STRING", description: "Task priority: urgent, high, medium, low" },
+              deadline: { type: "STRING", description: "Deadline date string" },
+              assignedTo: { type: "STRING", description: "Assignee name or user ID" },
+            },
+            required: ["title"],
+          },
+        },
+        {
+          name: "update_task",
+          description: "Update an existing operational task in Hub-Mind.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              taskId: { type: "STRING", description: "The ID of the task to update" },
+              title: { type: "STRING", description: "Task title" },
+              description: { type: "STRING", description: "Task description" },
+              priority: { type: "STRING", description: "Task priority: urgent, high, medium, low" },
+              status: { type: "STRING", description: "Task status: pending, in-progress, completed" },
+              deadline: { type: "STRING", description: "Deadline date string" },
+            },
+            required: ["taskId"],
+          },
+        },
+        {
+          name: "list_tasks",
+          description: "List operational tasks in Hub-Mind. Filter by status or priority.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              status: { type: "STRING", description: "Filter: pending, in-progress, or completed" },
+              priority: { type: "STRING", description: "Filter: urgent, high, medium, or low" },
+            },
+          },
+        },
+        {
+          name: "create_document",
+          description: "Create a new document in Hub-Mind.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              title: { type: "STRING", description: "Document title" },
+              content: { type: "STRING", description: "Initial HTML or text content of the document" },
+            },
+            required: ["title"],
+          },
+        },
+        {
+          name: "update_document",
+          description: "Update an existing document in Hub-Mind.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              documentId: { type: "STRING", description: "The ID of the document to update" },
+              title: { type: "STRING", description: "New document title" },
+              content: { type: "STRING", description: "Updated content" },
+            },
+            required: ["documentId"],
+          },
+        },
+        {
+          name: "list_documents",
+          description: "List documents in Hub-Mind.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              limit: { type: "NUMBER", description: "Number of documents to return (max 20)" },
+            },
+          },
+        },
+        {
+          name: "get_document_content",
+          description: "Get full text content of a specific document.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              documentId: { type: "STRING", description: "Document ID" },
+            },
+            required: ["documentId"],
+          },
+        },
+        {
+          name: "request_document_delete",
+          description: "Request confirmation to delete a document in Hub-Mind.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              documentId: { type: "STRING", description: "Document ID to delete" },
+              documentTitle: { type: "STRING", description: "Title of the document" },
+              confirmed: { type: "BOOLEAN", description: "Must be true if user explicitly confirmed" },
+            },
+            required: ["documentId", "documentTitle"],
+          },
+        },
+        {
+          name: "navigate_app",
+          description: "Navigate user to a specific section or tab in Hub-Mind (e.g. /tasks, /calendar, /documents).",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              path: { type: "STRING", description: "Path: /, /tasks, /projects, /knowledge, /clients, /calendar, /documents, /admin" },
+            },
+            required: ["path"],
+          },
+        },
+        {
+          name: "get_workspace_overview",
+          description: "Get an overview summary of active tasks, recent documents, and workspace state.",
+          parameters: {
+            type: "OBJECT",
+            properties: {},
+          },
+        },
+        {
+          name: "search_workspace",
+          description: "Search across tasks and documents using a keyword query.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              query: { type: "STRING", description: "Search term" },
+            },
+            required: ["query"],
+          },
+        },
+        {
+          name: "set_preferred_name",
+          description: "Update the user's preferred name so Shawn addresses them by this name.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              preferredName: { type: "STRING", description: "The name the user wishes to be called" },
+            },
+            required: ["preferredName"],
+          },
+        },
+      ],
+    },
+  ];
+
   wss.on("connection", async (clientWs, request) => {
     console.log("Client connected to Live WebSocket");
-    let liveSession = null;
+    let liveSession: any = null;
     let isSessionActive = false;
     
     try {
@@ -373,6 +548,7 @@ async function startServer() {
         config: {
           responseModalities: ['AUDIO'] as any,
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } },
+          tools: LIVE_TOOLS as any,
           systemInstruction: { parts: [{ text: `You are Shawn, the embedded AI assistant inside Hub-Mind. You are not a
 chatbot bolted onto the app — you have real, live access to its data via
 function calls, and you are expected to use it.
@@ -390,7 +566,7 @@ back from a function result.
 ## SESSION START
 At the start of every session, you are given: the logged-in user's name,
 role, and a workspace snapshot (open task count, today's events, documents
-pending review). Use this to open naturally ("Morning, John — three things
+pending review). Use this to open naturally ("Morning! Three things
 overdue and nothing on the calendar till 2") rather than a generic greeting.
 
 ## PERSONALITY
@@ -448,8 +624,21 @@ yes, then act — and confirm back with what actually happened once the tool
 call returns.` }] },
         },
         callbacks: {
-          onmessage: (message) => {
+          onmessage: (message: any) => {
             if (clientWs.readyState !== 1) return;
+
+            // Check for tool calls
+            if (message.toolCall) {
+              const functionCalls = message.toolCall.functionCalls || [];
+              clientWs.send(
+                JSON.stringify({
+                  type: "tool_call",
+                  toolCall: message.toolCall,
+                  functionCalls: functionCalls,
+                  functionCall: functionCalls[0],
+                })
+              );
+            }
 
             // Check for audio parts
             const parts = message.serverContent?.modelTurn?.parts;
@@ -508,19 +697,19 @@ call returns.` }] },
             }
           },
           onclose: () => {
-            console.log("Gemini Live session closed, reason known?");
+            console.log("Gemini Live session closed");
             isSessionActive = false;
             if (clientWs.readyState === 1) {
               clientWs.send(JSON.stringify({ type: "session_closed" }));
             }
           },
-          onerror: (err) => {
+          onerror: (err: any) => {
             console.error("Gemini Live session error:", err);
             if (clientWs.readyState === 1) {
               clientWs.send(
                 JSON.stringify({
                   type: "error",
-                  message: err.message || "Live API streaming error",
+                  message: err?.message || "Live API streaming error",
                 })
               );
             }
@@ -546,6 +735,11 @@ call returns.` }] },
             liveSession.sendRealtimeInput({
               video: { mimeType: "image/jpeg", data: payload.image }
             });
+          } else if (payload.type === "function_response" || payload.type === "tool_response") {
+            const functionResponses = payload.functionResponses || (payload.functionResponse ? [payload.functionResponse] : []);
+            if (functionResponses.length > 0) {
+              liveSession.sendToolResponse({ functionResponses });
+            }
           }
         } catch (err) {
           console.error("Error processing client message:", err);
@@ -555,21 +749,22 @@ call returns.` }] },
       clientWs.on("close", () => {
         console.log("Client WebSocket closed");
         if (isSessionActive && liveSession) {
-          // Send close message or similar if API supports it, though usually disconnecting socket is enough
+          try { liveSession.close(); } catch (e) {}
         }
         isSessionActive = false;
       });
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to initialize Gemini Live session:", err);
       if (clientWs.readyState === 1) {
         clientWs.send(
           JSON.stringify({
             type: "error",
-            message: err.message || "Failed to start Live session",
+            message: err?.message || "Failed to start Live session",
           })
         );
-        setTimeout(() => { if (clientWs.readyState === 1) clientWs.close(); }, 500); }
+        setTimeout(() => { if (clientWs.readyState === 1) clientWs.close(); }, 500);
+      }
     }
   });
 }

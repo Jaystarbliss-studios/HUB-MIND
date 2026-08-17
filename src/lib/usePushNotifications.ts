@@ -26,19 +26,29 @@ export function usePushNotifications(profileId?: string) {
       where('createdAt', '>', initTime.current)
     );
 
-    const unsub = onSnapshot(q, (snap) => {
-      snap.docChanges().forEach(change => {
-        if (change.type === 'added') {
-          const data = change.doc.data();
-          if (data.userId !== profileId) {
-            new Notification('Hub-Mind', {
-              body: `New Activity: ${data.details}`,
-              icon: '/icon.png',
-            });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        snap.docChanges().forEach(change => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            if (data.userId !== profileId) {
+              try {
+                new Notification('Hub-Mind', {
+                  body: `New Activity: ${data.details}`,
+                  icon: '/icon.png',
+                });
+              } catch (e) {
+                console.warn('Could not display notification', e);
+              }
+            }
           }
-        }
-      });
-    });
+        });
+      },
+      (error) => {
+        console.warn('Push notification subscription error:', error);
+      }
+    );
 
     return () => unsub();
   }, [profileId, permission]);

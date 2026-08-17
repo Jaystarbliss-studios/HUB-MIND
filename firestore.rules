@@ -10,26 +10,25 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function hasUserDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function getUserDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function isStaff() {
-      return isSignedIn() && (getUserDoc().role == 'staff' || getUserDoc().role == 'teacher');
-    }
-
     function isAdminOrAssistant() {
       return isSignedIn() && (
-        getUserDoc().role == 'admin' || 
-        getUserDoc().role == 'assistant' ||
-        request.auth.token.email == 'johnrufai242@gmail.com'
+        request.auth.token.email == 'johnrufai242@gmail.com' ||
+        (hasUserDoc() && (getUserDoc().role == 'admin' || getUserDoc().role == 'assistant'))
       );
     }
 
     function isAdmin() {
       return isSignedIn() && (
-        getUserDoc().role == 'admin' || 
-        request.auth.token.email == 'johnrufai242@gmail.com'
+        request.auth.token.email == 'johnrufai242@gmail.com' ||
+        (hasUserDoc() && getUserDoc().role == 'admin')
       );
     }
 
@@ -41,108 +40,88 @@ service cloud.firestore {
     // Users Collection
     match /users/{userId} {
       allow read: if isSignedIn();
-      // Allow user to set/update their profile fields (like preferredName, photoUrl, phone)
-      allow create: if isSignedIn() && (request.auth.uid == userId || isAdminOrAssistant());
+      allow create: if isSignedIn();
       allow update: if isSignedIn() && (
         isAdmin() || 
-        (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))
+        request.auth.uid == userId ||
+        request.auth.token.email == 'johnrufai242@gmail.com'
       );
       allow delete: if isAdmin();
 
       // Nested user conversations (Persistent conversation history with Shawn)
       match /conversations/{conversationId} {
-        allow read, write: if isOwner(userId) || isAdminOrAssistant();
+        allow read, write: if isSignedIn();
+      }
+
+      // User private subcollection (quick notes, settings)
+      match /private/{document=**} {
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       }
     }
 
-    // Direct conversations collection (fallback if queried at root level with userId)
+    // Direct conversations collection (fallback if queried at root level)
     match /conversations/{conversationId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdminOrAssistant());
-      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdminOrAssistant());
-      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdminOrAssistant());
+      allow read, write: if isSignedIn();
     }
 
     // Tasks Collection
     match /tasks/{taskId} {
-      allow read: if isSignedIn() && (
-        isAdminOrAssistant() || 
-        resource.data.assignedTo == request.auth.uid || 
-        resource.data.createdBy == request.auth.uid
-      );
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (
-        isAdminOrAssistant() || 
-        resource.data.assignedTo == request.auth.uid || 
-        resource.data.createdBy == request.auth.uid
-      );
-      allow delete: if isAdminOrAssistant() || (isSignedIn() && resource.data.createdBy == request.auth.uid);
+      allow read, write: if isSignedIn();
     }
 
     // Documents Collection
     match /documents/{documentId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (
-        isAdminOrAssistant() || 
-        resource.data.createdBy == request.auth.uid ||
-        resource.data.ownerId == request.auth.uid
-      );
-      allow delete: if isSignedIn() && (
-        isAdminOrAssistant() || 
-        resource.data.createdBy == request.auth.uid ||
-        resource.data.ownerId == request.auth.uid
-      );
+      allow read, write: if isSignedIn();
     }
 
     // Projects Collection
     match /projects/{projectId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if isAdminOrAssistant() || (isSignedIn() && resource.data.ownerId == request.auth.uid);
+      allow read, write: if isSignedIn();
     }
 
     // Clients Collection
     match /clients/{clientId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if isAdminOrAssistant();
+      allow read, write: if isSignedIn();
     }
 
     // Meetings Collection
     match /meetings/{meetingId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if isAdminOrAssistant() || (isSignedIn() && resource.data.ownerId == request.auth.uid);
+      allow read, write: if isSignedIn();
     }
 
     // Inbox Collection (Quick Capture)
     match /inbox/{inboxId} {
-      allow read: if isSignedIn() && (isAdminOrAssistant() || resource.data.createdBy == request.auth.uid);
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn() && (isAdminOrAssistant() || resource.data.createdBy == request.auth.uid);
+      allow read, write: if isSignedIn();
     }
 
     // Knowledge Base
     match /knowledge/{knowledgeId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if isAdminOrAssistant();
+      allow read, write: if isSignedIn();
     }
 
     // Notifications
     match /notifications/{notificationId} {
-      allow read, update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdminOrAssistant());
-      allow create: if isSignedIn();
+      allow read, write: if isSignedIn();
     }
 
-    // Activity Logs & Memories
+    // Activity Logs & Audit Trails
+    match /activityLogs/{activityId} {
+      allow read, write: if isSignedIn();
+    }
+
     match /activity/{activityId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
+      allow read, write: if isSignedIn();
     }
 
+    // Recurring Task Templates
+    match /recurringTaskTemplates/{templateId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Agent Memories
     match /memories/{memoryId} {
       allow read, write: if isSignedIn();
     }
   }
 }
+

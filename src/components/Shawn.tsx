@@ -39,8 +39,10 @@ import {
   Volume2,
   ChevronDown,
   ChevronUp,
+  Settings,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { VoiceAndWakeSettings } from './VoiceAndWakeSettings';
 
 type DialogSizePreset = 'compact' | 'standard' | 'wide' | 'fullscreen';
 
@@ -50,6 +52,7 @@ export function Shawn() {
   const [isOpen, setIsOpen] = useState(false);
   const [sizePreset, setSizePreset] = useState<DialogSizePreset>('standard');
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isVoiceModeActive, setIsVoiceModeActive] = useState(false);
 
   // Connection & Live Audio State
@@ -75,24 +78,67 @@ export function Shawn() {
   const [liveShawnTranscript, setLiveShawnTranscript] = useState<string>('');
   const [isChatLoading, setIsChatLoading] = useState(false);
 
-  // Memoize audioSettings so we don't recreate and restart WakeWordDetector continuously
-  const audioSettings = React.useMemo<AudioSettings>(() => ({
-    voice: 'Puck',
-    micGain: 1.0,
-    outputVolume: 1.0,
-    pushToTalk: false,
-    noiseSuppression: true,
-    echoCancellation: true,
-    wakeWord: {
-      enabled: true,
-      selectedPreset: 'hey_shawn',
-      customKeyword: '',
-      sensitivity: 'medium',
-      autoRespond: true,
-      wakeGreetingPrompt: "Right then! Ready when you are.",
-      soundFeedback: true,
-    },
-  }), []);
+  // Audio & Wake Word Settings with localStorage persistence
+  const [audioSettings, setAudioSettings] = useState<AudioSettings>(() => {
+    try {
+      const saved = localStorage.getItem('shawn_audio_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          voice: parsed.voice || 'Puck',
+          micGain: parsed.micGain ?? 1.0,
+          outputVolume: parsed.outputVolume ?? 1.0,
+          pushToTalk: parsed.pushToTalk ?? false,
+          noiseSuppression: parsed.noiseSuppression ?? true,
+          echoCancellation: parsed.echoCancellation ?? true,
+          wakeWord: {
+            enabled: parsed.wakeWord?.enabled ?? true,
+            selectedPreset: parsed.wakeWord?.selectedPreset || 'hey_shawn',
+            customKeyword: parsed.wakeWord?.customKeyword || '',
+            sensitivity: parsed.wakeWord?.sensitivity || 'medium',
+            autoRespond: parsed.wakeWord?.autoRespond ?? true,
+            wakeGreetingPrompt: parsed.wakeWord?.wakeGreetingPrompt || "Right then! Ready when you are.",
+            soundFeedback: parsed.wakeWord?.soundFeedback ?? true,
+          },
+        };
+      }
+    } catch (e) {
+      console.warn('Failed to parse saved audio settings', e);
+    }
+    return {
+      voice: 'Puck',
+      micGain: 1.0,
+      outputVolume: 1.0,
+      pushToTalk: false,
+      noiseSuppression: true,
+      echoCancellation: true,
+      wakeWord: {
+        enabled: true,
+        selectedPreset: 'hey_shawn',
+        customKeyword: '',
+        sensitivity: 'medium',
+        autoRespond: true,
+        wakeGreetingPrompt: "Right then! Ready when you are.",
+        soundFeedback: true,
+      },
+    };
+  });
+
+  const handleUpdateAudioSettings = useCallback((newPartial: Partial<AudioSettings>) => {
+    setAudioSettings((prev) => {
+      const updated: AudioSettings = {
+        ...prev,
+        ...newPartial,
+        wakeWord: newPartial.wakeWord ? { ...prev.wakeWord, ...newPartial.wakeWord } : prev.wakeWord,
+      };
+      try {
+        localStorage.setItem('shawn_audio_settings', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Failed to save audio settings', e);
+      }
+      return updated;
+    });
+  }, []);
 
   const liveClientRef = useRef<LiveAudioClient | null>(null);
 
@@ -164,7 +210,7 @@ export function Shawn() {
     [currentConversationId, user?.uid]
   );
 
-  // Wake word detector initialization using Web Speech API directly in Shawn component
+  // Wake word detector initialization using robust WakeWordDetector
   useEffect(() => {
     const isLiveActive = connectionState === 'connected';
     const isWwEnabled = audioSettings.wakeWord?.enabled !== false;
@@ -177,80 +223,41 @@ export function Shawn() {
       return;
     }
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn('SpeechRecognition not supported in this browser');
-      return;
-    }
+    const detector = new WakeWordDetector(audioSettings.wakeWord);
+    wakeWordDetectorRef.current = detector;
 
-    let recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    
-    let isStopped = false;
+    detector.setCallbacks({
+      onWake: (res) => {
+        setWakeWordFlashMessage(`Keyword "${res.matchedPhrase}" detected! Waking Shawn...`);
+        setTimeout(() => {
+          setWakeWordFlashMessage(null);
+        }, 3500);
 
-    recognition.onresult = (event: any) => {
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        const transcript = event.results[i][0].transcript.toLowerCase();
-        
-        // Wake word detection logic
-        if (transcript.includes('hey shawn') || transcript.includes('hey, shawn') || transcript.includes('hey sean') || transcript.includes('shawn')) {
-          setWakeWordFlashMessage(`Keyword "hey shawn" detected! Waking Shawn...`);
+        setIsOpen(true);
+
+        if (res.remainingPrompt && res.remainingPrompt.trim().length > 0) {
+          // If user spoke a command right after the wake word
           setTimeout(() => {
-            setWakeWordFlashMessage(null);
-          }, 3000);
-
-          setIsOpen(true);
+            handleSendMessage(res.remainingPrompt);
+          }, 300);
+        } else {
+          // If no command follow-up, activate voice mode or greet
           setIsVoiceModeActive(true);
           handleConnectLive();
-
-          // Try to extract remaining prompt
-          const matchIndex = transcript.indexOf('shawn');
-          if (matchIndex !== -1) {
-            const remaining = transcript.slice(matchIndex + 5).replace(/^[,\s.!?-]+/, '').trim();
-            if (remaining) {
-              setTimeout(() => {
-                handleSendMessage(remaining);
-              }, 800);
-            }
-          }
-          
-          isStopped = true;
-          recognition.stop();
-          break;
         }
-      }
-    };
+      },
+      onStatus: (listening, error) => {
+        if (error) {
+          console.debug('Wake word status:', error);
+        }
+      },
+    });
 
-    recognition.onerror = (event: any) => {
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        console.debug('Wake word status error:', event.error);
-      }
-    };
-
-    recognition.onend = () => {
-      // Auto-restart for continuous listening
-      if (!isStopped && !isLiveActive && isWwEnabled) {
-        setTimeout(() => {
-          if (!isStopped) {
-            try { recognition.start(); } catch (e) {}
-          }
-        }, 300);
-      }
-    };
-
-    try {
-      recognition.start();
-    } catch (e) {
-      console.warn("Could not start Web Speech API automatically", e);
-    }
+    detector.start();
 
     return () => {
-      isStopped = true;
-      try {
-        recognition.stop();
-      } catch (e) {}
+      detector.stop();
+      wakeWordDetectorRef.current = null;
     };
   }, [audioSettings.wakeWord, connectionState]);
 
@@ -288,6 +295,25 @@ export function Shawn() {
       onAudioLevel: (input, output) => {
         setInputLevel(input);
         setOutputLevel(output);
+      },
+      
+      onFunctionCall: async (fc) => {
+        const toolExec = await executeShawnTool(
+          fc.name,
+          fc.args,
+          profile,
+          (newPreferredName) => {
+            if (updatePreferredName) updatePreferredName(newPreferredName);
+          }
+        );
+        if (toolExec.actionPayload?.type === 'navigate' && toolExec.actionPayload.path) {
+          navigate(toolExec.actionPayload.path);
+        }
+        client.sendFunctionResponse({
+          name: fc.name,
+          id: fc.id,
+          response: toolExec.result
+        });
       },
       onTurnComplete: () => {
         setLiveUserTranscript((u) => {
@@ -834,6 +860,15 @@ call returns.`;
             <Radio className="w-4 h-4" />
           </button>
 
+          {/* Voice & Wake Word Settings Button */}
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="p-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-teal-300 rounded-lg border border-slate-700/80 transition"
+            title="Voice & Wake Word Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+
           {/* Size Preset Toggle */}
           <button
             onClick={() => {
@@ -863,6 +898,17 @@ call returns.`;
 
       {/* Main Content Area */}
       <div className="flex-1 relative flex flex-col overflow-hidden">
+        {/* Settings Modal overlay */}
+        {showSettingsModal && (
+          <div className="absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-md p-4 overflow-y-auto">
+            <VoiceAndWakeSettings
+              settings={audioSettings}
+              onUpdateSettings={handleUpdateAudioSettings}
+              onClose={() => setShowSettingsModal(false)}
+            />
+          </div>
+        )}
+
         {/* Sliding History Drawer */}
         <ShawnHistoryDrawer
           isOpen={showHistoryDrawer}
@@ -939,7 +985,7 @@ call returns.`;
                 onToggleCamera={() => setIsCameraActive(!isCameraActive)}
                 onSendImageFrame={(b64) => liveClientRef.current?.sendImageFrame(b64)}
                 audioSettings={audioSettings}
-                onUpdateAudioSettings={() => {}}
+                onUpdateAudioSettings={handleUpdateAudioSettings}
                 inputLevel={inputLevel}
                 outputLevel={outputLevel}
               />

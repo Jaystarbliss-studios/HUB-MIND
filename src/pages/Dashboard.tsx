@@ -102,61 +102,82 @@ export function Dashboard() {
         const weekEnd = endOfWeek(today);
 
         // Fetch Tasks (Urgent & Overdue)
-        const tasksQuery = profile.role === 'admin' || profile.role === 'assistant' 
-           ? query(collection(db, 'tasks'))
-           : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
-        const tasksSnap = await getDocs(tasksQuery);
-        let urgentTasks = 0;
-        let overdueTasks = 0;
-        tasksSnap.docs.forEach(doc => {
-          const t = doc.data() as Task;
-          if (t.status !== 'completed' && t.status !== 'archived') {
-            if (t.priority === 'urgent') urgentTasks++;
-            if (t.deadline && isBefore(safeParseISO(t.deadline), startOfToday)) overdueTasks++;
-          }
-        });
-        setUrgentTasksCount(urgentTasks);
-        setTasksOverdueCount(overdueTasks);
+        try {
+          const tasksQuery = profile.role === 'admin' || profile.role === 'assistant' 
+             ? query(collection(db, 'tasks'))
+             : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
+          const tasksSnap = await getDocs(tasksQuery);
+          let urgentTasks = 0;
+          let overdueTasks = 0;
+          tasksSnap.docs.forEach(doc => {
+            const t = doc.data() as Task;
+            if (t.status !== 'completed' && t.status !== 'archived') {
+              if (t.priority === 'urgent') urgentTasks++;
+              if (t.deadline && isBefore(safeParseISO(t.deadline), startOfToday)) overdueTasks++;
+            }
+          });
+          setUrgentTasksCount(urgentTasks);
+          setTasksOverdueCount(overdueTasks);
+        } catch (e) {
+          console.warn('Dashboard tasks query warning:', e);
+        }
 
         // Fetch Meetings
-        const meetingsQuery = profile.role === 'admin' || profile.role === 'assistant'
-           ? query(collection(db, 'meetings'))
-           : query(collection(db, 'meetings')); // Should probably filter by attendee but skipping for now
-        const meetingsSnap = await getDocs(meetingsQuery);
-        let meetingsToday = 0;
-        let meetingsWeek = 0;
-        meetingsSnap.docs.forEach(doc => {
-          const m = doc.data() as Meeting;
-          const mDate = safeParseISO(m.date);
-          if (isToday(mDate)) meetingsToday++;
-          if (mDate >= weekStart && mDate <= weekEnd) meetingsWeek++;
-        });
-        setTodayMeetingsCount(meetingsToday);
-        setMeetingsThisWeekCount(meetingsWeek);
+        try {
+          const meetingsQuery = query(collection(db, 'meetings'));
+          const meetingsSnap = await getDocs(meetingsQuery);
+          let meetingsToday = 0;
+          let meetingsWeek = 0;
+          meetingsSnap.docs.forEach(doc => {
+            const m = doc.data() as Meeting;
+            const mDate = safeParseISO(m.date);
+            if (isToday(mDate)) meetingsToday++;
+            if (mDate >= weekStart && mDate <= weekEnd) meetingsWeek++;
+          });
+          setTodayMeetingsCount(meetingsToday);
+          setMeetingsThisWeekCount(meetingsWeek);
+        } catch (e) {
+          console.warn('Dashboard meetings query warning:', e);
+        }
 
         // Fetch Clients Waiting (Lead status)
-        const clientsQuery = query(collection(db, 'clients'), where('status', '==', 'lead'));
-        const clientsSnap = await getDocs(clientsQuery);
-        setClientsWaitingCount(clientsSnap.docs.length);
+        try {
+          const clientsQuery = query(collection(db, 'clients'), where('status', '==', 'lead'));
+          const clientsSnap = await getDocs(clientsQuery);
+          setClientsWaitingCount(clientsSnap.docs.length);
+        } catch (e) {
+          console.warn('Dashboard clients query warning:', e);
+        }
 
         // Fetch Inbox Items
-        const inboxQuery = profile.role === 'admin' || profile.role === 'assistant'
-           ? query(collection(db, 'inbox'), where('status', '==', 'unprocessed'))
-           : query(collection(db, 'inbox'), where('status', '==', 'unprocessed'), where('createdBy', '==', profile.id));
-        const inboxSnap = await getDocs(inboxQuery);
-        setInboxItemsCount(inboxSnap.docs.length);
+        try {
+          const inboxQuery = profile.role === 'admin' || profile.role === 'assistant'
+             ? query(collection(db, 'inbox'), where('status', '==', 'unprocessed'))
+             : query(collection(db, 'inbox'), where('status', '==', 'unprocessed'), where('createdBy', '==', profile.id));
+          const inboxSnap = await getDocs(inboxQuery);
+          setInboxItemsCount(inboxSnap.docs.length);
+        } catch (e) {
+          console.warn('Dashboard inbox query warning:', e);
+        }
 
-        
         // Fetch Quick Notes
-        const notesDoc = await getDoc(doc(db, 'users', profile.id, 'private', 'quickNotes'));
-        if (notesDoc.exists()) {
-          setNotes(notesDoc.data().content || '');
+        try {
+          const notesDoc = await getDoc(doc(db, 'users', profile.id, 'private', 'quickNotes'));
+          if (notesDoc.exists()) {
+            setNotes(notesDoc.data().content || '');
+          }
+        } catch (e) {
+          console.warn('Dashboard quick notes warning:', e);
         }
 
         // Fetch Recent Activity
-        const activityQuery = query(collection(db, 'activityLogs'), orderBy('createdAt', 'desc'), limit(10));
-        const activitySnap = await getDocs(activityQuery);
-        setRecentActivity(activitySnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog)));
+        try {
+          const activityQuery = query(collection(db, 'activityLogs'), orderBy('createdAt', 'desc'), limit(10));
+          const activitySnap = await getDocs(activityQuery);
+          setRecentActivity(activitySnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog)));
+        } catch (e) {
+          console.warn('Dashboard activity query warning:', e);
+        }
 
       } catch (error) {
         console.error("Error fetching operations hub data", error);

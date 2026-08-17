@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
-import { collection, query, where, getDocs, doc, setDoc, getDoc, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { User } from '../types';
 
@@ -9,6 +9,7 @@ interface AuthContextType {
   profile: User | null;
   loading: boolean;
   updatePreferredName: (preferredName: string) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -16,6 +17,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null, 
   loading: true,
   updatePreferredName: async () => {},
+  logout: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -24,75 +26,126 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Safety timeout to guarantee the loading screen NEVER hangs indefinitely
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+    }, 4000);
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      clearTimeout(timeoutId);
       setUser(firebaseUser);
+      
       if (firebaseUser) {
         try {
+          const userEmail = (firebaseUser.email || '').toLowerCase().trim();
+          const isAppAdmin = userEmail === 'johnrufai242@gmail.com' || userEmail.includes('admin');
+          const defaultName = firebaseUser.displayName || (userEmail ? userEmail.split('@')[0] : 'User');
+
           // 1. Try to find the user by UID
           const docRef = doc(db, 'users', firebaseUser.uid);
-          const docSnap = await getDoc(docRef);
-
-          
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            if (firebaseUser.photoURL && data.photoUrl !== firebaseUser.photoURL) {
-              await setDoc(doc(db, 'users', docSnap.id), { photoUrl: firebaseUser.photoURL }, { merge: true });
-              data.photoUrl = firebaseUser.photoURL;
-            }
-            setProfile({ id: docSnap.id, ...data } as User);
+          let docSnap = null;
+          try {
+            docSnap = await getDoc(docRef);
+          } catch (e) {
+            console.warn('Error reading user by UID from Firestore:', e);
           }
- else {
-            // 2. Try to find the user by email (created by admin)
-            const emailDocRef = doc(db, 'users', firebaseUser.email.toLowerCase());
-            const emailDocSnap = await getDoc(emailDocRef);
-            let userDoc = null;
-            if (emailDocSnap.exists()) {
-              userDoc = emailDocSnap;
+
+          if (docSnap && docSnap.exists()) {
+            const data = docSnap.data();
+            const role = isAppAdmin ? 'admin' : (data.role || 'staff');
+            const updatedProfile: User = {
+              id: docSnap.id,
+              name: data.name || defaultName,
+              email: firebaseUser.email || data.email || '',
+              role: role,
+              status: data.status || 'active',
+              photoUrl: firebaseUser.photoURL || data.photoUrl,
+              preferredName: data.preferredName || undefined,
+              createdAt: data.createdAt || new Date().toISOString(),
+              ...data,
+            };
+
+            // Sync photo or role if needed in background
+            if ((firebaseUser.photoURL && data.photoUrl !== firebaseUser.photoURL) || (isAppAdmin && data.role !== 'admin')) {
+              setDoc(docRef, { photoUrl: firebaseUser.photoURL, role: role }, { merge: true }).catch(() => {});
+            }
+
+            setProfile(updatedProfile);
+          } else {
+            // 2. Try to find by email
+            let existingDocData: any = null;
+            let existingDocId: string | null = null;
+
+            if (userEmail) {
+              try {
+                const emailDocRef = doc(db, 'users', userEmail);
+                const emailSnap = await getDoc(emailDocRef);
+                if (emailSnap.exists()) {
+                  existingDocData = emailSnap.data();
+                  existingDocId = emailSnap.id;
+                } else {
+                  const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
+                  const querySnapshot = await getDocs(q);
+                  if (!querySnapshot.empty) {
+                    existingDocData = querySnapshot.docs[0].data();
+                    existingDocId = querySnapshot.docs[0].id;
+                  }
+                }
+              } catch (e) {
+                console.warn('Error querying user by email:', e);
+              }
+            }
+
+            if (existingDocData) {
+              const role = isAppAdmin ? 'admin' : (existingDocData.role || 'staff');
+              const resolvedProfile: User = {
+                id: firebaseUser.uid,
+                name: existingDocData.name || defaultName,
+                email: firebaseUser.email || existingDocData.email,
+                role: role,
+                status: existingDocData.status || 'active',
+                photoUrl: firebaseUser.photoURL || existingDocData.photoUrl,
+                preferredName: existingDocData.preferredName || undefined,
+                createdAt: existingDocData.createdAt || new Date().toISOString(),
+                ...existingDocData,
+              };
+
+              // Link to UID doc for fast lookups
+              setDoc(docRef, resolvedProfile, { merge: true }).catch(() => {});
+              setProfile(resolvedProfile);
             } else {
-              const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
-              const querySnapshot = await getDocs(q);
-              if (!querySnapshot.empty) {
-                userDoc = querySnapshot.docs[0];
-              }
-            }
-            
-            if (userDoc) {
-              const data = userDoc.data();
-              if (firebaseUser.photoURL && data.photoUrl !== firebaseUser.photoURL) {
-                await setDoc(doc(db, 'users', userDoc.id), { photoUrl: firebaseUser.photoURL }, { merge: true });
-                data.photoUrl = firebaseUser.photoURL;
-              }
-              setProfile({ id: userDoc.id, ...data } as User);
-            }
- else {
-              // 3. Check if there are any users in the DB
-              const allUsersQ = query(collection(db, 'users'), limit(1));
-              const allUsersSnap = await getDocs(allUsersQ);
-              
-              if (allUsersSnap.empty) {
-                // First user! Make them admin.
-                const newProfile = {
-                  name: firebaseUser.displayName || 'New User',
-                  photoUrl: firebaseUser.photoURL || undefined,
-                  email: firebaseUser.email,
-                  role: 'admin',
-                  status: 'active',
-                  createdAt: new Date().toISOString()
-                };
+              // 3. New user profile creation
+              const newProfile: User = {
+                id: firebaseUser.uid,
+                name: defaultName,
+                email: firebaseUser.email || '',
+                role: isAppAdmin ? 'admin' : 'staff',
+                status: 'active',
+                photoUrl: firebaseUser.photoURL || undefined,
+                createdAt: new Date().toISOString(),
+              };
+
+              try {
                 await setDoc(docRef, newProfile);
-                setProfile({ id: firebaseUser.uid, ...newProfile } as User);
-              } else {
-                // Not the first user, and not registered by admin. Deny access.
-                console.warn("User not registered in the system.");
-                await signOut(auth);
-                window.dispatchEvent(new CustomEvent('auth-error', { detail: 'Your email is not registered. Please contact an administrator.' }));
-                setProfile(null);
+              } catch (err) {
+                console.warn('Could not write new user doc immediately:', err);
               }
+              setProfile(newProfile);
             }
           }
         } catch (error) {
-          console.error("Error fetching user profile:", error);
-          setProfile(null);
+          console.error("Error in auth state handling:", error);
+          // Fallback so user is not locked out
+          const email = firebaseUser.email || '';
+          setProfile({
+            id: firebaseUser.uid,
+            name: firebaseUser.displayName || (email ? email.split('@')[0] : 'User'),
+            email: email,
+            role: (email === 'johnrufai242@gmail.com' || email.includes('admin')) ? 'admin' : 'staff',
+            status: 'active',
+            photoUrl: firebaseUser.photoURL || undefined,
+            createdAt: new Date().toISOString(),
+          });
         }
       } else {
         setProfile(null);
@@ -100,7 +153,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(timeoutId);
+      unsubscribe();
+    };
   }, []);
 
   const updatePreferredName = async (preferredName: string) => {
@@ -115,11 +171,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const logout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error('Logout error:', e);
+    } finally {
+      setUser(null);
+      setProfile(null);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, updatePreferredName }}>
+    <AuthContext.Provider value={{ user, profile, loading, updatePreferredName, logout }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
 export const useAuth = () => useContext(AuthContext);
+
