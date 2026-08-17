@@ -1,13 +1,7 @@
 const fs = require('fs');
+let code = fs.readFileSync('src/lib/shawnTools.ts', 'utf8');
 
-let shawn = fs.readFileSync('src/components/Shawn.tsx', 'utf8');
-shawn = shawn.replace(/AngelState/g, 'ShawnState');
-shawn = shawn.replace(/onAngelStateChange:/g, 'onShawnStateChange:');
-shawn = shawn.replace(/liveAngelTranscript=/g, 'liveShawnTranscript=');
-fs.writeFileSync('src/components/Shawn.tsx', shawn);
+code = code.replace(/tasksSnap\.docs\.map\(d => \(\{ id: d\.id, \.\.\.d\.data\(\) \}\)\)/g, 'tasksSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))');
+code = code.replace(/docsSnap\.docs\.map\(d => \(\{ id: d\.id, \.\.\.d\.data\(\) \}\)\)/g, 'docsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))');
 
-let wwd = fs.readFileSync('src/services/wakeWordDetector.ts', 'utf8');
-wwd = wwd.replace(/_angel/g, '_shawn');
-wwd = wwd.replace(/case 'angel'/g, "case 'shawn'");
-fs.writeFileSync('src/services/wakeWordDetector.ts', wwd);
-
+fs.writeFileSync('src/lib/shawnTools.ts', code);

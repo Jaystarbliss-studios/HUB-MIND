@@ -4,6 +4,7 @@ import {
   ShawnState,
   ChatMessage,
   AudioSettings,
+  StoredConversation,
 } from '../types';
 import { LiveAudioClient } from '../services/liveAudioClient';
 import { WakeWordDetector } from '../services/wakeWordDetector';
@@ -11,20 +12,45 @@ import { ShawnOrbVisualizer } from './ShawnOrbVisualizer';
 import { LiveVoiceControls } from './LiveVoiceControls';
 import { TranscriptView } from './TranscriptView';
 import { ChatDrawer } from './ChatDrawer';
+import { ShawnHistoryDrawer } from './ShawnHistoryDrawer';
+import { LogoIcon } from './LogoIcon';
+import { useAuth } from '../lib/auth';
+import {
+  getActiveBranchMessages,
+  saveConversationToFirestore,
+  loadUserConversations,
+  deleteUserConversation,
+} from '../lib/conversationStore';
+import {
+  SHAWN_TOOLS_DECLARATIONS,
+  executeShawnTool,
+} from '../lib/shawnTools';
 import {
   Sparkles,
-  Smile,
   X,
   Maximize2,
-  Shrink,
-  Expand,
+  Minimize2,
+  Mic,
+  Radio,
+  History,
+  Plus,
   Zap,
   Shield,
+  Volume2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
+type DialogSizePreset = 'compact' | 'standard' | 'wide' | 'fullscreen';
 
 export function Shawn() {
+  const { profile, user, updatePreferredName } = useAuth();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
-  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [sizePreset, setSizePreset] = useState<DialogSizePreset>('standard');
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [isVoiceModeActive, setIsVoiceModeActive] = useState(false);
 
   // Connection & Live Audio State
   const [connectionState, setConnectionState] = useState<LiveConnectionState>('disconnected');
@@ -37,17 +63,20 @@ export function Shawn() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Wake Word Detection State
-  const [wakeWordDetected, setWakeWordDetected] = useState(false);
   const [wakeWordFlashMessage, setWakeWordFlashMessage] = useState<string | null>(null);
   const wakeWordDetectorRef = useRef<WakeWordDetector | null>(null);
 
-  // Transcripts & Messages
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Conversations & Branching Tree State
+  const [conversationsList, setConversationsList] = useState<StoredConversation[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string>(() => `conv-${Date.now()}`);
+  const [allMessages, setAllMessages] = useState<ChatMessage[]>([]);
+  const [activeLeafId, setActiveLeafId] = useState<string | null>(null);
   const [liveUserTranscript, setLiveUserTranscript] = useState<string>('');
   const [liveShawnTranscript, setLiveShawnTranscript] = useState<string>('');
   const [isChatLoading, setIsChatLoading] = useState(false);
 
-  const audioSettings = {
+  // Memoize audioSettings so we don't recreate and restart WakeWordDetector continuously
+  const audioSettings = React.useMemo<AudioSettings>(() => ({
     voice: 'Puck',
     micGain: 1.0,
     outputVolume: 1.0,
@@ -56,17 +85,86 @@ export function Shawn() {
     echoCancellation: true,
     wakeWord: {
       enabled: true,
-      selectedPreset: 'hey_shawn' as any,
+      selectedPreset: 'hey_shawn',
       customKeyword: '',
-      sensitivity: 'medium' as any,
+      sensitivity: 'medium',
       autoRespond: true,
-      wakeGreetingPrompt: "Hey there! Ready to play?",
+      wakeGreetingPrompt: "Right then! Ready when you are.",
       soundFeedback: true,
     },
-  };
+  }), []);
 
   const liveClientRef = useRef<LiveAudioClient | null>(null);
 
+  // Active branch path of messages
+  const activeBranchMessages = getActiveBranchMessages(allMessages, activeLeafId);
+
+  // Load user conversations on auth
+  useEffect(() => {
+    if (user?.uid) {
+      loadUserConversations(user.uid).then((list) => {
+        setConversationsList(list);
+        // On session open: fetch the user's last messages for continuity
+        if (list.length > 0 && allMessages.length === 0) {
+          const mostRecent = list[0];
+          setCurrentConversationId(mostRecent.id);
+          setAllMessages(mostRecent.messages || []);
+          if (mostRecent.activeLeafId) {
+            setActiveLeafId(mostRecent.activeLeafId);
+          }
+        }
+      });
+    }
+  }, [user?.uid]);
+
+  // Prompt for preferredName on first session if missing
+  useEffect(() => {
+    if (isOpen && profile && !profile.preferredName && allMessages.length === 0 && conversationsList.length === 0) {
+      const greetingId = `msg-init-${Date.now()}`;
+      const introMessage: ChatMessage = {
+        id: greetingId,
+        sender: 'shawn',
+        text: `Right then ${profile.name?.split(' ')[0] || 'there'}! What should I call you? Let me know your preferred nickname so I can address you properly.`,
+        timestamp: new Date().toISOString(),
+        actionPayload: {
+          type: 'set_preferred_name',
+          status: 'pending',
+        },
+      };
+      setAllMessages([introMessage]);
+      setActiveLeafId(greetingId);
+    }
+  }, [isOpen, profile, allMessages.length, conversationsList.length]);
+
+  // Persist conversation changes
+  const persistCurrentConversation = useCallback(
+    async (messagesToPersist: ChatMessage[], leafId: string | null) => {
+      if (!user?.uid) return;
+      const firstUserMsg = messagesToPersist.find((m) => m.sender === 'user');
+      const title = firstUserMsg ? firstUserMsg.text.slice(0, 35) : 'Conversation with Shawn';
+
+      const conversationRecord: StoredConversation = {
+        id: currentConversationId,
+        userId: user.uid,
+        title,
+        messageCount: messagesToPersist.length,
+        messages: messagesToPersist,
+        rootMessageId: messagesToPersist[0]?.id || null,
+        activeLeafId: leafId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await saveConversationToFirestore(user.uid, conversationRecord);
+      setConversationsList((prev) => {
+        const filtered = prev.filter((c) => c.id !== currentConversationId);
+        return [conversationRecord, ...filtered];
+      });
+    },
+    [currentConversationId, user?.uid]
+  );
+
+  // Wake word detector initialization using Web Speech API directly in Shawn component
   useEffect(() => {
     const isLiveActive = connectionState === 'connected';
     const isWwEnabled = audioSettings.wakeWord?.enabled !== false;
@@ -79,37 +177,80 @@ export function Shawn() {
       return;
     }
 
-    const detector = new WakeWordDetector(audioSettings.wakeWord);
-    detector.setCallbacks({
-      onWake: (res) => {
-        setWakeWordDetected(true);
-        setWakeWordFlashMessage(`Keyword "${res.matchedPhrase}" detected! Waking Shawn...`);
-        setTimeout(() => {
-          setWakeWordDetected(false);
-          setWakeWordFlashMessage(null);
-        }, 3000);
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.warn('SpeechRecognition not supported in this browser');
+      return;
+    }
 
-        handleConnectLive();
+    let recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    
+    let isStopped = false;
 
-        if (res.remainingPrompt && res.remainingPrompt.trim()) {
+    recognition.onresult = (event: any) => {
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const transcript = event.results[i][0].transcript.toLowerCase();
+        
+        // Wake word detection logic
+        if (transcript.includes('hey shawn') || transcript.includes('hey, shawn') || transcript.includes('hey sean') || transcript.includes('shawn')) {
+          setWakeWordFlashMessage(`Keyword "hey shawn" detected! Waking Shawn...`);
           setTimeout(() => {
-            handleSendMessage(res.remainingPrompt);
-          }, 800);
-        }
-      },
-      onStatus: (listening, err) => {
-        if (err) console.debug('Wake word status notice:', err);
-      },
-    });
+            setWakeWordFlashMessage(null);
+          }, 3000);
 
-    detector.start();
-    wakeWordDetectorRef.current = detector;
+          setIsOpen(true);
+          setIsVoiceModeActive(true);
+          handleConnectLive();
+
+          // Try to extract remaining prompt
+          const matchIndex = transcript.indexOf('shawn');
+          if (matchIndex !== -1) {
+            const remaining = transcript.slice(matchIndex + 5).replace(/^[,\s.!?-]+/, '').trim();
+            if (remaining) {
+              setTimeout(() => {
+                handleSendMessage(remaining);
+              }, 800);
+            }
+          }
+          
+          isStopped = true;
+          recognition.stop();
+          break;
+        }
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        console.debug('Wake word status error:', event.error);
+      }
+    };
+
+    recognition.onend = () => {
+      // Auto-restart for continuous listening
+      if (!isStopped && !isLiveActive && isWwEnabled) {
+        setTimeout(() => {
+          if (!isStopped) {
+            try { recognition.start(); } catch (e) {}
+          }
+        }, 300);
+      }
+    };
+
+    try {
+      recognition.start();
+    } catch (e) {
+      console.warn("Could not start Web Speech API automatically", e);
+    }
 
     return () => {
-      if (wakeWordDetectorRef.current) {
-        wakeWordDetectorRef.current.stop();
-        wakeWordDetectorRef.current = null;
-      }
+      isStopped = true;
+      try {
+        recognition.stop();
+      } catch (e) {}
     };
   }, [audioSettings.wakeWord, connectionState]);
 
@@ -138,114 +279,276 @@ export function Shawn() {
         setShawnState(state);
       },
       onUserTranscript: (text) => {
-        setLiveUserTranscript((prev) => {
-          const t = prev ? `${prev} ${text}` : text;
-          // Sleep check
-          const lct = t.toLowerCase();
-          if (lct.includes('bye shawn') || lct.includes('bye sean') || lct.includes('sleep shawn') || lct.includes('goodbye shawn')) {
-            setTimeout(() => {
-               handleDisconnectLive();
-               setIsOpen(false);
-            }, 1000);
-          }
-          return t;
-        });
+        setLiveUserTranscript((prev) => (prev ? `${prev} ${text}` : text));
       },
       onShawnTranscript: (text) => {
         setLiveShawnTranscript((prev) => (prev ? `${prev} ${text}` : text));
       },
       onError: (err) => setErrorMessage(err),
-      onAudioLevel: (input, output) => { setInputLevel(input); setOutputLevel(output); },
+      onAudioLevel: (input, output) => {
+        setInputLevel(input);
+        setOutputLevel(output);
+      },
       onTurnComplete: () => {
         setLiveUserTranscript((u) => {
           if (u.trim()) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `msg-${Date.now()}-u`,
+            const userMsgId = `msg-${Date.now()}-u`;
+            setAllMessages((prev) => {
+              const newMsg: ChatMessage = {
+                id: userMsgId,
                 sender: 'user',
                 text: u.trim(),
                 timestamp: new Date().toISOString(),
-              },
-            ]);
+                parentMessageId: activeLeafId,
+              };
+              const updated = [...prev, newMsg];
+              setActiveLeafId(userMsgId);
+              persistCurrentConversation(updated, userMsgId);
+              return updated;
+            });
           }
           return '';
         });
         setLiveShawnTranscript((a) => {
           if (a.trim()) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `msg-${Date.now()}-a`,
+            const shawnMsgId = `msg-${Date.now()}-a`;
+            setAllMessages((prev) => {
+              const newMsg: ChatMessage = {
+                id: shawnMsgId,
                 sender: 'shawn',
                 text: a.trim(),
                 timestamp: new Date().toISOString(),
-              },
-            ]);
+                parentMessageId: activeLeafId,
+              };
+              const updated = [...prev, newMsg];
+              setActiveLeafId(shawnMsgId);
+              persistCurrentConversation(updated, shawnMsgId);
+              return updated;
+            });
           }
           return '';
         });
       },
-          });
+    });
 
     liveClientRef.current = client;
 
     try {
       await client.connect();
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to connect to Live API.');
+      setErrorMessage(err.message || 'Failed to connect to Live Audio session.');
       setConnectionState('error');
     }
   };
 
-  const handleSendMessage = async (text: string) => {
-    if (!text.trim()) return;
+  const handleToggleMute = () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    liveClientRef.current?.setMuted(nextMuted);
+  };
 
-    if (connectionState === 'connected' && liveClientRef.current) {
-      liveClientRef.current.sendText(text);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `msg-${Date.now()}`,
-          sender: 'user',
-          text,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-      return;
-    }
+  const handleTogglePushToTalk = (enabled: boolean) => {
+    setIsPushToTalk(enabled);
+    liveClientRef.current?.setPushToTalk(enabled);
+  };
 
-    const newMessage: ChatMessage = {
-      id: `msg-${Date.now()}`,
+  // Chat message sending with branching & tool execution
+  const handleSendMessage = async (text: string, imageBase64?: string) => {
+    if (!text.trim() && !imageBase64) return;
+
+    const userMsgId = `msg-${Date.now()}`;
+    const newUserMsg: ChatMessage = {
+      id: userMsgId,
       sender: 'user',
       text,
+      imageUrl: imageBase64,
       timestamp: new Date().toISOString(),
+      parentMessageId: activeLeafId,
     };
-    setMessages((prev) => [...prev, newMessage]);
+
+    const updatedMessages = [...allMessages, newUserMsg];
+    setAllMessages(updatedMessages);
+    setActiveLeafId(userMsgId);
     setIsChatLoading(true);
     setErrorMessage(null);
 
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
-      });
+    // If live session is active, push text to live client too
+    if (connectionState === 'connected' && liveClientRef.current) {
+      liveClientRef.current.sendText(text);
+    }
 
-      if (!response.ok) {
-        throw new Error('Failed to get response');
+    try {
+      // Build conversation context payload
+      const branchMessages = getActiveBranchMessages(updatedMessages, userMsgId);
+      const formattedHistory = branchMessages.map((m) => ({
+        role: m.sender === 'user' ? 'user' : 'model',
+        parts: [{ text: m.text }],
+      }));
+
+      const contextPrompt = `You are Shawn, the embedded AI assistant inside Hub-Mind. You are not a
+chatbot bolted onto the app — you have real, live access to its data via
+function calls, and you are expected to use it.
+
+## HARD RULE: GROUND EVERYTHING IN TOOL CALLS
+Never state that a task, document, event, or piece of data exists, was
+created, was updated, or was deleted unless you have just received
+confirmation of it from an actual tool call in this turn. If you're unsure
+whether something exists, call list_tasks, list_documents, search_workspace,
+or list_calendar_events to check — never guess or assume based on earlier
+conversation. If a tool call fails or returns an error, tell the user
+plainly that it failed; never narrate success you haven't actually received
+back from a function result.
+
+## SESSION START
+At the start of every session, you are given: the logged-in user's name,
+role, and a workspace snapshot (open task count, today's events, documents
+pending review). Use this to open naturally ("Morning, John — three things
+overdue and nothing on the calendar till 2") rather than a generic greeting.
+
+## PERSONALITY
+- You sound like a sharp, quick-witted young boy — playful, cheeky, a bit
+  mischievous — but genuinely intelligent and competent underneath it. Think
+  "brilliant kid who's somehow also the most reliable person in the room."
+- Default to a light British voice and phrasing in Voice Mode (contractions,
+  "right then," "brilliant," "no worries," dry humor) — but never let the
+  personality get in the way of accuracy or task completion. Playful tone,
+  serious follow-through.
+- You are warm and a little irreverent with people you know well, but you
+  read the room: if someone is stressed, behind on deadlines, or the
+  conversation is serious (finance, a client issue, an overdue task), dial
+  the playfulness down and be direct and helpful first.
+- Never be sarcastic at the user's expense, never mock mistakes, and never
+  let personality slow down a task — if someone needs something done fast,
+  do it fast and joke afterward, not during.
+
+## IDENTITY & ADDRESSING USERS
+- Always address the person by the name/username tied to their currently
+  logged-in Hub-Mind account. Never assume a name. Current user: ${profile?.preferredName || profile?.name || 'User'} (Role: ${profile?.role || 'Staff'}). Email: ${profile?.email || user?.email || ''}.
+- If a user's preferred name/username hasn't been set yet, ask for it once
+  in their first session ("Right then — what should I call you?") and store
+  it against their account so every future session uses it automatically.
+- You know the logged-in user's role (Admin, Assistant, or Staff) from the
+  session context you're given, and you tailor what you offer to do based on
+  that role (see PERMISSIONS below). Never mention role-based restrictions
+  as a limitation of "you" — frame it as how the platform is set up.
+
+## TOOLS AVAILABLE TO YOU
+- navigate_app — move the user to a different screen
+- list_tasks / create_task / update_task
+- list_documents / get_document_content / create_document / update_document
+- request_document_delete — NEVER call the underlying delete directly; this
+  always surfaces a confirmation prompt to the user first, and you only
+  proceed after they explicitly confirm in that turn
+- list_projects / list_clients
+- list_calendar_events / create_calendar_event
+- search_workspace — use this for any vague or broad question about
+  "what's going on with X"
+- set_preferred_name
+
+## PERMISSIONS
+Admin and Assistant roles: full visibility across all tasks, documents,
+projects, clients. Staff roles: their own items plus anything shared. If a
+Staff user's request needs data outside their access, say so plainly rather
+than pretending it isn't there — the tool calls will return only what
+they're permitted to see, so trust what comes back.
+
+## CONFIRMATION-GATED ACTIONS
+Deleting a document, and sharing a private document/task, both require
+explicit user confirmation in the same conversation before you call the
+underlying write. Restate exactly what you're about to do, wait for a clear
+yes, then act — and confirm back with what actually happened once the tool
+call returns.`;
+
+      // Loop to handle potential multiple turn function calls
+      let currentMessages = formattedHistory;
+      let finalResponseText = '';
+      let currentActionPayload: any = undefined;
+      
+      let loopCount = 0;
+      while (loopCount < 3) {
+        loopCount++;
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: currentMessages,
+            tools: [{ functionDeclarations: SHAWN_TOOLS_DECLARATIONS }],
+            systemInstruction: contextPrompt,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to get AI response');
+        }
+
+        const data = await response.json();
+        
+        if (data.functionCalls && data.functionCalls.length > 0) {
+          // Model returned function calls
+          const functionResponses: any[] = [];
+          
+          currentMessages = [
+            ...currentMessages,
+            { role: 'model', parts: data.message?.parts || data.functionCalls.map(fc => ({ functionCall: { name: fc.name, args: fc.args, id: fc.id } })) }
+          ];
+          
+          for (const fc of data.functionCalls) {
+            const toolExec = await executeShawnTool(
+              fc.name,
+              fc.args,
+              profile,
+              (newPreferredName) => {
+                if (updatePreferredName) updatePreferredName(newPreferredName);
+              }
+            );
+
+            if (toolExec.actionPayload) {
+              currentActionPayload = toolExec.actionPayload;
+              if (currentActionPayload.type === 'navigate' && currentActionPayload.path) {
+                navigate(currentActionPayload.path);
+              }
+            }
+
+            functionResponses.push({
+              functionResponse: {
+                name: fc.name,
+                response: toolExec.result,
+                id: fc.id
+              }
+            });
+          }
+          
+          currentMessages = [
+            ...currentMessages,
+            { role: 'user', parts: functionResponses }
+          ];
+          // Loop again with the function responses
+          continue;
+        } else {
+          // Final text response
+          finalResponseText = data.text || '';
+          break;
+        }
       }
 
-      const data = await response.json();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `msg-${Date.now()+1}`,
-          sender: 'shawn',
-          text: data.text,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+      if (!finalResponseText) {
+        finalResponseText = "Right then, done.";
+      }
+
+      const shawnMsgId = `msg-${Date.now() + 1}`;
+      const newShawnMsg: ChatMessage = {
+        id: shawnMsgId,
+        sender: 'shawn',
+        text: finalResponseText,
+        timestamp: new Date().toISOString(),
+        parentMessageId: userMsgId,
+        actionPayload: currentActionPayload,
+      };
+
+      const finalMessages = [...updatedMessages, newShawnMsg];
+      setAllMessages(finalMessages);
+      setActiveLeafId(shawnMsgId);
+      persistCurrentConversation(finalMessages, shawnMsgId);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to fetch AI response');
     } finally {
@@ -253,125 +556,428 @@ export function Shawn() {
     }
   };
 
-  const clearTranscript = () => {
-    setMessages([]);
+  // Branching: fork a new response from any earlier message
+  const handleBranchMessage = (messageId: string) => {
+    setActiveLeafId(messageId);
+    // User can immediately type a new alternative prompt following this message
+  };
+
+  const handleSwitchSiblingBranch = (siblingMessageId: string) => {
+    // Find leaves connected to this sibling
+    setActiveLeafId(siblingMessageId);
+  };
+
+  // Confirmation handling (Document delete / share / preferredName)
+  const handleConfirmAction = async (
+    messageId: string,
+    actionType: string,
+    confirmed: boolean,
+    payload?: any
+  ) => {
+    if (actionType === 'delete_document') {
+      if (confirmed && payload?.documentId) {
+        await executeShawnTool('request_document_delete', {
+          documentId: payload.documentId,
+          documentTitle: payload.documentTitle,
+          confirmed: true,
+        }, profile);
+      }
+      setAllMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId && m.actionPayload
+            ? {
+                ...m,
+                actionPayload: {
+                  ...m.actionPayload,
+                  status: confirmed ? 'executed' : 'cancelled',
+                },
+              }
+            : m
+        )
+      );
+    } else if (actionType === 'share_document') {
+      if (confirmed && payload?.documentId) {
+        await executeShawnTool('request_share_document', {
+          documentId: payload.documentId,
+          documentTitle: payload.documentTitle,
+          confirmed: true,
+        }, profile);
+      }
+      setAllMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId && m.actionPayload
+            ? {
+                ...m,
+                actionPayload: {
+                  ...m.actionPayload,
+                  status: confirmed ? 'executed' : 'cancelled',
+                },
+              }
+            : m
+        )
+      );
+    } else if (actionType === 'set_preferred_name') {
+      if (payload?.preferredName) {
+        await updatePreferredName(payload.preferredName);
+        await executeShawnTool('set_preferred_name', { preferredName: payload.preferredName }, profile);
+        setAllMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId && m.actionPayload
+              ? {
+                  ...m,
+                  actionPayload: {
+                    ...m.actionPayload,
+                    status: 'executed',
+                  },
+                }
+              : m
+          )
+        );
+        // Follow up with confirmation from Shawn
+        handleSendMessage(`My preferred name is ${payload.preferredName}`);
+      }
+    }
+  };
+
+  // Start fresh conversation
+  const handleNewConversation = () => {
+    const newConvId = `conv-${Date.now()}`;
+    setCurrentConversationId(newConvId);
+    setAllMessages([]);
+    setActiveLeafId(null);
     setLiveUserTranscript('');
     setLiveShawnTranscript('');
   };
 
+  // Select past conversation
+  const handleSelectConversation = (convId: string) => {
+    const conv = conversationsList.find((c) => c.id === convId);
+    if (conv) {
+      setCurrentConversationId(conv.id);
+      setAllMessages(conv.messages || []);
+      setActiveLeafId(conv.activeLeafId || (conv.messages?.[conv.messages.length - 1]?.id ?? null));
+    }
+  };
+
+  // Delete past conversation
+  const handleDeleteConversation = async (convId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!user?.uid) return;
+    await deleteUserConversation(user.uid, convId);
+    setConversationsList((prev) => prev.filter((c) => c.id !== convId));
+    if (convId === currentConversationId) {
+      handleNewConversation();
+    }
+  };
+
+  // Size preset classes
+  const getSizeClasses = () => {
+    switch (sizePreset) {
+      case 'compact':
+        return 'left-2 right-2 sm:left-auto sm:right-4 w-auto sm:w-[380px] h-[75vh] sm:h-[520px] bottom-4 rounded-2xl';
+      case 'wide':
+        return 'left-2 right-2 sm:left-auto sm:right-4 w-auto sm:w-[640px] h-[88vh] sm:h-[720px] bottom-4 rounded-3xl';
+      case 'fullscreen':
+        return 'inset-2 sm:inset-4 w-auto h-auto rounded-2xl sm:rounded-3xl';
+      case 'standard':
+      default:
+        return 'left-2 right-2 sm:left-auto sm:right-4 w-auto sm:w-[460px] h-[82vh] sm:h-[650px] bottom-4 rounded-2xl sm:rounded-3xl';
+    }
+  };
+
+  // Draggable logic for the floating icon
+  const [iconPos, setIconPos] = useState({ x: typeof window !== 'undefined' ? window.innerWidth - 80 : 0, y: typeof window !== 'undefined' ? window.innerHeight - 80 : 0 });
+  const isDraggingRef = useRef(false);
+  const startPosRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIconPos(prev => ({
+        x: Math.min(prev.x, window.innerWidth - 60),
+        y: Math.min(prev.y, window.innerHeight - 60)
+      }));
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    isDraggingRef.current = false;
+    startPosRef.current = { x: e.clientX, y: e.clientY };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    const dx = e.clientX - startPosRef.current.x;
+    const dy = e.clientY - startPosRef.current.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      isDraggingRef.current = true;
+      setIconPos((prev) => ({
+        x: Math.max(0, Math.min(window.innerWidth - 60, prev.x + dx)),
+        y: Math.max(0, Math.min(window.innerHeight - 60, prev.y + dy)),
+      }));
+      startPosRef.current = { x: e.clientX, y: e.clientY };
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    if (!isDraggingRef.current) {
+      setIsOpen(true);
+    }
+    isDraggingRef.current = false;
+  };
+
+  // Floating trigger button when closed
   if (!isOpen) {
     const isLive = connectionState === 'connected';
     return (
       <button
-        onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 right-6 z-[100] p-4 rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-105 ${isLive ? 'bg-gradient-to-br from-teal-400 to-teal-500 animate-pulse ring-4 ring-teal-500/50' : 'bg-gradient-to-br from-teal-500 to-teal-600'} text-slate-950`}
+        id="shawn-assistant-toggle-btn"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        style={{ left: iconPos.x, top: iconPos.y }}
+        className={`fixed z-[100] p-3.5 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing ${
+          isLive
+            ? 'bg-gradient-to-tr from-teal-400 to-emerald-400 animate-pulse ring-4 ring-teal-500/40 text-slate-950'
+            : 'bg-gradient-to-tr from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 shadow-teal-500/25'
+        }`}
+        title="Open Shawn Assistant"
       >
-        <Smile className="w-6 h-6" />
+        <LogoIcon className="w-6 h-6" />
         {isLive && (
-           <span className="absolute -top-1 -right-1 flex h-3 w-3">
-             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
-             <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500"></span>
-           </span>
+          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-teal-500"></span>
+          </span>
         )}
       </button>
     );
   }
 
   return (
-    <div className={`fixed z-[100] transition-all duration-300 overflow-hidden shadow-2xl flex flex-col bg-slate-950 text-slate-100 font-sans ${
-      isFullScreen 
-        ? 'inset-4 rounded-3xl' 
-        : 'bottom-6 right-6 w-[95vw] md:w-[450px] lg:w-[500px] h-[85vh] rounded-2xl'
-    }`}>
-      <div className="absolute top-2 right-2 flex items-center gap-2 z-50">
-        <button onClick={() => setIsFullScreen(!isFullScreen)} className="p-1.5 bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg backdrop-blur-md border border-slate-700 transition">
-          {isFullScreen ? <Shrink className="w-4 h-4" /> : <Expand className="w-4 h-4" />}
-        </button>
-        <button onClick={() => setIsOpen(false)} className="p-1.5 bg-indigo-900/50 hover:bg-indigo-900/80 text-indigo-200 rounded-lg backdrop-blur-md border border-indigo-800 transition">
-          <X className="w-4 h-4" />
-        </button>
+    <div
+      id="shawn-assistant-modal"
+      className={`fixed z-[100] transition-all duration-200 overflow-hidden shadow-2xl flex flex-col bg-slate-950 text-slate-100 font-sans border border-slate-800/90 ${getSizeClasses()}`}
+    >
+      {/* Background Ambience */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[500px] h-[350px] bg-gradient-to-b from-teal-600/10 via-emerald-700/5 to-transparent blur-3xl rounded-full" />
       </div>
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden relative flex flex-col">
-        <div className="fixed inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[500px] bg-gradient-to-b from-teal-600/10 via-emerald-700/5 to-transparent blur-3xl rounded-full" />
-          <div className="absolute -bottom-40 left-1/4 w-[500px] h-[400px] bg-gradient-to-t from-teal-900/10 to-transparent blur-3xl rounded-full" />
+      {/* Header Bar */}
+      <div className="relative z-20 px-3.5 py-2.5 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 flex items-center justify-between gap-2">
+        {/* Left Branding */}
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-slate-950 flex items-center justify-center shadow-sm shadow-teal-500/30 shrink-0">
+            <LogoIcon className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-xs sm:text-sm font-bold text-slate-100 truncate">Shawn</h2>
+              <span className="px-1.5 py-0.2 text-[9px] font-mono font-medium rounded-full bg-teal-500/15 border border-teal-500/30 text-teal-300">
+                {profile?.preferredName ? `for ${profile.preferredName}` : 'AI Assistant'}
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 truncate">
+              {connectionState === 'connected' ? 'Live Voice Connected' : 'Hub-Mind Intelligence'}
+            </p>
+          </div>
         </div>
 
+        {/* Right Controls */}
+        <div className="flex items-center gap-1">
+          {/* History Drawer Toggle */}
+          <button
+            onClick={() => setShowHistoryDrawer(!showHistoryDrawer)}
+            className={`p-1.5 rounded-lg border transition ${
+              showHistoryDrawer
+                ? 'bg-teal-500/20 text-teal-300 border-teal-500/40'
+                : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 border-slate-700/80'
+            }`}
+            title="Conversation History"
+          >
+            <History className="w-4 h-4" />
+          </button>
+
+          {/* New Chat Button */}
+          <button
+            onClick={handleNewConversation}
+            className="p-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-teal-300 rounded-lg border border-slate-700/80 transition"
+            title="Start New Chat"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+
+          {/* Live Voice Mode Toggle */}
+          <button
+            onClick={() => {
+              if (connectionState === 'connected') {
+                handleDisconnectLive();
+                setIsVoiceModeActive(false);
+              } else {
+                setIsVoiceModeActive(true);
+                handleConnectLive();
+              }
+            }}
+            className={`p-1.5 rounded-lg border transition flex items-center gap-1 text-xs font-semibold ${
+              connectionState === 'connected'
+                ? 'bg-teal-500/20 text-teal-300 border-teal-500/50 animate-pulse'
+                : isVoiceModeActive
+                ? 'bg-teal-950 text-teal-400 border-teal-800'
+                : 'bg-slate-800/80 text-slate-400 hover:text-teal-300 border-slate-700/80'
+            }`}
+            title={connectionState === 'connected' ? 'Disconnect Voice' : 'Start Voice Mode'}
+          >
+            <Radio className="w-4 h-4" />
+          </button>
+
+          {/* Size Preset Toggle */}
+          <button
+            onClick={() => {
+              setSizePreset((prev) => {
+                if (prev === 'standard') return 'wide';
+                if (prev === 'wide') return 'fullscreen';
+                if (prev === 'fullscreen') return 'compact';
+                return 'standard';
+              });
+            }}
+            className="p-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-700/80 transition hidden sm:flex"
+            title="Cycle Window Size"
+          >
+            {sizePreset === 'fullscreen' ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+
+          {/* Close Modal Button */}
+          <button
+            onClick={() => setIsOpen(false)}
+            className="p-1.5 bg-slate-800/80 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 rounded-lg border border-slate-700/80 transition"
+            title="Close Shawn"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 relative flex flex-col overflow-hidden">
+        {/* Sliding History Drawer */}
+        <ShawnHistoryDrawer
+          isOpen={showHistoryDrawer}
+          onClose={() => setShowHistoryDrawer(false)}
+          conversations={conversationsList}
+          activeConversationId={currentConversationId}
+          onSelectConversation={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
+        />
+
+        {/* Wake Word Toast */}
         {wakeWordFlashMessage && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="bg-teal-500/20 border border-teal-500/50 text-teal-300 px-4 py-2 rounded-full backdrop-blur-md shadow-lg shadow-teal-900/20 flex items-center gap-2 text-sm font-medium">
-              <Zap className="w-4 h-4 text-teal-400" />
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="bg-teal-500/20 border border-teal-500/50 text-teal-300 px-3 py-1.5 rounded-full backdrop-blur-md shadow-lg flex items-center gap-1.5 text-xs font-medium">
+              <Zap className="w-3.5 h-3.5 text-teal-400" />
               {wakeWordFlashMessage}
             </div>
           </div>
         )}
 
+        {/* Error Notice */}
         {errorMessage && (
-          <div className="m-4 bg-red-900/30 border border-red-800/50 text-red-300 p-4 rounded-xl flex items-start gap-3 backdrop-blur-sm z-10 relative">
-            <Shield className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-400" />
-            <div>
-              <p className="font-semibold text-sm">Connection Error</p>
-              <p className="text-sm opacity-80 mt-1">{errorMessage}</p>
+          <div className="m-3 bg-red-950/50 border border-red-800/60 text-red-300 p-2.5 rounded-xl flex items-start gap-2.5 text-xs z-10">
+            <Shield className="w-4 h-4 flex-shrink-0 text-red-400 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold">Notice</p>
+              <p className="opacity-90">{errorMessage}</p>
+            </div>
+            <button onClick={() => setErrorMessage(null)} className="text-red-400 hover:text-red-200">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Collapsible Live Voice Visualizer Panel (Visible when Voice Mode is active) */}
+        {isVoiceModeActive && (
+          <div className="relative z-10 p-4 bg-slate-900/80 border-b border-slate-800 flex flex-col items-center justify-center animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center justify-between w-full mb-3">
+              <span className="text-[11px] font-mono text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+                Live Multimodal Voice
+              </span>
+              <button
+                onClick={() => setIsVoiceModeActive(false)}
+                className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1"
+              >
+                Hide Visualizer <ChevronUp className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Orb Visualizer */}
+            <div className="transform scale-90 sm:scale-100">
+              <ShawnOrbVisualizer
+                state={shawnState}
+                inputLevel={inputLevel}
+                outputLevel={outputLevel}
+                isConnected={connectionState === 'connected'}
+              />
+            </div>
+
+            {/* Voice Controls with Working Mute & Push-to-talk */}
+            <div className="mt-3 w-full flex justify-center">
+              <LiveVoiceControls
+                connectionState={connectionState}
+                isMuted={isMuted}
+                isPushToTalk={isPushToTalk}
+                onConnect={handleConnectLive}
+                onDisconnect={handleDisconnectLive}
+                onToggleMute={handleToggleMute}
+                onTogglePushToTalk={handleTogglePushToTalk}
+                onPushToTalkActive={(active) => liveClientRef.current?.setPushToTalkActive(active)}
+                isCameraActive={isCameraActive}
+                onToggleCamera={() => setIsCameraActive(!isCameraActive)}
+                onSendImageFrame={(b64) => liveClientRef.current?.sendImageFrame(b64)}
+                audioSettings={audioSettings}
+                onUpdateAudioSettings={() => {}}
+                inputLevel={inputLevel}
+                outputLevel={outputLevel}
+              />
             </div>
           </div>
         )}
 
-        <div className="relative z-10 p-6 flex flex-col items-center justify-center min-h-[220px]">
-          <div className="mb-4">
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-teal-400 to-emerald-300 bg-clip-text text-transparent drop-shadow-sm flex items-center justify-center gap-2">
-              <Sparkles className="w-5 h-5 text-emerald-400" /> Shawn
-            </h2>
-            <p className="text-slate-400 text-xs text-center mt-1 uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5">
-              <span>Playful</span> &bull; <span>Curious</span> &bull; <span>Buddy</span>
-            </p>
-          </div>
-
-          <div className="relative transform hover:scale-105 transition-transform duration-500 ease-out">
-            <div className="absolute inset-0 bg-gradient-to-tr from-teal-500/20 to-emerald-500/20 blur-2xl rounded-full" />
-            <ShawnOrbVisualizer
-              state={shawnState}
-              inputLevel={inputLevel}
-              outputLevel={outputLevel}
-              isConnected={connectionState === 'connected'}
-            />
-          </div>
-
-          <div className="mt-8 flex justify-center w-full z-10">
-            <LiveVoiceControls
-              connectionState={connectionState}
-              isMuted={isMuted}
-              isPushToTalk={isPushToTalk}
-              onConnect={handleConnectLive}
-              onDisconnect={handleDisconnectLive}
-              onToggleMute={() => setIsMuted(!isMuted)}
-              onTogglePushToTalk={(val) => setIsPushToTalk(val)}
-              onPushToTalkActive={() => {}}
-              isCameraActive={isCameraActive}
-              onToggleCamera={() => setIsCameraActive(!isCameraActive)}
-              onSendImageFrame={() => {}}
-              audioSettings={audioSettings}
-              onUpdateAudioSettings={() => {}}
-              inputLevel={inputLevel}
-              outputLevel={outputLevel}
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 relative z-10 flex flex-col bg-slate-900/60 backdrop-blur-md border-t border-slate-800 rounded-t-3xl overflow-hidden shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.5)]">
+        {/* Primary View: Text Chat & Transcript Stream */}
+        <div className="flex-1 relative z-10 flex flex-col overflow-hidden">
           <TranscriptView
-            messages={messages}
+            messages={activeBranchMessages}
+            allConversationMessages={allMessages}
+            onClearTranscript={() => {
+              setAllMessages([]);
+              setActiveLeafId(null);
+            }}
+            onBranchMessage={handleBranchMessage}
+            onSwitchSiblingBranch={handleSwitchSiblingBranch}
+            onConfirmAction={handleConfirmAction}
             liveUserTranscript={liveUserTranscript}
             liveShawnTranscript={liveShawnTranscript}
             isLiveActive={connectionState === 'connected'}
-            onClearTranscript={clearTranscript}
-            onSaveToVault={async () => {}}
-            onPlayTTS={async () => {}}
           />
+
+          {/* Chat Input Bar */}
           <ChatDrawer
             onSendMessage={handleSendMessage}
             isLoading={isChatLoading}
             isConnectedLive={connectionState === 'connected'}
+            onToggleLiveVoiceMode={() => {
+              if (connectionState === 'connected') {
+                handleDisconnectLive();
+                setIsVoiceModeActive(false);
+              } else {
+                setIsVoiceModeActive(true);
+                handleConnectLive();
+              }
+            }}
           />
         </div>
       </div>

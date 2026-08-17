@@ -8,6 +8,7 @@ export type TaskStatus = 'pending' | 'in_progress' | 'under_review' | 'completed
 export interface User {
   id: string;
   name: string;
+  preferredName?: string;
   email: string;
   role: Role;
   status: UserStatus;
@@ -151,15 +152,25 @@ export type LiveConnectionState = 'disconnected' | 'connecting' | 'connected' | 
 
 export type ShawnState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted' | 'muted';
 
+export interface MessageActionPayload {
+  type: 'delete_document' | 'share_document' | 'set_preferred_name';
+  documentId?: string;
+  documentTitle?: string;
+  confirmed?: boolean;
+  status?: 'pending' | 'confirmed' | 'cancelled' | 'executed';
+}
+
 export interface ChatMessage {
   id: string;
   sender: 'user' | 'shawn';
   text: string;
   timestamp: string;
+  parentMessageId?: string | null;
   isStreaming?: boolean;
   audioBase64?: string;
   imageUrl?: string;
   tag?: string;
+  actionPayload?: MessageActionPayload;
 }
 
 export interface MemoryItem {
@@ -171,11 +182,11 @@ export interface MemoryItem {
 }
 
 export interface WorldPulseItem {
-  id: string;
   region: string;
   title: string;
   summary: string;
   shawnNote: string;
+  id: string;
 }
 
 export type WakeWordPreset =
@@ -184,7 +195,6 @@ export type WakeWordPreset =
   | 'hello_shawn'
   | 'hi_shawn'
   | 'shawn'
-  | 'hey_shawn'
   | 'custom';
 
 export interface WakeWordConfig {
@@ -209,10 +219,13 @@ export interface AudioSettings {
 
 export interface StoredConversation {
   id: string;
+  userId?: string;
   title: string;
   summary?: string;
   messageCount: number;
   messages: ChatMessage[];
+  rootMessageId?: string | null;
+  activeLeafId?: string | null;
   createdAt: string;
   updatedAt: string;
   isLiveSession?: boolean;

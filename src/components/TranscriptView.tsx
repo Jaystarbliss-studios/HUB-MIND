@@ -9,16 +9,26 @@ import {
   Volume2,
   Sparkles,
   User,
-  ShieldAlert,
-  Save,
-  BookmarkCheck,
+  GitBranch,
+  ChevronLeft,
+  ChevronRight,
+  AlertTriangle,
+  Send,
+  Share2,
+  Calendar,
 } from 'lucide-react';
+import { LogoIcon } from './LogoIcon';
+import { getSiblingsInfo } from '../lib/conversationStore';
 
 interface TranscriptViewProps {
   messages: ChatMessage[];
+  allConversationMessages?: ChatMessage[];
   onClearTranscript: () => void;
   onSaveToVault?: () => void;
   onPlayTTS?: (text: string) => void;
+  onBranchMessage?: (messageId: string) => void;
+  onSwitchSiblingBranch?: (siblingMessageId: string) => void;
+  onConfirmAction?: (messageId: string, actionType: string, confirmed: boolean, payload?: any) => void;
   liveUserTranscript?: string;
   liveShawnTranscript?: string;
   isLiveActive: boolean;
@@ -26,15 +36,19 @@ interface TranscriptViewProps {
 
 export const TranscriptView: React.FC<TranscriptViewProps> = ({
   messages,
+  allConversationMessages = [],
   onClearTranscript,
   onSaveToVault,
   onPlayTTS,
+  onBranchMessage,
+  onSwitchSiblingBranch,
+  onConfirmAction,
   liveUserTranscript,
   liveShawnTranscript,
   isLiveActive,
 }) => {
-  const [copied, setCopied] = useState(false);
-  const [savedVaultSuccess, setSavedVaultSuccess] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [preferredNameInput, setPreferredNameInput] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-scroll on new messages or streaming transcript
@@ -44,221 +58,300 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
     }
   }, [messages, liveUserTranscript, liveShawnTranscript]);
 
-  const handleSaveToVaultClick = () => {
-    if (onSaveToVault) {
-      onSaveToVault();
-      setSavedVaultSuccess(true);
-      setTimeout(() => setSavedVaultSuccess(false), 2500);
-    }
-  };
-
-  const handleCopy = () => {
-    const text = messages
-      .map(
-        (m) =>
-          `[${new Date(m.timestamp).toLocaleTimeString()}] ${
-            m.sender === 'user' ? 'You' : 'Shawn'
-          }: ${m.text}`
-      )
-      .join('\n\n');
+  const handleCopySingle = (msgId: string, text: string) => {
     navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleDownload = () => {
-    const text = messages
-      .map(
-        (m) =>
-          `[${new Date(m.timestamp).toLocaleString()}] ${
-            m.sender === 'user' ? 'You' : 'Shawn'
-          }:\n${m.text}\n`
-      )
-      .join('\n');
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Shawn-Session-Transcript-${new Date().toISOString().slice(0, 10)}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    setCopiedId(msgId);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   return (
     <div
       id="transcript-view-panel"
-      className="flex flex-col h-full rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl shadow-xl overflow-hidden"
+      className="flex flex-col h-full bg-slate-950/40 backdrop-blur-md overflow-hidden relative"
     >
-      {/* Header Bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800/80 bg-slate-950/40">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-teal-400" />
-          <span className="text-xs font-semibold tracking-wide text-slate-200 uppercase font-mono">
-            Live Dialogue Transcript
-          </span>
-          {isLiveActive && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-400 font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Syncing
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          {onSaveToVault && (
-            <button
-              id="save-to-vault-btn"
-              onClick={handleSaveToVaultClick}
-              disabled={messages.length === 0}
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition ${
-                savedVaultSuccess
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                  : 'bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/30 disabled:opacity-30'
-              }`}
-              title="Save this conversation into Shawn's Vault"
-            >
-              {savedVaultSuccess ? (
-                <>
-                  <BookmarkCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Saved!</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Save to Vault</span>
-                </>
-              )}
-            </button>
-          )}
-          <button
-            id="copy-transcript-btn"
-            onClick={handleCopy}
-            disabled={messages.length === 0}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 disabled:opacity-40 transition"
-            title="Copy Dialogue"
-          >
-            {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-          </button>
-          <button
-            id="download-transcript-btn"
-            onClick={handleDownload}
-            disabled={messages.length === 0}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 disabled:opacity-40 transition"
-            title="Download Transcript"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-          <button
-            id="clear-transcript-btn"
-            onClick={onClearTranscript}
-            disabled={messages.length === 0}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-950/30 disabled:opacity-40 transition"
-            title="Clear Transcript"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
       {/* Message List */}
-      <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto space-y-4 scroll-smooth">
+      <div ref={scrollRef} className="flex-1 p-3 sm:p-4 overflow-y-auto space-y-3 sm:space-y-4 scroll-smooth">
         {messages.length === 0 && !liveUserTranscript && !liveShawnTranscript ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500 space-y-2">
-            <Sparkles className="w-8 h-8 text-teal-500/30 animate-pulse" />
-            <p className="text-sm font-serif text-slate-400">"Speak your mind. I'm listening with full attention."</p>
-            <p className="text-xs text-slate-600 font-mono">
-              Press "Start Live Dialogue" to begin real-time voice streaming with Shawn.
-            </p>
+          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500 space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400">
+              <LogoIcon className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-200">How can I help you today?</p>
+              <p className="text-xs text-slate-400 mt-1 max-w-xs leading-relaxed">
+                Ask about operational tasks, documents, schedule Google Calendar reminders, or switch to live voice mode.
+              </p>
+            </div>
           </div>
         ) : (
           <>
             {messages.map((msg) => {
               const isShawn = msg.sender === 'shawn';
+              const isCopied = copiedId === msg.id;
+
+              // Sibling branch information if all messages provided
+              const siblingsInfo = allConversationMessages.length > 0
+                ? getSiblingsInfo(allConversationMessages, msg.id)
+                : { total: 1, currentIndex: 0, siblings: [] };
+
               return (
                 <div
                   key={msg.id}
-                  className={`flex gap-3 text-sm animate-in fade-in duration-200 ${
+                  className={`group relative flex gap-2.5 text-sm animate-in fade-in duration-200 ${
                     isShawn ? 'items-start' : 'items-start flex-row-reverse'
                   }`}
                 >
                   {/* Avatar */}
                   <div
-                    className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 border ${
+                    className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 border ${
                       isShawn
-                        ? 'border-teal-500/40 bg-gradient-to-tr from-teal-600 to-emerald-400 text-slate-950 font-serif font-bold text-xs shadow-md shadow-teal-500/20'
+                        ? 'border-teal-500/40 bg-gradient-to-tr from-teal-600 to-emerald-400 text-slate-950 shadow-md shadow-teal-500/20'
                         : 'border-slate-700 bg-slate-800 text-slate-300'
                     }`}
                   >
-                    {isShawn ? 'A' : <User className="w-3.5 h-3.5" />}
+                    {isShawn ? <LogoIcon className="w-4 h-4" /> : <User className="w-3.5 h-3.5" />}
                   </div>
 
-                  {/* Message Bubble */}
-                  <div
-                    className={`max-w-[82%] rounded-2xl px-4 py-3 space-y-1.5 shadow-md ${
-                      isShawn
-                        ? 'bg-slate-800/80 border border-teal-500/20 text-slate-100'
-                        : 'bg-gradient-to-r from-teal-500/20 to-emerald-500/15 border border-teal-500/30 text-teal-100'
-                    }`}
-                  >
-                    {/* Header */}
-                    <div className="flex items-center justify-between gap-3 text-[10px] font-mono text-slate-400">
-                      <span className="font-semibold text-slate-300">
-                        {isShawn ? 'Shawn' : 'You'}
-                      </span>
-                      <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-
-                    {/* Image Attachment if present */}
-                    {msg.imageUrl && (
-                      <div className="rounded-lg overflow-hidden border border-slate-700 max-w-xs my-1">
-                        <img src={msg.imageUrl} alt="Shared context" className="w-full h-auto object-cover" />
+                  {/* Message Bubble Container */}
+                  <div className={`max-w-[88%] sm:max-w-[82%] space-y-1.5`}>
+                    {/* Bubble */}
+                    <div
+                      className={`relative rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-md ${
+                        isShawn
+                          ? 'bg-slate-900/90 border border-slate-800 text-slate-100'
+                          : 'bg-gradient-to-r from-teal-600/25 to-emerald-600/20 border border-teal-500/30 text-teal-50'
+                      }`}
+                    >
+                      {/* Sender Header */}
+                      <div className="flex items-center justify-between gap-3 text-[10px] font-mono text-slate-400 mb-1">
+                        <span className="font-semibold text-slate-300">
+                          {isShawn ? 'Shawn' : 'You'}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span>
+                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
                       </div>
-                    )}
 
-                    {/* Content */}
-                    <div className="text-xs leading-relaxed whitespace-pre-wrap font-sans">
-                      {msg.text}
-                    </div>
+                      {/* Image Attachment if present */}
+                      {msg.imageUrl && (
+                        <div className="rounded-lg overflow-hidden border border-slate-700 max-w-xs my-2">
+                          <img src={msg.imageUrl} alt="Shared context" className="w-full h-auto object-cover" />
+                        </div>
+                      )}
 
-                    {/* TTS Playback Action */}
-                    {isShawn && onPlayTTS && (
-                      <div className="pt-1 flex items-center justify-end">
-                        <button
-                          onClick={() => onPlayTTS(msg.text)}
-                          className="flex items-center gap-1 text-[10px] text-teal-400/80 hover:text-teal-300 transition"
-                          title="Read this turn aloud"
-                        >
-                          <Volume2 className="w-3 h-3" />
-                          <span>Replay Audio</span>
-                        </button>
+                      {/* Message Content */}
+                      <div className="text-xs sm:text-[13px] leading-relaxed whitespace-pre-wrap font-sans select-text">
+                        {msg.text}
                       </div>
-                    )}
+
+                      {/* Action Required Card (e.g. Document Delete Confirmation or Preferred Name) */}
+                      {msg.actionPayload && (
+                        <div className="mt-3 pt-2.5 border-t border-slate-800/80">
+                          {msg.actionPayload.type === 'delete_document' && (
+                            <div className="p-3 bg-red-950/40 border border-red-500/30 rounded-xl space-y-2">
+                              <div className="flex items-center gap-2 text-red-300 font-semibold text-xs">
+                                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                                <span>Confirm Document Deletion</span>
+                              </div>
+                              <p className="text-[11px] text-slate-300">
+                                Permanently delete "{msg.actionPayload.documentTitle || 'document'}"? This action cannot be undone.
+                              </p>
+                              {msg.actionPayload.status === 'executed' ? (
+                                <div className="text-[11px] font-semibold text-emerald-400 flex items-center gap-1">
+                                  <Check className="w-3.5 h-3.5" /> Deleted permanently.
+                                </div>
+                              ) : msg.actionPayload.status === 'cancelled' ? (
+                                <div className="text-[11px] text-slate-400">Deletion cancelled.</div>
+                              ) : (
+                                <div className="flex items-center gap-2 pt-1">
+                                  <button
+                                    onClick={() => onConfirmAction && onConfirmAction(msg.id, 'delete_document', true, msg.actionPayload)}
+                                    className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-semibold transition shadow-sm"
+                                  >
+                                    Confirm Delete
+                                  </button>
+                                  <button
+                                    onClick={() => onConfirmAction && onConfirmAction(msg.id, 'delete_document', false, msg.actionPayload)}
+                                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {msg.actionPayload.type === 'share_document' && (
+                            <div className="p-3 bg-teal-950/40 border border-teal-500/30 rounded-xl space-y-2">
+                              <div className="flex items-center gap-2 text-teal-300 font-semibold text-xs">
+                                <Share2 className="w-4 h-4 text-teal-400 shrink-0" />
+                                <span>Confirm Document Share</span>
+                              </div>
+                              <p className="text-[11px] text-slate-300">
+                                Share "{msg.actionPayload.documentTitle || 'document'}" with team members?
+                              </p>
+                              {msg.actionPayload.status === 'executed' ? (
+                                <div className="text-[11px] font-semibold text-emerald-400 flex items-center gap-1">
+                                  <Check className="w-3.5 h-3.5" /> Shared successfully.
+                                </div>
+                              ) : msg.actionPayload.status === 'cancelled' ? (
+                                <div className="text-[11px] text-slate-400">Sharing cancelled.</div>
+                              ) : (
+                                <div className="flex items-center gap-2 pt-1">
+                                  <button
+                                    onClick={() => onConfirmAction && onConfirmAction(msg.id, 'share_document', true, msg.actionPayload)}
+                                    className="px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-slate-950 rounded-lg text-xs font-semibold transition"
+                                  >
+                                    Confirm Share
+                                  </button>
+                                  <button
+                                    onClick={() => onConfirmAction && onConfirmAction(msg.id, 'share_document', false, msg.actionPayload)}
+                                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {msg.actionPayload.type === 'set_preferred_name' && (
+                            <div className="p-3 bg-teal-950/40 border border-teal-500/30 rounded-xl space-y-2">
+                              <p className="text-xs text-teal-200 font-medium">What name should I call you?</p>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="e.g. John, Alex..."
+                                  value={preferredNameInput}
+                                  onChange={(e) => setPreferredNameInput(e.target.value)}
+                                  className="flex-1 bg-slate-900 border border-teal-500/40 rounded-lg px-2.5 py-1 text-xs text-slate-100 focus:outline-none focus:border-teal-400"
+                                />
+                                <button
+                                  onClick={() => {
+                                    if (preferredNameInput.trim() && onConfirmAction) {
+                                      onConfirmAction(msg.id, 'set_preferred_name', true, { preferredName: preferredNameInput.trim() });
+                                    }
+                                  }}
+                                  disabled={!preferredNameInput.trim()}
+                                  className="px-3 py-1 bg-teal-500 text-slate-950 rounded-lg text-xs font-bold hover:bg-teal-400 disabled:opacity-40 transition"
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Footer Actions (Copy, Replay, Branch) */}
+                      <div className="mt-2 pt-1 flex items-center justify-between gap-2 border-t border-slate-800/40 text-[10px]">
+                        {/* Branching Sibling Switcher */}
+                        {siblingsInfo.total > 1 ? (
+                          <div className="flex items-center gap-1 text-slate-400 bg-slate-950/60 px-1.5 py-0.5 rounded-md border border-slate-800">
+                            <button
+                              onClick={() => {
+                                const prevIdx = siblingsInfo.currentIndex - 1;
+                                if (prevIdx >= 0) {
+                                  onSwitchSiblingBranch?.(siblingsInfo.siblings[prevIdx].id);
+                                }
+                              }}
+                              disabled={siblingsInfo.currentIndex === 0}
+                              className="p-0.5 hover:text-teal-300 disabled:opacity-30"
+                              title="Previous branch version"
+                            >
+                              <ChevronLeft className="w-3 h-3" />
+                            </button>
+                            <span className="font-mono text-[9px]">
+                              {siblingsInfo.currentIndex + 1}/{siblingsInfo.total}
+                            </span>
+                            <button
+                              onClick={() => {
+                                const nextIdx = siblingsInfo.currentIndex + 1;
+                                if (nextIdx < siblingsInfo.total) {
+                                  onSwitchSiblingBranch?.(siblingsInfo.siblings[nextIdx].id);
+                                }
+                              }}
+                              disabled={siblingsInfo.currentIndex === siblingsInfo.total - 1}
+                              className="p-0.5 hover:text-teal-300 disabled:opacity-30"
+                              title="Next branch version"
+                            >
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : <div />}
+
+                        <div className="flex items-center gap-1.5">
+                          {/* Copy message button */}
+                          <button
+                            onClick={() => handleCopySingle(msg.id, msg.text)}
+                            className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 rounded transition flex items-center gap-1"
+                            title="Copy message to clipboard"
+                          >
+                            {isCopied ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-400" />
+                                <span className="text-[9px] text-emerald-400">Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                              </>
+                            )}
+                          </button>
+
+                          {/* Branch button */}
+                          {onBranchMessage && (
+                            <button
+                              onClick={() => onBranchMessage(msg.id)}
+                              className="p-1 text-slate-400 hover:text-teal-300 hover:bg-teal-950/30 rounded transition flex items-center gap-1"
+                              title="Fork / branch a new response from here"
+                            >
+                              <GitBranch className="w-3 h-3" />
+                              <span className="text-[9px] hidden sm:inline">Branch</span>
+                            </button>
+                          )}
+
+                          {/* TTS Audio Replay */}
+                          {isShawn && onPlayTTS && (
+                            <button
+                              onClick={() => onPlayTTS(msg.text)}
+                              className="p-1 text-slate-400 hover:text-teal-300 hover:bg-slate-800/60 rounded transition flex items-center gap-1"
+                              title="Replay turn aloud"
+                            >
+                              <Volume2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
             })}
 
-            {/* Live Streaming User Speech Indicator */}
+            {/* Live Streaming User Speech */}
             {liveUserTranscript && (
-              <div className="flex gap-3 text-sm items-start flex-row-reverse animate-pulse">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 border border-teal-500/40 bg-teal-900/40 text-teal-300">
+              <div className="flex gap-2.5 text-sm items-start flex-row-reverse animate-pulse">
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border border-teal-500/40 bg-teal-900/40 text-teal-300">
                   <User className="w-3.5 h-3.5" />
                 </div>
                 <div className="max-w-[82%] rounded-2xl px-4 py-2.5 bg-teal-950/40 border border-teal-500/30 text-teal-200 space-y-1">
-                  <div className="text-[10px] font-mono text-teal-400">Transcribing Speech...</div>
+                  <div className="text-[10px] font-mono text-teal-400">Listening...</div>
                   <div className="text-xs leading-relaxed italic">{liveUserTranscript}</div>
                 </div>
               </div>
             )}
 
-            {/* Live Streaming Shawn Speech Indicator */}
+            {/* Live Streaming Shawn Speech */}
             {liveShawnTranscript && (
-              <div className="flex gap-3 text-sm items-start animate-pulse">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 border border-teal-500/40 bg-gradient-to-tr from-teal-600 to-emerald-400 text-slate-950 font-serif font-bold text-xs shadow-md">
-                  A
+              <div className="flex gap-2.5 text-sm items-start animate-pulse">
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border border-teal-500/40 bg-gradient-to-tr from-teal-600 to-emerald-400 text-slate-950 shadow-md">
+                  <LogoIcon className="w-4 h-4" />
                 </div>
                 <div className="max-w-[82%] rounded-2xl px-4 py-2.5 bg-teal-950/40 border border-teal-500/30 text-teal-200 space-y-1">
-                  <div className="text-[10px] font-mono text-teal-400">Shawn Responding...</div>
+                  <div className="text-[10px] font-mono text-teal-400">Shawn Speaking...</div>
                   <div className="text-xs leading-relaxed italic">{liveShawnTranscript}</div>
                 </div>
               </div>

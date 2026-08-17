@@ -136,6 +136,7 @@ export class LiveAudioClient {
             this.handleInterruption();
           } else if (data.type === 'error') {
             if (this.callbacks.onError) this.callbacks.onError(data.message || 'Live session error');
+            this.callbacks.onStatusChange('error');
           }
         } catch (err) {
           console.error('Error handling WebSocket message:', err);
@@ -316,6 +317,11 @@ export class LiveAudioClient {
 
   public setMuted(muted: boolean): void {
     this.isMuted = muted;
+    if (this.mediaStream) {
+      this.mediaStream.getAudioTracks().forEach((track) => {
+        track.enabled = !muted;
+      });
+    }
     if (muted) {
       this.callbacks.onShawnStateChange('muted');
     } else {
@@ -325,10 +331,28 @@ export class LiveAudioClient {
 
   public setPushToTalk(enabled: boolean): void {
     this.pushToTalkMode = enabled;
+    if (enabled && !this.isPushToTalkActive) {
+      if (this.mediaStream) {
+        this.mediaStream.getAudioTracks().forEach((track) => {
+          track.enabled = false;
+        });
+      }
+    } else if (!enabled && !this.isMuted) {
+      if (this.mediaStream) {
+        this.mediaStream.getAudioTracks().forEach((track) => {
+          track.enabled = true;
+        });
+      }
+    }
   }
 
   public setPushToTalkActive(active: boolean): void {
     this.isPushToTalkActive = active;
+    if (this.mediaStream && !this.isMuted) {
+      this.mediaStream.getAudioTracks().forEach((track) => {
+        track.enabled = active;
+      });
+    }
   }
 
   public setMicGain(value: number): void {

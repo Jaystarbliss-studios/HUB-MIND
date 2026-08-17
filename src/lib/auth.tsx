@@ -8,9 +8,15 @@ interface AuthContextType {
   user: FirebaseUser | null;
   profile: User | null;
   loading: boolean;
+  updatePreferredName: (preferredName: string) => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, profile: null, loading: true });
+const AuthContext = createContext<AuthContextType>({ 
+  user: null, 
+  profile: null, 
+  loading: true,
+  updatePreferredName: async () => {},
+});
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -97,8 +103,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
+  const updatePreferredName = async (preferredName: string) => {
+    if (!profile) return;
+    const cleanName = preferredName.trim();
+    try {
+      const docRef = doc(db, 'users', profile.id);
+      await setDoc(docRef, { preferredName: cleanName }, { merge: true });
+      setProfile((prev) => (prev ? { ...prev, preferredName: cleanName } : null));
+    } catch (err) {
+      console.error('Failed to update preferredName:', err);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading }}>
+    <AuthContext.Provider value={{ user, profile, loading, updatePreferredName }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,16 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Image as ImageIcon, X, Sparkles, Mic, MicOff, Volume2 } from 'lucide-react';
+import { Send, Image as ImageIcon, X, Sparkles, Mic, MicOff, Radio, AudioWaveform } from 'lucide-react';
+import { LogoIcon } from './LogoIcon';
 
 interface ChatDrawerProps {
   onSendMessage: (text: string, imageBase64?: string) => void;
   isLoading: boolean;
   isConnectedLive: boolean;
+  onToggleLiveVoiceMode?: () => void;
 }
 
 export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   onSendMessage,
   isLoading,
   isConnectedLive,
+  onToggleLiveVoiceMode,
 }) => {
   const [inputText, setInputText] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -151,14 +154,14 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   };
 
   return (
-    <div id="chat-input-panel" className="w-full">
+    <div id="chat-input-panel" className="w-full p-2.5 sm:p-3 bg-slate-950/80 border-t border-slate-800/80">
       <form
         onSubmit={handleSubmit}
-        className="relative flex flex-col gap-2 p-2 rounded-2xl bg-slate-900/90 border border-slate-800 backdrop-blur-xl shadow-2xl focus-within:border-teal-500/50 transition-colors"
+        className="relative flex flex-col gap-1.5 p-1.5 sm:p-2 rounded-2xl bg-slate-900/90 border border-slate-800 backdrop-blur-xl shadow-2xl focus-within:border-teal-500/50 transition-colors"
       >
         {/* Image Attachment Preview */}
         {imagePreview && (
-          <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-teal-500/40 bg-black/50 ml-2 mt-1">
+          <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-teal-500/40 bg-black/50 ml-2 mt-1">
             <img src={imagePreview} alt="Upload preview" className="w-full h-full object-cover" />
             <button
               type="button"
@@ -179,7 +182,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
           </div>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-1.5">
           {/* Image Upload Button */}
           <input
             type="file"
@@ -192,8 +195,8 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="p-2.5 rounded-xl text-slate-400 hover:text-teal-300 hover:bg-slate-800 transition"
-            title="Attach Image or Document for Visual Review"
+            className="p-2 text-slate-400 hover:text-teal-300 hover:bg-slate-800/80 rounded-xl transition"
+            title="Attach Image"
           >
             <ImageIcon className="w-4 h-4" />
           </button>
@@ -202,19 +205,35 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
           <button
             type="button"
             onClick={toggleVoiceToText}
-            className={`p-2.5 rounded-xl transition flex items-center justify-center ${
+            className={`p-2 rounded-xl transition flex items-center justify-center ${
               isListeningSpeech
                 ? 'bg-rose-500/20 text-rose-400 border border-rose-500/50 animate-pulse'
-                : 'text-slate-400 hover:text-teal-300 hover:bg-slate-800'
+                : 'text-slate-400 hover:text-teal-300 hover:bg-slate-800/80'
             }`}
             title={
               isListeningSpeech
-                ? 'Stop voice-to-text dictation'
-                : 'Voice-to-Text: Click to dictate your message'
+                ? 'Stop dictation'
+                : 'Dictate message with speech-to-text'
             }
           >
             {isListeningSpeech ? <Mic className="w-4 h-4 text-rose-400" /> : <Mic className="w-4 h-4" />}
           </button>
+
+          {/* Live Voice Mode Toggle */}
+          {onToggleLiveVoiceMode && (
+            <button
+              type="button"
+              onClick={onToggleLiveVoiceMode}
+              className={`p-2 rounded-xl transition flex items-center gap-1 text-xs font-semibold ${
+                isConnectedLive
+                  ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40 animate-pulse'
+                  : 'text-slate-400 hover:text-teal-300 hover:bg-slate-800/80'
+              }`}
+              title={isConnectedLive ? 'Live Voice Active' : 'Start Live Voice Session'}
+            >
+              <Radio className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Text Input */}
           <input
@@ -224,12 +243,12 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
             onChange={(e) => setInputText(e.target.value)}
             placeholder={
               isListeningSpeech
-                ? "Voice recognition listening... speak your message"
+                ? "Listening..."
                 : isConnectedLive
-                ? "Type or dictate a note to Shawn..."
-                : "Ask Shawn with text or voice-to-text dictation..."
+                ? "Send message or talk to Shawn..."
+                : "Ask Shawn anything..."
             }
-            className="flex-1 bg-transparent text-xs text-slate-100 placeholder-slate-500 focus:outline-none px-2 py-2"
+            className="flex-1 bg-transparent text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none px-2 py-1.5 min-w-0"
           />
 
           {/* Send Button */}
@@ -237,18 +256,12 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
             id="chat-send-btn"
             type="submit"
             disabled={isLoading || (!inputText.trim() && !speechInterim && !imagePreview)}
-            className="p-2.5 px-3.5 rounded-xl bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 text-slate-950 font-semibold text-xs flex items-center gap-1.5 transition disabled:opacity-40 disabled:hover:from-teal-500 active:scale-95 shadow-md shadow-teal-500/20"
+            className="p-2 sm:px-3 rounded-xl bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 text-slate-950 font-semibold text-xs flex items-center gap-1 transition disabled:opacity-40 active:scale-95 shadow-md shadow-teal-500/20 shrink-0"
           >
             {isLoading ? (
-              <>
-                <Sparkles className="w-3.5 h-3.5 animate-spin" />
-                <span className="hidden sm:inline">Sending</span>
-              </>
+              <Sparkles className="w-4 h-4 animate-spin" />
             ) : (
-              <>
-                <span>Send</span>
-                <Send className="w-3.5 h-3.5" />
-              </>
+              <Send className="w-4 h-4" />
             )}
           </button>
         </div>

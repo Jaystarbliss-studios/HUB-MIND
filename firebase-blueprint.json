@@ -1,0 +1,203 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access control and personalization",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "preferredName": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "format": "email", "maxLength": 150 },
+        "role": { "type": "string", "enum": ["admin", "assistant", "teacher", "staff"] },
+        "status": { "type": "string", "enum": ["active", "training", "inactive"] },
+        "phone": { "type": "string", "maxLength": 30 },
+        "trainingStartDate": { "type": "string", "maxLength": 50 },
+        "confirmedDate": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "photoUrl": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["name", "email", "role", "status", "createdAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Persistent conversation thread with tree-structured messages for branching",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "summary": { "type": "string", "maxLength": 500 },
+        "messageCount": { "type": "number" },
+        "rootMessageId": { "type": "string", "maxLength": 128 },
+        "activeLeafId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 },
+        "isLiveSession": { "type": "boolean" }
+      },
+      "required": ["userId", "title", "createdAt", "updatedAt"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Operation tasks assigned to team members",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 5000 },
+        "priority": { "type": "string", "enum": ["urgent", "high", "medium", "low"] },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "under_review", "completed", "archived"] },
+        "assignedTo": { "type": "string", "maxLength": 128 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "deadline": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["title", "priority", "status", "assignedTo", "createdBy", "createdAt"]
+    },
+    "Document": {
+      "title": "Document",
+      "description": "Internal and external operational documents and templates",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 100 },
+        "type": { "type": "string", "enum": ["internal", "external"] },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "fileRef": { "type": "string", "maxLength": 1000 },
+        "version": { "type": "number" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["title", "category", "fileRef", "version", "createdBy", "createdAt"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Partner, school, or parent contact record",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 200 },
+        "type": { "type": "string", "enum": ["school", "parent", "partner"] },
+        "phone": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 150 },
+        "address": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["active", "lead", "inactive"] },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["name", "type", "status", "createdAt"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Organizational project record",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 5000 },
+        "status": { "type": "string", "enum": ["active", "completed", "on_hold"] },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["name", "status", "ownerId", "createdAt"]
+    },
+    "Meeting": {
+      "title": "Meeting",
+      "description": "Meeting logs and notes",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 50 },
+        "notesRaw": { "type": "string", "maxLength": 10000 },
+        "aiSummary": { "type": "string", "maxLength": 5000 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["date", "createdAt"]
+    },
+    "InboxItem": {
+      "title": "InboxItem",
+      "description": "Quick capture note",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "maxLength": 2000 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["unprocessed", "processed"] },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["text", "createdBy", "status", "createdAt"]
+    },
+    "Knowledge": {
+      "title": "Knowledge",
+      "description": "Knowledge base SOP, lessons, and templates",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "content": { "type": "string", "maxLength": 20000 },
+        "category": { "type": "string", "enum": ["sop", "template", "faq", "lesson"] },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["title", "content", "category", "createdBy", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification alert",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "maxLength": 50 },
+        "message": { "type": "string", "maxLength": 500 },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["userId", "message", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User account profiles"
+    },
+    "/users/{userId}/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "User's persistent conversation history with Shawn"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Operational tasks collection"
+    },
+    "/documents/{documentId}": {
+      "schema": "Document",
+      "description": "Operational documents and file links"
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Clients and partners"
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Projects"
+    },
+    "/meetings/{meetingId}": {
+      "schema": "Meeting",
+      "description": "Meeting logs"
+    },
+    "/inbox/{inboxId}": {
+      "schema": "InboxItem",
+      "description": "Quick capture items"
+    },
+    "/knowledge/{knowledgeId}": {
+      "schema": "Knowledge",
+      "description": "Knowledge repository"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications"
+    }
+  }
+}
