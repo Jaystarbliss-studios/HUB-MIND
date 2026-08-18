@@ -5,6 +5,7 @@ import {
   WakeWordPreset,
 } from '../types';
 import { WakeWordDetector } from '../services/wakeWordDetector';
+import { VoiceCalibration } from './VoiceCalibration';
 import {
   Mic,
   Radio,
@@ -21,6 +22,7 @@ import {
   Info,
   Shield,
   HelpCircle,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface VoiceAndWakeSettingsProps {
@@ -34,6 +36,7 @@ export const VoiceAndWakeSettings: React.FC<VoiceAndWakeSettingsProps> = ({
   onUpdateSettings,
   onClose,
 }) => {
+  const [activeTab, setActiveTab] = useState<'wake' | 'calibration'>('wake');
   const [testingMic, setTestingMic] = useState(false);
   const [testTranscript, setTestTranscript] = useState('');
   const [testMatchDetected, setTestMatchDetected] = useState(false);
@@ -189,7 +192,7 @@ export const VoiceAndWakeSettings: React.FC<VoiceAndWakeSettingsProps> = ({
               </span>
             </h2>
             <p className="text-xs text-slate-400">
-              Configure how Shawn listens, detects your voice command keyword, and responds.
+              Configure how Shawn listens, detects your voice command keyword, and isolates your unique vocal identity.
             </p>
           </div>
         </div>
@@ -204,9 +207,40 @@ export const VoiceAndWakeSettings: React.FC<VoiceAndWakeSettingsProps> = ({
         )}
       </div>
 
+      {/* Tabs */}
+      <div className="px-5 pt-3 border-b border-slate-800 bg-slate-950/40 flex items-center gap-2">
+        <button
+          onClick={() => setActiveTab('wake')}
+          className={`pb-3 px-3 text-xs font-semibold border-b-2 transition flex items-center gap-1.5 ${
+            activeTab === 'wake'
+              ? 'border-teal-400 text-teal-300'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Radio className="w-3.5 h-3.5" />
+          <span>Wake Word & Recognition</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('calibration')}
+          className={`pb-3 px-3 text-xs font-semibold border-b-2 transition flex items-center gap-1.5 ${
+            activeTab === 'calibration'
+              ? 'border-teal-400 text-teal-300'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>Voiceprint Calibration (200+ Samples)</span>
+        </button>
+      </div>
+
       {/* Main Settings Body */}
       <div className="flex-1 p-5 overflow-y-auto space-y-6">
-        {/* Master Wake Word Activation Switch */}
+        {activeTab === 'calibration' ? (
+          <VoiceCalibration />
+        ) : (
+          <>
+            {/* Master Wake Word Activation Switch */}
         <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -524,6 +558,8 @@ export const VoiceAndWakeSettings: React.FC<VoiceAndWakeSettingsProps> = ({
             </div>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

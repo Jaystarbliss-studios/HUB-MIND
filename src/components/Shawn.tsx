@@ -228,22 +228,19 @@ export function Shawn() {
 
     detector.setCallbacks({
       onWake: (res) => {
-        setWakeWordFlashMessage(`Keyword "${res.matchedPhrase}" detected! Waking Shawn...`);
+        setWakeWordFlashMessage(`"${res.matchedPhrase}" detected — Shawn is active`);
         setTimeout(() => {
           setWakeWordFlashMessage(null);
-        }, 3500);
+        }, 5000);
 
-        setIsOpen(true);
+        // Keep Shawn connected in background without forcing modal open if closed
+        setIsVoiceModeActive(true);
+        handleConnectLive();
 
         if (res.remainingPrompt && res.remainingPrompt.trim().length > 0) {
-          // If user spoke a command right after the wake word
           setTimeout(() => {
             handleSendMessage(res.remainingPrompt);
-          }, 300);
-        } else {
-          // If no command follow-up, activate voice mode or greet
-          setIsVoiceModeActive(true);
-          handleConnectLive();
+          }, 400);
         }
       },
       onStatus: (listening, error) => {
@@ -759,27 +756,44 @@ call returns.`;
   if (!isOpen) {
     const isLive = connectionState === 'connected';
     return (
-      <button
-        id="shawn-assistant-toggle-btn"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
+      <div
         style={{ left: iconPos.x, top: iconPos.y }}
-        className={`fixed z-[100] p-3.5 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing ${
-          isLive
-            ? 'bg-gradient-to-tr from-teal-400 to-emerald-400 animate-pulse ring-4 ring-teal-500/40 text-slate-950'
-            : 'bg-gradient-to-tr from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 shadow-teal-500/25'
-        }`}
-        title="Open Shawn Assistant"
+        className="fixed z-[100] flex items-center gap-3 select-none"
       >
-        <LogoIcon className="w-6 h-6" />
-        {isLive && (
-          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-teal-500"></span>
-          </span>
+        <button
+          id="shawn-assistant-toggle-btn"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          className={`p-3.5 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing ${
+            isLive
+              ? 'bg-gradient-to-tr from-teal-400 to-emerald-400 animate-pulse ring-4 ring-teal-500/40 text-slate-950 shadow-teal-500/30'
+              : 'bg-gradient-to-tr from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 shadow-teal-500/25'
+          }`}
+          title="Open Shawn Assistant"
+        >
+          <LogoIcon className="w-6 h-6" />
+          {isLive && (
+            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-teal-500"></span>
+            </span>
+          )}
+        </button>
+
+        {wakeWordFlashMessage && (
+          <div
+            onClick={() => setIsOpen(true)}
+            className="cursor-pointer bg-slate-900/95 border border-teal-500/50 text-teal-200 px-3.5 py-2 rounded-2xl shadow-xl backdrop-blur-md flex items-center gap-2 text-xs font-medium animate-in fade-in slide-in-from-left-2 duration-200 max-w-[220px]"
+          >
+            <Zap className="w-3.5 h-3.5 text-teal-400 shrink-0 animate-bounce" />
+            <div className="flex-1 min-w-0">
+              <p className="truncate font-semibold text-slate-100">{wakeWordFlashMessage}</p>
+              <p className="text-[10px] text-teal-400/90">Tap icon to open visualizer</p>
+            </div>
+          </div>
         )}
-      </button>
+      </div>
     );
   }
 
@@ -946,27 +960,28 @@ call returns.`;
 
         {/* Collapsible Live Voice Visualizer Panel (Visible when Voice Mode is active) */}
         {isVoiceModeActive && (
-          <div className="relative z-10 p-4 bg-slate-900/80 border-b border-slate-800 flex flex-col items-center justify-center animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="flex items-center justify-between w-full mb-3">
-              <span className="text-[11px] font-mono text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+          <div className="relative z-10 px-3 py-2 bg-slate-900/90 border-b border-slate-800 flex flex-col items-center justify-center animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center justify-between w-full mb-1">
+              <span className="text-[10px] font-mono text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
                 Live Multimodal Voice
               </span>
               <button
                 onClick={() => setIsVoiceModeActive(false)}
-                className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                className="text-[10px] text-slate-400 hover:text-slate-200 flex items-center gap-1"
               >
-                Hide Visualizer <ChevronUp className="w-3.5 h-3.5" />
+                Hide Visualizer <ChevronUp className="w-3 h-3" />
               </button>
             </div>
 
-            {/* Orb Visualizer */}
-            <div className="transform scale-90 sm:scale-100">
+            {/* Compact Minimal Orb Visualizer */}
+            <div className="w-full">
               <ShawnOrbVisualizer
                 state={shawnState}
                 inputLevel={inputLevel}
                 outputLevel={outputLevel}
                 isConnected={connectionState === 'connected'}
+                compact={true}
               />
             </div>
 
