@@ -3,6 +3,7 @@ import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth
 import { collection, query, where, getDocs, doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { User } from '../types';
+import { checkAndSeedWorkspaceData } from './dbSeed';
 
 interface AuthContextType {
   user: FirebaseUser | null;
@@ -71,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             setProfile(updatedProfile);
+            checkAndSeedWorkspaceData(firebaseUser.uid, userEmail);
           } else {
             // 2. Try to find by email
             let existingDocData: any = null;

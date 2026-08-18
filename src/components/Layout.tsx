@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, Users, Calendar, Folder, Bell, LogOut, Settings, Inbox, Plus, X, Brain, Book, Briefcase } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Users, Calendar, Folder, Bell, LogOut, Settings, Inbox, Plus, X, Brain, Book, Briefcase, Search } from 'lucide-react';
 import { auth, db } from '../firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { collection, addDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../lib/auth';
 import { usePushNotifications } from '../lib/usePushNotifications';
+import { SyncStatusIndicator } from './SyncStatusIndicator';
+import { GlobalSearchModal } from './GlobalSearchModal';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -28,12 +30,24 @@ export function Layout() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const [showCapture, setShowCapture] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
   const [captureText, setCaptureText] = useState('');
   const [savingCapture, setSavingCapture] = useState(false);
   const [unprocessedCount, setUnprocessedCount] = useState(0);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const recurringChecked = useRef(false);
   const { permission, requestPermission } = usePushNotifications(profile?.id);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowSearchModal((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     if (profile && !recurringChecked.current) {
@@ -185,9 +199,25 @@ export function Layout() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative">
         {/* Header - Desktop */}
-        <header className="hidden md:flex h-16 border-b border-slate-800 items-center justify-end px-8 bg-slate-950/50 backdrop-blur-sm z-10 shrink-0">
-          <div className="flex items-center gap-6">
-            
+        <header className="hidden md:flex h-16 border-b border-slate-800 items-center justify-between px-8 bg-slate-950/50 backdrop-blur-sm z-10 shrink-0">
+          <div className="flex items-center gap-3 w-72">
+            <button
+              onClick={() => setShowSearchModal(true)}
+              className="flex items-center justify-between w-full px-3 py-1.5 bg-slate-900/80 hover:bg-slate-850 border border-slate-800 text-slate-400 hover:text-slate-200 rounded-lg text-xs transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Search className="w-3.5 h-3.5 text-slate-400" />
+                <span>Search workspace...</span>
+              </span>
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400 border border-slate-700 font-mono">
+                ⌘K
+              </kbd>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <SyncStatusIndicator />
+
             {permission === 'default' && (
               <button 
                 onClick={requestPermission}
@@ -197,16 +227,16 @@ export function Layout() {
               </button>
             )}
             <NavLink to="/notifications" className="relative cursor-pointer group">
-              <Bell className="w-6 h-6 text-slate-400 group-hover:text-slate-200 transition-colors" />
+              <Bell className="w-5 h-5 text-slate-400 group-hover:text-slate-200 transition-colors" />
               {unreadNotifCount > 0 && (
                 <span className="absolute top-0 right-0 w-2 h-2 bg-accent rounded-full border-2 border-slate-950"></span>
               )}
             </NavLink>
             <button 
               onClick={() => setShowCapture(true)}
-              className="bg-accent hover:bg-accent-hover text-slate-950 text-sm font-bold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+              className="bg-accent hover:bg-accent-hover text-slate-950 text-xs font-bold py-2 px-3.5 rounded-lg transition-colors flex items-center gap-1.5"
             >
-              <Plus className="w-4 h-4" /> Quick Capture
+              <Plus className="w-3.5 h-3.5" /> Quick Capture
             </button>
           </div>
         </header>
@@ -217,14 +247,23 @@ export function Layout() {
             <Brain className="w-6 h-6 text-accent" />
             Hub-Mind
           </h1>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setShowSearchModal(true)}
+              className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-slate-200"
+              title="Search workspace"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+
+            <SyncStatusIndicator />
             
             {permission === 'default' && (
               <button 
                 onClick={requestPermission}
                 className="text-[10px] font-bold text-accent border border-accent/30 bg-accent/10 px-2 py-1 rounded hover:bg-accent/20 transition-colors"
               >
-                Enable Push
+                Push
               </button>
             )}
             <NavLink to="/notifications" className="relative group">
@@ -234,9 +273,9 @@ export function Layout() {
               )}
             </NavLink>
             {profile?.photoUrl ? (
-              <img src={profile.photoUrl} alt="" className="w-8 h-8 rounded-full object-cover border border-slate-700" />
+              <img src={profile.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover border border-slate-700" />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs font-medium text-white border border-slate-600">
+              <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-xs font-medium text-white border border-slate-600">
                 {profile?.name?.charAt(0) || '?'}
               </div>
             )}
@@ -310,6 +349,12 @@ export function Layout() {
           </div>
         </div>
       )}
+
+      {/* Global Workspace Search Modal (Ctrl+K) */}
+      <GlobalSearchModal
+        isOpen={showSearchModal}
+        onClose={() => setShowSearchModal(false)}
+      />
     </div>
   );
 }

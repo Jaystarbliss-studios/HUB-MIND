@@ -77,6 +77,10 @@ export function Dashboard() {
   const [inboxItemsCount, setInboxItemsCount] = useState(0);
   const [tasksOverdueCount, setTasksOverdueCount] = useState(0);
   const [meetingsThisWeekCount, setMeetingsThisWeekCount] = useState(0);
+  const [totalTasksCount, setTotalTasksCount] = useState(0);
+  const [completedTasksCount, setCompletedTasksCount] = useState(0);
+  const [totalProjectsCount, setTotalProjectsCount] = useState(0);
+  const [activeProjectsCount, setActiveProjectsCount] = useState(0);
   
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
   const [notes, setNotes] = useState('');
@@ -101,7 +105,7 @@ export function Dashboard() {
         const weekStart = startOfWeek(today);
         const weekEnd = endOfWeek(today);
 
-        // Fetch Tasks (Urgent & Overdue)
+        // Fetch Tasks (Urgent, Overdue, Total, Completed)
         try {
           const tasksQuery = profile.role === 'admin' || profile.role === 'assistant' 
              ? query(collection(db, 'tasks'))
@@ -109,17 +113,32 @@ export function Dashboard() {
           const tasksSnap = await getDocs(tasksQuery);
           let urgentTasks = 0;
           let overdueTasks = 0;
+          let completedTasks = 0;
           tasksSnap.docs.forEach(doc => {
             const t = doc.data() as Task;
-            if (t.status !== 'completed' && t.status !== 'archived') {
+            if (t.status === 'completed') {
+              completedTasks++;
+            } else if (t.status !== 'archived') {
               if (t.priority === 'urgent') urgentTasks++;
               if (t.deadline && isBefore(safeParseISO(t.deadline), startOfToday)) overdueTasks++;
             }
           });
           setUrgentTasksCount(urgentTasks);
           setTasksOverdueCount(overdueTasks);
+          setTotalTasksCount(tasksSnap.docs.length);
+          setCompletedTasksCount(completedTasks);
         } catch (e) {
           console.warn('Dashboard tasks query warning:', e);
+        }
+
+        // Fetch Projects for Progress Ring
+        try {
+          const projSnap = await getDocs(collection(db, 'projects'));
+          setTotalProjectsCount(projSnap.docs.length);
+          const active = projSnap.docs.filter(d => (d.data() as any).status === 'active').length;
+          setActiveProjectsCount(active);
+        } catch (e) {
+          console.warn('Dashboard projects query warning:', e);
         }
 
         // Fetch Meetings
@@ -220,6 +239,161 @@ export function Dashboard() {
       <div className="mb-10">
         <h2 className="text-3xl font-bold text-white tracking-tight">{greeting}</h2>
         <p className="text-slate-400">Welcome to your Operations Hub.</p>
+      </div>
+
+      {/* Circular Progress Indicators Section */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
+        {/* Gauge 1: Task Completion Rate */}
+        {(() => {
+          const taskPct = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
+          const radius = 38;
+          const circumference = 2 * Math.PI * radius;
+          const strokeDashoffset = circumference - (taskPct / 100) * circumference;
+
+          return (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between shadow-sm">
+              <div>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  Task Completion
+                </span>
+                <h4 className="text-2xl font-extrabold text-white tracking-tight">{taskPct}%</h4>
+                <p className="text-xs text-slate-400 mt-1">
+                  {completedTasksCount} of {totalTasksCount} tasks done
+                </p>
+              </div>
+              <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    className="text-slate-800"
+                    strokeWidth="8"
+                    stroke="currentColor"
+                    fill="transparent"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    className="text-teal-400 transition-all duration-1000 ease-out"
+                    strokeWidth="8"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round"
+                    stroke="currentColor"
+                    fill="transparent"
+                  />
+                </svg>
+                <span className="absolute text-xs font-bold text-teal-300">{taskPct}%</span>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Gauge 2: Active Projects Health */}
+        {(() => {
+          const projPct = totalProjectsCount > 0 ? Math.round((activeProjectsCount / totalProjectsCount) * 100) : 100;
+          const radius = 38;
+          const circumference = 2 * Math.PI * radius;
+          const strokeDashoffset = circumference - (projPct / 100) * circumference;
+
+          return (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between shadow-sm">
+              <div>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  Active Projects
+                </span>
+                <h4 className="text-2xl font-extrabold text-white tracking-tight">{activeProjectsCount}</h4>
+                <p className="text-xs text-slate-400 mt-1">
+                  {activeProjectsCount} active • {totalProjectsCount} total
+                </p>
+              </div>
+              <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    className="text-slate-800"
+                    strokeWidth="8"
+                    stroke="currentColor"
+                    fill="transparent"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    className="text-blue-400 transition-all duration-1000 ease-out"
+                    strokeWidth="8"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round"
+                    stroke="currentColor"
+                    fill="transparent"
+                  />
+                </svg>
+                <span className="absolute text-xs font-bold text-blue-300">{activeProjectsCount}</span>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Gauge 3: Deadline & Schedule Reliability */}
+        {(() => {
+          const reliabilityPct = tasksOverdueCount === 0 ? 100 : Math.max(10, 100 - tasksOverdueCount * 25);
+          const radius = 38;
+          const circumference = 2 * Math.PI * radius;
+          const strokeDashoffset = circumference - (reliabilityPct / 100) * circumference;
+
+          return (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between shadow-sm">
+              <div>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  Schedule Health
+                </span>
+                <h4 className="text-2xl font-extrabold text-white tracking-tight">{reliabilityPct}%</h4>
+                <p className="text-xs text-slate-400 mt-1">
+                  {tasksOverdueCount === 0 ? '0 overdue deadlines' : `${tasksOverdueCount} overdue item(s)`}
+                </p>
+              </div>
+              <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    className="text-slate-800"
+                    strokeWidth="8"
+                    stroke="currentColor"
+                    fill="transparent"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    className={`${
+                      tasksOverdueCount > 0 ? 'text-amber-400' : 'text-emerald-400'
+                    } transition-all duration-1000 ease-out`}
+                    strokeWidth="8"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round"
+                    stroke="currentColor"
+                    fill="transparent"
+                  />
+                </svg>
+                <span
+                  className={`absolute text-xs font-bold ${
+                    tasksOverdueCount > 0 ? 'text-amber-300' : 'text-emerald-300'
+                  }`}
+                >
+                  {reliabilityPct}%
+                </span>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">

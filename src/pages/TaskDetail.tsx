@@ -4,10 +4,11 @@ import { useAuth } from '../lib/auth';
 import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task } from '../types';
-import { Loader2, ArrowLeft, Trash2, CheckCircle2, Clock, Calendar as CalendarIcon, Tag, AlignLeft, User, Edit } from 'lucide-react';
+import { Loader2, ArrowLeft, Trash2, CheckCircle2, Clock, Calendar as CalendarIcon, Tag, AlignLeft, User, Edit, MessageSquare, Send } from 'lucide-react';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
+import { VoiceDictation } from '../components/VoiceDictation';
 
 export function TaskDetail() {
   const { id } = useParams();
@@ -202,7 +203,13 @@ export function TaskDetail() {
             <input type="text" required value={editTitle} onChange={e => setEditTitle(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Description</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-slate-400">Description</label>
+              <VoiceDictation
+                onTranscript={(text) => setEditDesc((prev) => (prev ? `${prev} ${text}` : text))}
+                size="sm"
+              />
+            </div>
             <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={4} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -344,7 +351,52 @@ export function TaskDetail() {
             </div>
           </div>
         )}
+
+        {/* Task Notes & Voice Dictation Section */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-slate-200 font-semibold text-sm">
+              <MessageSquare className="w-4 h-4 text-teal-400" />
+              <span>Task Progress Notes & Comments</span>
             </div>
+            <VoiceDictation
+              onTranscript={async (voiceNote) => {
+                if (!id || !task || !profile) return;
+                const newComment = {
+                  userId: profile.id,
+                  text: voiceNote,
+                  timestamp: new Date().toISOString()
+                };
+                const updatedComments = [...(task.comments || []), newComment];
+                try {
+                  await updateDoc(doc(db, 'tasks', id), { comments: updatedComments });
+                  setTask({ ...task, comments: updatedComments });
+                } catch (e) {
+                  console.warn('Failed to add voice comment', e);
+                }
+              }}
+              placeholder="Speak note to add..."
+              size="sm"
+            />
+          </div>
+
+          <div className="space-y-2">
+            {task.comments && task.comments.length > 0 ? (
+              task.comments.map((c, i) => (
+                <div key={i} className="p-3 bg-slate-950/70 border border-slate-800/80 rounded-lg text-xs space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="font-semibold text-slate-300">{users[c.userId]?.name || 'User'}</span>
+                    <span>{safeFormat(c.timestamp, 'MMM d, h:mm a')}</span>
+                  </div>
+                  <p className="text-slate-200 text-sm">{c.text}</p>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-slate-500 italic">No notes recorded yet. Use the Dictate button above to capture voice notes.</p>
+            )}
+          </div>
+        </div>
+      </div>
       )}
     </div>
   );

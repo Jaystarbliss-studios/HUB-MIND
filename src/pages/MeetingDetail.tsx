@@ -4,10 +4,11 @@ import { useAuth } from '../lib/auth';
 import { doc, getDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Meeting } from '../types';
-import { Loader2, ArrowLeft, Trash2, Calendar as CalendarIcon, Clock, Users, AlignLeft } from 'lucide-react';
+import { Loader2, ArrowLeft, Trash2, Calendar as CalendarIcon, Clock, Users, AlignLeft, CheckSquare } from 'lucide-react';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
+import { VoiceDictation } from '../components/VoiceDictation';
 
 export function MeetingDetail() {
   const { id } = useParams();
@@ -192,12 +193,27 @@ export function MeetingDetail() {
         )}
 
         <div>
-          <div className="flex items-center gap-2 text-slate-200 font-semibold mb-3">
-            <AlignLeft className="w-5 h-5 text-slate-500" />
-            <h3>Notes</h3>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2 text-slate-200 font-semibold">
+              <AlignLeft className="w-5 h-5 text-slate-500" />
+              <h3>Meeting Notes & Transcripts</h3>
+            </div>
+            <VoiceDictation
+              onTranscript={async (transcript) => {
+                if (!id || !meeting) return;
+                const updatedNotes = meeting.notesRaw ? `${meeting.notesRaw}\n- ${transcript}` : `- ${transcript}`;
+                try {
+                  await updateDoc(doc(db, 'meetings', id), { notesRaw: updatedNotes });
+                  setMeeting({ ...meeting, notesRaw: updatedNotes });
+                } catch (err) {
+                  console.warn('Failed to append meeting voice note', err);
+                }
+              }}
+              size="sm"
+            />
           </div>
           <div className="text-slate-300 text-sm whitespace-pre-wrap bg-slate-950/50 p-4 rounded-xl border border-slate-800/50 min-h-[100px]">
-            {meeting.notesRaw || <span className="text-slate-500 italic">No notes provided.</span>}
+            {meeting.notesRaw || <span className="text-slate-500 italic">No notes provided. Use the Dictate button to record speech.</span>}
           </div>
         </div>
 

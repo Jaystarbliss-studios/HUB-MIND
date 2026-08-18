@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, getDocs, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
-import { Project } from '../types';
+import { Project, Task, Client } from '../types';
 import { logActivity } from '../lib/activity';
-import { Loader2, Plus, Folder, Search } from 'lucide-react';
+import { Loader2, Plus, Folder, Search, LayoutGrid, CalendarRange } from 'lucide-react';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { Link } from 'react-router-dom';
-
+import { ProjectTimelineView } from '../components/ProjectTimelineView';
 
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -20,6 +20,9 @@ function cn(...inputs: ClassValue[]) {
 export function Projects() {
   const { profile } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [viewMode, setViewMode] = useState<'grid' | 'timeline'>('grid');
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -29,11 +32,23 @@ export function Projects() {
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
-      const snap = await getDocs(q);
-      setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() } as Project)));
+      const [projSnap, tasksSnap, clientsSnap] = await Promise.all([
+        getDocs(collection(db, 'projects')),
+        getDocs(collection(db, 'tasks')),
+        getDocs(collection(db, 'clients')),
+      ]);
+
+      const pData = projSnap.docs.map(d => ({ id: d.id, ...d.data() } as Project));
+      pData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      setProjects(pData);
+
+      const tData = tasksSnap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
+      setTasks(tData);
+
+      const cData = clientsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Client));
+      setClients(cData);
     } catch (error) {
-      console.error("Error fetching projects", error);
+      console.error("Error fetching projects data", error);
     } finally {
       setLoading(false);
     }
@@ -68,28 +83,57 @@ export function Projects() {
   const filtered = projects.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto h-full overflow-y-auto">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto h-full overflow-y-auto space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
             <Folder className="w-6 h-6 text-accent" />
             Projects
           </h1>
-          <p className="text-sm text-slate-400 mt-1">Organize work into focused projects.</p>
+          <p className="text-sm text-slate-400 mt-1">Organize work into focused projects and track milestone roadmaps.</p>
         </div>
-        <button 
-          onClick={() => setShowCreate(true)}
-          className="bg-accent text-slate-950 px-4 py-2 rounded-lg font-bold text-sm hover:bg-white transition-colors flex items-center gap-2 shrink-0"
-        >
-          <Plus className="w-4 h-4" /> New Project
-        </button>
+        
+        <div className="flex items-center gap-3">
+          {/* View mode toggle */}
+          <div className="flex items-center bg-slate-900 border border-slate-800 p-1 rounded-xl">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                viewMode === 'grid'
+                  ? 'bg-accent/20 text-accent border border-accent/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              Grid
+            </button>
+            <button
+              onClick={() => setViewMode('timeline')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                viewMode === 'timeline'
+                  ? 'bg-accent/20 text-accent border border-accent/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <CalendarRange className="w-3.5 h-3.5" />
+              Timeline (Gantt)
+            </button>
+          </div>
+
+          <button 
+            onClick={() => setShowCreate(true)}
+            className="bg-accent text-slate-950 px-4 py-2 rounded-lg font-bold text-sm hover:bg-white transition-colors flex items-center gap-2 shrink-0"
+          >
+            <Plus className="w-4 h-4" /> New Project
+          </button>
+        </div>
       </div>
 
-      <div className="mb-6 relative">
+      <div className="relative">
         <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
         <input 
-          type="text"
-          placeholder="Search projects..."
+          type="text" 
+          placeholder="Search projects..." 
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-accent transition-colors"
@@ -97,7 +141,7 @@ export function Projects() {
       </div>
 
       {showCreate && (
-        <form onSubmit={handleCreate} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8">
+        <form onSubmit={handleCreate} className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
           <h3 className="text-lg font-bold text-white mb-4">Create New Project</h3>
           <div className="space-y-4">
             <div>
@@ -128,6 +172,12 @@ export function Projects() {
 
       {loading ? (
         <div className="py-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-500" /></div>
+      ) : viewMode === 'timeline' ? (
+        <ProjectTimelineView
+          projects={filtered}
+          tasks={tasks}
+          clients={clients}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filtered.map(project => (

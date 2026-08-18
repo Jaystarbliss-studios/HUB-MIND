@@ -112,38 +112,33 @@ export function Documents() {
     }
   };
 useEffect(() => {
-    fetchData();
-  }, []);
+    if (profile) {
+      fetchData();
+    }
+  }, [user, profile]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      let docsQuery, clientsQuery;
-      if (profile?.role === 'admin' || profile?.role === 'assistant') {
-        docsQuery = query(collection(db, 'documents'), orderBy('createdAt', 'desc'));
-        clientsQuery = query(collection(db, 'clients'), orderBy('name'));
-      } else {
-        docsQuery = query(collection(db, 'documents'), where('ownerId', '==', profile?.id));
-        clientsQuery = query(collection(db, 'clients'), where('ownerId', '==', profile?.id));
-      }
-
       const [docsSnap, clientsSnap] = await Promise.all([
-        getDocs(docsQuery),
-        getDocs(clientsQuery)
+        getDocs(collection(db, 'documents')),
+        getDocs(collection(db, 'clients'))
       ]);
       
       let docsData = docsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as DocumentInfo));
       let clientsData = clientsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
       
-      if (profile?.role !== 'admin' && profile?.role !== 'assistant') {
-        docsData = docsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        clientsData = clientsData.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      docsData = docsData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      clientsData = clientsData.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      
+      if (profile?.role === 'staff' || profile?.role === 'teacher') {
+        docsData = docsData.filter(d => !d.ownerId || d.ownerId === profile.id || d.createdBy === profile.id);
       }
       
       setDocsList(docsData);
       setClients(clientsData);
     } catch (error) {
-      console.error("Error fetching documents:", error);
+      console.warn("Error fetching documents:", error);
     } finally {
       setLoading(false);
     }

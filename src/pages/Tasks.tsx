@@ -36,30 +36,33 @@ export function Tasks() {
     if (!user || !profile) return;
     
     setLoading(true);
-    let q;
-    if (profile.role === 'admin' || profile.role === 'assistant') {
-      q = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
-    } else {
-      q = query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
-    }
-    
+    let q = query(collection(db, 'tasks'));
     
     const fetchClients = async () => {
-      const { getDocs, collection } = await import('firebase/firestore');
-      const snap = await getDocs(collection(db, 'clients'));
-      setClientsList(snap.docs.map(d => ({id: d.id, name: d.data().name})));
+      try {
+        const { getDocs, collection } = await import('firebase/firestore');
+        const snap = await getDocs(collection(db, 'clients'));
+        setClientsList(snap.docs.map(d => ({id: d.id, name: d.data().name})));
+      } catch (e) {
+        console.warn('Could not load clients for tasks:', e);
+      }
     };
     fetchClients();
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Task));
-      if (profile.role !== 'admin' && profile.role !== 'assistant') {
-        data = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      // Sort in memory by createdAt descending
+      data = data.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      
+      // If staff, filter to their assigned/created tasks or unassigned workspace tasks
+      if (profile.role === 'staff' || profile.role === 'teacher') {
+        data = data.filter(t => !t.assignedTo || t.assignedTo === profile.id || t.createdBy === profile.id);
       }
+      
       setTasks(data);
       setLoading(false);
     }, (error) => {
-      console.error("Error fetching tasks:", error);
+      console.warn("Error subscribing to tasks, attempting fallback:", error);
       setLoading(false);
     });
 
