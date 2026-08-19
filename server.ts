@@ -344,10 +344,40 @@ async function startServer() {
 
   const wss = new WebSocketServer({ noServer: true });
 
+  // Heartbeat ping interval to keep connection alive through proxies
+  const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws: any) => {
+      if (ws.isAlive === false) {
+        return ws.terminate();
+      }
+      ws.isAlive = false;
+      try {
+        ws.ping();
+      } catch (e) {}
+    });
+  }, 20000);
+
+  wss.on("close", () => {
+    clearInterval(heartbeatInterval);
+  });
+
   server.on("upgrade", (request, socket, head) => {
+    socket.on("error", (err) => {
+      console.warn("WebSocket socket connection error:", err.message);
+    });
+
     try {
-      const url = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
-      if (url.pathname === "/api/live-ws") {
+      const host = request.headers.host || "localhost:3000";
+      const url = new URL(request.url || "", `http://${host}`);
+      const cleanPath = url.pathname.replace(/\/+$/, "");
+
+      if (
+        cleanPath === "/api/live-ws" ||
+        cleanPath === "/live-ws" ||
+        cleanPath === "/live" ||
+        cleanPath === "/api/ws" ||
+        cleanPath.startsWith("/api/live-ws")
+      ) {
         wss.handleUpgrade(request, socket, head, (ws) => {
           wss.emit("connection", ws, request);
         });
@@ -532,24 +562,7 @@ async function startServer() {
     },
   ];
 
-  wss.on("connection", async (clientWs, request) => {
-    console.log("Client connected to Live WebSocket");
-    let liveSession: any = null;
-    let isSessionActive = false;
-    
-    try {
-      const { GoogleGenAI } = await import("@google/genai");
-      const geminiApiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6JOlxQQsN_s73bCi6BDbifJ20H1v3dOptXYMNCcMhjFQA";
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-
-      // Connect to Gemini Live API
-      liveSession = await ai.live.connect({
-        model: "gemini-3.1-flash-live-preview",
-        config: {
-          responseModalities: ['AUDIO'] as any,
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } },
-          tools: LIVE_TOOLS as any,
-          systemInstruction: { parts: [{ text: `You are Shawn, the embedded AI assistant inside Hub-Mind. You are not a
+  const SHAWN_PROMPT_INSTRUCTION = `You are Shawn, the embedded AI assistant inside Hub-Mind. You are not a
 chatbot bolted onto the app — you have real, live access to its data via
 function calls, and you are expected to use it.
 
@@ -621,141 +634,278 @@ Deleting a document, and sharing a private document/task, both require
 explicit user confirmation in the same conversation before you call the
 underlying write. Restate exactly what you're about to do, wait for a clear
 yes, then act — and confirm back with what actually happened once the tool
-call returns.` }] },
-        },
-        callbacks: {
-          onmessage: (message: any) => {
-            if (clientWs.readyState !== 1) return;
+call returns.`;
 
-            // Check for tool calls
-            if (message.toolCall) {
-              const functionCalls = message.toolCall.functionCalls || [];
-              clientWs.send(
-                JSON.stringify({
-                  type: "tool_call",
-                  toolCall: message.toolCall,
-                  functionCalls: functionCalls,
-                  functionCall: functionCalls[0],
-                })
-              );
-            }
+  wss.on("connection", async (clientWs: any, request) => {
+    console.log("Client connected to Live WebSocket");
+    clientWs.isAlive = true;
 
-            // Check for audio parts
-            const parts = message.serverContent?.modelTurn?.parts;
-            if (parts && parts.length > 0) {
-              for (const part of parts) {
-                if (part.inlineData?.data) {
-                  clientWs.send(
-                    JSON.stringify({
-                      type: "audio",
-                      audio: Buffer.isBuffer(part.inlineData.data) ? part.inlineData.data.toString('base64') : ((part.inlineData.data as any) instanceof Uint8Array ? Buffer.from((part.inlineData.data as any)).toString('base64') : part.inlineData.data),
-                      mimeType: part.inlineData.mimeType || "audio/pcm;rate=24000",
-                    })
-                  );
-                }
-              }
-            }
+    clientWs.on("pong", () => {
+      clientWs.isAlive = true;
+    });
 
-            // Check for user speech transcription
-            const inputTx = (message as any).serverContent?.inputTranscription?.text || (message as any).inputTranscription?.text || (message as any).serverContent?.inputAudioTranscription?.text;
-            if (inputTx) {
-              clientWs.send(
-                JSON.stringify({
-                  type: "input_transcription",
-                  text: inputTx,
-                })
-              );
-            }
+    let liveSession: any = null;
+    let isSessionActive = false;
+    let isFallbackMode = false;
+    let conversationalHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
 
-            // Check for model speech transcription
-            const outputTx = (message as any).serverContent?.outputTranscription?.text || (message as any).outputTranscription?.text || (message as any).serverContent?.outputAudioTranscription?.text;
-            if (outputTx) {
-              clientWs.send(
-                JSON.stringify({
-                  type: "output_transcription",
-                  text: outputTx,
-                })
-              );
-            }
+    const geminiApiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6JOlxQQsN_s73bCi6BDbifJ20H1v3dOptXYMNCcMhjFQA";
 
-            // Check for model turnaround done
-            if (message.serverContent?.turnComplete) {
-              clientWs.send(
-                JSON.stringify({
-                  type: "turn_complete",
-                })
-              );
-            }
-
-            // Check for interruption event
-            if (message.serverContent?.interrupted) {
-              clientWs.send(
-                JSON.stringify({
-                  type: "interrupted",
-                })
-              );
-            }
-          },
-          onclose: () => {
-            console.log("Gemini Live session closed");
-            isSessionActive = false;
-            if (clientWs.readyState === 1) {
-              clientWs.send(JSON.stringify({ type: "session_closed" }));
-            }
-          },
-          onerror: (err: any) => {
-            console.error("Gemini Live session error:", err);
-            if (clientWs.readyState === 1) {
-              clientWs.send(
-                JSON.stringify({
-                  type: "error",
-                  message: err?.message || "Live API streaming error",
-                })
-              );
-            }
+    // Try connecting to Gemini Live API
+    try {
+      const { GoogleGenAI, Modality } = await import("@google/genai");
+      const ai = new GoogleGenAI({
+        apiKey: geminiApiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
           },
         },
       });
 
-      isSessionActive = true;
-      clientWs.send(JSON.stringify({ type: "ready", message: "Connected to Live Voice" }));
+      try {
+        liveSession = await ai.live.connect({
+          model: "gemini-3.1-flash-live-preview",
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } },
+            tools: LIVE_TOOLS as any,
+            systemInstruction: { parts: [{ text: SHAWN_PROMPT_INSTRUCTION }] },
+          },
+          callbacks: {
+            onmessage: (message: any) => {
+              if (clientWs.readyState !== 1) return;
 
-      clientWs.on("message", (data) => {
+              // Check for tool calls
+              if (message.toolCall) {
+                const functionCalls = message.toolCall.functionCalls || [];
+                clientWs.send(
+                  JSON.stringify({
+                    type: "tool_call",
+                    toolCall: message.toolCall,
+                    functionCalls: functionCalls,
+                    functionCall: functionCalls[0],
+                  })
+                );
+              }
+
+              // Check for audio parts
+              const parts = message.serverContent?.modelTurn?.parts;
+              if (parts && parts.length > 0) {
+                for (const part of parts) {
+                  if (part.inlineData?.data) {
+                    clientWs.send(
+                      JSON.stringify({
+                        type: "audio",
+                        audio: Buffer.isBuffer(part.inlineData.data)
+                          ? part.inlineData.data.toString("base64")
+                          : (part.inlineData.data as any) instanceof Uint8Array
+                          ? Buffer.from(part.inlineData.data as any).toString("base64")
+                          : part.inlineData.data,
+                        mimeType: part.inlineData.mimeType || "audio/pcm;rate=24000",
+                      })
+                    );
+                  }
+                }
+              }
+
+              // Check for user speech transcription
+              const inputTx =
+                (message as any).serverContent?.inputTranscription?.text ||
+                (message as any).inputTranscription?.text ||
+                (message as any).serverContent?.inputAudioTranscription?.text;
+              if (inputTx) {
+                clientWs.send(
+                  JSON.stringify({
+                    type: "input_transcription",
+                    text: inputTx,
+                  })
+                );
+              }
+
+              // Check for model speech transcription
+              const outputTx =
+                (message as any).serverContent?.outputTranscription?.text ||
+                (message as any).outputTranscription?.text ||
+                (message as any).serverContent?.outputAudioTranscription?.text;
+              if (outputTx) {
+                clientWs.send(
+                  JSON.stringify({
+                    type: "output_transcription",
+                    text: outputTx,
+                  })
+                );
+              }
+
+              // Check for model turnaround done
+              if (message.serverContent?.turnComplete) {
+                clientWs.send(
+                  JSON.stringify({
+                    type: "turn_complete",
+                  })
+                );
+              }
+
+              // Check for interruption event
+              if (message.serverContent?.interrupted) {
+                clientWs.send(
+                  JSON.stringify({
+                    type: "interrupted",
+                  })
+                );
+              }
+            },
+            onclose: () => {
+              console.log("Gemini Live upstream session closed");
+              if (isSessionActive && !isFallbackMode) {
+                isFallbackMode = true;
+                console.log("Switching to resilient fallback voice mode");
+              }
+            },
+            onerror: (err: any) => {
+              console.warn("Gemini Live session warning:", err?.message || err);
+              if (!isFallbackMode) {
+                isFallbackMode = true;
+                console.log("Activated resilient voice bridge fallback mode");
+              }
+            },
+          },
+        });
+
+        isSessionActive = true;
+        clientWs.send(JSON.stringify({ type: "ready", message: "Connected to Live Voice" }));
+      } catch (liveErr: any) {
+        console.warn("Native Live API connection unavailable, activating Voice Bridge mode:", liveErr.message);
+        isFallbackMode = true;
+        isSessionActive = true;
+        clientWs.send(JSON.stringify({ type: "ready", message: "Connected to Shawn Assistant (Voice Bridge)" }));
+      }
+
+      // Handler for client messages
+      clientWs.on("message", async (data: any) => {
         try {
           const payload = JSON.parse(data.toString());
-          if (!isSessionActive || !liveSession) return;
 
-          if (payload.type === "audio") {
-            liveSession.sendRealtimeInput({
-              audio: { mimeType: "audio/pcm;rate=16000", data: payload.audio }
-            });
-          } else if (payload.type === "text") {
-            liveSession.sendRealtimeInput({ text: payload.text });
-          } else if (payload.type === "video") {
-            liveSession.sendRealtimeInput({
-              video: { mimeType: "image/jpeg", data: payload.image }
-            });
-          } else if (payload.type === "function_response" || payload.type === "tool_response") {
-            const functionResponses = payload.functionResponses || (payload.functionResponse ? [payload.functionResponse] : []);
-            if (functionResponses.length > 0) {
-              liveSession.sendToolResponse({ functionResponses });
+          // Handle heartbeat ping from client
+          if (payload.type === "ping") {
+            clientWs.isAlive = true;
+            if (clientWs.readyState === 1) {
+              clientWs.send(JSON.stringify({ type: "pong", timestamp: Date.now() }));
+            }
+            return;
+          }
+
+          // If Live API is active, pipe to liveSession
+          if (!isFallbackMode && liveSession && isSessionActive) {
+            if (payload.type === "audio") {
+              liveSession.sendRealtimeInput({
+                audio: { mimeType: "audio/pcm;rate=16000", data: payload.audio },
+              });
+            } else if (payload.type === "text") {
+              liveSession.sendRealtimeInput({ text: payload.text });
+            } else if (payload.type === "video") {
+              liveSession.sendRealtimeInput({
+                video: { mimeType: "image/jpeg", data: payload.image },
+              });
+            } else if (payload.type === "function_response" || payload.type === "tool_response") {
+              const functionResponses =
+                payload.functionResponses || (payload.functionResponse ? [payload.functionResponse] : []);
+              if (functionResponses.length > 0) {
+                liveSession.sendToolResponse({ functionResponses });
+              }
+            }
+            return;
+          }
+
+          // Fallback Bridge Mode: Handle text/tool requests over the same WebSocket
+          if (isFallbackMode && isSessionActive) {
+            if (payload.type === "text" && payload.text) {
+              clientWs.send(JSON.stringify({ type: "input_transcription", text: payload.text }));
+
+              conversationalHistory.push({ role: "user", parts: [{ text: payload.text }] });
+
+              // Generate response with Gemini
+              const chatAi = new GoogleGenAI({ apiKey: geminiApiKey });
+              const chatRes = await chatAi.models.generateContent({
+                model: "gemini-3.7-flash",
+                contents: conversationalHistory as any,
+                config: {
+                  systemInstruction: SHAWN_PROMPT_INSTRUCTION,
+                  tools: LIVE_TOOLS as any,
+                },
+              });
+
+              const replyText = chatRes.text || "";
+              const fCalls = chatRes.functionCalls;
+
+              if (fCalls && fCalls.length > 0) {
+                clientWs.send(
+                  JSON.stringify({
+                    type: "tool_call",
+                    functionCalls: fCalls,
+                    functionCall: fCalls[0],
+                  })
+                );
+              }
+
+              if (replyText) {
+                clientWs.send(JSON.stringify({ type: "output_transcription", text: replyText }));
+                conversationalHistory.push({ role: "model", parts: [{ text: replyText }] });
+
+                // Synthesize TTS audio and stream
+                try {
+                  const ttsRes = await chatAi.models.generateContent({
+                    model: "gemini-3.1-flash-tts-preview",
+                    contents: [{ parts: [{ text: replyText }] }],
+                    config: {
+                      responseModalities: ["AUDIO"] as any,
+                      speechConfig: {
+                        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } },
+                      },
+                    },
+                  });
+                  const audioB64 = ttsRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                  if (audioB64 && clientWs.readyState === 1) {
+                    clientWs.send(
+                      JSON.stringify({
+                        type: "audio",
+                        audio: audioB64,
+                        mimeType: "audio/pcm;rate=24000",
+                      })
+                    );
+                  }
+                } catch (ttsErr) {
+                  console.warn("TTS synthesis warning in voice bridge:", ttsErr);
+                }
+              }
+
+              clientWs.send(JSON.stringify({ type: "turn_complete" }));
+            } else if (payload.type === "function_response" || payload.type === "tool_response") {
+              const resp = payload.functionResponse || payload.functionResponses?.[0];
+              if (resp) {
+                conversationalHistory.push({
+                  role: "user",
+                  parts: [{ text: `[Tool Result for ${resp.name}]: ${JSON.stringify(resp.response)}` }],
+                });
+              }
             }
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("Error processing client message:", err);
         }
       });
 
       clientWs.on("close", () => {
-        console.log("Client WebSocket closed");
-        if (isSessionActive && liveSession) {
-          try { liveSession.close(); } catch (e) {}
+        console.log("Client WebSocket disconnected");
+        if (liveSession) {
+          try {
+            liveSession.close();
+          } catch (e) {}
         }
         isSessionActive = false;
       });
-
     } catch (err: any) {
-      console.error("Failed to initialize Gemini Live session:", err);
+      console.error("Failed to initialize Live session:", err);
       if (clientWs.readyState === 1) {
         clientWs.send(
           JSON.stringify({
@@ -763,7 +913,9 @@ call returns.` }] },
             message: err?.message || "Failed to start Live session",
           })
         );
-        setTimeout(() => { if (clientWs.readyState === 1) clientWs.close(); }, 500);
+        setTimeout(() => {
+          if (clientWs.readyState === 1) clientWs.close();
+        }, 500);
       }
     }
   });

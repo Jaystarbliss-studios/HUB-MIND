@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, query, getDocs, orderBy, where, addDoc } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, where, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Client } from '../types';
 import { Loader2, Plus, Search, Building2, User, Users as UsersIcon } from 'lucide-react';
@@ -25,30 +25,22 @@ export function Clients() {
   const { users } = useUsers();
 
   useEffect(() => {
-    const fetchClients = async () => {
-      setLoading(true);
-      try {
-        let q;
-        if (profile?.role === 'admin' || profile?.role === 'assistant') {
-          q = query(collection(db, 'clients'), orderBy('name'));
-        } else {
-          q = query(collection(db, 'clients'), where('ownerId', '==', profile?.id));
-        }
-        const snapshot = await getDocs(q);
-        let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
-        if (profile?.role !== 'admin' && profile?.role !== 'assistant') {
-          data = data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        }
-        setClients(data);
-      } catch (error) {
-        console.error("Error fetching clients:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (!profile) return;
+    setLoading(true);
+    
+    const q = query(collection(db, 'clients'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
+      data = data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      setClients(data);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching clients:", error);
+      setLoading(false);
+    });
 
-    fetchClients();
-  }, []);
+    return () => unsubscribe();
+  }, [profile]);
 
   const filteredClients = clients.filter(c => 
     (activeTab === 'all' || c.type === activeTab) &&

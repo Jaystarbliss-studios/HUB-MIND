@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, query, getDocs, orderBy, addDoc, where } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, addDoc, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { DocumentInfo, Client } from '../types';
 import { Loader2, FileText, Search, Copy, ExternalLink, Edit2, Trash2, Check, X } from 'lucide-react';
@@ -111,14 +111,40 @@ export function Documents() {
       console.error('Error creating doc:', error);
     }
   };
-useEffect(() => {
-    if (profile) {
-      fetchData();
-    }
+  useEffect(() => {
+    if (!profile) return;
+    setLoading(true);
+
+    const unsubDocs = onSnapshot(collection(db, 'documents'), (docsSnap) => {
+      let docsData = docsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as DocumentInfo));
+      docsData = docsData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      
+      // If staff/teacher, show documents they created, own, or general workspace docs (templates/sop/reports)
+      if (profile.role === 'staff' || profile.role === 'teacher') {
+        docsData = docsData.filter(d => !d.ownerId || d.ownerId === profile.id || d.createdBy === profile.id || d.type === 'internal' || d.category === 'sop' || d.category === 'contracts');
+      }
+      
+      setDocsList(docsData);
+      setLoading(false);
+    }, (error) => {
+      console.warn("Error subscribing to documents:", error);
+      setLoading(false);
+    });
+
+    const unsubClients = onSnapshot(collection(db, 'clients'), (clientsSnap) => {
+      let clientsData = clientsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
+      clientsData = clientsData.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      setClients(clientsData);
+    });
+
+    return () => {
+      unsubDocs();
+      unsubClients();
+    };
   }, [user, profile]);
 
   const fetchData = async () => {
-    setLoading(true);
+    if (!profile) return;
     try {
       const [docsSnap, clientsSnap] = await Promise.all([
         getDocs(collection(db, 'documents')),
@@ -131,16 +157,14 @@ useEffect(() => {
       docsData = docsData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       clientsData = clientsData.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       
-      if (profile?.role === 'staff' || profile?.role === 'teacher') {
-        docsData = docsData.filter(d => !d.ownerId || d.ownerId === profile.id || d.createdBy === profile.id);
+      if (profile.role === 'staff' || profile.role === 'teacher') {
+        docsData = docsData.filter(d => !d.ownerId || d.ownerId === profile.id || d.createdBy === profile.id || d.type === 'internal' || d.category === 'sop' || d.category === 'contracts');
       }
       
       setDocsList(docsData);
       setClients(clientsData);
     } catch (error) {
       console.warn("Error fetching documents:", error);
-    } finally {
-      setLoading(false);
     }
   };
 

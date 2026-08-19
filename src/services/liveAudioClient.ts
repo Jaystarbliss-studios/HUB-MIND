@@ -34,6 +34,7 @@ export class LiveAudioClient {
   private isPushToTalkActive: boolean = false;
   private pushToTalkMode: boolean = false;
   private levelIntervalId: number | null = null;
+  private pingIntervalId: number | null = null;
 
   constructor(callbacks: LiveAudioCallbacks) {
     this.callbacks = callbacks;
@@ -111,11 +112,25 @@ export class LiveAudioClient {
 
       this.ws.onopen = () => {
         console.log('Connected to Shawn Live WebSocket');
+        // Start ping heartbeat every 12 seconds to keep WebSocket alive through reverse proxy
+        if (this.pingIntervalId) clearInterval(this.pingIntervalId);
+        this.pingIntervalId = window.setInterval(() => {
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            try {
+              this.ws.send(JSON.stringify({ type: 'ping' }));
+            } catch (e) {}
+          }
+        }, 12000);
       };
 
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          if (data.type === 'pong') {
+            // Heartbeat response from server, connection is healthy
+            return;
+          }
 
           if (data.type === 'ready') {
             this.callbacks.onStatusChange('connected');
@@ -157,6 +172,10 @@ export class LiveAudioClient {
 
       this.ws.onclose = () => {
         console.log('WebSocket closed');
+        if (this.pingIntervalId) {
+          clearInterval(this.pingIntervalId);
+          this.pingIntervalId = null;
+        }
         this.callbacks.onStatusChange('disconnected');
         this.callbacks.onShawnStateChange('idle');
       };
@@ -385,6 +404,11 @@ export class LiveAudioClient {
   }
 
   public disconnect(): void {
+    if (this.pingIntervalId) {
+      clearInterval(this.pingIntervalId);
+      this.pingIntervalId = null;
+    }
+
     if (this.levelIntervalId) {
       clearInterval(this.levelIntervalId);
       this.levelIntervalId = null;

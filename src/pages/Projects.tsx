@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, getDocs, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, addDoc, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { Project, Task, Client } from '../types';
@@ -29,33 +29,35 @@ export function Projects() {
   const [newDesc, setNewDesc] = useState('');
   const [search, setSearch] = useState('');
 
-  const fetchProjects = async () => {
+  useEffect(() => {
+    if (!profile) return;
     setLoading(true);
-    try {
-      const [projSnap, tasksSnap, clientsSnap] = await Promise.all([
-        getDocs(collection(db, 'projects')),
-        getDocs(collection(db, 'tasks')),
-        getDocs(collection(db, 'clients')),
-      ]);
 
-      const pData = projSnap.docs.map(d => ({ id: d.id, ...d.data() } as Project));
+    const unsubProjects = onSnapshot(collection(db, 'projects'), (snap) => {
+      const pData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Project));
       pData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       setProjects(pData);
-
-      const tData = tasksSnap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
-      setTasks(tData);
-
-      const cData = clientsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Client));
-      setClients(cData);
-    } catch (error) {
-      console.error("Error fetching projects data", error);
-    } finally {
       setLoading(false);
-    }
-  };
+    }, (err) => {
+      console.warn("Error subscribing to projects:", err);
+      setLoading(false);
+    });
 
-  useEffect(() => {
-    if (profile) fetchProjects();
+    const unsubTasks = onSnapshot(collection(db, 'tasks'), (snap) => {
+      const tData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
+      setTasks(tData);
+    });
+
+    const unsubClients = onSnapshot(collection(db, 'clients'), (snap) => {
+      const cData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Client));
+      setClients(cData);
+    });
+
+    return () => {
+      unsubProjects();
+      unsubTasks();
+      unsubClients();
+    };
   }, [profile]);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -74,7 +76,6 @@ export function Projects() {
       setNewTitle('');
       setNewDesc('');
       setShowCreate(false);
-      fetchProjects();
     } catch (error) {
       console.error("Error creating project", error);
     }
