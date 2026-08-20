@@ -6,7 +6,13 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Initialize Firestore with offline persistence
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
-});
+export const FIRESTORE_DATABASE_ID = 'ai-studio-hubmind-4cac2024-c6eb-4208-80cf-928714dfd430';
+
+// Initialize Firestore targeting the dedicated HubMind database with offline persistence
+export const db = initializeFirestore(
+  app,
+  {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  },
+  FIRESTORE_DATABASE_ID
+);
