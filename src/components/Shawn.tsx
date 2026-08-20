@@ -488,74 +488,144 @@ call returns.`;
       let currentActionPayload: any = undefined;
       
       let loopCount = 0;
+      let apiSuccess = false;
+
       while (loopCount < 3) {
         loopCount++;
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: currentMessages,
-            tools: [{ functionDeclarations: SHAWN_TOOLS_DECLARATIONS }],
-            systemInstruction: contextPrompt,
-          }),
-        });
+        try {
+          const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messages: currentMessages,
+              tools: [{ functionDeclarations: SHAWN_TOOLS_DECLARATIONS }],
+              systemInstruction: contextPrompt,
+            }),
+          });
 
-        if (!response.ok) {
-          throw new Error('Failed to get AI response');
-        }
-
-        const data = await response.json();
-        
-        if (data.functionCalls && data.functionCalls.length > 0) {
-          // Model returned function calls
-          const functionResponses: any[] = [];
-          
-          currentMessages = [
-            ...currentMessages,
-            { role: 'model', parts: data.message?.parts || data.functionCalls.map(fc => ({ functionCall: { name: fc.name, args: fc.args, id: fc.id } })) }
-          ];
-          
-          for (const fc of data.functionCalls) {
-            const toolExec = await executeShawnTool(
-              fc.name,
-              fc.args,
-              profile,
-              (newPreferredName) => {
-                if (updatePreferredName) updatePreferredName(newPreferredName);
-              }
-            );
-
-            if (toolExec.actionPayload) {
-              currentActionPayload = toolExec.actionPayload;
-              if (currentActionPayload.type === 'navigate' && currentActionPayload.path) {
-                navigate(currentActionPayload.path);
-              }
-            }
-
-            functionResponses.push({
-              functionResponse: {
-                name: fc.name,
-                response: toolExec.result,
-                id: fc.id
-              }
-            });
+          if (!response.ok) {
+            throw new Error(`AI API returned status ${response.status}`);
           }
+
+          const contentType = response.headers.get('content-type') || '';
+          if (!contentType.includes('application/json')) {
+            throw new Error('Non-JSON response received');
+          }
+
+          const data = await response.json();
+          apiSuccess = true;
           
-          currentMessages = [
-            ...currentMessages,
-            { role: 'user', parts: functionResponses }
-          ];
-          // Loop again with the function responses
-          continue;
-        } else {
-          // Final text response
-          finalResponseText = data.text || '';
+          if (data.functionCalls && data.functionCalls.length > 0) {
+            // Model returned function calls
+            const functionResponses: any[] = [];
+            
+            currentMessages = [
+              ...currentMessages,
+              { role: 'model', parts: data.message?.parts || data.functionCalls.map(fc => ({ functionCall: { name: fc.name, args: fc.args, id: fc.id } })) }
+            ];
+            
+            for (const fc of data.functionCalls) {
+              const toolExec = await executeShawnTool(
+                fc.name,
+                fc.args,
+                profile,
+                (newPreferredName) => {
+                  if (updatePreferredName) updatePreferredName(newPreferredName);
+                }
+              );
+
+              if (toolExec.actionPayload) {
+                currentActionPayload = toolExec.actionPayload;
+                if (currentActionPayload.type === 'navigate' && currentActionPayload.path) {
+                  navigate(currentActionPayload.path);
+                }
+              }
+
+              functionResponses.push({
+                functionResponse: {
+                  name: fc.name,
+                  response: toolExec.result,
+                  id: fc.id
+                }
+              });
+            }
+            
+            currentMessages = [
+              ...currentMessages,
+              { role: 'user', parts: functionResponses }
+            ];
+            // Loop again with the function responses
+            continue;
+          } else {
+            // Final text response
+            finalResponseText = data.text || '';
+            break;
+          }
+        } catch (fetchErr: any) {
+          console.warn('API Chat endpoint unavailable or static host, activating client fallback:', fetchErr.message);
           break;
         }
       }
 
-      if (!finalResponseText) {
-        finalResponseText = "Right then, done.";
+      // If backend API was unreachable (e.g. static hosting on Netlify or 404), execute client-side intelligence
+      if (!apiSuccess || !finalResponseText) {
+        const lower = text.toLowerCase().trim();
+        if (lower.includes('task') && (lower.includes('go to') || lower.includes('open') || lower.includes('show') || lower.includes('view') || lower.includes('navigate'))) {
+          navigate('/tasks');
+          currentActionPayload = { type: 'navigate', path: '/tasks' };
+          finalResponseText = "Right away! Opening your Tasks board.";
+        } else if (lower.includes('calendar') || lower.includes('schedule')) {
+          navigate('/calendar');
+          currentActionPayload = { type: 'navigate', path: '/calendar' };
+          finalResponseText = "Taking you right over to your Calendar.";
+        } else if (lower.includes('doc') || lower.includes('file')) {
+          navigate('/documents');
+          currentActionPayload = { type: 'navigate', path: '/documents' };
+          finalResponseText = "Opening your Documents repository.";
+        } else if (lower.includes('client')) {
+          navigate('/clients');
+          currentActionPayload = { type: 'navigate', path: '/clients' };
+          finalResponseText = "Opening your Clients directory.";
+        } else if (lower.includes('project')) {
+          navigate('/projects');
+          currentActionPayload = { type: 'navigate', path: '/projects' };
+          finalResponseText = "Opening your Projects directory.";
+        } else if (lower.includes('knowledge') || lower.includes('vault')) {
+          navigate('/knowledge');
+          currentActionPayload = { type: 'navigate', path: '/knowledge' };
+          finalResponseText = "Opening your Knowledge Base.";
+        } else if (lower.startsWith('create task') || lower.startsWith('add task') || lower.startsWith('new task')) {
+          const title = text.replace(/^(create|add|new)\s+task\s*:?/i, '').trim() || 'New Task';
+          await executeShawnTool('create_task', { title, priority: 'medium' }, profile);
+          finalResponseText = `Right then! I've created the task "${title}" in your workspace.`;
+        } else if (lower.startsWith('create doc') || lower.startsWith('new doc') || lower.startsWith('create document')) {
+          const title = text.replace(/^(create|new)\s+(doc|document)\s*:?/i, '').trim() || 'Untitled Document';
+          await executeShawnTool('create_document', { title, content: '<p>Created with Shawn.</p>' }, profile);
+          finalResponseText = `Created document "${title}" and added it to your workspace!`;
+        } else if (lower.includes('list tasks') || lower.includes('my tasks') || lower.includes('what tasks')) {
+          const res = await executeShawnTool('list_tasks', {}, profile);
+          const count = res.result?.count || 0;
+          finalResponseText = `You currently have ${count} task${count === 1 ? '' : 's'} in your workspace.`;
+        } else if (lower.includes('list clients') || lower.includes('my clients') || lower.includes('what clients')) {
+          const res = await executeShawnTool('list_clients', {}, profile);
+          const count = res.result?.count || 0;
+          finalResponseText = `You have ${count} client${count === 1 ? '' : 's'} registered in Hub-Mind.`;
+        } else if (lower.includes('overview') || lower.includes('summary')) {
+          const res = await executeShawnTool('get_workspace_overview', {}, profile);
+          finalResponseText = `Here's your snapshot: ${res.result?.tasksSummary || 'Workspace active.'}`;
+        } else if (lower.includes('my name is') || lower.startsWith('call me')) {
+          const name = text.replace(/^(my name is|call me)\s+/i, '').trim();
+          if (name && updatePreferredName) {
+            updatePreferredName(name);
+            finalResponseText = `Brilliant! I'll call you ${name} from now on.`;
+          }
+        } else {
+          finalResponseText = finalResponseText || `Right then! I'm Shawn, your Hub-Mind companion. I have direct access to your tasks, calendar, clients, and documents. What shall we tackle next?`;
+        }
+      }
+
+      if (liveClientRef.current && typeof liveClientRef.current.speakFallbackAudio === 'function') {
+        liveClientRef.current.speakFallbackAudio(finalResponseText);
       }
 
       const shawnMsgId = `msg-${Date.now() + 1}`;
@@ -573,7 +643,7 @@ call returns.`;
       setActiveLeafId(shawnMsgId);
       persistCurrentConversation(finalMessages, shawnMsgId);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to fetch AI response');
+      console.warn('Shawn chat handling error:', err);
     } finally {
       setIsChatLoading(false);
     }

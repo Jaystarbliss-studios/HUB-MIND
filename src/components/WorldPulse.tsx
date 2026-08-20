@@ -23,16 +23,45 @@ export const WorldPulse: React.FC<WorldPulseProps> = ({
   const [pulseList, setPulseList] = useState<WorldPulseItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  const DEFAULT_PULSE: WorldPulseItem[] = [
+    {
+      id: "1",
+      region: "Space & Physics",
+      title: "Jupiter's Great Red Spot",
+      summary: "The Great Red Spot on Jupiter is a colossal storm so large that the entire Earth could fit inside it with room to spare.",
+      shawnNote: "Imagine navigating an orbital shuttle straight through a storm that's raged for 300 years. Unbelievable energy!"
+    },
+    {
+      id: "2",
+      region: "Earth & Paleontology",
+      title: "Theropod Plumage & Evolution",
+      summary: "Recent fossil discoveries confirm that numerous predatory dinosaurs sported intricate, vibrant plumage structures.",
+      shawnNote: "A nine-foot feathered raptor sprinting at 40 miles an hour. Terrifying and majestic all at once."
+    },
+    {
+      id: "3",
+      region: "Marine Biology",
+      title: "Turritopsis Dohrnii Biological Reversion",
+      summary: "The immortal jellyfish can revert its mature cells back into polyp colony states upon facing physical distress or old age.",
+      shawnNote: "A biological reset switch! Pure cellular architecture at its finest."
+    }
+  ];
+
   const fetchPulse = async () => {
     setIsLoading(true);
     try {
       const res = await fetch('/api/world-pulse');
-      const data = await res.json();
-      if (data.pulse && Array.isArray(data.pulse)) {
-        setPulseList(data.pulse);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.pulse && Array.isArray(data.pulse)) {
+          setPulseList(data.pulse);
+          return;
+        }
       }
+      setPulseList(DEFAULT_PULSE);
     } catch (e) {
-      console.error('Failed to fetch world pulse:', e);
+      console.warn('Using local World Pulse items:', e);
+      setPulseList(DEFAULT_PULSE);
     } finally {
       setIsLoading(false);
     }

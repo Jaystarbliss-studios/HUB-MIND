@@ -257,15 +257,16 @@ async function startServer() {
       }
 
       // Fallback to Gemini
+      const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"];
+      let lastError: any = null;
+      let response = null;
+
       if (!geminiApiKey) {
         return res.status(500).json({ error: "No AI provider configured. Add GROQ_API_KEY, OLLAMA_API_URL or GEMINI_API_KEY." });
       }
 
       const { GoogleGenAI } = await import("@google/genai");
       const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      const candidateModels = ["gemini-3.1-flash-live-preview", "gemini-3.1-flash", "gemini-3.7-flash", "gemini-3.1-pro-preview"];
-      let lastError: any = null;
-      let response = null;
 
       for (const modelName of candidateModels) {
         let attempts = 0;
