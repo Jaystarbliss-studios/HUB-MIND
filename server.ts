@@ -256,8 +256,12 @@ async function startServer() {
         }
       }
 
-      // Fallback to Gemini
-      const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"];
+      // Primary Gemini models (gemini-3.5-flash for general, gemini-3.1-pro-preview for complex, gemini-3.1-flash-lite for fast)
+      const requestedModel = req.body.model;
+      const candidateModels = requestedModel
+        ? [requestedModel, "gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-3.1-pro-preview"]
+        : ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-3.1-pro-preview"];
+      
       let lastError: any = null;
       let response = null;
 
@@ -266,28 +270,74 @@ async function startServer() {
       }
 
       const { GoogleGenAI } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+      const ai = new GoogleGenAI({
+        apiKey: geminiApiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
+
+      // Prepare tools with support for function declarations, Google Search, and Google Maps grounding
+      const geminiTools: any[] = [];
+      const hasSearchGrounding = req.body.useSearch || req.body.searchGrounding;
+      const hasMapsGrounding = req.body.useMaps || req.body.mapsGrounding;
+
+      if (hasSearchGrounding) {
+        geminiTools.push({ googleSearch: {} });
+      }
+      if (hasMapsGrounding) {
+        geminiTools.push({ googleMaps: {} });
+      }
+
+      if (tools && tools.length > 0) {
+        for (const t of tools) {
+          if (t.functionDeclarations) {
+            geminiTools.push({
+              functionDeclarations: t.functionDeclarations.map((f: any) => ({
+                ...f,
+                parameters: f.parameters ? mapTypes(f.parameters, true) : undefined,
+              })),
+            });
+          } else if (t.googleSearch) {
+            if (!geminiTools.some((gt) => gt.googleSearch)) geminiTools.push(t);
+          } else if (t.googleMaps) {
+            if (!geminiTools.some((gt) => gt.googleMaps)) geminiTools.push(t);
+          }
+        }
+      }
+
+      const hasBuiltInTools = geminiTools.some((t) => t.googleSearch || t.googleMaps);
+      const hasFunctionTools = geminiTools.some((t) => t.functionDeclarations);
+      const toolConfig: any = {};
+      if (hasBuiltInTools && hasFunctionTools) {
+        toolConfig.includeServerSideToolInvocations = true;
+      }
+      if (req.body.location && hasMapsGrounding) {
+        toolConfig.retrievalConfig = {
+          latLng: {
+            latitude: req.body.location.latitude || req.body.location.lat,
+            longitude: req.body.location.longitude || req.body.location.lng,
+          },
+        };
+      }
 
       for (const modelName of candidateModels) {
         let attempts = 0;
         while (attempts < 2) {
           try {
             response = await ai.models.generateContent({
-            model: modelName,
-            contents: messages,
-            config: {
-              tools: tools?.map((t: any) => ({
-                ...t,
-                functionDeclarations: t.functionDeclarations?.map((f: any) => ({
-                  ...f,
-                  parameters: f.parameters ? mapTypes(f.parameters, true) : undefined
-                }))
-              })),
-              systemInstruction: systemInstruction ? {
-                role: 'system',
-                parts: [{ text: coreIdentity + "\n" + geminiAdapter + "\n\n--- Context ---\n" + (typeof systemInstruction === 'string' ? systemInstruction : (systemInstruction.parts?.[0]?.text || "")) }]
-              } : undefined
-            }
+              model: modelName,
+              contents: messages,
+              config: {
+                tools: geminiTools.length > 0 ? geminiTools : undefined,
+                toolConfig: Object.keys(toolConfig).length > 0 ? toolConfig : undefined,
+                systemInstruction: systemInstruction ? {
+                  role: 'system',
+                  parts: [{ text: coreIdentity + "\n" + geminiAdapter + "\n\n--- Context ---\n" + (typeof systemInstruction === 'string' ? systemInstruction : (systemInstruction.parts?.[0]?.text || "")) }]
+                } : undefined
+              }
             });
             if (response) break;
           } catch (err: any) {
@@ -307,10 +357,14 @@ async function startServer() {
         throw lastError || new Error("All AI models are currently busy.");
       }
 
+      const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+
       res.json({ 
         text: response.text, 
         functionCalls: response.functionCalls,
-        message: response.candidates?.[0]?.content
+        message: response.candidates?.[0]?.content,
+        groundingChunks: groundingMetadata?.groundingChunks,
+        webSearchQueries: groundingMetadata?.webSearchQueries,
       });
     } catch (error: any) {
       console.error("API Error:", error);

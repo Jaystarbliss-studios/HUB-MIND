@@ -16,6 +16,9 @@ import {
   Send,
   Share2,
   Calendar,
+  Globe,
+  MapPin,
+  ExternalLink,
 } from 'lucide-react';
 import { LogoIcon } from './LogoIcon';
 import { getSiblingsInfo } from '../lib/conversationStore';
@@ -145,6 +148,52 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
                       <div className="text-xs sm:text-[13px] leading-relaxed whitespace-pre-wrap font-sans select-text">
                         {msg.text}
                       </div>
+
+                      {/* Grounding Sources (Google Search & Google Maps) */}
+                      {msg.groundingChunks && msg.groundingChunks.length > 0 && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-800/60 space-y-1.5">
+                          <div className="text-[10px] font-semibold text-teal-400/90 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" /> Grounded Sources
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {msg.groundingChunks.map((chunk, idx) => {
+                              if (chunk.web?.uri) {
+                                return (
+                                  <a
+                                    key={`web-${idx}`}
+                                    href={chunk.web.uri}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    referrerPolicy="no-referrer"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-[10px] text-teal-300 transition-colors"
+                                  >
+                                    <Globe className="w-2.5 h-2.5 text-teal-400" />
+                                    <span className="max-w-[150px] truncate">{chunk.web.title || 'Web Result'}</span>
+                                    <ExternalLink className="w-2 h-2 text-slate-400" />
+                                  </a>
+                                );
+                              }
+                              if (chunk.maps?.uri) {
+                                return (
+                                  <a
+                                    key={`maps-${idx}`}
+                                    href={chunk.maps.uri}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    referrerPolicy="no-referrer"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-500/30 text-[10px] text-emerald-300 transition-colors"
+                                  >
+                                    <MapPin className="w-2.5 h-2.5 text-emerald-400" />
+                                    <span className="max-w-[150px] truncate">{chunk.maps.title || 'Google Maps Location'}</span>
+                                    <ExternalLink className="w-2 h-2 text-emerald-400/60" />
+                                  </a>
+                                );
+                              }
+                              return null;
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Action Required Card (e.g. Document Delete Confirmation or Preferred Name) */}
                       {msg.actionPayload && (

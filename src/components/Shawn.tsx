@@ -486,7 +486,12 @@ call returns.`;
       let currentMessages = formattedHistory;
       let finalResponseText = '';
       let currentActionPayload: any = undefined;
+      let receivedGroundingChunks: any[] | undefined = undefined;
       
+      const lowerText = text.toLowerCase();
+      const isMapsQuery = lowerText.includes('nearby') || lowerText.includes('restaurant') || lowerText.includes('direction') || lowerText.includes('where is') || lowerText.includes('map of') || lowerText.includes('places to');
+      const isSearchQuery = lowerText.includes('search web') || lowerText.includes('latest news') || lowerText.includes('current event') || lowerText.includes('google search') || lowerText.includes('who won');
+
       let loopCount = 0;
       let apiSuccess = false;
 
@@ -500,6 +505,8 @@ call returns.`;
               messages: currentMessages,
               tools: [{ functionDeclarations: SHAWN_TOOLS_DECLARATIONS }],
               systemInstruction: contextPrompt,
+              useSearch: isSearchQuery,
+              useMaps: isMapsQuery,
             }),
           });
 
@@ -514,6 +521,9 @@ call returns.`;
 
           const data = await response.json();
           apiSuccess = true;
+          if (data.groundingChunks && data.groundingChunks.length > 0) {
+            receivedGroundingChunks = data.groundingChunks;
+          }
           
           if (data.functionCalls && data.functionCalls.length > 0) {
             // Model returned function calls
@@ -636,6 +646,7 @@ call returns.`;
         timestamp: new Date().toISOString(),
         parentMessageId: userMsgId,
         actionPayload: currentActionPayload,
+        groundingChunks: receivedGroundingChunks,
       };
 
       const finalMessages = [...updatedMessages, newShawnMsg];

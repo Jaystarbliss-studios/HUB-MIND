@@ -160,6 +160,23 @@ export interface MessageActionPayload {
   status?: 'pending' | 'confirmed' | 'cancelled' | 'executed';
 }
 
+export interface GroundingChunk {
+  web?: {
+    uri: string;
+    title: string;
+  };
+  maps?: {
+    uri?: string;
+    title?: string;
+    placeAnswerSources?: {
+      reviewSnippets?: {
+        snippet?: string;
+        reviewUri?: string;
+      }[];
+    };
+  };
+}
+
 export interface ChatMessage {
   id: string;
   sender: 'user' | 'shawn';
@@ -171,6 +188,7 @@ export interface ChatMessage {
   imageUrl?: string;
   tag?: string;
   actionPayload?: MessageActionPayload;
+  groundingChunks?: GroundingChunk[];
 }
 
 export interface MemoryItem {
