@@ -19,3 +19,34 @@ export function safeFormat(dateVal: any, formatStr: string) {
     return '';
   }
 }
+
+/** Formats full date, hour, minute, and second: "Aug 21, 2026, 02:15:32 AM" */
+export function formatExactTimestamp(dateVal: any): string {
+  if (!dateVal) return 'Never';
+  try {
+    return format(safeParseISO(dateVal), 'MMM d, yyyy, hh:mm:ss a');
+  } catch (e) {
+    return 'Invalid Date';
+  }
+}
+
+/** Formats time with seconds: "02:15:32 AM" */
+export function formatTimeWithSeconds(dateVal: any): string {
+  if (!dateVal) return 'Never';
+  try {
+    return format(safeParseISO(dateVal), 'hh:mm:ss a');
+  } catch (e) {
+    return '--:--:--';
+  }
+}
+
+/** Formats concise date + seconds: "Aug 21, 02:15:32 AM" */
+export function formatShortTimestampWithSeconds(dateVal: any): string {
+  if (!dateVal) return 'Never';
+  try {
+    return format(safeParseISO(dateVal), 'MMM d, hh:mm:ss a');
+  } catch (e) {
+    return '--:--:--';
+  }
+}
+

@@ -4,9 +4,9 @@ import { useAuth } from '../lib/auth';
 import { collection, query, getDocs, orderBy, addDoc, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { DocumentInfo, Client } from '../types';
-import { Loader2, FileText, Search, Copy, ExternalLink, Edit2, Trash2, Check, X } from 'lucide-react';
+import { Loader2, FileText, Search, Copy, ExternalLink, Edit2, Trash2, Check, X, Clock, Cloud, Sparkles } from 'lucide-react';
 import { DriveUpload } from '../components/DriveUpload';
-import { safeParseISO, safeFormat } from "../lib/dateUtils";
+import { safeParseISO, safeFormat, formatExactTimestamp, formatShortTimestampWithSeconds } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
 import { TemplateSelector } from '../components/documents/TemplateSelector';
@@ -359,10 +359,40 @@ export function Documents() {
                             </span>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium">
-                          <span className="uppercase tracking-wider text-accent">{doc.category}</span>
-                          {client && <span>• {client.name}</span>}
-                          <span>• {safeFormat(doc.createdAt, 'MMM d')}</span>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium mt-1">
+                          <span className="uppercase tracking-wider text-accent font-semibold">{doc.category}</span>
+                          {client && <span>• Client: <strong className="text-slate-300">{client.name}</strong></span>}
+                          
+                          {/* Exact Timestamps with seconds */}
+                          <span 
+                            className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors cursor-help"
+                            title={`Created: ${formatExactTimestamp(doc.createdAt)}`}
+                          >
+                            <span>Created:</span>
+                            <span className="font-mono text-slate-300">{formatShortTimestampWithSeconds(doc.createdAt)}</span>
+                          </span>
+
+                          <span className="text-slate-700">•</span>
+
+                          <span 
+                            className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors cursor-help"
+                            title={`Last Edited: ${formatExactTimestamp(doc.lastEditedAt || doc.updatedAt || doc.createdAt)}`}
+                          >
+                            <Clock className="w-3 h-3 text-amber-400/80 shrink-0" />
+                            <span>Edited:</span>
+                            <span className="font-mono text-slate-300">{formatShortTimestampWithSeconds(doc.lastEditedAt || doc.updatedAt || doc.createdAt)}</span>
+                          </span>
+
+                          <span className="text-slate-700">•</span>
+
+                          <span 
+                            className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors cursor-help"
+                            title={`Last Saved: ${formatExactTimestamp(doc.lastSavedAt || doc.updatedAt || doc.createdAt)}`}
+                          >
+                            <Cloud className="w-3 h-3 text-emerald-400/80 shrink-0" />
+                            <span>Saved:</span>
+                            <span className="font-mono text-slate-300">{formatShortTimestampWithSeconds(doc.lastSavedAt || doc.updatedAt || doc.createdAt)}</span>
+                          </span>
                         </div>
                       </div>
                     </div>

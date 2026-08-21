@@ -45,7 +45,7 @@ export const ShawnDocCoWriter: React.FC<ShawnDocCoWriterProps> = ({
   useEffect(() => {
     const handleLiveEditEvent = async (e: any) => {
       const detail = e.detail;
-      if (!detail || !editor) return;
+      if (!detail || !editor || editor.isDestroyed || !editor.commands) return;
 
       if (detail.documentId === docId || !detail.documentId) {
         if (!isOpen) onToggleOpen();
@@ -76,7 +76,7 @@ export const ShawnDocCoWriter: React.FC<ShawnDocCoWriterProps> = ({
 
   const handleGenerate = async (customPrompt?: string) => {
     const activePrompt = customPrompt || prompt;
-    if (!activePrompt.trim() || !editor || isGenerating) return;
+    if (!activePrompt.trim() || !editor || editor.isDestroyed || !editor.commands || isGenerating) return;
 
     setIsGenerating(true);
     setStatusMessage('Shawn is crafting content in real time...');
@@ -191,7 +191,7 @@ IMPORTANT FORMATTING RULES:
   };
 
   const handleRejectChanges = () => {
-    if (!editor || !previousEditorContent) return;
+    if (!editor || !previousEditorContent || editor.isDestroyed || !editor.commands) return;
     editor.commands.setContent(previousEditorContent);
     setPendingApproval(false);
     setProposedContent(null);

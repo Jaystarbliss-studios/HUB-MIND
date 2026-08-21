@@ -77,10 +77,15 @@ export interface DocumentInfo {
   type?: 'internal' | 'external'; // contract | report | invoice | exam | certificate | other
   clientId?: string;
   ownerId?: string; // userId
-  fileRef: string; // Drive link
-  version: number;
-  createdBy: string;
+  fileRef?: string; // Drive link
+  version?: number;
+  createdBy?: string;
   createdAt: string;
+  updatedAt?: string;
+  lastEditedAt?: string; // Exact ISO timestamp with seconds
+  lastSavedAt?: string;  // Exact ISO timestamp with seconds
+  lastModifiedBy?: string; // e.g. User name or "Shawn AI"
+  content?: string;
 }
 
 export interface Notification {

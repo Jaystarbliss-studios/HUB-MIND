@@ -29,10 +29,13 @@ import { FullPagePreviewModal } from '../components/documents/FullPagePreviewMod
 import { ShawnDocCoWriter } from '../components/documents/ShawnDocCoWriter';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { useAuth } from '../lib/auth';
 import { 
   ArrowLeft, Loader2, Save, Printer, Sun, Moon, 
-  FileText, Layout, ChevronDown, CheckCircle2, SplitSquareVertical, Eye, Sparkles
+  FileText, Layout, ChevronDown, CheckCircle2, SplitSquareVertical, Eye, Sparkles,
+  Clock, Cloud, CheckCheck, Mic
 } from 'lucide-react';
+import { formatExactTimestamp, formatTimeWithSeconds } from '../lib/dateUtils';
 
 export type PageSizeOption = 'a4' | 'letter';
 export type PaperThemeOption = 'white' | 'dark';
@@ -62,9 +65,12 @@ export const PAGE_CONFIGS: Record<PageSizeOption, PageSizeConfig> = {
 export function DocumentEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [docMeta, setDocMeta] = useState<any>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [lastEditedTime, setLastEditedTime] = useState<string | null>(null);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState<PageSizeOption>('a4');
   const [paperTheme, setPaperTheme] = useState<PaperThemeOption>('white');
   const [pageCount, setPageCount] = useState<number>(1);
@@ -73,6 +79,7 @@ export function DocumentEditor() {
   const [showPageBreaks, setShowPageBreaks] = useState<boolean>(true);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false);
   const [isCoWriterOpen, setIsCoWriterOpen] = useState<boolean>(false);
+  const [shawnActivityFlash, setShawnActivityFlash] = useState<string | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const currentConfig = PAGE_CONFIGS[pageSize];
@@ -102,6 +109,8 @@ export function DocumentEditor() {
     ],
     content: '',
     onUpdate: ({ editor }) => {
+      const editNow = new Date().toISOString();
+      setLastEditedTime(editNow);
       setSaveStatus('saving');
       const json = editor.getJSON();
       
@@ -110,19 +119,27 @@ export function DocumentEditor() {
       }
       
       timeoutRef.current = setTimeout(() => {
-        saveDocument(json);
-      }, 1500); // Autosave after 1.5 seconds of inactivity
+        saveDocument(json, editNow);
+      }, 1200); // Autosave after 1.2 seconds of inactivity
     },
   });
 
-  const saveDocument = async (content: any) => {
+  const saveDocument = async (content: any, editTimestamp?: string) => {
     if (!id) return;
     try {
       setSaveStatus('saving');
+      const saveNow = new Date().toISOString();
+      const actualEditTime = editTimestamp || lastEditedTime || saveNow;
+      
       await updateDoc(doc(db, 'documents', id), {
-        content: JSON.stringify(content),
-        updatedAt: new Date().toISOString()
+        content: typeof content === 'string' ? content : JSON.stringify(content),
+        updatedAt: saveNow,
+        lastEditedAt: actualEditTime,
+        lastSavedAt: saveNow,
+        lastModifiedBy: profile?.preferredName || profile?.name || 'User',
       });
+
+      setLastSavedTime(saveNow);
       setSaveStatus('saved');
     } catch (error) {
       console.error('Error saving document:', error);
@@ -130,18 +147,82 @@ export function DocumentEditor() {
     }
   };
 
+  // Open Unified Shawn Assistant
+  const handleOpenShawnAI = (mode: 'chat' | 'voice' = 'chat') => {
+    window.dispatchEvent(
+      new CustomEvent('shawn:open', {
+        detail: {
+          mode,
+          context: 'document',
+          documentId: id,
+          documentTitle: docMeta?.title || 'Untitled Document',
+        },
+      })
+    );
+  };
+
+  // Listen for direct live document edits broadcast by Shawn
   useEffect(() => {
+    const handleLiveDocEdit = (e: any) => {
+      const detail = e.detail;
+      if (!detail || !editor || editor.isDestroyed) return;
+
+      if (detail.documentId === id || !detail.documentId) {
+        const editNow = new Date().toISOString();
+        setLastEditedTime(editNow);
+        
+        const htmlToApply = detail.html || detail.contentToInsert || '';
+        if (htmlToApply && editor.commands) {
+          if (detail.mode === 'replace') {
+            editor.commands.setContent(htmlToApply);
+          } else {
+            editor.commands.focus('end');
+            editor.commands.insertContent(htmlToApply);
+          }
+
+          setShawnActivityFlash(`Shawn AI applied updates live at ${formatTimeWithSeconds(editNow)}`);
+          setTimeout(() => setShawnActivityFlash(null), 5000);
+
+          // Persist live edit immediately with second precision
+          saveDocument(editor.getJSON(), editNow);
+        }
+      }
+    };
+
+    window.addEventListener('shawn:live_document_edit', handleLiveDocEdit);
+    return () => {
+      window.removeEventListener('shawn:live_document_edit', handleLiveDocEdit);
+    };
+  }, [editor, id, profile]);
+
+  useEffect(() => {
+    let isMounted = true;
     const fetchDoc = async () => {
-      if (!id || !editor) return;
+      if (!id) return;
       try {
         const docRef = doc(db, 'documents', id);
         const docSnap = await getDoc(docRef);
         
+        if (!isMounted) return;
+
         if (docSnap.exists()) {
           const data = docSnap.data();
           setDocMeta(data);
-          if (data.content) {
-            editor.commands.setContent(JSON.parse(data.content));
+          setLastEditedTime(data.lastEditedAt || data.updatedAt || data.createdAt || null);
+          setLastSavedTime(data.lastSavedAt || data.updatedAt || data.createdAt || null);
+
+          if (data.content && editor && !editor.isDestroyed && editor.commands) {
+            try {
+              if (typeof data.content === 'string' && (data.content.startsWith('{') || data.content.startsWith('['))) {
+                editor.commands.setContent(JSON.parse(data.content));
+              } else {
+                editor.commands.setContent(data.content);
+              }
+            } catch (e) {
+              if (editor && !editor.isDestroyed && editor.commands) {
+                editor.commands.setContent(data.content);
+              }
+            }
           }
         } else {
           // Document not found
@@ -150,14 +231,36 @@ export function DocumentEditor() {
       } catch (error) {
         console.error('Error fetching document:', error);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
+
     fetchDoc();
     return () => {
+      isMounted = false;
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [id, editor, navigate]);
+
+  // Sync content if editor initializes after docMeta is loaded
+  useEffect(() => {
+    if (!editor || !docMeta?.content || editor.isDestroyed || !editor.commands) return;
+    
+    // Only populate if editor is currently empty
+    if (editor.isEmpty) {
+      try {
+        if (typeof docMeta.content === 'string' && (docMeta.content.startsWith('{') || docMeta.content.startsWith('['))) {
+          editor.commands.setContent(JSON.parse(docMeta.content));
+        } else {
+          editor.commands.setContent(docMeta.content);
+        }
+      } catch (e) {
+        editor.commands.setContent(docMeta.content);
+      }
+    }
+  }, [editor, docMeta?.content]);
 
   const handlePrint = () => {
     setIsPreviewModalOpen(true);
@@ -199,26 +302,64 @@ export function DocumentEditor() {
                 type="text" 
                 value={docMeta?.title || 'Untitled Document'}
                 onChange={(e) => {
-                  setDocMeta({ ...docMeta, title: e.target.value });
-                  updateDoc(doc(db, 'documents', id!), { title: e.target.value });
+                  const newT = e.target.value;
+                  setDocMeta({ ...docMeta, title: newT });
+                  const now = new Date().toISOString();
+                  setLastEditedTime(now);
+                  updateDoc(doc(db, 'documents', id!), { 
+                    title: newT, 
+                    updatedAt: now,
+                    lastEditedAt: now,
+                    lastSavedAt: now
+                  });
+                  setLastSavedTime(now);
                 }}
-                className="bg-transparent text-slate-100 font-bold focus:outline-none focus:border-b border-accent px-1 truncate w-40 sm:w-64 md:w-80 text-sm sm:text-base"
+                className="bg-transparent text-slate-100 font-bold focus:outline-none focus:border-b border-accent px-1 truncate w-40 sm:w-60 md:w-72 text-sm sm:text-base"
                 placeholder="Document Title"
               />
+
+              {/* Exact Timestamps with Seconds Indicator */}
+              <div className="flex items-center gap-2 text-[11px] text-slate-400 px-1 mt-0.5 select-none">
+                <span 
+                  className="flex items-center gap-1 hover:text-slate-200 transition-colors cursor-help"
+                  title={`Exact Last Edited Timestamp: ${formatExactTimestamp(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}`}
+                >
+                  <Clock className="w-3 h-3 text-amber-400/90 shrink-0" />
+                  <span>Edited: <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong></span>
+                </span>
+                <span className="text-slate-700">•</span>
+                <span 
+                  className="flex items-center gap-1 hover:text-slate-200 transition-colors cursor-help"
+                  title={`Exact Last Saved Timestamp: ${formatExactTimestamp(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}`}
+                >
+                  <Cloud className="w-3 h-3 text-emerald-400/90 shrink-0" />
+                  <span>Saved: <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong></span>
+                </span>
+              </div>
             </div>
           </div>
         </div>
         
         {/* Quick Top Right Action Buttons */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Ask Shawn Co-Writer Button */}
+          {/* Ask Shawn AI (Unified Assistant) */}
           <button
-            onClick={() => setIsCoWriterOpen(!isCoWriterOpen)}
+            onClick={() => handleOpenShawnAI('chat')}
             className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-linear-to-r from-teal-500/20 to-cyan-500/20 border border-teal-500/50 text-teal-300 hover:text-white hover:bg-teal-500/30 transition-all text-xs flex items-center gap-1.5 font-bold shadow-xs cursor-pointer"
-            title="Ask Shawn to write or edit this document"
+            title="Open unified Shawn AI to write, format, or edit this document"
           >
             <Sparkles className="w-3.5 h-3.5 text-accent animate-pulse" />
-            <span className="hidden sm:inline">Shawn Co-Writer</span>
+            <span className="hidden sm:inline">Ask Shawn AI</span>
+          </button>
+
+          {/* Talk to Shawn (Voice Mode) */}
+          <button
+            onClick={() => handleOpenShawnAI('voice')}
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-teal-300 border border-slate-700 transition-colors text-xs flex items-center gap-1.5 font-medium cursor-pointer"
+            title="Talk directly with Shawn by voice to edit this document"
+          >
+            <Mic className="w-3.5 h-3.5 text-teal-400" />
+            <span className="hidden md:inline">Voice</span>
           </button>
 
           {/* Full Page Print Preview Button */}
@@ -258,13 +399,29 @@ export function DocumentEditor() {
           />
 
           {/* Cloud Sync Status */}
-          <div className="text-xs text-slate-500 hidden lg:flex items-center gap-1.5 pl-2 border-l border-slate-800">
-            {saveStatus === 'saving' && <><Loader2 className="w-3 h-3 animate-spin text-accent" /> Saving...</>}
-            {saveStatus === 'saved' && <><Save className="w-3 h-3 text-emerald-400" /> Saved</>}
-            {saveStatus === 'error' && <span className="text-red-400">Save failed</span>}
+          <div className="text-xs text-slate-400 hidden lg:flex items-center gap-1.5 pl-2 border-l border-slate-800">
+            {saveStatus === 'saving' && <><Loader2 className="w-3 h-3 animate-spin text-accent" /> <span className="font-mono text-slate-300">Saving...</span></>}
+            {saveStatus === 'saved' && <><Save className="w-3 h-3 text-emerald-400" /> <span className="font-mono text-slate-300">Saved</span></>}
+            {saveStatus === 'error' && <span className="text-red-400 font-mono">Save failed</span>}
           </div>
         </div>
       </div>
+
+      {/* Shawn Live Activity Flash Banner */}
+      {shawnActivityFlash && (
+        <div className="bg-linear-to-r from-teal-950/90 via-slate-900 to-cyan-950/90 border-b border-teal-500/40 px-4 py-1.5 flex items-center justify-between text-xs text-teal-200 shrink-0 select-none animate-in fade-in slide-in-from-top duration-300">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-accent animate-spin" />
+            <span className="font-medium">{shawnActivityFlash}</span>
+          </div>
+          <button 
+            onClick={() => setShawnActivityFlash(null)} 
+            className="text-slate-400 hover:text-white text-xs px-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Modern Office Ribbon Navigation Bar */}
       {editor && (
@@ -302,7 +459,7 @@ export function DocumentEditor() {
         </div>
       </div>
       
-      {/* Bottom Status & Pagination Footer Bar */}
+      {/* Bottom Status & Pagination Footer Bar with Exact Second Timestamps */}
       <div className="h-8 border-t border-slate-800 bg-slate-950 flex items-center justify-between px-4 text-[11px] text-slate-400 tracking-normal shrink-0 print:hidden select-none">
         <div className="flex items-center gap-3 sm:gap-5">
           {/* Dynamic Page Count Badge */}
@@ -324,10 +481,28 @@ export function DocumentEditor() {
           </div>
         </div>
 
+        {/* Real-time Second-Level Timestamps in Status Bar */}
         <div className="flex items-center gap-3 text-slate-400">
-          <span className="hidden sm:inline font-medium text-slate-300">Jaystarbliss Dynamic Institute</span>
-          <span className="text-slate-600 hidden sm:inline">•</span>
-          <span className="text-slate-400">{saveStatus === 'saving' ? 'Autosaving...' : 'All changes saved'}</span>
+          <div 
+            className="flex items-center gap-1.5 hover:text-slate-200 transition-colors cursor-help"
+            title={`Last edited: ${formatExactTimestamp(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}`}
+          >
+            <Clock className="w-3 h-3 text-amber-400/90" />
+            <span>Edited: <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong></span>
+          </div>
+
+          <span className="text-slate-700">•</span>
+
+          <div 
+            className="flex items-center gap-1.5 hover:text-slate-200 transition-colors cursor-help"
+            title={`Last saved: ${formatExactTimestamp(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}`}
+          >
+            <Cloud className="w-3 h-3 text-emerald-400/90" />
+            <span>Saved: <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong></span>
+          </div>
+
+          <span className="text-slate-700 hidden md:inline">•</span>
+          <span className="hidden md:inline font-medium text-slate-400">Jaystarbliss Institute</span>
         </div>
       </div>
 
@@ -349,7 +524,7 @@ export function DocumentEditor() {
           editor={editor}
           docTitle={docMeta?.title || 'Untitled Document'}
           docId={id}
-          onSaveDocument={saveDocument}
+          onSaveDocument={(content) => saveDocument(content, new Date().toISOString())}
           isOpen={isCoWriterOpen}
           onToggleOpen={() => setIsCoWriterOpen(!isCoWriterOpen)}
         />
@@ -357,4 +532,5 @@ export function DocumentEditor() {
     </div>
   );
 }
+
 

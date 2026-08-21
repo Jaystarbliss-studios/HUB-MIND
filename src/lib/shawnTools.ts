@@ -74,8 +74,19 @@ export const SHAWN_TOOLS_DECLARATIONS: ToolDefinition[] = [
     },
   },
   {
+    name: 'open_document',
+    description: 'Directly open a document in the document editor on the user\'s screen. Use this when the user asks to open, view, or navigate to a document.',
+    parameters: {
+      type: 'object',
+      properties: {
+        documentId: { type: 'string', description: 'The ID of the document to open' },
+        documentTitle: { type: 'string', description: 'Title or search keyword of the document if ID is unknown' },
+      },
+    },
+  },
+  {
     name: 'create_document',
-    description: 'Create a new document in Hub-Mind.',
+    description: 'Create a new document in Hub-Mind and immediately open it in the document editor on the user\'s screen.',
     parameters: {
       type: 'object',
       properties: {
@@ -88,7 +99,7 @@ export const SHAWN_TOOLS_DECLARATIONS: ToolDefinition[] = [
   },
   {
     name: 'update_document',
-    description: 'Update an existing document in Hub-Mind.',
+    description: 'Update an existing document in Hub-Mind with new content, title, or sections.',
     parameters: {
       type: 'object',
       properties: {
@@ -101,17 +112,17 @@ export const SHAWN_TOOLS_DECLARATIONS: ToolDefinition[] = [
   },
   {
     name: 'edit_document_live',
-    description: 'Open a document in the editor and stream live edits in real-time in front of the user. Shawn types the edits live on screen and asks the user for approval.',
+    description: 'Directly open a document in the editor on the user\'s screen and stream live typing/edits in real-time. Shawn types the edits live on screen.',
     parameters: {
       type: 'object',
       properties: {
         documentId: { type: 'string', description: 'The document ID to edit live' },
-        documentTitle: { type: 'string', description: 'Title of the document' },
+        documentTitle: { type: 'string', description: 'Title of the document (will find or create if documentId not provided)' },
         contentToInsert: { type: 'string', description: 'The HTML formatted content to insert or draft' },
         summary: { type: 'string', description: 'A short description of the changes made' },
         mode: { type: 'string', enum: ['append', 'prepend', 'replace'], description: 'How to insert the content' }
       },
-      required: ['documentId', 'contentToInsert']
+      required: ['contentToInsert']
     }
   },
   {
@@ -176,14 +187,13 @@ export const SHAWN_TOOLS_DECLARATIONS: ToolDefinition[] = [
   },
   {
     name: 'navigate_app',
-    description: 'Navigate the user to a specific section or tab of the application.',
+    description: 'Navigate the user directly to any section, screen, or document editor in the application (e.g. /documents, /documents/:id, /tasks, /inbox, /projects, /clients, /calendar, /notifications, /admin, /).',
     parameters: {
       type: 'object',
       properties: {
         path: { 
           type: 'string', 
-          enum: ['/', '/inbox', '/tasks', '/projects', '/knowledge', '/clients', '/calendar', '/documents', '/notifications', '/admin'], 
-          description: 'The path to navigate to' 
+          description: 'The path to navigate to, e.g. /documents, /documents/:id, /tasks, etc.' 
         },
       },
       required: ['path'],
@@ -340,76 +350,144 @@ export async function executeShawnTool(
         };
       }
 
+      case 'open_document': {
+        const { documentId, documentTitle } = args;
+        let targetId = documentId;
+        let titleFound = documentTitle || 'Document';
+
+        if (targetId) {
+          try {
+            const snap = await getDoc(doc(db, 'documents', targetId));
+            if (snap.exists()) {
+              titleFound = snap.data().title || titleFound;
+            }
+          } catch (e) {
+            console.warn('Error fetching doc by id:', e);
+          }
+        } else if (documentTitle) {
+          // Search documents by title
+          const qSnap = await getDocs(collection(db, 'documents'));
+          const match = qSnap.docs.find(d => {
+            const t = (d.data().title || '').toLowerCase();
+            return t.includes(documentTitle.toLowerCase()) || documentTitle.toLowerCase().includes(t);
+          });
+          if (match) {
+            targetId = match.id;
+            titleFound = match.data().title || documentTitle;
+          }
+        }
+
+        // If not found, create a new document with this title and open it!
+        if (!targetId) {
+          const now = new Date().toISOString();
+          const newDocRef = await addDoc(collection(db, 'documents'), {
+            title: documentTitle || 'Untitled Document',
+            content: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }),
+            category: 'other',
+            type: 'internal',
+            ownerId: currentUser?.id || 'shawn',
+            createdBy: currentUser?.id || 'shawn',
+            createdAt: now,
+            updatedAt: now,
+            lastEditedAt: now,
+            lastSavedAt: now,
+            lastModifiedBy: 'Shawn AI'
+          });
+          targetId = newDocRef.id;
+          titleFound = documentTitle || 'Untitled Document';
+        }
+
+        return {
+          result: {
+            success: true,
+            documentId: targetId,
+            title: titleFound,
+            message: `Opening "${titleFound}" in the document editor on your screen right now!`,
+          },
+          actionPayload: {
+            type: 'navigate',
+            path: `/documents/${targetId}`,
+          },
+        };
+      }
+
       case 'create_document': {
+        const now = new Date().toISOString();
+        let initialContent = '';
+        if (args.content) {
+          if (typeof args.content === 'string' && (args.content.startsWith('<') || args.content.startsWith('{'))) {
+            initialContent = args.content;
+          } else {
+            initialContent = JSON.stringify({
+              type: 'doc',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: args.content }] }]
+            });
+          }
+        } else {
+          initialContent = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] });
+        }
+
         const docData = {
-          title: args.title,
-          content: args.content || '',
+          title: args.title || 'Untitled Document',
+          content: initialContent,
           folderId: args.folderId || null,
+          category: 'other',
+          type: 'internal',
           createdBy: currentUser?.id || 'shawn',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          type: 'document'
+          ownerId: currentUser?.id || 'shawn',
+          createdAt: now,
+          updatedAt: now,
+          lastEditedAt: now,
+          lastSavedAt: now,
+          lastModifiedBy: 'Shawn AI'
         };
         const docRef = await addDoc(collection(db, 'documents'), docData);
+        
         return {
           result: {
             success: true,
             documentId: docRef.id,
             document: { id: docRef.id, ...docData },
-            message: `Document "${args.title}" created successfully.`,
+            message: `Document "${args.title}" created and opened in the editor on your screen!`,
+          },
+          actionPayload: {
+            type: 'navigate',
+            path: `/documents/${docRef.id}`,
           },
         };
       }
 
       case 'update_document': {
         const { documentId, ...updates } = args;
+        const now = new Date().toISOString();
         const docRef = doc(db, 'documents', documentId);
-        const updateData = { ...updates, updatedAt: new Date().toISOString() };
+        const updateData = { 
+          ...updates, 
+          updatedAt: now, 
+          lastEditedAt: now, 
+          lastSavedAt: now, 
+          lastModifiedBy: 'Shawn AI' 
+        };
         await updateDoc(docRef, updateData);
         const updatedSnap = await getDoc(docRef);
+
+        if (updates.content) {
+          shawnTaskManager.broadcastEvent('shawn:live_document_edit', {
+            documentId,
+            html: updates.content,
+            contentToInsert: updates.content,
+            mode: 'replace',
+            summary: `Shawn updated document content`,
+            timestamp: Date.now(),
+          });
+        }
+
         return {
           result: {
             success: true,
             documentId,
             document: { id: updatedSnap.id, ...updatedSnap.data() },
-            message: `Document ${documentId} updated successfully.`,
-          },
-        };
-      }
-
-      case 'edit_document_live': {
-        const { documentId, documentTitle, contentToInsert, summary, mode } = args;
-        
-        // Broadcast live edit event so DocumentEditor / ShawnDocCoWriter renders it in real time
-        shawnTaskManager.broadcastEvent('shawn:live_document_edit', {
-          documentId,
-          documentTitle,
-          html: contentToInsert,
-          contentToInsert,
-          summary: summary || `Shawn drafted updates for ${documentTitle || 'your document'}.`,
-          mode: mode || 'append',
-          action: 'propose',
-          timestamp: Date.now(),
-        });
-
-        const task = shawnTaskManager.createTask({
-          type: 'document_edit',
-          title: `Live Co-Edit: ${documentTitle || 'Document'}`,
-          status: 'awaiting_approval',
-          progress: 90,
-          currentStepMessage: 'Drafted live in editor. Awaiting your approval.',
-          documentId,
-          documentTitle,
-          proposedContent: contentToInsert,
-        });
-
-        return {
-          result: {
-            success: true,
-            documentId,
-            status: 'drafted_live',
-            message: `I've opened the document and drafted the updates live for you right now! Check the editor to review and save.`,
-            taskId: task.id,
+            message: `Document ${documentId} updated and saved successfully with timestamps.`,
           },
           actionPayload: {
             type: 'navigate',
@@ -418,8 +496,97 @@ export async function executeShawnTool(
         };
       }
 
+      case 'edit_document_live': {
+        const { documentId, documentTitle, contentToInsert, summary, mode } = args;
+        let targetDocId = documentId;
+        const now = new Date().toISOString();
+
+        // If no documentId, search or create one immediately
+        if (!targetDocId) {
+          if (documentTitle) {
+            const qSnap = await getDocs(collection(db, 'documents'));
+            const match = qSnap.docs.find(d => {
+              const t = (d.data().title || '').toLowerCase();
+              return t.includes(documentTitle.toLowerCase()) || documentTitle.toLowerCase().includes(t);
+            });
+            if (match) {
+              targetDocId = match.id;
+            }
+          }
+        }
+
+        if (!targetDocId) {
+          // Create new document on the fly
+          const newDocRef = await addDoc(collection(db, 'documents'), {
+            title: documentTitle || 'New Document Draft',
+            content: contentToInsert,
+            category: 'other',
+            type: 'internal',
+            ownerId: currentUser?.id || 'shawn',
+            createdBy: currentUser?.id || 'shawn',
+            createdAt: now,
+            updatedAt: now,
+            lastEditedAt: now,
+            lastSavedAt: now,
+            lastModifiedBy: 'Shawn AI'
+          });
+          targetDocId = newDocRef.id;
+        } else {
+          // Update existing doc metadata
+          try {
+            const docRef = doc(db, 'documents', targetDocId);
+            await updateDoc(docRef, {
+              updatedAt: now,
+              lastEditedAt: now,
+              lastSavedAt: now,
+              lastModifiedBy: 'Shawn AI'
+            });
+          } catch (e) {
+            console.warn('Error updating doc timestamp on live edit:', e);
+          }
+        }
+        
+        // Broadcast live edit event so DocumentEditor directly renders and types it in real time
+        shawnTaskManager.broadcastEvent('shawn:live_document_edit', {
+          documentId: targetDocId,
+          documentTitle: documentTitle || 'Document',
+          html: contentToInsert,
+          contentToInsert,
+          summary: summary || `Shawn drafted updates live on screen.`,
+          mode: mode || 'append',
+          action: 'propose',
+          timestamp: Date.now(),
+        });
+
+        const task = shawnTaskManager.createTask({
+          type: 'document_edit',
+          title: `Live Co-Edit: ${documentTitle || 'Document'}`,
+          status: 'completed',
+          progress: 100,
+          currentStepMessage: 'Drafted and saved live in editor on screen.',
+          documentId: targetDocId,
+          documentTitle,
+          proposedContent: contentToInsert,
+        });
+
+        return {
+          result: {
+            success: true,
+            documentId: targetDocId,
+            status: 'drafted_live',
+            message: `I've opened the document editor directly on your screen and written the updates for you!`,
+            taskId: task.id,
+          },
+          actionPayload: {
+            type: 'navigate',
+            path: `/documents/${targetDocId}`,
+          },
+        };
+      }
+
       case 'background_edit_document': {
         const { documentId, documentTitle, contentToInsertOrUpdate, taskDescription } = args;
+        const now = new Date().toISOString();
         
         const task = shawnTaskManager.createTask({
           type: 'document_edit',
@@ -441,26 +608,36 @@ export async function executeShawnTool(
             if (snap.exists()) {
               const currentData = snap.data();
               let newContent = contentToInsertOrUpdate;
-              // If existing content was stored as JSON or string, preserve and append cleanly
               if (currentData.content && typeof currentData.content === 'string') {
                 if (currentData.content.startsWith('{')) {
-                  // Keep as string or merge
                   newContent = `${currentData.content}\n${contentToInsertOrUpdate}`;
                 } else {
                   newContent = `${currentData.content}\n\n${contentToInsertOrUpdate}`;
                 }
               }
 
+              const saveNow = new Date().toISOString();
               await updateDoc(docRef, {
                 content: newContent,
-                updatedAt: new Date().toISOString(),
+                updatedAt: saveNow,
+                lastEditedAt: saveNow,
+                lastSavedAt: saveNow,
                 lastModifiedBy: 'Shawn AI',
+              });
+
+              shawnTaskManager.broadcastEvent('shawn:live_document_edit', {
+                documentId,
+                html: newContent,
+                contentToInsert: newContent,
+                mode: 'replace',
+                summary: `Background edit completed by Shawn AI`,
+                timestamp: Date.now(),
               });
 
               shawnTaskManager.updateTask(task.id, { 
                 status: 'completed', 
                 progress: 100, 
-                currentStepMessage: 'Background edit completed and saved successfully!' 
+                currentStepMessage: 'Background edit completed and saved successfully with exact timestamps!' 
               });
             } else {
               shawnTaskManager.updateTask(task.id, { 
@@ -484,7 +661,7 @@ export async function executeShawnTool(
             documentId,
             taskId: task.id,
             status: 'in_progress',
-            message: `Right away! I'm editing "${documentTitle || 'the document'}" in the background right now. We can keep chatting while I finish this up!`,
+            message: `Right away! I'm editing "${documentTitle || 'the document'}" in the background with timestamps. We can keep chatting while I finish this up!`,
           },
         };
       }
