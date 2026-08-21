@@ -42,14 +42,20 @@ body {
 
 /* TipTap Editor Styles */
 .ProseMirror {
-  @apply min-h-[500px] outline-none p-8 md:p-12 mx-auto bg-slate-900 border border-slate-800 rounded-lg shadow-sm w-full max-w-4xl text-slate-300 leading-relaxed;
+  @apply outline-none w-full leading-relaxed;
+}
+.paper-white .ProseMirror {
+  @apply text-slate-900;
+}
+.paper-dark .ProseMirror {
+  @apply text-slate-200;
 }
 .ProseMirror > * + * {
   @apply mt-4;
 }
 .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  @apply text-slate-500 float-left h-0 pointer-events-none;
+  @apply text-slate-400 float-left h-0 pointer-events-none;
 }
 .ProseMirror ul {
   @apply list-disc list-inside;
@@ -58,25 +64,35 @@ body {
   @apply list-decimal list-inside;
 }
 .ProseMirror blockquote {
-  @apply border-l-4 border-accent pl-4 italic text-slate-400;
+  @apply border-l-4 border-slate-700 pl-4 italic text-slate-600 dark:text-slate-400 print:text-slate-700 print:border-slate-800;
+}
+.paper-white .ProseMirror blockquote {
+  @apply border-l-4 border-slate-400 pl-4 italic text-slate-600;
 }
 .ProseMirror a {
-  @apply text-accent hover:underline cursor-pointer;
+  @apply text-sky-600 dark:text-cyan-400 hover:underline cursor-pointer print:text-black font-medium;
 }
 .ProseMirror img {
   @apply max-w-full h-auto rounded-lg;
 }
 .ProseMirror hr {
-  @apply border-slate-700 my-8;
+  @apply border-slate-300 dark:border-slate-700 my-8 print:border-slate-400;
 }
 .ProseMirror table {
-  @apply border-collapse table-auto w-full my-4 overflow-hidden rounded-lg;
+  @apply border-collapse table-auto w-full my-4 overflow-hidden rounded-lg print:overflow-visible;
 }
-.ProseMirror table td,
-.ProseMirror table th {
-  @apply border border-slate-700 p-2 min-w-[100px] relative;
+.paper-white .ProseMirror table td,
+.paper-white .ProseMirror table th {
+  @apply border border-slate-300 p-2.5 min-w-[100px] text-slate-900;
 }
-.ProseMirror table th {
+.paper-white .ProseMirror table th {
+  @apply bg-slate-100 text-left font-bold text-slate-900;
+}
+.paper-dark .ProseMirror table td,
+.paper-dark .ProseMirror table th {
+  @apply border border-slate-700 p-2.5 min-w-[100px] text-slate-200;
+}
+.paper-dark .ProseMirror table th {
   @apply bg-slate-800 text-left font-bold text-slate-200;
 }
 .ProseMirror table .selectedCell:after {
@@ -96,6 +112,75 @@ ul[data-type="taskList"] li > label {
 }
 ul[data-type="taskList"] li > div {
   @apply flex-1;
+}
+
+/* Print Stylesheet for Letterheads and Clean Documents */
+@media print {
+  @page {
+    margin: 15mm 15mm 15mm 15mm;
+    size: auto;
+  }
+
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide app shell chrome during print */
+  aside,
+  header,
+  nav,
+  #global-loading-progress-bar,
+  .print-hide,
+  .print\:hidden,
+  button,
+  .pwa-prompt,
+  [role="dialog"],
+  [class*="shawn"],
+  .fixed.bottom-6.right-6 {
+    display: none !important;
+  }
+
+  .official-letterhead {
+    display: block !important;
+    border-bottom: 2px solid #0f172a !important;
+    margin-bottom: 24px !important;
+    padding-bottom: 16px !important;
+  }
+
+  .official-letterhead h1,
+  .official-letterhead p {
+    color: #000000 !important;
+  }
+
+  .ProseMirror {
+    min-height: auto !important;
+    padding: 0 !important;
+    color: #000000 !important;
+    background: transparent !important;
+    font-size: 11pt !important;
+    line-height: 1.6 !important;
+  }
+
+  .ProseMirror h1 {
+    font-size: 18pt !important;
+    color: #000000 !important;
+    font-weight: bold !important;
+  }
+
+  .ProseMirror h2 {
+    font-size: 14pt !important;
+    color: #000000 !important;
+    font-weight: bold !important;
+  }
+
+  .ProseMirror h3 {
+    font-size: 12pt !important;
+    color: #000000 !important;
+    font-weight: bold !important;
+  }
 }
 
 @layer utilities {

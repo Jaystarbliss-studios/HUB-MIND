@@ -2,6 +2,7 @@ import { collection, addDoc, doc, updateDoc, deleteDoc, getDoc, getDocs, query, 
 import { db } from '../firebaseConfig';
 import { createGoogleCalendarEvent, listGoogleCalendarEvents } from './googleCalendar';
 import { User, Task, DocumentInfo } from '../types';
+import { shawnTaskManager } from './shawnTaskManager';
 
 export interface ToolDefinition {
   name: string;
@@ -97,6 +98,43 @@ export const SHAWN_TOOLS_DECLARATIONS: ToolDefinition[] = [
       },
       required: ['documentId'],
     },
+  },
+  {
+    name: 'edit_document_live',
+    description: 'Open a document in the editor and stream live edits in real-time in front of the user. Shawn types the edits live on screen and asks the user for approval.',
+    parameters: {
+      type: 'object',
+      properties: {
+        documentId: { type: 'string', description: 'The document ID to edit live' },
+        documentTitle: { type: 'string', description: 'Title of the document' },
+        contentToInsert: { type: 'string', description: 'The HTML formatted content to insert or draft' },
+        summary: { type: 'string', description: 'A short description of the changes made' },
+        mode: { type: 'string', enum: ['append', 'prepend', 'replace'], description: 'How to insert the content' }
+      },
+      required: ['documentId', 'contentToInsert']
+    }
+  },
+  {
+    name: 'background_edit_document',
+    description: 'Edit a document asynchronously in the background while continuing to chat with the user without blocking.',
+    parameters: {
+      type: 'object',
+      properties: {
+        documentId: { type: 'string', description: 'The document ID to update in background' },
+        documentTitle: { type: 'string', description: 'Title of the document' },
+        contentToInsertOrUpdate: { type: 'string', description: 'The content/updates to apply' },
+        taskDescription: { type: 'string', description: 'What task is being performed' }
+      },
+      required: ['documentId', 'contentToInsertOrUpdate']
+    }
+  },
+  {
+    name: 'get_user_profile',
+    description: 'Retrieve the active user profile, role, permissions, and session context.',
+    parameters: {
+      type: 'object',
+      properties: {}
+    }
   },
   {
     name: 'request_document_delete',
@@ -335,6 +373,132 @@ export async function executeShawnTool(
             documentId,
             document: { id: updatedSnap.id, ...updatedSnap.data() },
             message: `Document ${documentId} updated successfully.`,
+          },
+        };
+      }
+
+      case 'edit_document_live': {
+        const { documentId, documentTitle, contentToInsert, summary, mode } = args;
+        
+        // Broadcast live edit event so DocumentEditor / ShawnDocCoWriter renders it in real time
+        shawnTaskManager.broadcastEvent('shawn:live_document_edit', {
+          documentId,
+          documentTitle,
+          html: contentToInsert,
+          contentToInsert,
+          summary: summary || `Shawn drafted updates for ${documentTitle || 'your document'}.`,
+          mode: mode || 'append',
+          action: 'propose',
+          timestamp: Date.now(),
+        });
+
+        const task = shawnTaskManager.createTask({
+          type: 'document_edit',
+          title: `Live Co-Edit: ${documentTitle || 'Document'}`,
+          status: 'awaiting_approval',
+          progress: 90,
+          currentStepMessage: 'Drafted live in editor. Awaiting your approval.',
+          documentId,
+          documentTitle,
+          proposedContent: contentToInsert,
+        });
+
+        return {
+          result: {
+            success: true,
+            documentId,
+            status: 'drafted_live',
+            message: `I've opened the document and drafted the updates live for you right now! Check the editor to review and save.`,
+            taskId: task.id,
+          },
+          actionPayload: {
+            type: 'navigate',
+            path: `/documents/${documentId}`,
+          },
+        };
+      }
+
+      case 'background_edit_document': {
+        const { documentId, documentTitle, contentToInsertOrUpdate, taskDescription } = args;
+        
+        const task = shawnTaskManager.createTask({
+          type: 'document_edit',
+          title: `Background Update: ${documentTitle || 'Document'}`,
+          status: 'running',
+          progress: 30,
+          currentStepMessage: taskDescription || 'Updating document in background...',
+          documentId,
+          documentTitle,
+        });
+
+        // Run background write to Firestore
+        (async () => {
+          try {
+            shawnTaskManager.updateTask(task.id, { progress: 60, currentStepMessage: 'Syncing changes to cloud...' });
+            const docRef = doc(db, 'documents', documentId);
+            const snap = await getDoc(docRef);
+            
+            if (snap.exists()) {
+              const currentData = snap.data();
+              let newContent = contentToInsertOrUpdate;
+              // If existing content was stored as JSON or string, preserve and append cleanly
+              if (currentData.content && typeof currentData.content === 'string') {
+                if (currentData.content.startsWith('{')) {
+                  // Keep as string or merge
+                  newContent = `${currentData.content}\n${contentToInsertOrUpdate}`;
+                } else {
+                  newContent = `${currentData.content}\n\n${contentToInsertOrUpdate}`;
+                }
+              }
+
+              await updateDoc(docRef, {
+                content: newContent,
+                updatedAt: new Date().toISOString(),
+                lastModifiedBy: 'Shawn AI',
+              });
+
+              shawnTaskManager.updateTask(task.id, { 
+                status: 'completed', 
+                progress: 100, 
+                currentStepMessage: 'Background edit completed and saved successfully!' 
+              });
+            } else {
+              shawnTaskManager.updateTask(task.id, { 
+                status: 'failed', 
+                progress: 100, 
+                currentStepMessage: 'Document not found in database.' 
+              });
+            }
+          } catch (err: any) {
+            shawnTaskManager.updateTask(task.id, { 
+              status: 'failed', 
+              progress: 100, 
+              currentStepMessage: `Error: ${err.message}` 
+            });
+          }
+        })();
+
+        return {
+          result: {
+            success: true,
+            documentId,
+            taskId: task.id,
+            status: 'in_progress',
+            message: `Right away! I'm editing "${documentTitle || 'the document'}" in the background right now. We can keep chatting while I finish this up!`,
+          },
+        };
+      }
+
+      case 'get_user_profile': {
+        return {
+          result: {
+            id: currentUser?.id,
+            name: currentUser?.name || 'User',
+            preferredName: currentUser?.preferredName || currentUser?.name,
+            email: currentUser?.email,
+            role: currentUser?.role || 'staff',
+            status: currentUser?.status || 'active',
+            institution: 'Jaystarbliss Dynamic Institute',
           },
         };
       }

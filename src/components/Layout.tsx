@@ -126,22 +126,24 @@ export function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
+    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden print:h-auto print:overflow-visible print:bg-white">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 border-r border-slate-800 bg-slate-900 shrink-0">
+      <aside className="hidden md:flex flex-col w-64 border-r border-slate-800 bg-slate-900 shrink-0 print:hidden">
         <div className="p-6 flex items-center gap-3">
           <Brain className="w-8 h-8 text-accent" />
           <h1 className="text-xl font-semibold tracking-tight text-white">Hub-Mind</h1>
         </div>
         
-        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) => cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                isActive ? "bg-slate-800 text-accent" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                "flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
+                isActive 
+                  ? "bg-slate-800 text-accent font-semibold shadow-xs" 
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-850 active:scale-[0.99]"
               )}
             >
               <div className="relative">
@@ -152,7 +154,7 @@ export function Layout() {
               </div>
               {item.label}
               {item.to === '/inbox' && unprocessedCount > 0 && (
-                <span className="ml-auto text-xs font-bold text-accent">{unprocessedCount}</span>
+                <span className="ml-auto text-xs font-bold text-accent bg-accent/10 px-2 py-0.5 rounded-full">{unprocessedCount}</span>
               )}
             </NavLink>
           ))}
@@ -160,8 +162,10 @@ export function Layout() {
             <NavLink
               to="/admin"
               className={({ isActive }) => cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                isActive ? "bg-slate-800 text-accent" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                "flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
+                isActive 
+                  ? "bg-slate-800 text-accent font-semibold shadow-xs" 
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-850 active:scale-[0.99]"
               )}
             >
               <Settings className="w-5 h-5" />
@@ -197,9 +201,9 @@ export function Layout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative">
+      <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative print:h-auto print:overflow-visible">
         {/* Header - Desktop */}
-        <header className="hidden md:flex h-16 border-b border-slate-800 items-center justify-between px-8 bg-slate-950/50 backdrop-blur-sm z-10 shrink-0">
+        <header className="hidden md:flex h-16 border-b border-slate-800 items-center justify-between px-8 bg-slate-950/50 backdrop-blur-sm z-10 shrink-0 print:hidden">
           <div className="flex items-center gap-3 w-72">
             <button
               onClick={() => setShowSearchModal(true)}
@@ -242,7 +246,7 @@ export function Layout() {
         </header>
 
         {/* Header - Mobile */}
-        <header className="md:hidden flex items-center justify-between p-4 pt-[calc(1rem+env(safe-area-inset-top))] border-b border-slate-800 bg-slate-950/80 backdrop-blur z-10 shrink-0">
+        <header className="md:hidden flex items-center justify-between p-4 pt-[calc(1rem+env(safe-area-inset-top))] border-b border-slate-800 bg-slate-950/80 backdrop-blur z-10 shrink-0 print:hidden">
           <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
             <Brain className="w-6 h-6 text-accent" />
             Hub-Mind
@@ -289,27 +293,29 @@ export function Layout() {
         {/* Mobile Floating Quick Capture Button */}
         <button
           onClick={() => setShowCapture(true)}
-          className="md:hidden fixed bottom-20 right-4 w-12 h-12 bg-accent text-slate-950 rounded-full flex items-center justify-center shadow-lg shadow-accent/20 z-20 hover:scale-105 active:scale-95 transition-transform"
+          className="md:hidden fixed bottom-20 right-4 w-12 h-12 bg-accent text-slate-950 rounded-full flex items-center justify-center shadow-lg shadow-accent/20 z-20 hover:scale-105 active:scale-95 transition-transform print:hidden"
         >
           <Plus className="w-6 h-6" />
         </button>
 
         {/* Mobile Bottom Nav */}
-        <nav className="md:hidden fixed bottom-0 w-full border-t border-slate-800 bg-slate-950/90 backdrop-blur flex overflow-x-auto snap-x hide-scrollbar p-2 pb-safe z-30">
+        <nav className="md:hidden fixed bottom-0 w-full border-t border-slate-800 bg-slate-950/95 backdrop-blur flex items-center justify-around overflow-x-auto snap-x hide-scrollbar px-1 py-1.5 pb-safe z-30 print:hidden shadow-lg">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) => cn(
-                "flex flex-col items-center p-2 text-[10px] font-medium transition-colors relative min-w-[72px] snap-center shrink-0",
-                isActive ? "text-accent" : "text-slate-500"
+                "flex flex-col items-center justify-center py-1.5 px-2 rounded-lg text-[10px] font-medium transition-all duration-150 relative min-w-[60px] min-h-[48px] snap-center shrink-0",
+                isActive ? "text-accent font-semibold bg-slate-900/80" : "text-slate-400 hover:text-slate-200"
               )}
             >
-              <item.icon className="w-5 h-5 mb-1" />
-              {item.to === '/inbox' && unprocessedCount > 0 && (
-                <span className="absolute top-1 right-2 w-2 h-2 bg-accent rounded-full border-2 border-slate-950"></span>
-              )}
-              {item.label}
+              <div className="relative">
+                <item.icon className="w-5 h-5 mb-0.5" />
+                {item.to === '/inbox' && unprocessedCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full border-2 border-slate-950"></span>
+                )}
+              </div>
+              <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>

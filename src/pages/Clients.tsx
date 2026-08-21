@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
+import { useLoading } from '../lib/loadingContext';
+import { ClientsSkeleton } from '../components/skeletons/ClientsSkeleton';
 import { collection, query, getDocs, orderBy, where, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Client } from '../types';
@@ -12,6 +14,7 @@ import { getThumbnailUrl } from '../lib/cloudinary';
 
 export function Clients() {
   const { profile } = useAuth();
+  const { startLoading, stopLoading } = useLoading();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -27,6 +30,7 @@ export function Clients() {
   useEffect(() => {
     if (!profile) return;
     setLoading(true);
+    startLoading('clients');
     
     const q = query(collection(db, 'clients'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -34,13 +38,18 @@ export function Clients() {
       data = data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       setClients(data);
       setLoading(false);
+      stopLoading('clients');
     }, (error) => {
       console.error("Error fetching clients:", error);
       setLoading(false);
+      stopLoading('clients');
     });
 
-    return () => unsubscribe();
-  }, [profile]);
+    return () => {
+      unsubscribe();
+      stopLoading('clients');
+    };
+  }, [profile, startLoading, stopLoading]);
 
   const filteredClients = clients.filter(c => 
     (activeTab === 'all' || c.type === activeTab) &&
@@ -98,16 +107,16 @@ export function Clients() {
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 flex flex-col h-full min-h-0 pb-20 md:pb-0">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Clients</h1>
-          <p className="text-sm text-slate-400">Manage partners, schools, and parents</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Clients</h1>
+          <p className="text-xs sm:text-sm text-slate-400">Manage partners, schools, and parent relationships</p>
         </div>
         
         {(profile?.role === 'admin' || profile?.role === 'assistant') && (
           <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <Dialog.Trigger asChild>
-              <button className="w-full sm:w-auto flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold px-4 py-2 rounded-lg transition-colors text-sm">
+              <button className="h-10 px-4 py-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold rounded-lg text-sm transition-all duration-150 flex items-center justify-center gap-2 shadow-xs active:scale-[0.98] w-full sm:w-auto shrink-0">
                 <Plus className="w-4 h-4" />
-                New Client
+                <span>New Client</span>
               </button>
             </Dialog.Trigger>
             <Dialog.Portal>
@@ -134,7 +143,7 @@ export function Clients() {
                     <select 
                       value={newClientType}
                       onChange={(e) => setNewClientType(e.target.value as any)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent cursor-pointer"
                     >
                       <option value="school">School</option>
                       <option value="parent">Parent</option>
@@ -164,7 +173,7 @@ export function Clients() {
                   <button 
                     type="submit" 
                     disabled={isSubmitting}
-                    className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold px-4 py-2 rounded-lg transition-colors mt-6"
+                    className="w-full h-10 flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold px-4 py-2 rounded-lg transition-all duration-150 mt-6 shadow-xs active:scale-[0.98]"
                   >
                     {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Client'}
                   </button>
@@ -175,36 +184,37 @@ export function Clients() {
         )}
       </div>
 
-      
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 shrink-0 hide-scrollbar">
-        {['all', 'school', 'parent', 'partner'].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab as any)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize whitespace-nowrap transition-colors ${
-              activeTab === tab 
-                ? 'bg-accent text-slate-950' 
-                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800 hover:border-slate-700'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 shrink-0 hide-scrollbar bg-slate-900/60 p-1 rounded-xl border border-slate-800/80">
+          {(['all', 'school', 'parent', 'partner'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`h-8 px-3.5 rounded-lg text-xs font-semibold capitalize whitespace-nowrap transition-all duration-150 ${
+                activeTab === tab 
+                  ? 'bg-accent text-slate-950 shadow-xs font-bold' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+              }`}
+            >
+              {tab === 'all' ? 'All Clients' : tab}
+            </button>
+          ))}
+        </div>
 
-      <div className="relative shrink-0">
-        <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-        <input 
-          type="text"
-          placeholder="Search clients..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-10 pr-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors"
-        />
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input 
+            type="text"
+            placeholder="Search clients by name, email..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-10 bg-slate-900 border border-slate-800 rounded-lg pl-10 pr-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-colors"
+          />
+        </div>
       </div>
 
       {loading ? (
-        <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>
+        <ClientsSkeleton />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 overflow-y-auto flex-1 min-h-0 pb-4">
           {filteredClients.map(client => (

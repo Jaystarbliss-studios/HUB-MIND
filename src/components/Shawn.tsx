@@ -459,6 +459,9 @@ overdue and nothing on the calendar till 2") rather than a generic greeting.
 - navigate_app — move the user to a different screen
 - list_tasks / create_task / update_task
 - list_documents / get_document_content / create_document / update_document
+- edit_document_live — open a document and type/stream edits live in the editor in front of the user, asking for their approval
+- background_edit_document — perform document writes asynchronously in the background so the user can continue talking with you without pausing or waiting
+- get_user_profile — get current user profile, role, and details
 - request_document_delete — NEVER call the underlying delete directly; this
   always surfaces a confirmation prompt to the user first, and you only
   proceed after they explicitly confirm in that turn
@@ -467,6 +470,12 @@ overdue and nothing on the calendar till 2") rather than a generic greeting.
 - search_workspace — use this for any vague or broad question about
   "what's going on with X"
 - set_preferred_name
+
+## MULTITASKING & LIVE CO-EDITING
+- When asked to edit or write a document while chatting:
+  - If the user wants to see it or asks you to open/edit it with them, call edit_document_live or navigate to /documents/:id. The editor has a live Shawn Co-Writer dock that streams your work live on screen and prompts the user to approve and save.
+  - If the user asks you to update something while continuing discussion, use background_edit_document. This updates the document in the background with real-time status banners without pausing the conversation.
+  - Never pause or stall. Keep the conversation lively and responsive!
 
 ## PERMISSIONS
 Admin and Assistant roles: full visibility across all tasks, documents,
@@ -790,16 +799,19 @@ call returns.`;
   };
 
   // Draggable logic for the floating icon
-  const [iconPos, setIconPos] = useState({ x: typeof window !== 'undefined' ? window.innerWidth - 80 : 0, y: typeof window !== 'undefined' ? window.innerHeight - 80 : 0 });
+  const [iconPos, setIconPos] = useState<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
   const startPosRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     const handleResize = () => {
-      setIconPos(prev => ({
-        x: Math.min(prev.x, window.innerWidth - 60),
-        y: Math.min(prev.y, window.innerHeight - 60)
-      }));
+      setIconPos(prev => {
+        if (!prev) return null;
+        return {
+          x: Math.min(prev.x, window.innerWidth - 70),
+          y: Math.min(prev.y, window.innerHeight - 70)
+        };
+      });
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -817,10 +829,14 @@ call returns.`;
     const dy = e.clientY - startPosRef.current.y;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
       isDraggingRef.current = true;
-      setIconPos((prev) => ({
-        x: Math.max(0, Math.min(window.innerWidth - 60, prev.x + dx)),
-        y: Math.max(0, Math.min(window.innerHeight - 60, prev.y + dy)),
-      }));
+      setIconPos((prev) => {
+        const currentX = prev ? prev.x : window.innerWidth - 80;
+        const currentY = prev ? prev.y : window.innerHeight - 80;
+        return {
+          x: Math.max(16, Math.min(window.innerWidth - 70, currentX + dx)),
+          y: Math.max(16, Math.min(window.innerHeight - 70, currentY + dy)),
+        };
+      });
       startPosRef.current = { x: e.clientX, y: e.clientY };
     }
   };
@@ -836,10 +852,14 @@ call returns.`;
   // Floating trigger button when closed
   if (!isOpen) {
     const isLive = connectionState === 'connected';
+    const positionStyle = iconPos 
+      ? { left: `${iconPos.x}px`, top: `${iconPos.y}px` } 
+      : { right: '24px', bottom: '24px' };
+
     return (
       <div
-        style={{ left: iconPos.x, top: iconPos.y }}
-        className="fixed z-[100] flex items-center gap-3 select-none"
+        style={positionStyle}
+        className="fixed z-[100] flex items-center gap-3 select-none print:hidden"
       >
         <button
           id="shawn-assistant-toggle-btn"

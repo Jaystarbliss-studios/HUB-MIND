@@ -202,30 +202,29 @@ export function Documents() {
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 flex flex-col h-full min-h-0 pb-20 md:pb-0">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Documents</h1>
-          <p className="text-sm text-slate-400">Company and client files</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Documents</h1>
+          <p className="text-xs sm:text-sm text-slate-400">Company files, templates, and official records</p>
         </div>
         
-        
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full sm:w-auto">
           {(profile?.role === 'admin' || profile?.role === 'assistant') && (
             <>
               <button 
                 onClick={() => setShowTemplates(true)}
-                className="flex-1 sm:flex-none bg-accent hover:bg-accent-hover text-slate-950 font-bold px-4 py-2 rounded-lg transition-colors text-sm"
+                className="flex-1 sm:flex-none h-10 px-4 py-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold rounded-lg text-sm transition-all duration-150 flex items-center justify-center gap-2 shadow-xs active:scale-[0.98] shrink-0"
               >
-                Create Document
+                <FileText className="w-4 h-4" />
+                <span>Create Document</span>
               </button>
               <button 
                 onClick={() => setShowUploadForm(!showUploadForm)}
-                className="flex-1 sm:flex-none bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-2 rounded-lg transition-colors text-sm"
+                className="flex-1 sm:flex-none h-10 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-medium rounded-lg text-sm transition-all duration-150 flex items-center justify-center gap-2 border border-slate-700 active:scale-[0.98] shrink-0"
               >
                 {showUploadForm ? 'Cancel Upload' : 'Upload File'}
               </button>
             </>
           )}
         </div>
-
       </div>
 
       {showUploadForm && (
@@ -239,7 +238,7 @@ export function Documents() {
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 placeholder="e.g. Q3 Report"
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors"
+                className="w-full h-10 bg-slate-950 border border-slate-800 rounded-lg px-4 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors"
               />
             </div>
             <div>
@@ -247,7 +246,7 @@ export function Documents() {
               <select 
                 value={newCategory}
                 onChange={(e) => setNewCategory(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors"
+                className="w-full h-10 bg-slate-950 border border-slate-800 rounded-lg px-3.5 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors cursor-pointer"
               >
                 <option value="contract">Contract</option>
                 <option value="report">Report</option>
@@ -263,7 +262,7 @@ export function Documents() {
               <select 
                 value={newProjectId}
                 onChange={(e) => setNewProjectId(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors"
+                className="w-full h-10 bg-slate-950 border border-slate-800 rounded-lg px-3.5 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors cursor-pointer"
               >
                 <option value="">None</option>
                 {projectsList.map(p => (
@@ -277,7 +276,7 @@ export function Documents() {
               <select 
                 value={newClientId}
                 onChange={(e) => setNewClientId(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors"
+                className="w-full h-10 bg-slate-950 border border-slate-800 rounded-lg px-3.5 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors cursor-pointer"
               >
                 <option value="">-- No Client --</option>
                 {clients.map(c => (
@@ -295,13 +294,13 @@ export function Documents() {
       )}
 
       <div className="relative shrink-0">
-        <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
         <input 
           type="text"
           placeholder="Search documents by title..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-10 pr-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors"
+          className="w-full h-10 bg-slate-900 border border-slate-800 rounded-lg pl-10 pr-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-colors"
         />
       </div>
 

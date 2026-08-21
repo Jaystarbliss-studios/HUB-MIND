@@ -1,9 +1,11 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
+import { LoadingProvider } from './lib/loadingContext';
 import { Layout } from './components/Layout';
 import { PWAPrompt } from './components/PWAPrompt';
 import { Shawn } from './components/Shawn';
+import { ShawnTaskStatus } from './components/ShawnTaskStatus';
 import { Loader2 } from 'lucide-react';
 
 // Lazy loaded pages
@@ -47,43 +49,46 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <PWAPrompt />
-        <Shawn />
-        <Suspense fallback={<LoadingScreen />}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            
-            <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-              <Route index element={<Dashboard />} />
+      <LoadingProvider>
+        <BrowserRouter>
+          <PWAPrompt />
+          <Shawn />
+          <ShawnTaskStatus />
+          <Suspense fallback={<LoadingScreen />}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
               
-              <Route path="inbox" element={<Inbox />} />
-              
-              <Route path="tasks" element={<Tasks />} />
-              <Route path="tasks/:id" element={<TaskDetail />} />
-              
-              <Route path="projects" element={<Projects />} />
-              <Route path="projects/:id" element={<ProjectDetail />} />
+              <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                <Route index element={<Dashboard />} />
+                
+                <Route path="inbox" element={<Inbox />} />
+                
+                <Route path="tasks" element={<Tasks />} />
+                <Route path="tasks/:id" element={<TaskDetail />} />
+                
+                <Route path="projects" element={<Projects />} />
+                <Route path="projects/:id" element={<ProjectDetail />} />
 
-              <Route path="knowledge" element={<Knowledge />} />
+                <Route path="knowledge" element={<Knowledge />} />
 
-              <Route path="clients" element={<Clients />} />
-              <Route path="clients/:id" element={<ClientDetail />} />
+                <Route path="clients" element={<Clients />} />
+                <Route path="clients/:id" element={<ClientDetail />} />
 
-              <Route path="meetings/:id" element={<MeetingDetail />} />
-              
-              <Route path="calendar" element={<Calendar />} />
+                <Route path="meetings/:id" element={<MeetingDetail />} />
+                
+                <Route path="calendar" element={<Calendar />} />
 
-              <Route path="documents" element={<Documents />} />
-              <Route path="documents/:id" element={<DocumentEditor />} />
+                <Route path="documents" element={<Documents />} />
+                <Route path="documents/:id" element={<DocumentEditor />} />
 
-              <Route path="notifications" element={<Notifications />} />
+                <Route path="notifications" element={<Notifications />} />
 
-              <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
-            </Route>
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
+                <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
+              </Route>
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </LoadingProvider>
     </AuthProvider>
   );
 }

@@ -1,4 +1,4 @@
-import { coreIdentity, groqAdapter, ollamaAdapter, geminiAdapter } from "./src/ai/prompts/adapters.js";
+import { coreIdentity, groqAdapter, ollamaAdapter, geminiAdapter } from "./src/ai/prompts/adapters";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";

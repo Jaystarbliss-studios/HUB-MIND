@@ -1,16 +1,27 @@
 import { driveConfig, initDriveConfig } from '../../driveConfig'; 
 import React, { useRef, useState } from 'react';
 import { Editor } from '@tiptap/react';
-import { Download, Upload, FileText, File, Code, FileImage, Loader2, Cloud } from 'lucide-react';
+import { Download, Upload, FileText, File, Code, FileImage, Loader2, Cloud, Eye, Printer } from 'lucide-react';
 import * as mammoth from 'mammoth';
+import { 
+  exportDocumentAsPDF, 
+  exportDocumentAsDOCX, 
+  exportDocumentAsHTML, 
+  exportDocumentAsTXT, 
+  printDocumentDirect 
+} from '../../lib/documentExporter';
+import { getOfficialLetterheadHTML } from './OfficialLetterhead';
 
 interface ImportExportMenuProps {
   editor: Editor;
   docTitle: string;
+  onOpenPreview?: () => void;
 }
 
-export function ImportExportMenu({ editor, docTitle }: ImportExportMenuProps) {
+export function ImportExportMenu({ editor, docTitle, onOpenPreview }: ImportExportMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isExportingDOCX, setIsExportingDOCX] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -76,8 +87,27 @@ export function ImportExportMenu({ editor, docTitle }: ImportExportMenuProps) {
     setDriveError(null);
     setDriveSuccess(false);
     
-    const html = editor.getHTML();
-    const blob = new Blob([html], { type: 'text/html' });
+    const bodyHtml = editor.getHTML();
+    const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${docTitle || 'Document'}</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #111827; }
+    img { max-width: 100%; height: auto; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px; }
+  </style>
+</head>
+<body>
+  ${getOfficialLetterheadHTML()}
+  <div class="document-content">
+    ${bodyHtml}
+  </div>
+</body>
+</html>`;
+    const blob = new Blob([fullHtml], { type: 'text/html' });
     const metadata = {
       name: `${docTitle || 'Document'}.html`,
       mimeType: 'text/html',
@@ -109,65 +139,37 @@ export function ImportExportMenu({ editor, docTitle }: ImportExportMenuProps) {
 
   
   const handleExportDOCX = async () => {
+    setIsExportingDOCX(true);
     try {
-      // @ts-ignore
-      const htmlToDocx = (await import('html-to-docx')).default;
-      const html = editor.getHTML();
-      const blob = await htmlToDocx(html, null, {
-        table: { row: { cantSplit: true } },
-        footer: true,
-        pageNumber: true,
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${docTitle || 'Document'}.docx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await exportDocumentAsDOCX(editor.getHTML(), docTitle || 'Document');
     } catch (e) {
       console.error('Failed to export DOCX', e);
-      // Fallback
-      const html = editor.getHTML();
-      const docHTML = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-      <head><meta charset='utf-8'><title>Export HTML To Doc</title></head><body>` + html + `</body></html>`;
-      const blob = new Blob([docHTML], { type: 'application/vnd.ms-word' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${docTitle || 'Document'}.doc`;
-      a.click();
-      URL.revokeObjectURL(url);
+    } finally {
+      setIsExportingDOCX(false);
+      setIsOpen(false);
     }
-    setIsOpen(false);
   };
 
   const handleExportHTML = () => {
-    const html = editor.getHTML();
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${docTitle || 'Document'}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
+    exportDocumentAsHTML(editor.getHTML(), docTitle || 'Document');
     setIsOpen(false);
   };
 
   const handleExportTXT = () => {
-    const text = editor.getText();
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${docTitle || 'Document'}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    exportDocumentAsTXT(editor.getText(), docTitle || 'Document');
     setIsOpen(false);
   };
 
-  const handleExportPDF = () => {
-    window.print();
-    setIsOpen(false);
+  const handleExportPDF = async () => {
+    setIsExportingPDF(true);
+    try {
+      await exportDocumentAsPDF(editor.getHTML(), docTitle || 'Document');
+    } catch (e) {
+      console.error('Failed to export PDF', e);
+    } finally {
+      setIsExportingPDF(false);
+      setIsOpen(false);
+    }
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -235,13 +237,36 @@ export function ImportExportMenu({ editor, docTitle }: ImportExportMenuProps) {
 
       {isOpen && (
         <div className="absolute top-full right-0 mt-1 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl py-1 z-50">
-          <div className="px-3 py-1 text-xs font-semibold text-slate-500 uppercase tracking-wider">Export</div>
+          <div className="px-3 py-1 text-xs font-semibold text-slate-500 uppercase tracking-wider">Preview & Export</div>
           
-          <button onClick={handleExportDOCX} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors">
-            <FileText className="w-4 h-4" /> As DOCX
+          {onOpenPreview && (
+            <button 
+              onClick={() => {
+                onOpenPreview();
+                setIsOpen(false);
+              }} 
+              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-cyan-300 hover:bg-slate-700 hover:text-white transition-colors font-medium"
+            >
+              <Eye className="w-4 h-4 text-cyan-400" /> Full Page Preview & Print
+            </button>
+          )}
+
+          <button 
+            onClick={handleExportPDF} 
+            disabled={isExportingPDF}
+            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-50"
+          >
+            {isExportingPDF ? <Loader2 className="w-4 h-4 animate-spin text-accent" /> : <FileImage className="w-4 h-4 text-red-400" />}
+            <span>{isExportingPDF ? 'Generating PDF...' : 'Download as PDF'}</span>
           </button>
-<button onClick={handleExportPDF} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors">
-            <FileImage className="w-4 h-4" /> As PDF
+
+          <button 
+            onClick={handleExportDOCX} 
+            disabled={isExportingDOCX}
+            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-50"
+          >
+            {isExportingDOCX ? <Loader2 className="w-4 h-4 animate-spin text-accent" /> : <FileText className="w-4 h-4 text-blue-400" />}
+            <span>{isExportingDOCX ? 'Generating DOCX...' : 'Download as DOCX'}</span>
           </button>
           <button onClick={handleExportHTML} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors">
             <Code className="w-4 h-4" /> As HTML

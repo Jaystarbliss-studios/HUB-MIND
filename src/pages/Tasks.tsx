@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
+import { useLoading } from '../lib/loadingContext';
+import { TasksSkeleton } from '../components/skeletons/TasksSkeleton';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task } from '../types';
@@ -14,6 +16,7 @@ import { useUsers } from '../lib/useUsers';
 
 export function Tasks() {
   const { user, profile } = useAuth();
+  const { startLoading, stopLoading } = useLoading();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, active, completed
@@ -36,6 +39,7 @@ export function Tasks() {
     if (!user || !profile) return;
     
     setLoading(true);
+    startLoading('tasks');
     let q = query(collection(db, 'tasks'));
     
     const fetchClients = async () => {
@@ -61,13 +65,18 @@ export function Tasks() {
       
       setTasks(data);
       setLoading(false);
+      stopLoading('tasks');
     }, (error) => {
       console.warn("Error subscribing to tasks, attempting fallback:", error);
       setLoading(false);
+      stopLoading('tasks');
     });
 
-    return () => unsubscribe();
-  }, [user, profile]);
+    return () => {
+      unsubscribe();
+      stopLoading('tasks');
+    };
+  }, [user, profile, startLoading, stopLoading]);
 
   
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -119,25 +128,25 @@ export function Tasks() {
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 flex flex-col h-full min-h-0 pb-20 md:pb-0">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Tasks</h1>
-          <p className="text-sm text-slate-400">Manage your action items</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Tasks</h1>
+          <p className="text-xs sm:text-sm text-slate-400">Manage and execute your action items</p>
         </div>
         
-        <div className="flex items-center gap-4 w-full sm:w-auto">
-          <div className="relative w-full sm:w-64">
-            <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-64 min-w-[200px]">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
             <input 
               type="text" 
               placeholder="Search tasks..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent"
+              className="w-full h-10 bg-slate-900 border border-slate-800 rounded-lg pl-10 pr-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-colors"
             />
           </div>
           <select 
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="flex-1 sm:flex-none bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent"
+            className="h-10 bg-slate-900 border border-slate-800 rounded-lg px-3.5 text-sm text-slate-200 focus:outline-none focus:border-accent transition-colors cursor-pointer"
           >
             <option value="all">All Tasks</option>
             <option value="active">Active</option>
@@ -147,9 +156,9 @@ export function Tasks() {
           
           <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <Dialog.Trigger asChild>
-              <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold px-4 py-2 rounded-lg transition-colors text-sm">
+              <button className="h-10 px-4 py-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold rounded-lg text-sm transition-all duration-150 flex items-center justify-center gap-2 shadow-xs active:scale-[0.98] shrink-0">
                 <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">New Task</span>
+                <span>New Task</span>
               </button>
             </Dialog.Trigger>
             <Dialog.Portal>
@@ -212,7 +221,7 @@ export function Tasks() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>
+        <TasksSkeleton />
       ) : (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col min-h-0 shadow-sm flex-1">
           {filteredTasks.length === 0 ? (

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
+import { useLoading } from '../lib/loadingContext';
+import { DashboardSkeleton } from '../components/skeletons/DashboardSkeleton';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task, Meeting, Client, DocumentInfo, InboxItem, ActivityLog } from '../types';
@@ -68,6 +70,7 @@ function getGreeting(name: string) {
 
 export function Dashboard() {
   const { user, profile } = useAuth();
+  const { startLoading, stopLoading } = useLoading();
   const [loading, setLoading] = useState(true);
 
   // Data states
@@ -99,6 +102,7 @@ export function Dashboard() {
     if (!profile) return;
 
     const fetchData = async () => {
+      startLoading('dashboard');
       try {
         const today = new Date();
         const startOfToday = startOfDay(today);
@@ -202,11 +206,12 @@ export function Dashboard() {
         console.error("Error fetching operations hub data", error);
       } finally {
         setLoading(false);
+        stopLoading('dashboard');
       }
     };
 
     fetchData();
-  }, [profile]);
+  }, [profile, startLoading, stopLoading]);
 
   
   const handleSaveNotes = async () => {
@@ -227,11 +232,7 @@ export function Dashboard() {
   };
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center p-8 text-slate-500">
-        <Loader2 className="w-8 h-8 animate-spin" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
