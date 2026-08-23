@@ -10,15 +10,26 @@ import {
   exportDocumentAsTXT, 
   printDocumentDirect 
 } from '../../lib/documentExporter';
+import { PaperSizeOption, OrientationOption, MarginOption } from '../../lib/paginationEngine';
 import { getOfficialLetterheadHTML } from './OfficialLetterhead';
 
 interface ImportExportMenuProps {
   editor: Editor;
   docTitle: string;
+  pageSize?: PaperSizeOption;
+  orientation?: OrientationOption;
+  marginOption?: MarginOption;
   onOpenPreview?: () => void;
 }
 
-export function ImportExportMenu({ editor, docTitle, onOpenPreview }: ImportExportMenuProps) {
+export function ImportExportMenu({ 
+  editor, 
+  docTitle, 
+  pageSize = 'a4',
+  orientation = 'portrait',
+  marginOption = 'normal',
+  onOpenPreview 
+}: ImportExportMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isExportingDOCX, setIsExportingDOCX] = useState(false);
@@ -141,7 +152,7 @@ export function ImportExportMenu({ editor, docTitle, onOpenPreview }: ImportExpo
   const handleExportDOCX = async () => {
     setIsExportingDOCX(true);
     try {
-      await exportDocumentAsDOCX(editor.getHTML(), docTitle || 'Document');
+      await exportDocumentAsDOCX(docTitle || 'Document', editor.getHTML(), pageSize, orientation, marginOption);
     } catch (e) {
       console.error('Failed to export DOCX', e);
     } finally {
@@ -151,19 +162,19 @@ export function ImportExportMenu({ editor, docTitle, onOpenPreview }: ImportExpo
   };
 
   const handleExportHTML = () => {
-    exportDocumentAsHTML(editor.getHTML(), docTitle || 'Document');
+    exportDocumentAsHTML(docTitle || 'Document', editor.getHTML(), pageSize, orientation, marginOption);
     setIsOpen(false);
   };
 
   const handleExportTXT = () => {
-    exportDocumentAsTXT(editor.getText(), docTitle || 'Document');
+    exportDocumentAsTXT(docTitle || 'Document', editor.getText());
     setIsOpen(false);
   };
 
   const handleExportPDF = async () => {
     setIsExportingPDF(true);
     try {
-      await exportDocumentAsPDF(editor.getHTML(), docTitle || 'Document');
+      await exportDocumentAsPDF(docTitle || 'Document', editor.getHTML(), pageSize, orientation, marginOption);
     } catch (e) {
       console.error('Failed to export PDF', e);
     } finally {

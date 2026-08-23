@@ -20,6 +20,7 @@ export default defineConfig(() => {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
           cleanupOutdatedCaches: true,
           clientsClaim: true,
+          maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,
           runtimeCaching: [
             
             {
@@ -29,6 +30,19 @@ export default defineConfig(() => {
               options: {
                 backgroundSync: {
                   name: 'task-sync-queue',
+                  options: {
+                    maxRetentionTime: 24 * 60 // 24 hours
+                  }
+                }
+              }
+            },
+            {
+              urlPattern: /\/api\/documents/i,
+              handler: 'NetworkOnly',
+              method: 'POST',
+              options: {
+                backgroundSync: {
+                  name: 'document-sync-queue',
                   options: {
                     maxRetentionTime: 24 * 60 // 24 hours
                   }

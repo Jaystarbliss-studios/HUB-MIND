@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Editor } from '@tiptap/react';
 import { 
   Bold, Italic, Underline, Strikethrough, Highlighter,
@@ -9,27 +9,37 @@ import {
   FileText, Layout as LayoutIcon, Eye, CheckCircle2,
   Printer, Download, Upload, Copy, Scissors, ClipboardPaste,
   Search, ZoomIn, ZoomOut, Maximize2, SplitSquareVertical,
-  Plus, Trash2, Columns, Rows
+  Plus, Trash2, Columns, Rows, Pin, PinOff, ChevronUp, ChevronDown,
+  History, Clock
 } from 'lucide-react';
 import { ImportExportMenu } from './ImportExportMenu';
-import { PageSizeOption, PaperThemeOption } from '../../pages/DocumentEditor';
+import { PaperSizeOption, OrientationOption, MarginOption, PaperThemeOption } from '../../lib/paginationEngine';
 
 export type RibbonTab = 'home' | 'insert' | 'layout' | 'review' | 'view' | 'file';
 
 interface DocumentRibbonProps {
   editor: Editor;
   docTitle: string;
-  pageSize: PageSizeOption;
-  setPageSize: (size: PageSizeOption) => void;
+  pageSize: PaperSizeOption;
+  setPageSize: (size: PaperSizeOption) => void;
+  orientation: OrientationOption;
+  setOrientation: (o: OrientationOption) => void;
+  marginOption: MarginOption;
+  setMarginOption: (m: MarginOption) => void;
   paperTheme: PaperThemeOption;
   setPaperTheme: React.Dispatch<React.SetStateAction<PaperThemeOption>>;
   zoomLevel: number;
   setZoomLevel: React.Dispatch<React.SetStateAction<number>>;
   showPageBreaks: boolean;
   setShowPageBreaks: React.Dispatch<React.SetStateAction<boolean>>;
+  showMarginGuides: boolean;
+  setShowMarginGuides: React.Dispatch<React.SetStateAction<boolean>>;
+  showDebugInfo: boolean;
+  setShowDebugInfo: React.Dispatch<React.SetStateAction<boolean>>;
   pageCount: number;
   activePage?: number;
   onOpenPreview?: () => void;
+  onOpenVersionHistory?: () => void;
 }
 
 export function DocumentRibbon({
@@ -37,23 +47,75 @@ export function DocumentRibbon({
   docTitle,
   pageSize,
   setPageSize,
+  orientation,
+  setOrientation,
+  marginOption,
+  setMarginOption,
   paperTheme,
   setPaperTheme,
   zoomLevel,
   setZoomLevel,
   showPageBreaks,
   setShowPageBreaks,
+  showMarginGuides,
+  setShowMarginGuides,
+  showDebugInfo,
+  setShowDebugInfo,
   pageCount,
   activePage = 1,
   onOpenPreview,
+  onOpenVersionHistory,
 }: DocumentRibbonProps) {
   const [activeTab, setActiveTab] = useState<RibbonTab>('home');
+  const [isPinned, setIsPinned] = useState<boolean>(() => {
+    const saved = localStorage.getItem('hubmind_ribbon_pinned');
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [isTemporarilyOpen, setIsTemporarilyOpen] = useState<boolean>(false);
+  const [, setSelectionTick] = useState(0);
+
   const [promptState, setPromptState] = useState<{ type: 'image' | 'link' | null; defaultVal: string }>({
     type: null,
     defaultVal: ''
   });
   const [findText, setFindText] = useState('');
   const [showFindBar, setShowFindBar] = useState(false);
+
+  // Re-render ribbon on every selection update or transaction so active tool highlights match Microsoft Word precisely
+  useEffect(() => {
+    if (!editor) return;
+    const forceUpdate = () => setSelectionTick((t) => (t + 1) % 10000);
+    editor.on('selectionUpdate', forceUpdate);
+    editor.on('transaction', forceUpdate);
+    return () => {
+      editor.off('selectionUpdate', forceUpdate);
+      editor.off('transaction', forceUpdate);
+    };
+  }, [editor]);
+
+  const togglePin = () => {
+    setIsPinned((prev) => {
+      const next = !prev;
+      localStorage.setItem('hubmind_ribbon_pinned', String(next));
+      if (!next) {
+        setIsTemporarilyOpen(false);
+      }
+      return next;
+    });
+  };
+
+  const handleTabClick = (tab: RibbonTab) => {
+    if (activeTab === tab && !isPinned) {
+      setIsTemporarilyOpen((prev) => !prev);
+    } else {
+      setActiveTab(tab);
+      if (!isPinned) {
+        setIsTemporarilyOpen(true);
+      }
+    }
+  };
+
+  const isStripVisible = isPinned || isTemporarilyOpen;
 
   if (!editor) return null;
 
@@ -112,13 +174,19 @@ export function DocumentRibbon({
     }
   };
 
+  // Helper for active button classes with Word-style highlight
+  const getToolClass = (isActive: boolean) =>
+    isActive
+      ? 'p-1.5 rounded-lg bg-teal-500/25 text-teal-300 ring-1 ring-teal-400/50 shadow-inner font-bold transition-all'
+      : 'p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors';
+
   return (
-    <div className="bg-slate-900 border-b border-slate-800 text-slate-200 select-none shrink-0 print:hidden shadow-md">
+    <div className="bg-slate-900 border-b border-slate-800 text-slate-200 select-none shrink-0 print:hidden shadow-md transition-all duration-200">
       {/* Top Ribbon Navigation Tabs */}
       <div className="flex items-center gap-0.5 px-3 pt-1 border-b border-slate-800/80 bg-slate-950 overflow-x-auto scrollbar-none text-xs">
         <button
-          onClick={() => setActiveTab('file')}
-          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors flex items-center gap-1.5 ${
+          onClick={() => handleTabClick('file')}
+          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'file'
               ? 'bg-accent text-slate-950 font-bold'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -129,8 +197,8 @@ export function DocumentRibbon({
         </button>
 
         <button
-          onClick={() => setActiveTab('home')}
-          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors ${
+          onClick={() => handleTabClick('home')}
+          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors cursor-pointer ${
             activeTab === 'home'
               ? 'bg-slate-900 text-white border-t-2 border-accent'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -140,8 +208,8 @@ export function DocumentRibbon({
         </button>
 
         <button
-          onClick={() => setActiveTab('insert')}
-          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors ${
+          onClick={() => handleTabClick('insert')}
+          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors cursor-pointer ${
             activeTab === 'insert'
               ? 'bg-slate-900 text-white border-t-2 border-accent'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -151,8 +219,8 @@ export function DocumentRibbon({
         </button>
 
         <button
-          onClick={() => setActiveTab('layout')}
-          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors ${
+          onClick={() => handleTabClick('layout')}
+          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors cursor-pointer ${
             activeTab === 'layout'
               ? 'bg-slate-900 text-white border-t-2 border-accent'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -162,8 +230,8 @@ export function DocumentRibbon({
         </button>
 
         <button
-          onClick={() => setActiveTab('review')}
-          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors ${
+          onClick={() => handleTabClick('review')}
+          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors cursor-pointer ${
             activeTab === 'review'
               ? 'bg-slate-900 text-white border-t-2 border-accent'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -173,8 +241,8 @@ export function DocumentRibbon({
         </button>
 
         <button
-          onClick={() => setActiveTab('view')}
-          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors ${
+          onClick={() => handleTabClick('view')}
+          className={`px-3.5 py-1.5 font-semibold rounded-t-md transition-colors cursor-pointer ${
             activeTab === 'view'
               ? 'bg-slate-900 text-white border-t-2 border-accent'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -183,10 +251,11 @@ export function DocumentRibbon({
           View
         </button>
 
-        {/* Real-time Page Counter Display Widget in Ribbon Header */}
-        <div className="ml-auto hidden sm:flex items-center gap-2 pl-3 py-1 shrink-0">
+        {/* Ribbon Pin & Collapse Controls + Page Counter */}
+        <div className="ml-auto flex items-center gap-2 pl-3 py-1 shrink-0">
+          {/* Pagination Counter Badge */}
           <div 
-            className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-1 text-xs shadow-xs hover:border-slate-700 transition-colors"
+            className="hidden sm:flex items-center gap-2 bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1 text-xs shadow-xs hover:border-slate-700 transition-colors"
             title={`Real-Time Document Pagination: Page ${activePage} of ${pageCount} (${pageSize.toUpperCase()})`}
           >
             <div className="flex items-center gap-1.5 font-medium text-slate-300">
@@ -196,298 +265,331 @@ export function DocumentRibbon({
               <span className="text-slate-500">/</span>
               <span className="text-white font-mono font-bold">{pageCount}</span>
             </div>
-            <span className="text-slate-700">•</span>
-            <span className="text-[10px] font-mono uppercase text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded">
-              {pageSize}
-            </span>
           </div>
+
+          {/* Microsoft Word Ribbon Pin / Collapse Button */}
+          <button
+            onClick={togglePin}
+            className={`p-1.5 rounded-lg border transition-all text-xs flex items-center gap-1 cursor-pointer ${
+              isPinned
+                ? 'bg-slate-800 border-slate-700 text-teal-400 hover:text-white'
+                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+            title={isPinned ? 'Collapse Ribbon (Show Tabs Only)' : 'Pin Ribbon (Always Show Tools)'}
+          >
+            {isPinned ? (
+              <>
+                <Pin className="w-3.5 h-3.5 fill-teal-400" />
+                <span className="hidden md:inline text-[11px] font-medium">Pinned</span>
+                <ChevronUp className="w-3 h-3 text-slate-400 ml-0.5" />
+              </>
+            ) : (
+              <>
+                <PinOff className="w-3.5 h-3.5 text-slate-400" />
+                <span className="hidden md:inline text-[11px] font-medium">Auto-Hide</span>
+                <ChevronDown className="w-3 h-3 text-slate-400 ml-0.5" />
+              </>
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Ribbon Command Strip */}
-      <div className="p-2 overflow-x-auto whitespace-nowrap flex items-center gap-3 min-h-[58px]">
-        {/* TAB 1: FILE */}
-        {activeTab === 'file' && (
-          <div className="flex items-center gap-3 text-xs">
-            <div className="flex items-center gap-1.5 pr-3 border-r border-slate-800">
-              <button
-                onClick={() => window.print()}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 font-medium transition-colors"
-                title="Print or Save as PDF"
-              >
-                <Printer className="w-4 h-4 text-cyan-400" />
-                <span>Print / PDF</span>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Export & Cloud:</span>
-              <ImportExportMenu editor={editor} docTitle={docTitle} />
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: HOME */}
-        {activeTab === 'home' && (
-          <div className="flex items-center gap-2 text-xs">
-            {/* Clipboard Group */}
-            <div className="flex items-center gap-1 pr-2 border-r border-slate-800">
-              <button
-                onClick={handlePaste}
-                className="p-1.5 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white flex items-center gap-1 transition-colors"
-                title="Smart Paste with Clean Formatting (Ctrl+V)"
-              >
-                <ClipboardPaste className="w-3.5 h-3.5 text-accent" />
-                <span className="text-[11px]">Paste</span>
-              </button>
-              <div className="flex flex-col gap-0.5">
+      {/* Ribbon Command Strip (Slide down / collapse based on isStripVisible) */}
+      {isStripVisible && (
+        <div className="p-2 overflow-x-auto whitespace-nowrap flex items-center gap-3 min-h-[58px] animate-in fade-in slide-in-from-top-1 duration-150">
+          {/* TAB 1: FILE */}
+          {activeTab === 'file' && (
+            <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-1.5 pr-3 border-r border-slate-800">
                 <button
-                  onClick={handleCut}
-                  className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200"
-                  title="Cut (Ctrl+X)"
+                  onClick={() => onOpenPreview ? onOpenPreview() : window.print()}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 font-medium transition-colors cursor-pointer"
+                  title="Print or Save as PDF"
                 >
-                  <Scissors className="w-3 h-3" />
+                  <Printer className="w-4 h-4 text-cyan-400" />
+                  <span>Full Preview / PDF</span>
+                </button>
+
+                {onOpenVersionHistory && (
+                  <button
+                    onClick={onOpenVersionHistory}
+                    className="px-3 py-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/30 flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
+                    title="View, compare, and restore previous document versions"
+                  >
+                    <History className="w-4 h-4 text-teal-400" />
+                    <span>Version History</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Export & Cloud:</span>
+                <ImportExportMenu editor={editor} docTitle={docTitle} onOpenPreview={onOpenPreview} />
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: HOME */}
+          {activeTab === 'home' && (
+            <div className="flex items-center gap-2 text-xs">
+              {/* Clipboard Group */}
+              <div className="flex items-center gap-1 pr-2 border-r border-slate-800">
+                <button
+                  onClick={handlePaste}
+                  className="p-1.5 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Smart Paste with Clean Formatting (Ctrl+V)"
+                >
+                  <ClipboardPaste className="w-3.5 h-3.5 text-accent" />
+                  <span className="text-[11px]">Paste</span>
+                </button>
+                <div className="flex flex-col gap-0.5">
+                  <button
+                    onClick={handleCut}
+                    className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 cursor-pointer"
+                    title="Cut (Ctrl+X)"
+                  >
+                    <Scissors className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={handleCopy}
+                    className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 cursor-pointer"
+                    title="Copy (Ctrl+C)"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Undo / Redo */}
+              <div className="flex items-center gap-0.5 pr-2 border-r border-slate-800">
+                <button
+                  onClick={() => editor.chain().focus().undo().run()}
+                  disabled={!editor.can().undo()}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
+                  title="Undo (Ctrl+Z)"
+                >
+                  <Undo className="w-3.5 h-3.5" />
                 </button>
                 <button
-                  onClick={handleCopy}
-                  className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200"
-                  title="Copy (Ctrl+C)"
+                  onClick={() => editor.chain().focus().redo().run()}
+                  disabled={!editor.can().redo()}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
+                  title="Redo (Ctrl+Y)"
                 >
-                  <Copy className="w-3 h-3" />
+                  <Redo className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Font Family & Size */}
+              <div className="flex items-center gap-1 pr-2 border-r border-slate-800">
+                <select
+                  onChange={(e) => editor.chain().focus().setFontFamily(e.target.value).run()}
+                  value={editor.getAttributes('textStyle').fontFamily || fontFamilies[0].value}
+                  className="bg-slate-800 text-slate-200 text-xs rounded border border-slate-700 px-2 py-1 focus:outline-none w-32 cursor-pointer"
+                >
+                  {fontFamilies.map((font) => (
+                    <option key={font.value} value={font.value}>{font.label}</option>
+                  ))}
+                </select>
+
+                <select
+                  onChange={(e) => editor.chain().focus().setFontSize(e.target.value).run()}
+                  value={editor.getAttributes('textStyle').fontSize || '16px'}
+                  className="bg-slate-800 text-slate-200 text-xs rounded border border-slate-700 px-2 py-1 focus:outline-none w-16 cursor-pointer"
+                >
+                  {fontSizes.map((size) => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Font Style Formatting with Word-Style Active Reflection */}
+              <div className="flex items-center gap-0.5 pr-2 border-r border-slate-800">
+                <button
+                  onClick={() => editor.chain().focus().toggleBold().run()}
+                  className={`${getToolClass(editor.isActive('bold'))} cursor-pointer`}
+                  title={`Bold (Ctrl+B) ${editor.isActive('bold') ? '• [Active]' : ''}`}
+                >
+                  <Bold className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().toggleItalic().run()}
+                  className={`${getToolClass(editor.isActive('italic'))} cursor-pointer`}
+                  title={`Italic (Ctrl+I) ${editor.isActive('italic') ? '• [Active]' : ''}`}
+                >
+                  <Italic className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().toggleUnderline().run()}
+                  className={`${getToolClass(editor.isActive('underline'))} cursor-pointer`}
+                  title={`Underline (Ctrl+U) ${editor.isActive('underline') ? '• [Active]' : ''}`}
+                >
+                  <Underline className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().toggleStrike().run()}
+                  className={`${getToolClass(editor.isActive('strike'))} cursor-pointer`}
+                  title={`Strikethrough ${editor.isActive('strike') ? '• [Active]' : ''}`}
+                >
+                  <Strikethrough className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().toggleSubscript().run()}
+                  className={`${getToolClass(editor.isActive('subscript'))} cursor-pointer`}
+                  title={`Subscript ${editor.isActive('subscript') ? '• [Active]' : ''}`}
+                >
+                  <Subscript className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().toggleSuperscript().run()}
+                  className={`${getToolClass(editor.isActive('superscript'))} cursor-pointer`}
+                  title={`Superscript ${editor.isActive('superscript') ? '• [Active]' : ''}`}
+                >
+                  <Superscript className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Text Color Picker */}
+                <div className={`relative group p-1 rounded-lg ${editor.getAttributes('textStyle').color ? 'bg-teal-500/10 ring-1 ring-teal-400/30' : ''}`}>
+                  <Baseline className="w-3.5 h-3.5 text-slate-400 group-hover:text-white cursor-pointer" />
+                  <input
+                    type="color"
+                    onInput={(e) => editor.chain().focus().setColor((e.target as HTMLInputElement).value).run()}
+                    value={editor.getAttributes('textStyle').color || '#000000'}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    title="Font Color"
+                  />
+                </div>
+
+                {/* Highlight Picker */}
+                <div className={`relative group p-1 rounded-lg ${editor.isActive('highlight') ? 'bg-yellow-400/20 ring-1 ring-yellow-400/50' : ''}`}>
+                  <Highlighter className={`w-3.5 h-3.5 cursor-pointer ${editor.isActive('highlight') ? 'text-yellow-400' : 'text-slate-400 group-hover:text-amber-400'}`} />
+                  <input
+                    type="color"
+                    onInput={(e) => editor.chain().focus().toggleHighlight({ color: (e.target as HTMLInputElement).value }).run()}
+                    value={editor.getAttributes('highlight').color || '#ffff00'}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    title="Text Highlight"
+                  />
+                </div>
+
+                <button
+                  onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                  title="Clear Formatting"
+                >
+                  <Eraser className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Paragraph Alignments with Word-Style Active Reflection */}
+              <div className="flex items-center gap-0.5 pr-2 border-r border-slate-800">
+                <button
+                  onClick={() => editor.chain().focus().setTextAlign('left').run()}
+                  className={`${getToolClass(editor.isActive({ textAlign: 'left' }))} cursor-pointer`}
+                  title="Align Left"
+                >
+                  <AlignLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().setTextAlign('center').run()}
+                  className={`${getToolClass(editor.isActive({ textAlign: 'center' }))} cursor-pointer`}
+                  title="Align Center"
+                >
+                  <AlignCenter className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().setTextAlign('right').run()}
+                  className={`${getToolClass(editor.isActive({ textAlign: 'right' }))} cursor-pointer`}
+                  title="Align Right"
+                >
+                  <AlignRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().setTextAlign('justify').run()}
+                  className={`${getToolClass(editor.isActive({ textAlign: 'justify' }))} cursor-pointer`}
+                  title="Justify"
+                >
+                  <AlignJustify className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Lists & Quotes with Active Reflection */}
+              <div className="flex items-center gap-0.5 pr-2 border-r border-slate-800">
+                <button
+                  onClick={() => editor.chain().focus().toggleBulletList().run()}
+                  className={`${getToolClass(editor.isActive('bulletList'))} cursor-pointer`}
+                  title="Bullet List"
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                  className={`${getToolClass(editor.isActive('orderedList'))} cursor-pointer`}
+                  title="Numbered List"
+                >
+                  <ListOrdered className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().toggleTaskList().run()}
+                  className={`${getToolClass(editor.isActive('taskList'))} cursor-pointer`}
+                  title="Task Checklist"
+                >
+                  <CheckSquare className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().toggleBlockquote().run()}
+                  className={`${getToolClass(editor.isActive('blockquote'))} cursor-pointer`}
+                  title="Blockquote"
+                >
+                  <Quote className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Quick Heading Style Presets with Word-Style Active Reflection */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => editor.chain().focus().setParagraph().run()}
+                  className={`px-2.5 py-1 rounded text-xs border cursor-pointer transition-all ${
+                    editor.isActive('paragraph') && !editor.isActive('heading')
+                      ? 'border-teal-400 bg-teal-500/20 text-teal-300 font-bold ring-1 ring-teal-400/40'
+                      : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  Normal
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                  className={`px-2.5 py-1 rounded text-xs border font-bold cursor-pointer transition-all ${
+                    editor.isActive('heading', { level: 1 })
+                      ? 'border-teal-400 bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/40'
+                      : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  Heading 1
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                  className={`px-2.5 py-1 rounded text-xs border font-semibold cursor-pointer transition-all ${
+                    editor.isActive('heading', { level: 2 })
+                      ? 'border-teal-400 bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/40'
+                      : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  Heading 2
+                </button>
+                <button
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+                  className={`px-2.5 py-1 rounded text-xs border cursor-pointer transition-all ${
+                    editor.isActive('heading', { level: 3 })
+                      ? 'border-teal-400 bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/40'
+                      : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  Heading 3
                 </button>
               </div>
             </div>
-
-            {/* Undo / Redo */}
-            <div className="flex items-center gap-0.5 pr-2 border-r border-slate-800">
-              <button
-                onClick={() => editor.chain().focus().undo().run()}
-                disabled={!editor.can().undo()}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-40"
-                title="Undo (Ctrl+Z)"
-              >
-                <Undo className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().redo().run()}
-                disabled={!editor.can().redo()}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-40"
-                title="Redo (Ctrl+Y)"
-              >
-                <Redo className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Font Family & Size */}
-            <div className="flex items-center gap-1 pr-2 border-r border-slate-800">
-              <select
-                onChange={(e) => editor.chain().focus().setFontFamily(e.target.value).run()}
-                value={editor.getAttributes('textStyle').fontFamily || fontFamilies[0].value}
-                className="bg-slate-800 text-slate-200 text-xs rounded border border-slate-700 px-2 py-1 focus:outline-none w-32"
-              >
-                {fontFamilies.map((font) => (
-                  <option key={font.value} value={font.value}>{font.label}</option>
-                ))}
-              </select>
-
-              <select
-                onChange={(e) => editor.chain().focus().setFontSize(e.target.value).run()}
-                value={editor.getAttributes('textStyle').fontSize || '16px'}
-                className="bg-slate-800 text-slate-200 text-xs rounded border border-slate-700 px-2 py-1 focus:outline-none w-16"
-              >
-                {fontSizes.map((size) => (
-                  <option key={size} value={size}>{size}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Font Style Formatting */}
-            <div className="flex items-center gap-0.5 pr-2 border-r border-slate-800">
-              <button
-                onClick={() => editor.chain().focus().toggleBold().run()}
-                className={`p-1.5 rounded-lg transition-colors ${editor.isActive('bold') ? 'bg-accent/20 text-accent font-bold' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Bold (Ctrl+B)"
-              >
-                <Bold className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleItalic().run()}
-                className={`p-1.5 rounded-lg transition-colors ${editor.isActive('italic') ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Italic (Ctrl+I)"
-              >
-                <Italic className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleUnderline().run()}
-                className={`p-1.5 rounded-lg transition-colors ${editor.isActive('underline') ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Underline (Ctrl+U)"
-              >
-                <Underline className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleStrike().run()}
-                className={`p-1.5 rounded-lg transition-colors ${editor.isActive('strike') ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Strikethrough"
-              >
-                <Strikethrough className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleSubscript().run()}
-                className={`p-1.5 rounded-lg transition-colors ${editor.isActive('subscript') ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Subscript"
-              >
-                <Subscript className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleSuperscript().run()}
-                className={`p-1.5 rounded-lg transition-colors ${editor.isActive('superscript') ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Superscript"
-              >
-                <Superscript className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Text Color Picker */}
-              <div className="relative group p-1">
-                <Baseline className="w-3.5 h-3.5 text-slate-400 group-hover:text-white cursor-pointer" />
-                <input
-                  type="color"
-                  onInput={(e) => editor.chain().focus().setColor((e.target as HTMLInputElement).value).run()}
-                  value={editor.getAttributes('textStyle').color || '#000000'}
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                  title="Font Color"
-                />
-              </div>
-
-              {/* Highlight Picker */}
-              <div className="relative group p-1">
-                <Highlighter className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-400 cursor-pointer" />
-                <input
-                  type="color"
-                  onInput={(e) => editor.chain().focus().toggleHighlight({ color: (e.target as HTMLInputElement).value }).run()}
-                  value={editor.getAttributes('highlight').color || '#ffff00'}
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                  title="Text Highlight"
-                />
-              </div>
-
-              <button
-                onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-                title="Clear Formatting"
-              >
-                <Eraser className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Paragraph Alignments */}
-            <div className="flex items-center gap-0.5 pr-2 border-r border-slate-800">
-              <button
-                onClick={() => editor.chain().focus().setTextAlign('left').run()}
-                className={`p-1.5 rounded-lg ${editor.isActive({ textAlign: 'left' }) ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Align Left"
-              >
-                <AlignLeft className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().setTextAlign('center').run()}
-                className={`p-1.5 rounded-lg ${editor.isActive({ textAlign: 'center' }) ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Align Center"
-              >
-                <AlignCenter className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().setTextAlign('right').run()}
-                className={`p-1.5 rounded-lg ${editor.isActive({ textAlign: 'right' }) ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Align Right"
-              >
-                <AlignRight className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().setTextAlign('justify').run()}
-                className={`p-1.5 rounded-lg ${editor.isActive({ textAlign: 'justify' }) ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Justify"
-              >
-                <AlignJustify className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Lists & Quotes */}
-            <div className="flex items-center gap-0.5 pr-2 border-r border-slate-800">
-              <button
-                onClick={() => editor.chain().focus().toggleBulletList().run()}
-                className={`p-1.5 rounded-lg ${editor.isActive('bulletList') ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Bullet List"
-              >
-                <List className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleOrderedList().run()}
-                className={`p-1.5 rounded-lg ${editor.isActive('orderedList') ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Numbered List"
-              >
-                <ListOrdered className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleTaskList().run()}
-                className={`p-1.5 rounded-lg ${editor.isActive('taskList') ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Task Checklist"
-              >
-                <CheckSquare className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleBlockquote().run()}
-                className={`p-1.5 rounded-lg ${editor.isActive('blockquote') ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Blockquote"
-              >
-                <Quote className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Quick Heading Style Presets */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => editor.chain().focus().setParagraph().run()}
-                className={`px-2.5 py-1 rounded text-xs border ${
-                  editor.isActive('paragraph') && !editor.isActive('heading')
-                    ? 'border-accent bg-accent/10 text-accent font-semibold'
-                    : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                Normal
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                className={`px-2.5 py-1 rounded text-xs border font-bold ${
-                  editor.isActive('heading', { level: 1 })
-                    ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
-                    : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                Heading 1
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                className={`px-2.5 py-1 rounded text-xs border font-semibold ${
-                  editor.isActive('heading', { level: 2 })
-                    ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
-                    : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                Heading 2
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-                className={`px-2.5 py-1 rounded text-xs border ${
-                  editor.isActive('heading', { level: 3 })
-                    ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
-                    : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                Heading 3
-              </button>
-            </div>
-          </div>
-        )}
+          )}
 
         {/* TAB 3: INSERT */}
         {activeTab === 'insert' && (
@@ -570,46 +672,125 @@ export function DocumentRibbon({
 
         {/* TAB 4: LAYOUT */}
         {activeTab === 'layout' && (
-          <div className="flex items-center gap-3 text-xs">
-            {/* Standard Page Dimensions */}
-            <div className="flex items-center gap-2 pr-3 border-r border-slate-800">
-              <span className="text-[11px] text-slate-400 font-semibold uppercase">Page Size:</span>
+          <div className="flex items-center gap-3 text-xs overflow-x-auto py-1 scrollbar-none">
+            {/* Paper Size Selector */}
+            <div className="flex items-center gap-1.5 pr-2.5 border-r border-slate-800 shrink-0">
+              <span className="text-[11px] text-slate-400 font-semibold uppercase">Size:</span>
               <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
                 <button
                   onClick={() => setPageSize('a4')}
-                  className={`px-3 py-1 rounded transition-colors font-medium ${
-                    pageSize === 'a4' ? 'bg-accent text-slate-950 font-bold shadow-sm' : 'text-slate-300 hover:text-white'
+                  className={`px-2.5 py-1 rounded transition-colors font-medium ${
+                    pageSize === 'a4' ? 'bg-accent text-slate-950 font-bold shadow-xs' : 'text-slate-300 hover:text-white'
                   }`}
+                  title="A4 (210 × 297 mm)"
                 >
-                  A4 (210 × 297 mm)
+                  A4
                 </button>
                 <button
                   onClick={() => setPageSize('letter')}
-                  className={`px-3 py-1 rounded transition-colors font-medium ${
-                    pageSize === 'letter' ? 'bg-accent text-slate-950 font-bold shadow-sm' : 'text-slate-300 hover:text-white'
+                  className={`px-2.5 py-1 rounded transition-colors font-medium ${
+                    pageSize === 'letter' ? 'bg-accent text-slate-950 font-bold shadow-xs' : 'text-slate-300 hover:text-white'
                   }`}
+                  title="US Letter (8.5 × 11 in)"
                 >
-                  US Letter (8.5 × 11 in)
+                  Letter
+                </button>
+                <button
+                  onClick={() => setPageSize('legal')}
+                  className={`px-2.5 py-1 rounded transition-colors font-medium ${
+                    pageSize === 'legal' ? 'bg-accent text-slate-950 font-bold shadow-xs' : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="US Legal (8.5 × 14 in)"
+                >
+                  Legal
+                </button>
+              </div>
+            </div>
+
+            {/* Orientation Selector */}
+            <div className="flex items-center gap-1.5 pr-2.5 border-r border-slate-800 shrink-0">
+              <span className="text-[11px] text-slate-400 font-semibold uppercase">Orientation:</span>
+              <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+                <button
+                  onClick={() => setOrientation('portrait')}
+                  className={`px-2.5 py-1 rounded transition-colors font-medium ${
+                    orientation === 'portrait' ? 'bg-accent text-slate-950 font-bold shadow-xs' : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="Portrait (Vertical)"
+                >
+                  Portrait
+                </button>
+                <button
+                  onClick={() => setOrientation('landscape')}
+                  className={`px-2.5 py-1 rounded transition-colors font-medium ${
+                    orientation === 'landscape' ? 'bg-accent text-slate-950 font-bold shadow-xs' : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="Landscape (Horizontal)"
+                >
+                  Landscape
+                </button>
+              </div>
+            </div>
+
+            {/* Margin System Selector */}
+            <div className="flex items-center gap-1.5 pr-2.5 border-r border-slate-800 shrink-0">
+              <span className="text-[11px] text-slate-400 font-semibold uppercase">Margins:</span>
+              <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+                <button
+                  onClick={() => setMarginOption('normal')}
+                  className={`px-2 py-1 rounded transition-colors font-medium ${
+                    marginOption === 'normal' ? 'bg-accent text-slate-950 font-bold shadow-xs' : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="Normal: 20mm (All sides)"
+                >
+                  Normal
+                </button>
+                <button
+                  onClick={() => setMarginOption('narrow')}
+                  className={`px-2 py-1 rounded transition-colors font-medium ${
+                    marginOption === 'narrow' ? 'bg-accent text-slate-950 font-bold shadow-xs' : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="Narrow: 12.7mm (0.5 in)"
+                >
+                  Narrow
+                </button>
+                <button
+                  onClick={() => setMarginOption('moderate')}
+                  className={`px-2 py-1 rounded transition-colors font-medium ${
+                    marginOption === 'moderate' ? 'bg-accent text-slate-950 font-bold shadow-xs' : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="Moderate: Top/Bottom 25.4mm, Left/Right 19mm"
+                >
+                  Moderate
+                </button>
+                <button
+                  onClick={() => setMarginOption('wide')}
+                  className={`px-2 py-1 rounded transition-colors font-medium ${
+                    marginOption === 'wide' ? 'bg-accent text-slate-950 font-bold shadow-xs' : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="Wide: Top/Bottom 25.4mm, Left/Right 50.8mm"
+                >
+                  Wide
                 </button>
               </div>
             </div>
 
             {/* Paper Theme (White vs Dark) */}
-            <div className="flex items-center gap-2 pr-3 border-r border-slate-800">
-              <span className="text-[11px] text-slate-400 font-semibold uppercase">Paper Appearance:</span>
+            <div className="flex items-center gap-1.5 pr-2.5 border-r border-slate-800 shrink-0">
+              <span className="text-[11px] text-slate-400 font-semibold uppercase">Theme:</span>
               <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
                 <button
                   onClick={() => setPaperTheme('white')}
-                  className={`px-3 py-1 rounded transition-colors font-medium ${
-                    paperTheme === 'white' ? 'bg-white text-slate-950 font-bold shadow-sm' : 'text-slate-300 hover:text-white'
+                  className={`px-2.5 py-1 rounded transition-colors font-medium ${
+                    paperTheme === 'white' ? 'bg-white text-slate-950 font-bold shadow-xs' : 'text-slate-300 hover:text-white'
                   }`}
                 >
-                  White Paper (Print)
+                  White Paper
                 </button>
                 <button
                   onClick={() => setPaperTheme('dark')}
-                  className={`px-3 py-1 rounded transition-colors font-medium ${
-                    paperTheme === 'dark' ? 'bg-slate-950 text-cyan-400 border border-slate-700 font-bold shadow-sm' : 'text-slate-300 hover:text-white'
+                  className={`px-2.5 py-1 rounded transition-colors font-medium ${
+                    paperTheme === 'dark' ? 'bg-slate-950 text-cyan-400 border border-slate-700 font-bold shadow-xs' : 'text-slate-300 hover:text-white'
                   }`}
                 >
                   Dark Sheet
@@ -617,27 +798,39 @@ export function DocumentRibbon({
               </div>
             </div>
 
-            {/* Page Break Guide Toggle & Insert Break */}
-            <div className="flex items-center gap-2">
+            {/* Margin Guides, Page Breaks, and Debug Inspector Controls */}
+            <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => setShowPageBreaks(!showPageBreaks)}
-                className={`px-3 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors ${
-                  showPageBreaks
-                    ? 'border-accent/50 bg-accent/10 text-accent font-semibold'
+                onClick={() => setShowMarginGuides(!showMarginGuides)}
+                className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  showMarginGuides
+                    ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-300 font-semibold'
                     : 'border-slate-700 bg-slate-800 text-slate-300 hover:text-white'
                 }`}
+                title="Toggle visual margin guide boundaries on paper"
               >
-                <SplitSquareVertical className="w-3.5 h-3.5" />
-                <span>{showPageBreaks ? 'Page Guides: Visible' : 'Page Guides: Hidden'}</span>
+                <span>Guides: {showMarginGuides ? 'On' : 'Off'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowDebugInfo(!showDebugInfo)}
+                className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  showDebugInfo
+                    ? 'border-amber-500/50 bg-amber-500/15 text-amber-300 font-semibold'
+                    : 'border-slate-700 bg-slate-800 text-slate-300 hover:text-white'
+                }`}
+                title="Toggle real-time physical pagination metrics & inspector"
+              >
+                <span>Inspector: {showDebugInfo ? 'On' : 'Off'}</span>
               </button>
 
               <button
                 onClick={() => editor.chain().focus().setHorizontalRule().run()}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 font-medium transition-colors"
-                title="Insert page break separator"
+                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 font-medium transition-colors cursor-pointer"
+                title="Insert explicit page break"
               >
                 <Plus className="w-3.5 h-3.5 text-accent" />
-                <span>Insert Page Break</span>
+                <span>Page Break</span>
               </button>
             </div>
           </div>
@@ -668,16 +861,26 @@ export function DocumentRibbon({
             </div>
 
             <div className="flex items-center gap-2">
+              {onOpenVersionHistory && (
+                <button
+                  onClick={onOpenVersionHistory}
+                  className="px-3 py-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/30 flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
+                  title="View and restore previous document versions"
+                >
+                  <History className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Version History</span>
+                </button>
+              )}
               <button
                 onClick={() => editor.chain().focus().selectAll().run()}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 cursor-pointer"
               >
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Select All</span>
               </button>
               <button
                 onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 cursor-pointer"
               >
                 <Eraser className="w-3.5 h-3.5 text-amber-400" />
                 <span>Clean All Styles</span>
@@ -735,6 +938,7 @@ export function DocumentRibbon({
           </div>
         )}
       </div>
+      )}
 
       {/* Modal prompt for Link and Image insertion */}
       {promptState.type && (

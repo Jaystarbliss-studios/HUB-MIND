@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Underline } from '@tiptap/extension-underline';
 import { Highlight } from '@tiptap/extension-highlight';
@@ -23,44 +23,43 @@ import { CharacterCount } from '@tiptap/extension-character-count';
 import { HubMindPasteEngine } from '../components/documents/clipboard/paste-engine';
 import { DocumentRibbon } from '../components/documents/DocumentRibbon';
 import { ImportExportMenu } from '../components/documents/ImportExportMenu';
-import { OfficialLetterhead } from '../components/documents/OfficialLetterhead';
 import { PaginatedPageContainer } from '../components/documents/PaginatedPageContainer';
 import { FullPagePreviewModal } from '../components/documents/FullPagePreviewModal';
+import { VersionHistoryModal } from '../components/documents/VersionHistoryModal';
 import { ShawnDocCoWriter } from '../components/documents/ShawnDocCoWriter';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
-import { useAuth } from '../lib/auth';
 import { 
-  ArrowLeft, Loader2, Save, Printer, Sun, Moon, 
-  FileText, Layout, ChevronDown, CheckCircle2, SplitSquareVertical, Eye, Sparkles,
-  Clock, Cloud, CheckCheck, Mic
-} from 'lucide-react';
+  saveDocumentOffline, 
+  getDocumentWithOfflineFallback, 
+  processOfflineSyncQueue 
+} from '../lib/offlineSync';
+import { useAuth } from '../lib/auth';
 import { formatExactTimestamp, formatTimeWithSeconds } from '../lib/dateUtils';
+import { 
+  ArrowLeft, Loader2, Save, Sun, Moon, 
+  FileText, Eye, Sparkles,
+  Clock, Cloud, CheckCheck, Mic, History, WifiOff, RefreshCw,
+  Bold, Italic, List, Heading1, Heading2, Undo, Redo, Smartphone, Monitor
+} from 'lucide-react';
+import { 
+  PaperSizeOption, 
+  OrientationOption, 
+  MarginOption, 
+  PaperThemeOption, 
+  PAPER_SIZES, 
+  MARGIN_PRESETS,
+  computePageLayout, 
+  paginateDocument,
+  calculateExactPageCount
+} from '../lib/paginationEngine';
 
-export type PageSizeOption = 'a4' | 'letter';
-export type PaperThemeOption = 'white' | 'dark';
+export type { PaperSizeOption, OrientationOption, MarginOption, PaperThemeOption };
 
-interface PageSizeConfig {
+export interface PageSizeConfig {
   name: string;
   dimensions: string;
   widthPx: number;
   heightPx: number;
 }
-
-export const PAGE_CONFIGS: Record<PageSizeOption, PageSizeConfig> = {
-  a4: {
-    name: 'A4',
-    dimensions: '210 × 297 mm',
-    widthPx: 794,
-    heightPx: 1123,
-  },
-  letter: {
-    name: 'US Letter',
-    dimensions: '8.5 × 11 in',
-    widthPx: 816,
-    heightPx: 1056,
-  },
-};
 
 export function DocumentEditor() {
   const { id } = useParams<{ id: string }>();
@@ -69,20 +68,40 @@ export function DocumentEditor() {
   const [loading, setLoading] = useState(true);
   const [docMeta, setDocMeta] = useState<any>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
   const [lastEditedTime, setLastEditedTime] = useState<string | null>(null);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
-  const [pageSize, setPageSize] = useState<PageSizeOption>('a4');
+  const [pageSize, setPageSize] = useState<PaperSizeOption>('a4');
+  const [orientation, setOrientation] = useState<OrientationOption>('portrait');
+  const [marginOption, setMarginOption] = useState<MarginOption>('normal');
   const [paperTheme, setPaperTheme] = useState<PaperThemeOption>('white');
+  const [showMarginGuides, setShowMarginGuides] = useState<boolean>(false);
+  const [showDebugInfo, setShowDebugInfo] = useState<boolean>(false);
   const [pageCount, setPageCount] = useState<number>(1);
   const [activePage, setActivePage] = useState<number>(1);
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
   const [showPageBreaks, setShowPageBreaks] = useState<boolean>(true);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false);
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState<boolean>(false);
   const [isCoWriterOpen, setIsCoWriterOpen] = useState<boolean>(false);
   const [shawnActivityFlash, setShawnActivityFlash] = useState<string | null>(null);
+  const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const currentConfig = PAGE_CONFIGS[pageSize];
+  const currentLayout = useMemo(() => {
+    return computePageLayout({ paperSize: pageSize, orientation, marginOption });
+  }, [pageSize, orientation, marginOption]);
+
+  // Screen resize detection
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileScreen(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const editor = useEditor({
     extensions: [
@@ -112,15 +131,21 @@ export function DocumentEditor() {
       const editNow = new Date().toISOString();
       setLastEditedTime(editNow);
       setSaveStatus('saving');
-      const json = editor.getJSON();
+      const htmlContent = editor.getHTML();
+
+      // Recalculate page count
+      const updatedPageCount = calculateExactPageCount(htmlContent, pageSize, orientation, marginOption);
+      if (updatedPageCount !== pageCount) {
+        setPageCount(updatedPageCount);
+      }
       
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
       
       timeoutRef.current = setTimeout(() => {
-        saveDocument(json, editNow);
-      }, 1200); // Autosave after 1.2 seconds of inactivity
+        saveDocument(htmlContent, editNow);
+      }, 1200); // Autosave after 1.2s of inactivity
     },
   });
 
@@ -130,14 +155,18 @@ export function DocumentEditor() {
       setSaveStatus('saving');
       const saveNow = new Date().toISOString();
       const actualEditTime = editTimestamp || lastEditedTime || saveNow;
-      
-      await updateDoc(doc(db, 'documents', id), {
-        content: typeof content === 'string' ? content : JSON.stringify(content),
-        updatedAt: saveNow,
-        lastEditedAt: actualEditTime,
-        lastSavedAt: saveNow,
-        lastModifiedBy: profile?.preferredName || profile?.name || 'User',
-      });
+      const htmlString = typeof content === 'string' ? content : (editor?.getHTML() || '');
+
+      await saveDocumentOffline(
+        id,
+        {
+          title: docMeta?.title || 'Untitled Document',
+          content: htmlString,
+          updatedAt: saveNow,
+          lastEditedAt: actualEditTime,
+        },
+        profile || undefined
+      );
 
       setLastSavedTime(saveNow);
       setSaveStatus('saved');
@@ -146,6 +175,37 @@ export function DocumentEditor() {
       setSaveStatus('error');
     }
   };
+
+  // Online / Offline & Sync Event Listeners
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      processOfflineSyncQueue();
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    const handleSyncStatus = (e: any) => {
+      if (e.detail?.queueCount !== undefined) {
+        setPendingSyncCount(e.detail.queueCount);
+      }
+      if (e.detail?.status === 'synced') {
+        setSaveStatus('saved');
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('hubmind:sync-status', handleSyncStatus);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('hubmind:sync-status', handleSyncStatus);
+    };
+  }, []);
 
   // Open Unified Shawn Assistant
   const handleOpenShawnAI = (mode: 'chat' | 'voice' = 'chat') => {
@@ -161,52 +221,61 @@ export function DocumentEditor() {
     );
   };
 
-  // Listen for direct live document edits broadcast by Shawn
+  // Listen for real-time Shawn AI document modification events
   useEffect(() => {
     const handleLiveDocEdit = (e: any) => {
-      const detail = e.detail;
-      if (!detail || !editor || editor.isDestroyed) return;
+      const { action, text, html, title, documentId } = e.detail || {};
+      if (documentId && documentId !== id) return;
+      if (!editor || editor.isDestroyed || !editor.commands) return;
 
-      if (detail.documentId === id || !detail.documentId) {
-        const editNow = new Date().toISOString();
-        setLastEditedTime(editNow);
-        
-        const htmlToApply = detail.html || detail.contentToInsert || '';
-        if (htmlToApply && editor.commands) {
-          if (detail.mode === 'replace') {
-            editor.commands.setContent(htmlToApply);
-          } else {
-            editor.commands.focus('end');
-            editor.commands.insertContent(htmlToApply);
-          }
+      const now = new Date().toISOString();
+      setLastEditedTime(now);
 
-          setShawnActivityFlash(`Shawn AI applied updates live at ${formatTimeWithSeconds(editNow)}`);
-          setTimeout(() => setShawnActivityFlash(null), 5000);
-
-          // Persist live edit immediately with second precision
-          saveDocument(editor.getJSON(), editNow);
-        }
+      if (action === 'insert_text' && text) {
+        editor.commands.insertContent(text);
+        setShawnActivityFlash(`Shawn inserted text`);
+      } else if (action === 'append_content' && (html || text)) {
+        const contentToAppend = html || `<p>${text}</p>`;
+        editor.commands.insertContentAt(editor.state.doc.content.size, contentToAppend);
+        setShawnActivityFlash(`Shawn appended content`);
+      } else if (action === 'replace_all' && (html || text)) {
+        const contentToSet = html || `<p>${text}</p>`;
+        editor.commands.setContent(contentToSet);
+        setShawnActivityFlash(`Shawn updated document content`);
+      } else if (action === 'format_heading' && text) {
+        editor.commands.setHeading({ level: 1 });
+        editor.commands.insertContent(text);
+        setShawnActivityFlash(`Shawn formatted heading`);
       }
+
+      if (title && docMeta) {
+        setDocMeta({ ...docMeta, title });
+      }
+
+      const updatedHtml = editor.getHTML();
+      saveDocument(updatedHtml, now);
+
+      setTimeout(() => {
+        setShawnActivityFlash(null);
+      }, 4000);
     };
 
     window.addEventListener('shawn:live_document_edit', handleLiveDocEdit);
     return () => {
       window.removeEventListener('shawn:live_document_edit', handleLiveDocEdit);
     };
-  }, [editor, id, profile]);
+  }, [editor, id, profile, docMeta]);
 
   useEffect(() => {
     let isMounted = true;
     const fetchDoc = async () => {
       if (!id) return;
       try {
-        const docRef = doc(db, 'documents', id);
-        const docSnap = await getDoc(docRef);
+        const data = await getDocumentWithOfflineFallback(id);
         
         if (!isMounted) return;
 
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        if (data) {
           setDocMeta(data);
           setLastEditedTime(data.lastEditedAt || data.updatedAt || data.createdAt || null);
           setLastSavedTime(data.lastSavedAt || data.updatedAt || data.createdAt || null);
@@ -225,7 +294,6 @@ export function DocumentEditor() {
             }
           }
         } else {
-          // Document not found
           navigate('/documents');
         }
       } catch (error) {
@@ -248,7 +316,6 @@ export function DocumentEditor() {
   useEffect(() => {
     if (!editor || !docMeta?.content || editor.isDestroyed || !editor.commands) return;
     
-    // Only populate if editor is currently empty
     if (editor.isEmpty) {
       try {
         if (typeof docMeta.content === 'string' && (docMeta.content.startsWith('{') || docMeta.content.startsWith('['))) {
@@ -262,38 +329,59 @@ export function DocumentEditor() {
     }
   }, [editor, docMeta?.content]);
 
-  const handlePrint = () => {
-    setIsPreviewModalOpen(true);
+  // Recalculate page count whenever layout settings (size, orientation, margins) change
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const htmlContent = editor.getHTML();
+    if (!htmlContent) return;
+    const updatedCount = calculateExactPageCount(htmlContent, pageSize, orientation, marginOption);
+    if (updatedCount !== pageCount) {
+      setPageCount(updatedCount);
+    }
+  }, [editor, pageSize, orientation, marginOption]);
+
+  // Handle version restore from Version History modal
+  const handleRestoreVersion = (contentHtml: string, versionTitle?: string) => {
+    if (!editor || editor.isDestroyed || !editor.commands) return;
+    try {
+      if (typeof contentHtml === 'string' && (contentHtml.startsWith('{') || contentHtml.startsWith('['))) {
+        editor.commands.setContent(JSON.parse(contentHtml));
+      } else {
+        editor.commands.setContent(contentHtml);
+      }
+      const now = new Date().toISOString();
+      setLastEditedTime(now);
+      saveDocument(contentHtml, now);
+      if (versionTitle && docMeta) {
+        setDocMeta({ ...docMeta, title: versionTitle });
+      }
+    } catch (err) {
+      console.error('Error applying restored version', err);
+    }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full bg-slate-950">
         <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
 
-  // Generate visual page break offsets for multi-page document pagination
-  const pageBreakOffsets: number[] = [];
-  for (let i = 1; i < pageCount; i++) {
-    pageBreakOffsets.push(i * currentConfig.heightPx);
-  }
-
   return (
     <div className="flex flex-col h-full bg-slate-950 overflow-hidden font-sans">
       {/* Top Application Bar */}
-      <div className="flex items-center justify-between p-2 md:p-3 border-b border-slate-800 bg-slate-950 shrink-0 print:hidden gap-2">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+      <div className="flex items-center justify-between p-2 sm:p-2.5 md:p-3 border-b border-slate-800 bg-slate-950 shrink-0 print:hidden gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           <button 
             onClick={() => navigate('/documents')}
-            className="p-1.5 sm:p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 transition-colors shrink-0"
+            className="p-1.5 sm:p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 transition-colors shrink-0 cursor-pointer"
             title="Back to Documents"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
             <div className="p-1.5 bg-accent/20 rounded text-accent hidden sm:block shrink-0">
               <FileText className="w-4 h-4" />
             </div>
@@ -306,26 +394,22 @@ export function DocumentEditor() {
                   setDocMeta({ ...docMeta, title: newT });
                   const now = new Date().toISOString();
                   setLastEditedTime(now);
-                  updateDoc(doc(db, 'documents', id!), { 
-                    title: newT, 
-                    updatedAt: now,
-                    lastEditedAt: now,
-                    lastSavedAt: now
-                  });
+                  saveDocumentOffline(id!, { title: newT, updatedAt: now, lastEditedAt: now }, profile || undefined);
                   setLastSavedTime(now);
                 }}
-                className="bg-transparent text-slate-100 font-bold focus:outline-none focus:border-b border-accent px-1 truncate w-40 sm:w-60 md:w-72 text-sm sm:text-base"
+                className="bg-transparent text-slate-100 font-bold focus:outline-none focus:border-b border-accent px-1 truncate w-32 sm:w-56 md:w-72 text-sm sm:text-base"
                 placeholder="Document Title"
               />
 
-              {/* Exact Timestamps with Seconds Indicator */}
-              <div className="flex items-center gap-2 text-[11px] text-slate-400 px-1 mt-0.5 select-none">
+              {/* Exact Timestamps & Connectivity Indicator */}
+              <div className="flex items-center gap-2 text-[10px] sm:text-[11px] text-slate-400 px-1 mt-0.5 select-none">
                 <span 
                   className="flex items-center gap-1 hover:text-slate-200 transition-colors cursor-help"
                   title={`Exact Last Edited Timestamp: ${formatExactTimestamp(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}`}
                 >
                   <Clock className="w-3 h-3 text-amber-400/90 shrink-0" />
-                  <span>Edited: <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong></span>
+                  <span className="hidden sm:inline">Edited:</span>
+                  <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong>
                 </span>
                 <span className="text-slate-700">•</span>
                 <span 
@@ -333,7 +417,8 @@ export function DocumentEditor() {
                   title={`Exact Last Saved Timestamp: ${formatExactTimestamp(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}`}
                 >
                   <Cloud className="w-3 h-3 text-emerald-400/90 shrink-0" />
-                  <span>Saved: <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong></span>
+                  <span className="hidden sm:inline">Saved:</span>
+                  <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong>
                 </span>
               </div>
             </div>
@@ -341,53 +426,77 @@ export function DocumentEditor() {
         </div>
         
         {/* Quick Top Right Action Buttons */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Offline / Online Sync Status Pill */}
+          {!isOnline ? (
+            <div 
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-semibold"
+              title="Offline Mode"
+            >
+              <WifiOff className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Offline</span>
+            </div>
+          ) : pendingSyncCount > 0 ? (
+            <button 
+              onClick={() => processOfflineSyncQueue()}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 text-xs font-semibold cursor-pointer hover:bg-cyan-500/25 transition-colors"
+              title="Syncing"
+            >
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <span>{pendingSyncCount}</span>
+            </button>
+          ) : null}
+
+          {/* Version History Button */}
+          <button
+            onClick={() => setIsVersionHistoryOpen(true)}
+            className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-teal-300 border border-slate-700 transition-colors text-xs flex items-center gap-1.5 font-medium cursor-pointer"
+            title="Open History"
+          >
+            <History className="w-3.5 h-3.5 text-teal-400" />
+            <span className="hidden md:inline">History</span>
+          </button>
+
           {/* Ask Shawn AI (Unified Assistant) */}
           <button
             onClick={() => handleOpenShawnAI('chat')}
             className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-linear-to-r from-teal-500/20 to-cyan-500/20 border border-teal-500/50 text-teal-300 hover:text-white hover:bg-teal-500/30 transition-all text-xs flex items-center gap-1.5 font-bold shadow-xs cursor-pointer"
-            title="Open unified Shawn AI to write, format, or edit this document"
+            title="Ask Shawn AI"
           >
             <Sparkles className="w-3.5 h-3.5 text-accent animate-pulse" />
-            <span className="hidden sm:inline">Ask Shawn AI</span>
+            <span className="hidden sm:inline">Shawn AI</span>
           </button>
 
-          {/* Talk to Shawn (Voice Mode) */}
+          {/* Voice Mode */}
           <button
             onClick={() => handleOpenShawnAI('voice')}
             className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-teal-300 border border-slate-700 transition-colors text-xs flex items-center gap-1.5 font-medium cursor-pointer"
-            title="Talk directly with Shawn by voice to edit this document"
+            title="Voice"
           >
             <Mic className="w-3.5 h-3.5 text-teal-400" />
-            <span className="hidden md:inline">Voice</span>
+            <span className="hidden lg:inline">Voice</span>
           </button>
 
-          {/* Full Page Print Preview Button */}
+          {/* Full Page Print & PDF Preview Button */}
           <button
             onClick={() => setIsPreviewModalOpen(true)}
-            className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors text-xs flex items-center gap-1.5 font-medium border border-slate-700 cursor-pointer"
-            title="Open Full Page Print & PDF Preview"
+            className="px-2 sm:px-3 py-1.5 rounded-lg bg-cyan-600/90 hover:bg-cyan-500 text-white transition-colors text-xs flex items-center gap-1.5 font-semibold shadow-xs cursor-pointer"
+            title="Full Page Print & PDF Preview"
           >
-            <Eye className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Full Preview / PDF</span>
+            <Eye className="w-3.5 h-3.5" />
+            <span className="hidden xs:inline">Preview</span>
           </button>
 
           {/* Paper Theme Quick Switcher */}
           <button
             onClick={() => setPaperTheme(prev => prev === 'white' ? 'dark' : 'white')}
-            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-300 hover:text-white transition-colors text-xs flex items-center gap-1.5"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-300 hover:text-white transition-colors text-xs flex items-center gap-1.5 cursor-pointer"
             title={`Switch to ${paperTheme === 'white' ? 'Dark Sheet' : 'White Print Paper'}`}
           >
             {paperTheme === 'white' ? (
-              <>
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden md:inline font-medium">White Paper</span>
-              </>
+              <Sun className="w-3.5 h-3.5 text-amber-400" />
             ) : (
-              <>
-                <Moon className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="hidden md:inline font-medium">Dark Paper</span>
-              </>
+              <Moon className="w-3.5 h-3.5 text-cyan-400" />
             )}
           </button>
 
@@ -395,15 +504,11 @@ export function DocumentEditor() {
           <ImportExportMenu 
             editor={editor} 
             docTitle={docMeta?.title || 'Untitled Document'} 
+            pageSize={pageSize}
+            orientation={orientation}
+            marginOption={marginOption}
             onOpenPreview={() => setIsPreviewModalOpen(true)}
           />
-
-          {/* Cloud Sync Status */}
-          <div className="text-xs text-slate-400 hidden lg:flex items-center gap-1.5 pl-2 border-l border-slate-800">
-            {saveStatus === 'saving' && <><Loader2 className="w-3 h-3 animate-spin text-accent" /> <span className="font-mono text-slate-300">Saving...</span></>}
-            {saveStatus === 'saved' && <><Save className="w-3 h-3 text-emerald-400" /> <span className="font-mono text-slate-300">Saved</span></>}
-            {saveStatus === 'error' && <span className="text-red-400 font-mono">Save failed</span>}
-          </div>
         </div>
       </div>
 
@@ -416,7 +521,7 @@ export function DocumentEditor() {
           </div>
           <button 
             onClick={() => setShawnActivityFlash(null)} 
-            className="text-slate-400 hover:text-white text-xs px-1"
+            className="text-slate-400 hover:text-white text-xs px-1 cursor-pointer"
           >
             ✕
           </button>
@@ -430,27 +535,105 @@ export function DocumentEditor() {
           docTitle={docMeta?.title || 'Untitled Document'}
           pageSize={pageSize}
           setPageSize={setPageSize}
+          orientation={orientation}
+          setOrientation={setOrientation}
+          marginOption={marginOption}
+          setMarginOption={setMarginOption}
           paperTheme={paperTheme}
           setPaperTheme={setPaperTheme}
           zoomLevel={zoomLevel}
           setZoomLevel={setZoomLevel}
           showPageBreaks={showPageBreaks}
           setShowPageBreaks={setShowPageBreaks}
+          showMarginGuides={showMarginGuides}
+          setShowMarginGuides={setShowMarginGuides}
+          showDebugInfo={showDebugInfo}
+          setShowDebugInfo={setShowDebugInfo}
           pageCount={pageCount}
           activePage={activePage}
           onOpenPreview={() => setIsPreviewModalOpen(true)}
+          onOpenVersionHistory={() => setIsVersionHistoryOpen(true)}
         />
+      )}
+
+      {/* Mobile Quick Action Formatting Bar for Smartphones */}
+      {isMobileScreen && editor && (
+        <div className="sm:hidden bg-slate-900 border-b border-slate-800 px-2 py-1.5 flex items-center justify-between gap-1 overflow-x-auto scrollbar-none shrink-0 select-none">
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => editor.chain().focus().toggleBold().run()}
+              className={`p-2 rounded-lg text-xs font-bold ${
+                editor.isActive('bold') ? 'bg-teal-500/25 text-teal-300 ring-1 ring-teal-400' : 'bg-slate-800 text-slate-300'
+              }`}
+            >
+              <Bold className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => editor.chain().focus().toggleItalic().run()}
+              className={`p-2 rounded-lg text-xs ${
+                editor.isActive('italic') ? 'bg-teal-500/25 text-teal-300 ring-1 ring-teal-400' : 'bg-slate-800 text-slate-300'
+              }`}
+            >
+              <Italic className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+              className={`px-2 py-1.5 rounded-lg text-xs font-bold ${
+                editor.isActive('heading', { level: 1 }) ? 'bg-teal-500/25 text-teal-300 ring-1 ring-teal-400' : 'bg-slate-800 text-slate-300'
+              }`}
+            >
+              H1
+            </button>
+            <button
+              onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+              className={`px-2 py-1.5 rounded-lg text-xs font-bold ${
+                editor.isActive('heading', { level: 2 }) ? 'bg-teal-500/25 text-teal-300 ring-1 ring-teal-400' : 'bg-slate-800 text-slate-300'
+              }`}
+            >
+              H2
+            </button>
+            <button
+              onClick={() => editor.chain().focus().toggleBulletList().run()}
+              className={`p-2 rounded-lg text-xs ${
+                editor.isActive('bulletList') ? 'bg-teal-500/25 text-teal-300 ring-1 ring-teal-400' : 'bg-slate-800 text-slate-300'
+              }`}
+            >
+              <List className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => editor.chain().focus().undo().run()}
+              disabled={!editor.can().undo()}
+              className="p-2 rounded-lg bg-slate-800 text-slate-300 disabled:opacity-40"
+            >
+              <Undo className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => editor.chain().focus().redo().run()}
+              disabled={!editor.can().redo()}
+              className="p-2 rounded-lg bg-slate-800 text-slate-300 disabled:opacity-40"
+            >
+              <Redo className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Main Workspace Stage */}
       <div className="flex-1 flex flex-col min-h-0 bg-slate-950 overflow-hidden print:bg-white print:overflow-visible">
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 flex justify-center bg-slate-950 print:p-0 print:bg-white print:overflow-visible scrollbar-thin scrollbar-thumb-slate-800">
+        <div className="flex-1 overflow-y-auto p-2 sm:p-6 md:p-8 flex justify-center bg-slate-950 print:p-0 print:bg-white print:overflow-visible scrollbar-thin scrollbar-thumb-slate-800">
           <PaginatedPageContainer
             editor={editor}
-            pageSize={pageSize}
+            paperSize={pageSize}
+            orientation={orientation}
+            marginOption={marginOption}
             paperTheme={paperTheme}
             zoomLevel={zoomLevel}
             showPageBreaks={showPageBreaks}
+            showMarginGuides={showMarginGuides}
+            showDebugInfo={showDebugInfo}
             pageCount={pageCount}
             activePage={activePage}
             onPageCountChange={setPageCount}
@@ -460,49 +643,46 @@ export function DocumentEditor() {
       </div>
       
       {/* Bottom Status & Pagination Footer Bar with Exact Second Timestamps */}
-      <div className="h-8 border-t border-slate-800 bg-slate-950 flex items-center justify-between px-4 text-[11px] text-slate-400 tracking-normal shrink-0 print:hidden select-none">
-        <div className="flex items-center gap-3 sm:gap-5">
+      <div className="h-8 border-t border-slate-800 bg-slate-950 flex items-center justify-between px-3 sm:px-4 text-[10px] sm:text-[11px] text-slate-400 tracking-normal shrink-0 print:hidden select-none">
+        <div className="flex items-center gap-2 sm:gap-4">
           {/* Dynamic Page Count Badge */}
           <div className="flex items-center gap-1.5 font-medium text-slate-300">
             <span className="inline-block w-2 h-2 rounded-full bg-accent animate-pulse"></span>
             <span>
               Page <strong className="text-accent font-mono">{activePage}</strong> of <strong className="text-white font-mono">{pageCount}</strong>
             </span>
-            <span className="text-slate-600">•</span>
-            <span className="uppercase text-slate-400 font-mono text-[10px]">
-              {currentConfig.name} ({currentConfig.dimensions})
+            <span className="text-slate-600 hidden sm:inline">•</span>
+            <span className="uppercase text-slate-400 font-mono text-[10px] hidden sm:inline">
+              {currentLayout.paperDef.name} ({orientation})
             </span>
           </div>
 
-          <div className="hidden sm:flex items-center gap-3 text-slate-400">
+          <div className="hidden md:flex items-center gap-2 text-slate-400">
             <span>{editor?.storage.characterCount?.words() || 0} words</span>
-            <span>•</span>
-            <span>{editor?.storage.characterCount?.characters() || 0} characters</span>
           </div>
         </div>
 
-        {/* Real-time Second-Level Timestamps in Status Bar */}
-        <div className="flex items-center gap-3 text-slate-400">
+        {/* Real-time Second-Level Timestamps & Status in Footer Bar */}
+        <div className="flex items-center gap-2 sm:gap-3 text-slate-400">
           <div 
-            className="flex items-center gap-1.5 hover:text-slate-200 transition-colors cursor-help"
+            className="flex items-center gap-1 hover:text-slate-200 transition-colors cursor-help"
             title={`Last edited: ${formatExactTimestamp(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}`}
           >
             <Clock className="w-3 h-3 text-amber-400/90" />
-            <span>Edited: <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong></span>
+            <span className="hidden sm:inline">Edited:</span>
+            <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong>
           </div>
 
           <span className="text-slate-700">•</span>
 
           <div 
-            className="flex items-center gap-1.5 hover:text-slate-200 transition-colors cursor-help"
+            className="flex items-center gap-1 hover:text-slate-200 transition-colors cursor-help"
             title={`Last saved: ${formatExactTimestamp(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}`}
           >
             <Cloud className="w-3 h-3 text-emerald-400/90" />
-            <span>Saved: <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong></span>
+            <span className="hidden sm:inline">Saved:</span>
+            <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong>
           </div>
-
-          <span className="text-slate-700 hidden md:inline">•</span>
-          <span className="hidden md:inline font-medium text-slate-400">Jaystarbliss Institute</span>
         </div>
       </div>
 
@@ -515,6 +695,21 @@ export function DocumentEditor() {
           bodyHtml={editor.getHTML()}
           textContent={editor.getText()}
           pageSize={pageSize}
+          orientation={orientation}
+          marginOption={marginOption}
+        />
+      )}
+
+      {/* Document Version History & Restore Modal */}
+      {id && editor && (
+        <VersionHistoryModal
+          isOpen={isVersionHistoryOpen}
+          onClose={() => setIsVersionHistoryOpen(false)}
+          documentId={id}
+          documentTitle={docMeta?.title || 'Untitled Document'}
+          currentContentHtml={editor.getHTML()}
+          onRestoreVersion={handleRestoreVersion}
+          userProfile={profile || undefined}
         />
       )}
 
@@ -532,5 +727,3 @@ export function DocumentEditor() {
     </div>
   );
 }
-
-

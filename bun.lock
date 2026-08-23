@@ -31,6 +31,7 @@
         "@tiptap/pm": "^3.29.2",
         "@tiptap/react": "^3.29.2",
         "@tiptap/starter-kit": "^3.29.2",
+        "@types/html2canvas": "^1.0.0",
         "@types/ws": "^8.18.1",
         "@vitejs/plugin-react": "^5.0.4",
         "clsx": "^2.1.1",
@@ -42,7 +43,9 @@
         "glob": "^13.0.6",
         "groq-sdk": "^1.5.0",
         "html-to-docx": "^1.8.0",
+        "html2canvas": "^1.4.1",
         "html2pdf.js": "^0.14.0",
+        "jspdf": "^4.2.1",
         "lucide-react": "^0.546.0",
         "mammoth": "^1.12.0",
         "motion": "^12.23.24",
@@ -770,6 +773,8 @@
     "@types/express-serve-static-core": ["@types/express-serve-static-core@4.19.9", "", { "dependencies": { "@types/node": "*", "@types/qs": "*", "@types/range-parser": "*", "@types/send": "*" } }, "sha512-QP2ESEe/ImWY0HDwNAnK9PvEffUyhLTnWkk7KXzHfyeWAnlrDe1fN77bXl6ia8KT3wPlmA7t9/VPRpnf4Ex9sg=="],
 
     "@types/hast": ["@types/hast@3.0.5", "", { "dependencies": { "@types/unist": "*" } }, "sha512-rp/ezSWaD1m44dPKICGhiskI13nVr7qTloFwDa/IYkhhf5nzwP+zIQcIJh3WIFSBOy/H1PzB40jPjMDksN4F+g=="],
+
+    "@types/html2canvas": ["@types/html2canvas@1.0.0", "", { "dependencies": { "html2canvas": "*" } }, "sha512-BJpVf+FIN9UERmzhbtUgpXj6XBZpG67FMgBLLoj9HZKd9XifcCpSV+UnFcwTZfEyun4U/KmCrrVOG7829L589w=="],
 
     "@types/http-errors": ["@types/http-errors@2.0.5", "", {}, "sha512-r8Tayk8HJnX0FztbZN7oVqGccWgw98T/0neJphO91KkmOzug1KkofZURD4UaD5uH8AqcFLfdPErnBod0u71/qg=="],
 
