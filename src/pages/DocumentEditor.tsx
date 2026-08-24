@@ -371,21 +371,21 @@ export function DocumentEditor() {
   return (
     <div className="flex flex-col h-full bg-slate-950 overflow-hidden font-sans">
       {/* Top Application Bar */}
-      <div className="flex items-center justify-between p-2 sm:p-2.5 md:p-3 border-b border-slate-800 bg-slate-950 shrink-0 print:hidden gap-2">
-        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
+      <div className="flex items-center justify-between px-2.5 sm:px-4 py-2 border-b border-slate-800 bg-slate-950 shrink-0 print:hidden gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1">
           <button 
             onClick={() => navigate('/documents')}
             className="p-1.5 sm:p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 transition-colors shrink-0 cursor-pointer"
             title="Back to Documents"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           
-          <div className="flex items-center gap-1.5 min-w-0">
-            <div className="p-1.5 bg-accent/20 rounded text-accent hidden sm:block shrink-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="p-1.5 bg-accent/20 rounded text-accent hidden md:block shrink-0">
               <FileText className="w-4 h-4" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <input 
                 type="text" 
                 value={docMeta?.title || 'Untitled Document'}
@@ -397,27 +397,27 @@ export function DocumentEditor() {
                   saveDocumentOffline(id!, { title: newT, updatedAt: now, lastEditedAt: now }, profile || undefined);
                   setLastSavedTime(now);
                 }}
-                className="bg-transparent text-slate-100 font-bold focus:outline-none focus:border-b border-accent px-1 truncate w-32 sm:w-56 md:w-72 text-sm sm:text-base"
+                className="bg-transparent text-slate-100 font-bold focus:outline-none focus:border-b border-accent px-1 truncate w-full max-w-[125px] xs:max-w-[170px] sm:max-w-[240px] md:max-w-sm text-xs sm:text-sm md:text-base"
                 placeholder="Document Title"
               />
 
               {/* Exact Timestamps & Connectivity Indicator */}
-              <div className="flex items-center gap-2 text-[10px] sm:text-[11px] text-slate-400 px-1 mt-0.5 select-none">
+              <div className="hidden sm:flex items-center gap-2 text-[10px] sm:text-[11px] text-slate-400 px-1 mt-0.5 select-none">
                 <span 
-                  className="flex items-center gap-1 hover:text-slate-200 transition-colors cursor-help"
+                  className="flex items-center gap-1 hover:text-slate-200 transition-colors cursor-help truncate"
                   title={`Exact Last Edited Timestamp: ${formatExactTimestamp(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}`}
                 >
                   <Clock className="w-3 h-3 text-amber-400/90 shrink-0" />
-                  <span className="hidden sm:inline">Edited:</span>
+                  <span className="hidden md:inline">Edited:</span>
                   <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastEditedTime || docMeta?.lastEditedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong>
                 </span>
                 <span className="text-slate-700">•</span>
                 <span 
-                  className="flex items-center gap-1 hover:text-slate-200 transition-colors cursor-help"
+                  className="flex items-center gap-1 hover:text-slate-200 transition-colors cursor-help truncate"
                   title={`Exact Last Saved Timestamp: ${formatExactTimestamp(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}`}
                 >
                   <Cloud className="w-3 h-3 text-emerald-400/90 shrink-0" />
-                  <span className="hidden sm:inline">Saved:</span>
+                  <span className="hidden md:inline">Saved:</span>
                   <strong className="text-slate-200 font-mono">{formatTimeWithSeconds(lastSavedTime || docMeta?.lastSavedAt || docMeta?.updatedAt || docMeta?.createdAt)}</strong>
                 </span>
               </div>
@@ -426,11 +426,11 @@ export function DocumentEditor() {
         </div>
         
         {/* Quick Top Right Action Buttons */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {/* Offline / Online Sync Status Pill */}
           {!isOnline ? (
             <div 
-              className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-semibold"
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 text-[11px] font-semibold"
               title="Offline Mode"
             >
               <WifiOff className="w-3.5 h-3.5" />
@@ -439,7 +439,7 @@ export function DocumentEditor() {
           ) : pendingSyncCount > 0 ? (
             <button 
               onClick={() => processOfflineSyncQueue()}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 text-xs font-semibold cursor-pointer hover:bg-cyan-500/25 transition-colors"
+              className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 text-[11px] font-semibold cursor-pointer hover:bg-cyan-500/25 transition-colors"
               title="Syncing"
             >
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -450,47 +450,38 @@ export function DocumentEditor() {
           {/* Version History Button */}
           <button
             onClick={() => setIsVersionHistoryOpen(true)}
-            className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-teal-300 border border-slate-700 transition-colors text-xs flex items-center gap-1.5 font-medium cursor-pointer"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-teal-300 border border-slate-700 transition-colors text-xs flex items-center gap-1.5 font-medium cursor-pointer"
             title="Open History"
           >
             <History className="w-3.5 h-3.5 text-teal-400" />
-            <span className="hidden md:inline">History</span>
+            <span className="hidden lg:inline">History</span>
           </button>
 
-          {/* Ask Shawn AI (Unified Assistant) */}
+          {/* Ask Shawn to Edit Pill Button (Unified Assistant Button) */}
           <button
             onClick={() => handleOpenShawnAI('chat')}
-            className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-linear-to-r from-teal-500/20 to-cyan-500/20 border border-teal-500/50 text-teal-300 hover:text-white hover:bg-teal-500/30 transition-all text-xs flex items-center gap-1.5 font-bold shadow-xs cursor-pointer"
-            title="Ask Shawn AI"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-[#00b4a7] hover:bg-[#00c5b7] active:scale-95 text-slate-950 transition-all font-bold text-xs shadow-md shadow-teal-500/20 cursor-pointer shrink-0"
+            title="Ask Shawn to Edit"
           >
-            <Sparkles className="w-3.5 h-3.5 text-accent animate-pulse" />
-            <span className="hidden sm:inline">Shawn AI</span>
-          </button>
-
-          {/* Voice Mode */}
-          <button
-            onClick={() => handleOpenShawnAI('voice')}
-            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-teal-300 border border-slate-700 transition-colors text-xs flex items-center gap-1.5 font-medium cursor-pointer"
-            title="Voice"
-          >
-            <Mic className="w-3.5 h-3.5 text-teal-400" />
-            <span className="hidden lg:inline">Voice</span>
+            <Sparkles className="w-3.5 h-3.5 text-slate-950 fill-slate-950 shrink-0" />
+            <span className="whitespace-nowrap hidden xs:inline">Ask Shawn to Edit</span>
+            <span className="whitespace-nowrap xs:hidden">Shawn</span>
           </button>
 
           {/* Full Page Print & PDF Preview Button */}
           <button
             onClick={() => setIsPreviewModalOpen(true)}
-            className="px-2 sm:px-3 py-1.5 rounded-lg bg-cyan-600/90 hover:bg-cyan-500 text-white transition-colors text-xs flex items-center gap-1.5 font-semibold shadow-xs cursor-pointer"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white transition-colors text-xs flex items-center gap-1.5 font-semibold shadow-xs cursor-pointer"
             title="Full Page Print & PDF Preview"
           >
             <Eye className="w-3.5 h-3.5" />
-            <span className="hidden xs:inline">Preview</span>
+            <span className="hidden md:inline">Preview</span>
           </button>
 
           {/* Paper Theme Quick Switcher */}
           <button
             onClick={() => setPaperTheme(prev => prev === 'white' ? 'dark' : 'white')}
-            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-300 hover:text-white transition-colors text-xs flex items-center gap-1.5 cursor-pointer"
+            className="p-1.5 sm:px-2 sm:py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-300 hover:text-white transition-colors text-xs flex items-center gap-1.5 cursor-pointer"
             title={`Switch to ${paperTheme === 'white' ? 'Dark Sheet' : 'White Print Paper'}`}
           >
             {paperTheme === 'white' ? (

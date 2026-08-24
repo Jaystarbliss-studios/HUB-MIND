@@ -34,10 +34,11 @@ export const ShawnDocCoWriter: React.FC<ShawnDocCoWriterProps> = ({
 
   // Quick Action Presets
   const quickActions = [
+    { label: 'Draw / Insert Table', prompt: 'Draw a comprehensive and styled HTML table for our Institute: include 4 columns (Course Name, Duration, Weekly Hours, Tuition Fee & Certification) with 4 realistic rows and clean headers.' },
+    { label: 'Fee Schedule Table', prompt: 'Create a clean 4-column structured table for Jaystarbliss Dynamic Institute Course Modules, Durations, Certifications, and Fees in NGN and USD.' },
+    { label: 'Student Roster Table', prompt: 'Insert a 5-column table for Student Roster (Student ID, Full Name, Department, Enrollment Status, Grade Average) with 5 sample rows.' },
     { label: 'Draft Official Memo', prompt: 'Write an official administrative memo for Jaystarbliss Dynamic Institute with date, reference number, subject, and professional sections.' },
     { label: 'Institute Agreement', prompt: 'Draft a standard student and client enrollment agreement with terms of service, payment schedules, and conduct expectations.' },
-    { label: 'Executive Summary', prompt: 'Write a comprehensive executive summary based on our institution curriculum and upcoming initiatives.' },
-    { label: 'Insert Fee Table', prompt: 'Create a clean 4-column structured table for Institute Course Modules, Durations, Certifications, and Fees.' },
     { label: 'Formalize Tone', prompt: 'Review and rewrite the current content into a dignified, authoritative, and elegant educational tone.' },
   ];
 
@@ -115,9 +116,10 @@ ${currentDocHtml || '(Empty document)'}
 
 IMPORTANT FORMATTING RULES:
 1. Return ONLY the HTML markup to be inserted into the document editor.
-2. Use proper clean HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <table>, <tr>, <th>, <td>, <blockquote>.
-3. Maintain official Jaystarbliss Dynamic Institute standards.
-4. Do NOT wrap in markdown code blocks like \`\`\`html. Return plain raw HTML directly.`
+2. Use proper clean HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <blockquote>.
+3. For tables, always wrap cell text in <p> (e.g. <th><p>Header</p></th> and <td><p>Cell Data</p></td>) so TipTap parses and formats them properly.
+4. Maintain official Jaystarbliss Dynamic Institute standards.
+5. Do NOT wrap in markdown code blocks like \`\`\`html. Return plain raw HTML directly.`
               }]
             }
           ],
@@ -210,17 +212,7 @@ IMPORTANT FORMATTING RULES:
   };
 
   if (!isOpen) {
-    return (
-      <button
-        onClick={onToggleOpen}
-        id="open-shawn-cowriter-btn"
-        className="fixed bottom-12 right-6 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full bg-linear-to-r from-teal-500 to-cyan-600 text-slate-950 font-bold shadow-xl hover:shadow-cyan-500/25 hover:scale-105 transition-all duration-200 print:hidden cursor-pointer"
-        title="Open Shawn AI Co-Writer"
-      >
-        <Sparkles className="w-4 h-4 text-slate-950 fill-slate-950 animate-spin" style={{ animationDuration: '4s' }} />
-        <span>Ask Shawn to Edit</span>
-      </button>
-    );
+    return null;
   }
 
   return (

@@ -184,7 +184,7 @@ function parseInlineMarkdown(text: string): string {
 }
 
 /**
- * Renders a Markdown table into standard HTML table
+ * Renders a Markdown table into standard HTML table suitable for TipTap
  */
 function renderMarkdownTable(rows: string[]): string {
   if (rows.length === 0) return '';
@@ -207,16 +207,52 @@ function renderMarkdownTable(rows: string[]): string {
 
   let tableHtml = '<table><thead><tr>';
   for (const h of headerCells) {
-    tableHtml += `<th>${parseInlineMarkdown(h)}</th>`;
+    tableHtml += `<th><p>${parseInlineMarkdown(h || ' ')}</p></th>`;
   }
   tableHtml += '</tr></thead><tbody>';
 
   for (let i = startIndex; i < rows.length; i++) {
     const cells = parseRowCells(rows[i]);
+    if (cells.length === 0 || (cells.length === 1 && !cells[0])) continue;
     tableHtml += '<tr>';
     for (let c = 0; c < headerCells.length; c++) {
       const cellContent = cells[c] ? parseInlineMarkdown(cells[c]) : '';
-      tableHtml += `<td><p>${cellContent}</p></td>`;
+      tableHtml += `<td><p>${cellContent || ''}</p></td>`;
+    }
+    tableHtml += '</tr>';
+  }
+
+  tableHtml += '</tbody></table>';
+  return tableHtml;
+}
+
+/**
+ * Converts TSV (Tab Separated Values) from Excel, Google Sheets, or CSV to TipTap HTML Table
+ */
+export function convertTsvToHtmlTable(tsv: string): string {
+  if (!tsv) return '';
+  const lines = tsv.trim().split(/\r?\n/).filter(l => l.length > 0);
+  if (lines.length === 0) return '';
+
+  const rowData = lines.map(line => line.split('\t').map(c => c.trim()));
+  const maxCols = Math.max(...rowData.map(r => r.length));
+  if (maxCols < 1) return '';
+
+  let tableHtml = '<table><thead><tr>';
+  // Use first row as header
+  const firstRow = rowData[0];
+  for (let c = 0; c < maxCols; c++) {
+    const headerText = firstRow[c] !== undefined ? escapeHtml(firstRow[c]) : '';
+    tableHtml += `<th><p>${headerText || ' '}</p></th>`;
+  }
+  tableHtml += '</tr></thead><tbody>';
+
+  for (let r = 1; r < rowData.length; r++) {
+    const row = rowData[r];
+    tableHtml += '<tr>';
+    for (let c = 0; c < maxCols; c++) {
+      const cellText = row[c] !== undefined ? escapeHtml(row[c]) : '';
+      tableHtml += `<td><p>${cellText || ''}</p></td>`;
     }
     tableHtml += '</tr>';
   }

@@ -46,11 +46,62 @@ body {
   font-size: 11pt;
 }
 
-.paper-white .ProseMirror {
+/* Explicit high-contrast rules for Paper White */
+.paper-white,
+.paper-white .ProseMirror,
+.paper-white .ProseMirror * {
   color: #0f172a;
 }
-.paper-dark .ProseMirror {
+.paper-white .ProseMirror p,
+.paper-white .ProseMirror span,
+.paper-white .ProseMirror div,
+.paper-white .ProseMirror li {
+  color: #0f172a;
+}
+.paper-white .ProseMirror h1 {
+  color: #000000;
+}
+.paper-white .ProseMirror h2 {
+  color: #0f172a;
+}
+.paper-white .ProseMirror h3 {
+  color: #1e293b;
+}
+.paper-white .ProseMirror h4 {
+  color: #334155;
+}
+.paper-white .ProseMirror strong,
+.paper-white .ProseMirror b {
+  color: #000000;
+}
+
+/* Explicit high-contrast rules for Paper Dark */
+.paper-dark,
+.paper-dark .ProseMirror,
+.paper-dark .ProseMirror * {
   color: #f1f5f9;
+}
+.paper-dark .ProseMirror p,
+.paper-dark .ProseMirror span,
+.paper-dark .ProseMirror div,
+.paper-dark .ProseMirror li {
+  color: #f1f5f9;
+}
+.paper-dark .ProseMirror h1 {
+  color: #ffffff;
+}
+.paper-dark .ProseMirror h2 {
+  color: #f8fafc;
+}
+.paper-dark .ProseMirror h3 {
+  color: #e2e8f0;
+}
+.paper-dark .ProseMirror h4 {
+  color: #cbd5e1;
+}
+.paper-dark .ProseMirror strong,
+.paper-dark .ProseMirror b {
+  color: #ffffff;
 }
 
 .ProseMirror h1 {
@@ -61,12 +112,6 @@ body {
   margin-bottom: 0.6rem;
   letter-spacing: -0.015em;
 }
-.paper-white .ProseMirror h1 {
-  color: #000000;
-}
-.paper-dark .ProseMirror h1 {
-  color: #ffffff;
-}
 
 .ProseMirror h2 {
   font-size: 1.45rem;
@@ -75,12 +120,6 @@ body {
   margin-top: 1.1rem;
   margin-bottom: 0.5rem;
 }
-.paper-white .ProseMirror h2 {
-  color: #0f172a;
-}
-.paper-dark .ProseMirror h2 {
-  color: #f8fafc;
-}
 
 .ProseMirror h3 {
   font-size: 1.22rem;
@@ -88,12 +127,6 @@ body {
   line-height: 1.35;
   margin-top: 0.9rem;
   margin-bottom: 0.4rem;
-}
-.paper-white .ProseMirror h3 {
-  color: #1e293b;
-}
-.paper-dark .ProseMirror h3 {
-  color: #e2e8f0;
 }
 
 .ProseMirror h4 {

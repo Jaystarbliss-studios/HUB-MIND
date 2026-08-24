@@ -798,67 +798,115 @@ call returns.`;
     }
   };
 
-  // Draggable logic for the floating icon
+  // Draggable logic for the floating icon with ultra-smooth touch support
   const [iconPos, setIconPos] = useState<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
-  const startPosRef = useRef({ x: 0, y: 0 });
+  const startClientPosRef = useRef({ x: 0, y: 0 });
+  const startIconPosRef = useRef({ x: 0, y: 0 });
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const handleResize = () => {
       setIconPos(prev => {
         if (!prev) return null;
         return {
-          x: Math.min(prev.x, window.innerWidth - 70),
-          y: Math.min(prev.y, window.innerHeight - 70)
+          x: Math.max(12, Math.min(window.innerWidth - 68, prev.x)),
+          y: Math.max(12, Math.min(window.innerHeight - 68, prev.y))
         };
       });
     };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
   }, []);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const handleDragStart = (clientX: number, clientY: number) => {
     isDraggingRef.current = false;
-    startPosRef.current = { x: e.clientX, y: e.clientY };
-    e.currentTarget.setPointerCapture(e.pointerId);
+    startClientPosRef.current = { x: clientX, y: clientY };
+    
+    // Resolve initial icon coordinate
+    const currentX = iconPos ? iconPos.x : window.innerWidth - 76;
+    const currentY = iconPos ? iconPos.y : window.innerHeight - 76;
+    startIconPosRef.current = { x: currentX, y: currentY };
   };
 
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-    const dx = e.clientX - startPosRef.current.x;
-    const dy = e.clientY - startPosRef.current.y;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+  const handleDragMove = (clientX: number, clientY: number) => {
+    const dx = clientX - startClientPosRef.current.x;
+    const dy = clientY - startClientPosRef.current.y;
+
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
       isDraggingRef.current = true;
-      setIconPos((prev) => {
-        const currentX = prev ? prev.x : window.innerWidth - 80;
-        const currentY = prev ? prev.y : window.innerHeight - 80;
-        return {
-          x: Math.max(16, Math.min(window.innerWidth - 70, currentX + dx)),
-          y: Math.max(16, Math.min(window.innerHeight - 70, currentY + dy)),
-        };
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+      rafRef.current = requestAnimationFrame(() => {
+        const nextX = Math.max(12, Math.min(window.innerWidth - 68, startIconPosRef.current.x + dx));
+        const nextY = Math.max(12, Math.min(window.innerHeight - 68, startIconPosRef.current.y + dy));
+        setIconPos({ x: nextX, y: nextY });
       });
-      startPosRef.current = { x: e.clientX, y: e.clientY };
     }
   };
 
-  const handlePointerUp = (e: React.PointerEvent) => {
-    e.currentTarget.releasePointerCapture(e.pointerId);
+  const handleDragEnd = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
     if (!isDraggingRef.current) {
       setIsOpen(true);
     }
     isDraggingRef.current = false;
   };
 
+  // Pointer event bridges
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    handleDragStart(e.clientX, e.clientY);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    handleDragMove(e.clientX, e.clientY);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore if pointer already released
+    }
+    handleDragEnd();
+  };
+
+  // Direct Touch event handlers for rock-solid iOS/Android touch screen response
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      handleDragStart(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      e.preventDefault(); // Prevent background scroll/zoom while moving Shawn icon
+      handleDragMove(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    handleDragEnd();
+  };
+
   // Floating trigger button when closed
   if (!isOpen) {
     const isLive = connectionState === 'connected';
-    const positionStyle = iconPos 
+    const positionStyle: React.CSSProperties = iconPos 
       ? { left: `${iconPos.x}px`, top: `${iconPos.y}px` } 
       : { right: '24px', bottom: '24px' };
 
     return (
       <div
-        style={positionStyle}
+        style={{ ...positionStyle, touchAction: 'none' }}
         className="fixed z-[100] flex items-center gap-3 select-none print:hidden"
       >
         <button
@@ -866,16 +914,20 @@ call returns.`;
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          className={`p-3.5 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing ${
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{ touchAction: 'none' }}
+          className={`p-3.5 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing select-none ${
             isLive
               ? 'bg-gradient-to-tr from-teal-400 to-emerald-400 animate-pulse ring-4 ring-teal-500/40 text-slate-950 shadow-teal-500/30'
               : 'bg-gradient-to-tr from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 shadow-teal-500/25'
           }`}
-          title="Open Shawn Assistant"
+          title="Open Shawn Assistant (Touch & Drag to Move)"
         >
-          <LogoIcon className="w-6 h-6" />
+          <LogoIcon className="w-6 h-6 pointer-events-none" />
           {isLive && (
-            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 pointer-events-none">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-teal-500"></span>
             </span>

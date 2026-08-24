@@ -1,9 +1,9 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
-import { detectClipboardFormat } from './clipboard-detector';
+import { detectClipboardFormat, checkIsTsvSpreadsheet } from './clipboard-detector';
 import { sanitizeClipboardHtml } from './clipboard-sanitizer';
 import { normalizeClipboardHtml } from './clipboard-normalizer';
-import { convertMarkdownToHtml } from './clipboard-markdown';
+import { convertMarkdownToHtml, convertTsvToHtmlTable } from './clipboard-markdown';
 import { extractClipboardImage } from './clipboard-images';
 
 export const HubMindPasteEngine = Extension.create({
@@ -95,11 +95,26 @@ export const HubMindPasteEngine = Extension.create({
               }
             }
 
-            // 5. Priority 4: Plain text (with Markdown detection for ChatGPT / Gemini AI outputs)
+            // 5. Priority 4: Plain text (with Markdown & TSV spreadsheet detection)
             if (detection.hasPlainText) {
               const rawText = clipboardData.getData('text/plain');
               if (rawText) {
                 event.preventDefault();
+
+                // Check for TSV (Excel / Google Sheets / Numbers copied cells)
+                if (checkIsTsvSpreadsheet(rawText)) {
+                  try {
+                    const tableHtml = convertTsvToHtmlTable(rawText);
+                    if (tableHtml) {
+                      const sanitized = sanitizeClipboardHtml(tableHtml);
+                      const normalized = normalizeClipboardHtml(sanitized, 'spreadsheet-tsv');
+                      editor.chain().focus().insertContent(normalized).run();
+                      return true;
+                    }
+                  } catch (err) {
+                    console.error('Error during TSV table paste processing:', err);
+                  }
+                }
 
                 if (detection.isLikelyMarkdown) {
                   try {

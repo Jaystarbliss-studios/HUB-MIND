@@ -97,7 +97,9 @@ export function detectClipboardFormat(event: ClipboardEvent): ClipboardDetection
 
   // Structural feature detection
   const lowerHtml = html.toLowerCase();
-  const containsTable = lowerHtml.includes('<table') || lowerHtml.includes('<tr') || lowerHtml.includes('<td');
+  const isTsvTable = checkIsTsvSpreadsheet(text);
+  const isMarkdownTable = checkIsMarkdownTable(text);
+  const containsTable = lowerHtml.includes('<table') || lowerHtml.includes('<tr') || lowerHtml.includes('<td') || isTsvTable || isMarkdownTable;
   const containsList = lowerHtml.includes('<ul') || lowerHtml.includes('<ol') || lowerHtml.includes('<li');
   const containsHeading = /<h[1-6][^>]*>/i.test(lowerHtml);
   const containsLink = lowerHtml.includes('<a ') || lowerHtml.includes('href=');
@@ -105,7 +107,7 @@ export function detectClipboardFormat(event: ClipboardEvent): ClipboardDetection
   const containsCode = lowerHtml.includes('<pre') || lowerHtml.includes('<code') || text.includes('```');
 
   // Check if plain text looks like markdown
-  const isLikelyMarkdown = checkIsLikelyMarkdown(text);
+  const isLikelyMarkdown = checkIsLikelyMarkdown(text) || isMarkdownTable;
 
   return {
     types,
@@ -126,6 +128,28 @@ export function detectClipboardFormat(event: ClipboardEvent): ClipboardDetection
 }
 
 /**
+ * Detects if plain text is TSV (Tab Separated Values) from Excel / Google Sheets
+ */
+export function checkIsTsvSpreadsheet(text: string): boolean {
+  if (!text || !text.includes('\t')) return false;
+  const lines = text.trim().split(/\r?\n/).filter(l => l.trim().length > 0);
+  if (lines.length === 0) return false;
+  // If at least one line has multiple tabs or multiple lines have tabs
+  const tabLines = lines.filter(l => l.includes('\t'));
+  return tabLines.length >= 1 && (tabLines.length >= 2 || tabLines[0].split('\t').length >= 2);
+}
+
+/**
+ * Detects if plain text is a markdown table
+ */
+export function checkIsMarkdownTable(text: string): boolean {
+  if (!text || !text.includes('|')) return false;
+  const lines = text.trim().split(/\r?\n/).filter(l => l.trim().length > 0);
+  const tableLines = lines.filter(l => /^\s*\|.+\|\s*$/.test(l));
+  return tableLines.length >= 2;
+}
+
+/**
  * Tests whether plain text string exhibits clear Markdown patterns
  */
 export function checkIsLikelyMarkdown(text: string): boolean {
@@ -141,6 +165,7 @@ export function checkIsLikelyMarkdown(text: string): boolean {
   const numberedListPattern = /^(\s*\d+\.\s+.+\n?){2,}/m;
   const blockquotePattern = /^>\s+.+/m;
   const linkPattern = /\[[^\]]+\]\(https?:\/\/[^\s)]+\)/;
+  const tablePattern = /^\s*\|.+\|\s*$/m;
 
   let patternHits = 0;
   if (headingPattern.test(text)) patternHits += 2;
@@ -152,6 +177,7 @@ export function checkIsLikelyMarkdown(text: string): boolean {
   if (numberedListPattern.test(text)) patternHits += 2;
   if (blockquotePattern.test(text)) patternHits += 1;
   if (linkPattern.test(text)) patternHits += 2;
+  if (tablePattern.test(text)) patternHits += 2;
 
   return patternHits >= 2;
 }

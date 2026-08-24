@@ -151,9 +151,9 @@ export function computePageLayout(config: DocumentPageConfig): ComputedPageLayou
   const contentHeightPx = pageHeightPx - marginsPx.top - marginsPx.bottom;
 
   // Header heights
-  // Official Letterhead on Page 1 is approx 115px (header + gap)
-  const page1HeaderHeightPx = config.includeLetterheadOnPage1 !== false ? 120 : 0;
-  const subsequentHeaderHeightPx = 30; // Running header on subsequent pages
+  // Official Letterhead on Page 1 is approx 175px (logo + header details + border + spacing)
+  const page1HeaderHeightPx = config.includeLetterheadOnPage1 !== false ? 175 : 0;
+  const subsequentHeaderHeightPx = 40; // Running header on subsequent pages (title + sheet indicator + border + spacing)
 
   const page1UsableHeightPx = Math.max(200, contentHeightPx - page1HeaderHeightPx);
   const subsequentUsableHeightPx = Math.max(200, contentHeightPx - subsequentHeaderHeightPx);
