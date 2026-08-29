@@ -575,10 +575,6 @@ call returns.`;
         }
       }
 
-      if (liveClientRef.current && typeof liveClientRef.current.speakFallbackAudio === 'function') {
-        liveClientRef.current.speakFallbackAudio(finalResponseText);
-      }
-
       const shawnMsgId = `msg-${Date.now() + 1}`;
       const newShawnMsg: ChatMessage = {
         id: shawnMsgId,
