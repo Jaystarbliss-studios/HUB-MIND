@@ -750,6 +750,9 @@ call returns.`;
     let isSessionActive = false;
     let isFallbackMode = false;
     let conversationalHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    const requestUrl = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
+    const activeDocumentId = requestUrl.searchParams.get("documentId");
+    const activeDocumentTitle = requestUrl.searchParams.get("documentTitle");
 
     const geminiApiKey = process.env.GEMINI_API_KEY;
 
@@ -779,7 +782,14 @@ call returns.`;
             responseModalities: [Modality.AUDIO],
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } },
             tools: LIVE_TOOLS as any,
-            systemInstruction: { parts: [{ text: SHAWN_PROMPT_INSTRUCTION }] },
+            systemInstruction: {
+              parts: [{
+                text: SHAWN_PROMPT_INSTRUCTION +
+                  (activeDocumentId
+                    ? `\n\n## CURRENT DOCUMENT\nThe user is currently working in "${activeDocumentTitle || 'Current document'}" (document ID: ${activeDocumentId}). If the user asks about this document, its contents, a section, or requests an edit, use the document tools with this ID before answering. Do not guess document contents.`
+                    : "")
+              }]
+            },
           },
           callbacks: {
             onmessage: (message: any) => {
