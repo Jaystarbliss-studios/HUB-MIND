@@ -60,7 +60,7 @@ export class WakeWordDetector {
 
     try {
       this.recognition = new SpeechRecognition();
-      this.recognition.continuous = true;
+      this.recognition.continuous = false;
       this.recognition.interimResults = true;
       this.recognition.lang = 'en-US';
 
@@ -105,18 +105,16 @@ export class WakeWordDetector {
         this.isRunning = false;
         if (this.onStatusCallback) this.onStatusCallback(false);
 
-        // Auto restart continuous listening if still enabled
+        // Android/Web Speech frequently ends a session after silence. Restart
+        // only when the detector was intentionally left running, with a longer
+        // quiet gap so the browser does not repeatedly toggle the mic indicator.
         if (this.config.enabled) {
           clearTimeout(this.restartTimeout);
           this.restartTimeout = setTimeout(() => {
             if (this.config.enabled && !this.isRunning) {
-              try {
-                this.recognition?.start();
-              } catch (e) {
-                // ignore
-              }
+              try { this.recognition?.start(); } catch (e) {}
             }
-          }, 300);
+          }, 1500);
         }
       };
 
