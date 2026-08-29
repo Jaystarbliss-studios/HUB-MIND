@@ -69,13 +69,9 @@ export const FullPagePreviewModal: React.FC<FullPagePreviewModalProps> = ({
   // Adjust default zoom for smaller mobile screens
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      if (window.innerWidth < 640) {
-        setZoomLevel(0.45); // Fit mobile viewport
-      } else if (window.innerWidth < 1024) {
-        setZoomLevel(0.7);
-      } else {
-        setZoomLevel(0.85);
-      }
+      const viewportWidth = Math.max(280, window.innerWidth - 32);
+      const fitScale = Math.min(0.95, Math.max(0.35, viewportWidth / layout.pageWidthPx));
+      setZoomLevel(Math.round(fitScale * 100) / 100);
     }
   }, [isOpen]);
 
