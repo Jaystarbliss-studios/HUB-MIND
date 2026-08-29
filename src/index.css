@@ -285,7 +285,7 @@ ul[data-type="taskList"] li > div {
 /* Print Stylesheet for Letterheads and Clean Documents */
 @media print {
   @page {
-    margin: 15mm 15mm 15mm 15mm;
+    margin: 0;
     size: auto;
   }
 
