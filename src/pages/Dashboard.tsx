@@ -188,12 +188,13 @@ export function Dashboard() {
         // Fetch operational follow-ups. Assistant/Admin see the workspace; other users see their own.
         try {
           const followUpsQuery = profile.role === 'admin' || profile.role === 'assistant'
-            ? query(collection(db, 'followUps'), where('status', 'not-in', ['resolved', 'cancelled']))
-            : query(collection(db, 'followUps'), where('ownerId', '==', profile.id), where('status', 'not-in', ['resolved', 'cancelled']));
+            ? query(collection(db, 'followUps'))
+            : query(collection(db, 'followUps'), where('ownerId', '==', profile.id));
           const followUpsSnap = await getDocs(followUpsQuery);
+          const active = followUpsSnap.docs.filter(d => !['resolved', 'cancelled'].includes((d.data() as any).status));
           const now = Date.now();
-          setFollowUpsDueCount(followUpsSnap.docs.filter(d => new Date((d.data() as any).dueAt).getTime() <= now).length);
-          setFollowUpsWaitingCount(followUpsSnap.docs.filter(d => (d.data() as any).status === 'waiting').length);
+          setFollowUpsDueCount(active.filter(d => new Date((d.data() as any).dueAt).getTime() <= now).length);
+          setFollowUpsWaitingCount(active.filter(d => (d.data() as any).status === 'waiting').length);
         } catch (e) {
           console.warn('Dashboard follow-up query warning:', e);
         }
