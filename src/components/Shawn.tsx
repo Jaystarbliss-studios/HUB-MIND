@@ -70,6 +70,7 @@ export function Shawn() {
   const [liveUserTranscript, setLiveUserTranscript] = useState<string>('');
   const [liveShawnTranscript, setLiveShawnTranscript] = useState<string>('');
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [activeDocumentContext, setActiveDocumentContext] = useState<{ documentId: string; title: string } | null>(null);
 
   // Live voice settings. Wake-word detection has been intentionally removed.
   // Shawn starts listening only after the user explicitly starts a Live session.
@@ -119,6 +120,44 @@ export function Shawn() {
 
   // Active branch path of messages
   const activeBranchMessages = getActiveBranchMessages(allMessages, activeLeafId);
+
+  // Global entry point: every "Ask Shawn" control in Hub-Mind can open
+  // the same assistant instance, including controls rendered by the document editor.
+  useEffect(() => {
+    const handleOpenShawn = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      setIsOpen(true);
+      if (detail.mode === 'voice') {
+        setIsVoiceModeActive(true);
+        if (connectionState !== 'connected') handleConnectLive();
+      }
+      if (detail.prompt) {
+        window.setTimeout(() => handleSendMessage(String(detail.prompt)), 0);
+      }
+    };
+    window.addEventListener('shawn:open', handleOpenShawn);
+    window.addEventListener('shawn:ask', handleOpenShawn);
+    return () => {
+      window.removeEventListener('shawn:open', handleOpenShawn);
+      window.removeEventListener('shawn:ask', handleOpenShawn);
+    };
+  }, [connectionState]);
+
+  // The document editor publishes the active document. Shawn can fetch its
+  // latest saved content when a question needs document-specific context.
+  useEffect(() => {
+    const handleDocumentContext = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      if (detail.documentId) {
+        setActiveDocumentContext({
+          documentId: String(detail.documentId),
+          title: String(detail.title || 'Current document'),
+        });
+      }
+    };
+    window.addEventListener('shawn:document_context', handleDocumentContext);
+    return () => window.removeEventListener('shawn:document_context', handleDocumentContext);
+  }, []);
 
   // Load user conversations on auth
   useEffect(() => {
@@ -382,6 +421,10 @@ overdue and nothing on the calendar till 2") rather than a generic greeting.
   that role (see PERMISSIONS below). Never mention role-based restrictions
   as a limitation of "you" — frame it as how the platform is set up.
 
+## CURRENT DOCUMENT CONTEXT
+${activeDocumentContext ? `The user is currently working in "${activeDocumentContext.title}" (document ID: ${activeDocumentContext.documentId}). If they ask what is in the document, what a section means, or request a document-specific change, call get_document_content or the appropriate document tool using this ID before answering.` : `No document is currently attached to this Shawn session. If the user asks about a particular document, use list_documents/search_workspace to identify it first.`}
+
+## TOOLS AVAILABLE TO YOU
 ## TOOLS AVAILABLE TO YOU
 - navigate_app — move the user to a different screen
 - list_tasks / create_task / update_task
