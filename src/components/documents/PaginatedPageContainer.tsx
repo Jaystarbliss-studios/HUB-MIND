@@ -196,7 +196,7 @@ export function PaginatedPageContainer({
     }
 
     return totalPagesComputed;
-  }, [layout, deskGapPx, zoomLevel, isMobileScreen, pageCount, onPageCountChange]);
+  }, [layout, deskGapPx, zoomLevel, isMobileScreen, mobileCanvasScale, pageCount, onPageCountChange]);
 
   // Synchronize layout & pagination engine debug stats whenever editor changes
   useEffect(() => {
@@ -259,7 +259,7 @@ export function PaginatedPageContainer({
       scrollParent.addEventListener('scroll', handleScroll, { passive: true });
       return () => scrollParent.removeEventListener('scroll', handleScroll);
     }
-  }, [layout.pageHeightPx, deskGapPx, zoomLevel, internalPageCount, pageCount, activePage, onActivePageChange, isMobileScreen]);
+  }, [layout.pageHeightPx, deskGapPx, zoomLevel, mobileCanvasScale, internalPageCount, pageCount, activePage, onActivePageChange, isMobileScreen]);
 
   const effectivePageCount = Math.max(1, Math.max(pageCount, internalPageCount));
   const pagesArray = useMemo(() => {
@@ -281,6 +281,7 @@ export function PaginatedPageContainer({
               transform: `scale(${mobileCanvasScale})`,
               transformOrigin: 'top center',
               transition: 'transform 0.12s ease-out',
+              touchAction: 'pan-x pan-y',
               marginBottom: `${-(layout.pageHeightPx * (1 - mobileCanvasScale))}px`,
             }
           : {
