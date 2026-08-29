@@ -7,7 +7,6 @@ import {
   StoredConversation,
 } from '../types';
 import { LiveAudioClient } from '../services/liveAudioClient';
-import { WakeWordDetector } from '../services/wakeWordDetector';
 import { ShawnOrbVisualizer } from './ShawnOrbVisualizer';
 import { LiveVoiceControls } from './LiveVoiceControls';
 import { TranscriptView } from './TranscriptView';
@@ -42,7 +41,6 @@ import {
   Settings,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { VoiceAndWakeSettings } from './VoiceAndWakeSettings';
 
 type DialogSizePreset = 'compact' | 'standard' | 'wide' | 'fullscreen';
 
@@ -52,7 +50,6 @@ export function Shawn() {
   const [isOpen, setIsOpen] = useState(false);
   const [sizePreset, setSizePreset] = useState<DialogSizePreset>('standard');
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isVoiceModeActive, setIsVoiceModeActive] = useState(false);
 
   // Connection & Live Audio State
@@ -65,10 +62,6 @@ export function Shawn() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Wake Word Detection State
-  const [wakeWordFlashMessage, setWakeWordFlashMessage] = useState<string | null>(null);
-  const wakeWordDetectorRef = useRef<WakeWordDetector | null>(null);
-
   // Conversations & Branching Tree State
   const [conversationsList, setConversationsList] = useState<StoredConversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string>(() => `conv-${Date.now()}`);
@@ -78,7 +71,8 @@ export function Shawn() {
   const [liveShawnTranscript, setLiveShawnTranscript] = useState<string>('');
   const [isChatLoading, setIsChatLoading] = useState(false);
 
-  // Audio & Wake Word Settings with localStorage persistence
+  // Live voice settings. Wake-word detection has been intentionally removed.
+  // Shawn starts listening only after the user explicitly starts a Live session.
   const [audioSettings, setAudioSettings] = useState<AudioSettings>(() => {
     try {
       const saved = localStorage.getItem('shawn_audio_settings');
@@ -91,16 +85,8 @@ export function Shawn() {
           pushToTalk: parsed.pushToTalk ?? false,
           noiseSuppression: parsed.noiseSuppression ?? true,
           echoCancellation: parsed.echoCancellation ?? true,
-          wakeWord: {
-            enabled: parsed.wakeWord?.enabled ?? true,
-            selectedPreset: parsed.wakeWord?.selectedPreset || 'hey_shawn',
-            customKeyword: parsed.wakeWord?.customKeyword || '',
-            sensitivity: parsed.wakeWord?.sensitivity || 'medium',
-            autoRespond: parsed.wakeWord?.autoRespond ?? true,
-            wakeGreetingPrompt: parsed.wakeWord?.wakeGreetingPrompt || "Right then! Ready when you are.",
-            soundFeedback: parsed.wakeWord?.soundFeedback ?? true,
-          },
-        };
+          wakeWord: { enabled: false },
+        } as AudioSettings;
       }
     } catch (e) {
       console.warn('Failed to parse saved audio settings', e);
@@ -112,33 +98,22 @@ export function Shawn() {
       pushToTalk: false,
       noiseSuppression: true,
       echoCancellation: true,
-      wakeWord: {
-        enabled: false,
-        selectedPreset: 'hey_shawn',
-        customKeyword: '',
-        sensitivity: 'medium',
-        autoRespond: true,
-        wakeGreetingPrompt: "Right then! Ready when you are.",
-        soundFeedback: true,
-      },
-    };
+      wakeWord: { enabled: false },
+    } as AudioSettings;
   });
 
   const handleUpdateAudioSettings = useCallback((newPartial: Partial<AudioSettings>) => {
     setAudioSettings((prev) => {
-      const updated: AudioSettings = {
-        ...prev,
-        ...newPartial,
-        wakeWord: newPartial.wakeWord ? { ...prev.wakeWord, ...newPartial.wakeWord } : prev.wakeWord,
-      };
+      const updated = { ...prev, ...newPartial, wakeWord: { enabled: false } } as AudioSettings;
       try {
         localStorage.setItem('shawn_audio_settings', JSON.stringify(updated));
       } catch (e) {
-        console.warn('Failed to save audio settings', e);
+        console.warn('Failed to save voice settings', e);
       }
       return updated;
     });
   }, []);
+
 
   const liveClientRef = useRef<LiveAudioClient | null>(null);
 
@@ -209,57 +184,6 @@ export function Shawn() {
     },
     [currentConversationId, user?.uid]
   );
-
-  // Wake word detector initialization using robust WakeWordDetector
-  useEffect(() => {
-    const isLiveActive = connectionState === 'connected';
-    // Wake-word listening is opt-in. Never start a microphone listener merely
-    // because the user opened Hub-Mind; this prevents repeated Android
-    // microphone activation sounds and battery drain.
-    const isWwEnabled = audioSettings.wakeWord?.enabled === true;
-
-    if (!isWwEnabled || isLiveActive) {
-      if (wakeWordDetectorRef.current) {
-        wakeWordDetectorRef.current.stop();
-        wakeWordDetectorRef.current = null;
-      }
-      return;
-    }
-
-    const detector = new WakeWordDetector(audioSettings.wakeWord);
-    wakeWordDetectorRef.current = detector;
-
-    detector.setCallbacks({
-      onWake: (res) => {
-        setWakeWordFlashMessage(`"${res.matchedPhrase}" detected — Shawn is active`);
-        setTimeout(() => {
-          setWakeWordFlashMessage(null);
-        }, 5000);
-
-        // Keep Shawn connected in background without forcing modal open if closed
-        setIsVoiceModeActive(true);
-        handleConnectLive();
-
-        if (res.remainingPrompt && res.remainingPrompt.trim().length > 0) {
-          setTimeout(() => {
-            handleSendMessage(res.remainingPrompt);
-          }, 400);
-        }
-      },
-      onStatus: (listening, error) => {
-        if (error) {
-          console.debug('Wake word status:', error);
-        }
-      },
-    });
-
-    detector.start();
-
-    return () => {
-      detector.stop();
-      wakeWordDetectorRef.current = null;
-    };
-  }, [audioSettings.wakeWord, connectionState]);
 
   const handleDisconnectLive = useCallback(() => {
     if (liveClientRef.current) {
@@ -936,169 +860,6 @@ call returns.`;
             </span>
           )}
         </button>
-
-        {wakeWordFlashMessage && (
-          <div
-            onClick={() => setIsOpen(true)}
-            className="cursor-pointer bg-slate-900/95 border border-teal-500/50 text-teal-200 px-3.5 py-2 rounded-2xl shadow-xl backdrop-blur-md flex items-center gap-2 text-xs font-medium animate-in fade-in slide-in-from-left-2 duration-200 max-w-[220px]"
-          >
-            <Zap className="w-3.5 h-3.5 text-teal-400 shrink-0 animate-bounce" />
-            <div className="flex-1 min-w-0">
-              <p className="truncate font-semibold text-slate-100">{wakeWordFlashMessage}</p>
-              <p className="text-[10px] text-teal-400/90">Tap icon to open visualizer</p>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      id="shawn-assistant-modal"
-      className={`fixed z-[100] transition-all duration-200 overflow-hidden shadow-2xl flex flex-col bg-slate-950 text-slate-100 font-sans border border-slate-800/90 ${getSizeClasses()}`}
-    >
-      {/* Background Ambience */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[500px] h-[350px] bg-gradient-to-b from-teal-600/10 via-emerald-700/5 to-transparent blur-3xl rounded-full" />
-      </div>
-
-      {/* Header Bar */}
-      <div className="relative z-20 px-3.5 py-2.5 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 flex items-center justify-between gap-2">
-        {/* Left Branding */}
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-slate-950 flex items-center justify-center shadow-sm shadow-teal-500/30 shrink-0">
-            <LogoIcon className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h2 className="text-xs sm:text-sm font-bold text-slate-100 truncate">Shawn</h2>
-              <span className="px-1.5 py-0.2 text-[9px] font-mono font-medium rounded-full bg-teal-500/15 border border-teal-500/30 text-teal-300">
-                {profile?.preferredName ? `for ${profile.preferredName}` : 'AI Assistant'}
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-400 truncate">
-              {connectionState === 'connected' ? 'Live Voice Connected' : 'Hub-Mind Intelligence'}
-            </p>
-          </div>
-        </div>
-
-        {/* Right Controls */}
-        <div className="flex items-center gap-1">
-          {/* History Drawer Toggle */}
-          <button
-            onClick={() => setShowHistoryDrawer(!showHistoryDrawer)}
-            className={`p-1.5 rounded-lg border transition ${
-              showHistoryDrawer
-                ? 'bg-teal-500/20 text-teal-300 border-teal-500/40'
-                : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 border-slate-700/80'
-            }`}
-            title="Conversation History"
-          >
-            <History className="w-4 h-4" />
-          </button>
-
-          {/* New Chat Button */}
-          <button
-            onClick={handleNewConversation}
-            className="p-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-teal-300 rounded-lg border border-slate-700/80 transition"
-            title="Start New Chat"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-
-          {/* Live Voice Mode Toggle */}
-          <button
-            onClick={() => {
-              if (connectionState === 'connected') {
-                handleDisconnectLive();
-                setIsVoiceModeActive(false);
-              } else {
-                setIsVoiceModeActive(true);
-                handleConnectLive();
-              }
-            }}
-            className={`p-1.5 rounded-lg border transition flex items-center gap-1 text-xs font-semibold ${
-              connectionState === 'connected'
-                ? 'bg-teal-500/20 text-teal-300 border-teal-500/50 animate-pulse'
-                : isVoiceModeActive
-                ? 'bg-teal-950 text-teal-400 border-teal-800'
-                : 'bg-slate-800/80 text-slate-400 hover:text-teal-300 border-slate-700/80'
-            }`}
-            title={connectionState === 'connected' ? 'Disconnect Voice' : 'Start Voice Mode'}
-          >
-            <Radio className="w-4 h-4" />
-          </button>
-
-          {/* Voice & Wake Word Settings Button */}
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            className="p-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-teal-300 rounded-lg border border-slate-700/80 transition"
-            title="Voice & Wake Word Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-
-          {/* Size Preset Toggle */}
-          <button
-            onClick={() => {
-              setSizePreset((prev) => {
-                if (prev === 'standard') return 'wide';
-                if (prev === 'wide') return 'fullscreen';
-                if (prev === 'fullscreen') return 'compact';
-                return 'standard';
-              });
-            }}
-            className="p-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-700/80 transition hidden sm:flex"
-            title="Cycle Window Size"
-          >
-            {sizePreset === 'fullscreen' ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
-
-          {/* Close Modal Button */}
-          <button
-            onClick={() => setIsOpen(false)}
-            className="p-1.5 bg-slate-800/80 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 rounded-lg border border-slate-700/80 transition"
-            title="Close Shawn"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 relative flex flex-col overflow-hidden">
-        {/* Settings Modal overlay */}
-        {showSettingsModal && (
-          <div className="absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-md p-4 overflow-y-auto">
-            <VoiceAndWakeSettings
-              settings={audioSettings}
-              onUpdateSettings={handleUpdateAudioSettings}
-              onClose={() => setShowSettingsModal(false)}
-            />
-          </div>
-        )}
-
-        {/* Sliding History Drawer */}
-        <ShawnHistoryDrawer
-          isOpen={showHistoryDrawer}
-          onClose={() => setShowHistoryDrawer(false)}
-          conversations={conversationsList}
-          activeConversationId={currentConversationId}
-          onSelectConversation={handleSelectConversation}
-          onNewConversation={handleNewConversation}
-          onDeleteConversation={handleDeleteConversation}
-        />
-
-        {/* Wake Word Toast */}
-        {wakeWordFlashMessage && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2 duration-300">
-            <div className="bg-teal-500/20 border border-teal-500/50 text-teal-300 px-3 py-1.5 rounded-full backdrop-blur-md shadow-lg flex items-center gap-1.5 text-xs font-medium">
-              <Zap className="w-3.5 h-3.5 text-teal-400" />
-              {wakeWordFlashMessage}
-            </div>
-          </div>
-        )}
 
         {/* Error Notice */}
         {errorMessage && (
