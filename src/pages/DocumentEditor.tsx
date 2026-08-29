@@ -11,6 +11,7 @@ import { Superscript } from '@tiptap/extension-superscript';
 import { Subscript } from '@tiptap/extension-subscript';
 import { FontFamily } from '@tiptap/extension-font-family';
 import { FontSize } from '../lib/FontSize';
+import { DocumentFormatting } from '../lib/DocumentFormatting';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
@@ -111,6 +112,7 @@ export function DocumentEditor() {
       Underline,
       Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      DocumentFormatting,
       TextStyle,
       FontFamily,
       FontSize,
