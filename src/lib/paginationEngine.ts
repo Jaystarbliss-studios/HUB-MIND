@@ -348,8 +348,6 @@ function splitParagraphElement(
   probe.style.wordSpacing = computed.wordSpacing;
   probe.style.whiteSpace = computed.whiteSpace;
 
-  const testP = pEl.cloneNode(true) as HTMLElement;
-  probe.appendChild(testP);
   document.body.appendChild(probe);
 
   let low = 1;
@@ -359,9 +357,8 @@ function splitParagraphElement(
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
     const candidate = cloneWithCharacterLimit(pEl, mid);
-    testP.replaceWith(candidate);
+    probe.replaceChildren(candidate);
     const candidateHeight = candidate.getBoundingClientRect().height;
-    candidate.remove();
 
     if (candidateHeight <= availableHeight) {
       bestFit = mid;
