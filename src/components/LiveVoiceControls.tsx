@@ -6,14 +6,13 @@ import {
   PhoneOff,
   Video,
   VideoOff,
-  Sliders,
   Radio,
   Volume2,
   VolumeX,
   Sparkles,
   Camera,
 } from 'lucide-react';
-import { AudioSettings, LiveConnectionState } from '../types';
+import { LiveConnectionState } from '../types';
 
 interface LiveVoiceControlsProps {
   connectionState: LiveConnectionState;
@@ -27,8 +26,6 @@ interface LiveVoiceControlsProps {
   isCameraActive: boolean;
   onToggleCamera: () => void;
   onSendImageFrame: (base64Jpeg: string) => void;
-  audioSettings: AudioSettings;
-  onUpdateAudioSettings: (settings: Partial<AudioSettings>) => void;
   inputLevel: number;
   outputLevel: number;
 }
@@ -45,8 +42,6 @@ export const LiveVoiceControls: React.FC<LiveVoiceControlsProps> = ({
   isCameraActive,
   onToggleCamera,
   onSendImageFrame,
-  audioSettings,
-  onUpdateAudioSettings,
   inputLevel,
   outputLevel,
 }) => {
