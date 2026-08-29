@@ -40,6 +40,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { apiUrl } from '../lib/apiBase';
 
 type DialogSizePreset = 'compact' | 'standard' | 'wide' | 'fullscreen';
 
@@ -432,7 +433,7 @@ call returns.`;
       while (loopCount < 3) {
         loopCount++;
         try {
-          const response = await fetch('/api/chat', {
+          const response = await fetch(apiUrl('/api/chat'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
