@@ -150,6 +150,9 @@ export async function saveDocumentOffline(
         lastEditedAt: updatedRecord.lastEditedAt || updatedRecord.updatedAt,
         lastSavedAt: now,
         lastModifiedBy: updatedRecord.lastModifiedBy,
+        ...(updatedRecord.pageSize ? { pageSize: updatedRecord.pageSize } : {}),
+        ...(updatedRecord.orientation ? { orientation: updatedRecord.orientation } : {}),
+        ...(updatedRecord.marginOption ? { marginOption: updatedRecord.marginOption } : {}),
       });
 
       // Also persist version in Firestore subcollection for multi-device history
@@ -268,6 +271,9 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
         lastEditedAt: record.lastEditedAt || record.updatedAt,
         lastSavedAt: new Date().toISOString(),
         lastModifiedBy: record.lastModifiedBy || 'User (Offline Synced)',
+        ...(record.pageSize ? { pageSize: record.pageSize } : {}),
+        ...(record.orientation ? { orientation: record.orientation } : {}),
+        ...(record.marginOption ? { marginOption: record.marginOption } : {}),
       });
 
       // Save version to Firestore
