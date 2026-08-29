@@ -258,53 +258,113 @@ function splitTableElement(
 /**
  * Splits long paragraphs across page boundaries at word boundaries
  */
+function cloneWithCharacterLimit(source: HTMLElement, limit: number): HTMLElement {
+  const clone = source.cloneNode(true) as HTMLElement;
+  let remaining = Math.max(0, limit);
+  const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  let node: Node | null;
+  while ((node = walker.nextNode())) nodes.push(node as Text);
+
+  for (const textNode of nodes) {
+    if (remaining <= 0) {
+      textNode.remove();
+      continue;
+    }
+    if (textNode.data.length > remaining) {
+      textNode.data = textNode.data.slice(0, remaining);
+      remaining = 0;
+    } else {
+      remaining -= textNode.data.length;
+    }
+  }
+  return clone;
+}
+
+function fragmentForCharacterRange(source: HTMLElement, from: number, to: number): DocumentFragment {
+  const fragment = document.createDocumentFragment();
+  const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+  let offset = 0;
+  let node: Node | null;
+
+  while ((node = walker.nextNode())) {
+    const text = node as Text;
+    const nextOffset = offset + text.data.length;
+    const startOffset = Math.max(0, from - offset);
+    const endOffset = Math.min(text.data.length, to - offset);
+
+    if (endOffset > startOffset) {
+      const range = document.createRange();
+      range.setStart(text, startOffset);
+      range.setEnd(text, endOffset);
+      fragment.appendChild(range.cloneContents());
+    }
+
+    offset = nextOffset;
+    if (offset >= to) break;
+  }
+
+  return fragment;
+}
+
+/**
+ * Splits a paragraph at a measured character boundary while preserving inline
+ * formatting (bold, italic, links, colours, etc.). The old implementation
+ * flattened paragraphs to plain text, which caused exported documents to lose
+ * formatting and produced inaccurate page counts.
+ */
 function splitParagraphElement(
   pEl: HTMLElement,
   availableHeight: number,
   containerWidth: number
 ): { fitPart: string | null; overflowPart: string | null } {
-  // If less than 2 lines (approx 36px) available, push entire paragraph to next page
   if (availableHeight < 36) {
     return { fitPart: null, overflowPart: pEl.outerHTML };
   }
 
-  const text = pEl.innerText || pEl.textContent || '';
-  if (!text.trim()) {
-    return { fitPart: pEl.outerHTML, overflowPart: null };
-  }
-
-  // Tokenize words and whitespace
-  const words = text.split(/(\s+)/);
-  if (words.length <= 2) {
+  const textLength = (pEl.textContent || '').length;
+  if (textLength < 2) {
     return { fitPart: null, overflowPart: pEl.outerHTML };
   }
 
-  // Use an off-screen probe with identical styling to measure word wraps
   const probe = document.createElement('div');
+  probe.className = 'ProseMirror';
   probe.style.position = 'fixed';
-  probe.style.top = '-99999px';
-  probe.style.left = '-99999px';
+  probe.style.visibility = 'hidden';
+  probe.style.pointerEvents = 'none';
+  probe.style.top = '0';
+  probe.style.left = '-100000px';
   probe.style.width = `${containerWidth}px`;
-  probe.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-  probe.style.fontSize = '11pt';
-  probe.style.lineHeight = '1.6';
+  probe.style.margin = '0';
+  probe.style.padding = '0';
   probe.style.boxSizing = 'border-box';
 
-  const testP = pEl.cloneNode(false) as HTMLElement;
+  const computed = window.getComputedStyle(pEl);
+  probe.style.fontFamily = computed.fontFamily;
+  probe.style.fontSize = computed.fontSize;
+  probe.style.fontWeight = computed.fontWeight;
+  probe.style.lineHeight = computed.lineHeight;
+  probe.style.letterSpacing = computed.letterSpacing;
+  probe.style.wordSpacing = computed.wordSpacing;
+  probe.style.whiteSpace = computed.whiteSpace;
+
+  const testP = pEl.cloneNode(true) as HTMLElement;
   probe.appendChild(testP);
   document.body.appendChild(probe);
 
   let low = 1;
-  let high = words.length;
-  let bestFitIndex = 0;
+  let high = textLength - 1;
+  let bestFit = 0;
 
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
-    testP.textContent = words.slice(0, mid).join('');
-    const h = testP.offsetHeight;
+    const candidate = cloneWithCharacterLimit(pEl, mid);
+    testP.replaceWith(candidate);
+    const candidateHeight = candidate.getBoundingClientRect().height;
+    candidate.remove();
 
-    if (h <= availableHeight) {
-      bestFitIndex = mid;
+    if (candidateHeight <= availableHeight) {
+      bestFit = mid;
       low = mid + 1;
     } else {
       high = mid - 1;
@@ -313,20 +373,20 @@ function splitParagraphElement(
 
   document.body.removeChild(probe);
 
-  if (bestFitIndex <= 1) {
+  if (bestFit <= 0 || bestFit >= textLength) {
     return { fitPart: null, overflowPart: pEl.outerHTML };
   }
 
-  const fitText = words.slice(0, bestFitIndex).join('').trim();
-  const overflowText = words.slice(bestFitIndex).join('').trim();
+  const fitFragment = fragmentForCharacterRange(pEl, 0, bestFit);
+  const overflowFragment = fragmentForCharacterRange(pEl, bestFit, textLength);
 
-  if (!overflowText) {
-    return { fitPart: pEl.outerHTML, overflowPart: null };
-  }
+  const fitEl = pEl.cloneNode(false) as HTMLElement;
+  const overflowEl = pEl.cloneNode(false) as HTMLElement;
+  fitEl.appendChild(fitFragment);
+  overflowEl.appendChild(overflowFragment);
 
-  const tagName = pEl.tagName.toLowerCase();
-  const fitPart = `<${tagName} class="${pEl.className}" style="${pEl.getAttribute('style') || ''}">${fitText}</${tagName}>`;
-  const overflowPart = `<${tagName} class="${pEl.className}" style="${pEl.getAttribute('style') || ''}">${overflowText}</${tagName}>`;
+  const fitPart = fitEl.outerHTML;
+  const overflowPart = overflowEl.outerHTML;
 
   return { fitPart, overflowPart };
 }
@@ -420,15 +480,18 @@ export function paginateDocument(
   // Create an off-screen staging DOM container with exact typography and dimensions
   const offscreen = document.createElement('div');
   offscreen.id = 'hubmind-pagination-staging-engine';
+  offscreen.className = 'ProseMirror';
   offscreen.style.position = 'fixed';
   offscreen.style.top = '-99999px';
   offscreen.style.left = '-99999px';
   offscreen.style.width = `${layout.contentWidthPx}px`;
-  offscreen.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-  offscreen.style.fontSize = '11pt';
-  offscreen.style.lineHeight = '1.6';
+
   offscreen.style.color = '#0f172a';
   offscreen.style.boxSizing = 'border-box';
+  offscreen.style.padding = '0';
+  offscreen.style.margin = '0';
+  offscreen.style.minHeight = '0';
+  offscreen.style.height = 'auto';
   offscreen.innerHTML = htmlContent;
 
   document.body.appendChild(offscreen);
