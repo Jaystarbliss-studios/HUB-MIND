@@ -113,7 +113,7 @@ export function Shawn() {
       noiseSuppression: true,
       echoCancellation: true,
       wakeWord: {
-        enabled: true,
+        enabled: false,
         selectedPreset: 'hey_shawn',
         customKeyword: '',
         sensitivity: 'medium',
