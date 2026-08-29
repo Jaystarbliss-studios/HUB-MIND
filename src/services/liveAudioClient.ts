@@ -37,8 +37,6 @@ export class LiveAudioClient {
   private pushToTalkMode: boolean = false;
   private levelIntervalId: number | null = null;
   private pingIntervalId: number | null = null;
-  private isFallbackSpeechActive: boolean = false;
-  private speechRecognition: any = null;
 
   constructor(callbacks: LiveAudioCallbacks) {
     this.callbacks = callbacks;
@@ -56,7 +54,6 @@ export class LiveAudioClient {
 
   public async connect(): Promise<void> {
     this.callbacks.onStatusChange('connecting');
-    this.isFallbackSpeechActive = false;
     this.callbacks.onShawnStateChange('thinking');
 
     try {
@@ -182,7 +179,6 @@ export class LiveAudioClient {
       };
 
       this.ws.onclose = () => {
-        if (!this.isFallbackSpeechActive) {
           console.log('WebSocket closed');
           if (this.pingIntervalId) {
             clearInterval(this.pingIntervalId);
@@ -416,96 +412,8 @@ export class LiveAudioClient {
     }
   }
 
-  public fallbackToWebSpeech(): void {
-    this.isFallbackSpeechActive = true;
-    this.callbacks.onStatusChange('connected');
-    this.callbacks.onShawnStateChange('listening');
-
-    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRec) {
-      try {
-        if (this.speechRecognition) {
-          try { this.speechRecognition.stop(); } catch (e) {}
-        }
-        const rec = new SpeechRec();
-        rec.continuous = true;
-        rec.interimResults = true;
-        rec.lang = 'en-US';
-
-        rec.onresult = (event: any) => {
-          let finalTranscript = '';
-          let interim = '';
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              finalTranscript += event.results[i][0].transcript;
-            } else {
-              interim += event.results[i][0].transcript;
-            }
-          }
-          if (finalTranscript.trim()) {
-            this.callbacks.onUserTranscript(finalTranscript.trim());
-            this.callbacks.onTurnComplete();
-          } else if (interim.trim()) {
-            this.callbacks.onUserTranscript(interim.trim());
-          }
-        };
-
-        rec.onerror = (e: any) => {
-          console.debug('Web Speech recognition status:', e);
-        };
-
-        rec.onend = () => {
-          if (this.isFallbackSpeechActive && !this.isMuted) {
-            try { rec.start(); } catch (e) {}
-          }
-        };
-
-        rec.start();
-        this.speechRecognition = rec;
-      } catch (err) {
-        console.debug('Could not initialize SpeechRecognition fallback:', err);
-      }
-    }
-  }
-
-  public speakFallbackAudio(text: string): void {
-    if (!('speechSynthesis' in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.05;
-      utterance.pitch = 1.1; // Shawn's youthful energetic pitch
-
-      // Try to find British English voice if available
-      const voices = window.speechSynthesis.getVoices();
-      const ukVoice = voices.find(v => v.lang.includes('en-GB') || v.name.includes('UK') || v.name.includes('British') || v.name.includes('George') || v.name.includes('Daniel'));
-      if (ukVoice) {
-        utterance.voice = ukVoice;
-      }
-
-      this.callbacks.onShawnStateChange('speaking');
-      utterance.onend = () => {
-        this.callbacks.onShawnStateChange(this.isMuted ? 'muted' : 'listening');
-      };
-      utterance.onerror = () => {
-        this.callbacks.onShawnStateChange(this.isMuted ? 'muted' : 'listening');
-      };
-
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn('SpeechSynthesis error:', e);
-      this.callbacks.onShawnStateChange('listening');
-    }
-  }
-
   public disconnect(): void {
     this.isFallbackSpeechActive = false;
-    if (this.speechRecognition) {
-      try {
-        this.speechRecognition.stop();
-      } catch (e) {}
-      this.speechRecognition = null;
-    }
     if ('speechSynthesis' in window) {
       try { window.speechSynthesis.cancel(); } catch (e) {}
     }
