@@ -97,7 +97,7 @@ export function Shawn() {
       window.removeEventListener('shawn:open', handleOpenShawn);
       window.removeEventListener('shawn:ask', handleOpenShawn);
     };
-  }, [connectionState]);
+  }, [connectionState, activeDocumentContext]);
 
   // The document editor publishes the active document. Shawn can fetch its
   // latest saved content when a question needs document-specific context.
