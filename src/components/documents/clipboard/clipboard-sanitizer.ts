@@ -22,7 +22,7 @@ export function sanitizeClipboardHtml(rawHtml: string, options: SanitizerOptions
       'href', 'target', 'rel', 'src', 'alt', 'title',
       'width', 'height', 'colspan', 'rowspan', 'colwidth',
       'align', 'style', 'color', 'face', 'size',
-      'data-type', 'class'
+      'data-type', 'data-hubmind-page-break', 'class'
     ],
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$)|data:image\/(?:png|jpeg|jpg|webp|gif|svg\+xml);base64,)/i,
     ALLOW_DATA_ATTR: false,
