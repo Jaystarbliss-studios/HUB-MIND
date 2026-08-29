@@ -2,126 +2,178 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isSignedIn() {
+    function signedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
     }
 
-    function hasUserDoc() {
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    function hasUserDoc(uid) {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(uid));
     }
 
-    function getUserDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function isAdminOrAssistant() {
-      return isSignedIn() && (
-        request.auth.token.email == 'johnrufai242@gmail.com' ||
-        (hasUserDoc() && (getUserDoc().role == 'admin' || getUserDoc().role == 'assistant'))
-      );
+    function roleIs(role) {
+      return signedIn() && hasUserDoc(request.auth.uid) && userDoc(request.auth.uid).role == role;
     }
 
     function isAdmin() {
-      return isSignedIn() && (
+      return signedIn() && (
         request.auth.token.email == 'johnrufai242@gmail.com' ||
-        (hasUserDoc() && getUserDoc().role == 'admin')
+        roleIs('admin')
       );
     }
 
-    // Default deny
+    function isAssistantOrAdmin() {
+      return isAdmin() || roleIs('assistant');
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isOwner(field) {
+      return signedIn() && field == request.auth.uid;
+    }
+
+    // Secure by default.
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Users Collection
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (
-        isAdmin() || 
-        request.auth.uid == userId ||
-        request.auth.token.email == 'johnrufai242@gmail.com'
-      );
+      // A user can read their own profile. Admins/assistants can manage the team.
+      allow read: if isSelf(userId) || isAssistantOrAdmin();
+      allow create: if isSelf(userId) || isAdmin();
+      allow update: if isSelf(userId) || isAssistantOrAdmin();
       allow delete: if isAdmin();
 
-      // Nested user conversations (Persistent conversation history with Shawn)
       match /conversations/{conversationId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isSelf(userId) || isAssistantOrAdmin();
       }
 
-      // User private subcollection (quick notes, settings)
       match /private/{document=**} {
-        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        allow read, write: if isSelf(userId) || isAdmin();
       }
     }
 
-    // Direct conversations collection (fallback if queried at root level)
+    // Legacy/root conversation fallback. Keep it restricted.
     match /conversations/{conversationId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAssistantOrAdmin();
     }
 
-    // Tasks Collection
     match /tasks/{taskId} {
-      allow read, write: if isSignedIn();
+      allow read: if isAssistantOrAdmin()
+        || (signedIn() && (
+          resource.data.assignedTo == request.auth.uid ||
+          resource.data.createdBy == request.auth.uid
+        ));
+      allow create: if isAssistantOrAdmin()
+        || (signedIn() && request.resource.data.createdBy == request.auth.uid);
+      allow update: if isAssistantOrAdmin()
+        || (signedIn() && (
+          resource.data.assignedTo == request.auth.uid ||
+          resource.data.createdBy == request.auth.uid
+        ));
+      allow delete: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.createdBy == request.auth.uid);
     }
 
-    // Documents Collection
     match /documents/{documentId} {
-      allow read, write: if isSignedIn();
+      allow read: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if isAssistantOrAdmin()
+        || (signedIn() && request.resource.data.ownerId == request.auth.uid);
+      allow update: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow delete: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
+
+      match /versions/{versionId} {
+        allow read, write: if isAssistantOrAdmin()
+          || (signedIn() && get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId == request.auth.uid);
+      }
     }
 
-    // Projects Collection
     match /projects/{projectId} {
-      allow read, write: if isSignedIn();
+      allow read: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if isAssistantOrAdmin()
+        || (signedIn() && request.resource.data.ownerId == request.auth.uid);
+      allow update, delete: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
     }
 
-    // Clients Collection
     match /clients/{clientId} {
-      allow read, write: if isSignedIn();
+      allow read: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if isAssistantOrAdmin()
+        || (signedIn() && request.resource.data.ownerId == request.auth.uid);
+      allow update, delete: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
     }
 
-    // Meetings Collection
     match /meetings/{meetingId} {
-      allow read, write: if isSignedIn();
+      allow read: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if isAssistantOrAdmin()
+        || (signedIn() && request.resource.data.ownerId == request.auth.uid);
+      allow update, delete: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
     }
 
-    // Inbox Collection (Quick Capture)
     match /inbox/{inboxId} {
-      allow read, write: if isSignedIn();
+      allow read: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.createdBy == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.createdBy == request.auth.uid);
     }
 
-    // Knowledge Base
     match /knowledge/{knowledgeId} {
-      allow read, write: if isSignedIn();
+      allow read: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.createdBy == request.auth.uid);
+      allow create: if isAssistantOrAdmin()
+        || (signedIn() && request.resource.data.createdBy == request.auth.uid);
+      allow update, delete: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.createdBy == request.auth.uid);
     }
 
-    // Notifications
     match /notifications/{notificationId} {
-      allow read, write: if isSignedIn();
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isAssistantOrAdmin()
+        || (signedIn() && request.resource.data.userId == request.auth.uid);
+      allow update: if signedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid);
     }
 
-    // Activity Logs & Audit Trails
     match /activityLogs/{activityId} {
-      allow read, write: if isSignedIn();
+      allow read: if isAssistantOrAdmin();
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
     }
 
     match /activity/{activityId} {
-      allow read, write: if isSignedIn();
+      allow read: if isAssistantOrAdmin();
+      allow create: if signedIn();
+      allow update, delete: if isAdmin();
     }
 
-    // Recurring Task Templates
     match /recurringTaskTemplates/{templateId} {
-      allow read, write: if isSignedIn();
+      allow read: if isAssistantOrAdmin();
+      allow create, update, delete: if isAssistantOrAdmin();
     }
 
-    // Agent Memories
     match /memories/{memoryId} {
-      allow read, write: if isSignedIn();
+      // Memories are private unless deliberately managed by an admin/assistant.
+      allow read: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isAssistantOrAdmin()
+        || (signedIn() && request.resource.data.userId == request.auth.uid);
+      allow update, delete: if isAssistantOrAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid);
     }
   }
 }
-
