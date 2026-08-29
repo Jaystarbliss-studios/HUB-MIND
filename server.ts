@@ -89,12 +89,7 @@ async function startServer() {
   app.post("/api/tts", async (req, res) => {
     try {
       const { text } = req.body;
-      const liveSystemPrompt = SHAWN_PROMPT_INSTRUCTION +
-      (activeDocumentId
-        ? `\n\n## CURRENT DOCUMENT\nThe user is currently working in "${activeDocumentTitle || 'Current document'}" (document ID: ${activeDocumentId}). If the user asks about this document, its contents, a section, or requests an edit, use the document tools with this ID before answering. Do not guess document contents.`
-        : "");
-
-    const geminiApiKey = process.env.GEMINI_API_KEY;
+      const geminiApiKey = process.env.GEMINI_API_KEY;
       if (!geminiApiKey) {
         return res.status(500).json({ error: "GEMINI_API_KEY is required for voice model." });
       }
@@ -758,6 +753,10 @@ call returns.`;
     const requestUrl = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
     const activeDocumentId = requestUrl.searchParams.get("documentId");
     const activeDocumentTitle = requestUrl.searchParams.get("documentTitle");
+    const liveSystemPrompt = SHAWN_PROMPT_INSTRUCTION +
+      (activeDocumentId
+        ? `\n\n## CURRENT DOCUMENT\nThe user is currently working in "${activeDocumentTitle || 'Current document'}" (document ID: ${activeDocumentId}). If the user asks about this document, its contents, a section, or requests an edit, use the document tools with this ID before answering. Do not guess document contents.`
+        : "");
 
     const geminiApiKey = process.env.GEMINI_API_KEY;
 
