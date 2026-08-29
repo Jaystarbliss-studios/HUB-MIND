@@ -54,6 +54,11 @@ export function PaginatedPageContainer({
   const [internalPageCount, setInternalPageCount] = useState<number>(Math.max(1, pageCount));
 
   const deskGapPx = 40;
+  const mobileCanvasScale = useMemo(() => {
+    if (!isMobileScreen) return 1;
+    const viewportWidth = Math.max(280, containerRef.current?.clientWidth || window.innerWidth);
+    return Math.min(1, Math.max(0.42, (viewportWidth - 24) / layout.pageWidthPx));
+  }, [isMobileScreen, layout.pageWidthPx]);
 
   // Calculate physical layout from single source of truth
   const layout = useMemo(() => {
@@ -98,7 +103,7 @@ export function PaginatedPageContainer({
     });
 
     const hostRect = editorHostRef.current.getBoundingClientRect();
-    const effectiveZoom = isMobileScreen ? 1 : (zoomLevel || 1);
+    const effectiveZoom = isMobileScreen ? mobileCanvasScale : (zoomLevel || 1);
 
     let currentPage = 1;
     let accumulatedHeightOnPage = 0;
@@ -205,7 +210,7 @@ export function PaginatedPageContainer({
       if (!scrollParent) return;
 
       const scrollTop = scrollParent.scrollTop;
-      const targetHeight = (layout.pageHeightPx + deskGapPx) * (isMobileScreen ? 1 : zoomLevel);
+      const targetHeight = (layout.pageHeightPx + deskGapPx) * (isMobileScreen ? mobileCanvasScale : zoomLevel);
       const currentPage = Math.min(
         effectivePageCount,
         Math.max(1, Math.floor((scrollTop + 200) / targetHeight) + 1)
@@ -235,7 +240,13 @@ export function PaginatedPageContainer({
       ref={containerRef}
       style={
         isMobileScreen
-          ? { width: '100%' }
+          ? {
+              width: `${layout.pageWidthPx}px`,
+              transform: `scale(${mobileCanvasScale})`,
+              transformOrigin: 'top center',
+              transition: 'transform 0.12s ease-out',
+              marginBottom: `${-(layout.pageHeightPx * (1 - mobileCanvasScale))}px`,
+            }
           : {
               transform: `scale(${zoomLevel})`,
               transformOrigin: 'top center',
@@ -262,7 +273,7 @@ export function PaginatedPageContainer({
       <div 
         className="relative flex flex-col items-center print:block print:w-full"
         style={{
-          width: isMobileScreen ? '100%' : `${layout.pageWidthPx}px`,
+          width: `${layout.pageWidthPx}px`,
         }}
       >
         {/* Layer 1: Background Physical Paper Sheets (with desk gaps, running headers, footers) */}
@@ -276,8 +287,8 @@ export function PaginatedPageContainer({
                 <div
                   id={`document-physical-sheet-${pageNum}`}
                   style={{
-                    width: isMobileScreen ? '100%' : `${layout.pageWidthPx}px`,
-                    height: isMobileScreen ? 'auto' : `${layout.pageHeightPx}px`,
+                    width: `${layout.pageWidthPx}px`,
+                    height: `${layout.pageHeightPx}px`,
                     paddingTop: `${layout.marginsPx.top}px`,
                     paddingRight: `${layout.marginsPx.right}px`,
                     paddingBottom: `${layout.marginsPx.bottom}px`,
