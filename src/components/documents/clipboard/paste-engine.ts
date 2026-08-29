@@ -101,10 +101,14 @@ export const HubMindPasteEngine = Extension.create({
               if (rawText) {
                 event.preventDefault();
 
+                // Some generated/template sources put line breaks in the clipboard as
+                // literal "\\n" or "/n". Decode those before Markdown/paragraph detection.
+                const normalizedText = rawText.replace(/\\r?\\n|\/n/g, '\n');
+
                 // Check for TSV (Excel / Google Sheets / Numbers copied cells)
-                if (checkIsTsvSpreadsheet(rawText)) {
+                if (checkIsTsvSpreadsheet(normalizedText)) {
                   try {
-                    const tableHtml = convertTsvToHtmlTable(rawText);
+                    const tableHtml = convertTsvToHtmlTable(normalizedText);
                     if (tableHtml) {
                       const sanitized = sanitizeClipboardHtml(tableHtml);
                       const normalized = normalizeClipboardHtml(sanitized, 'spreadsheet-tsv');
@@ -118,7 +122,7 @@ export const HubMindPasteEngine = Extension.create({
 
                 if (detection.isLikelyMarkdown) {
                   try {
-                    const markdownHtml = convertMarkdownToHtml(rawText);
+                    const markdownHtml = convertMarkdownToHtml(normalizedText);
                     const sanitized = sanitizeClipboardHtml(markdownHtml);
                     const normalized = normalizeClipboardHtml(sanitized, 'markdown');
                     editor.chain().focus().insertContent(normalized).run();
@@ -129,7 +133,7 @@ export const HubMindPasteEngine = Extension.create({
                 }
 
                 // Standard plain text: Split into paragraphs and preserve intentional linebreaks
-                const paragraphs = rawText.split(/\r?\n\r?\n/);
+                const paragraphs = normalizedText.split(/\r?\n\r?\n/);
                 const htmlParagraphs = paragraphs
                   .map(p => {
                     const lineBreaks = p.split(/\r?\n/).map(escapeHtmlText).join('<br>');
@@ -141,7 +145,7 @@ export const HubMindPasteEngine = Extension.create({
                 if (htmlParagraphs) {
                   editor.chain().focus().insertContent(htmlParagraphs).run();
                 } else {
-                  editor.chain().focus().insertContent(escapeHtmlText(rawText)).run();
+                  editor.chain().focus().insertContent(escapeHtmlText(normalizedText)).run();
                 }
                 return true;
               }
