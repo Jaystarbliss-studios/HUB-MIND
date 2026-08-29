@@ -89,7 +89,7 @@ async function startServer() {
   app.post("/api/tts", async (req, res) => {
     try {
       const { text } = req.body;
-      const geminiApiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6JOlxQQsN_s73bCi6BDbifJ20H1v3dOptXYMNCcMhjFQA";
+      const geminiApiKey = process.env.GEMINI_API_KEY;
       if (!geminiApiKey) {
         return res.status(500).json({ error: "GEMINI_API_KEY is required for voice model." });
       }
