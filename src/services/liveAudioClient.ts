@@ -189,7 +189,6 @@ export class LiveAudioClient {
           }
           this.callbacks.onStatusChange('disconnected');
           this.callbacks.onShawnStateChange('idle');
-        }
       };
 
       // 4. Capture Mic Audio & Stream PCM 16kHz
