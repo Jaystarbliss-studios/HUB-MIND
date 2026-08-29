@@ -44,9 +44,9 @@ function normalizeEscapedLineBreaks(root: HTMLElement) {
 
   nodes.forEach((textNode) => {
     const value = textNode.nodeValue || '';
-    if (!/(?:\\\\r?\\\\n|\\/n|\\\\r)/.test(value)) return;
+    if (!/(?:\\r?\\n|\/n|\\r)/.test(value)) return;
 
-    const parts = value.split(/(?:\\\\r?\\\\n|\\/n|\\\\r)/g);
+    const parts = value.split(/(?:\\r?\\n|\/n|\\r)/g);
     const fragment = document.createDocumentFragment();
     parts.forEach((part, index) => {
       if (part) fragment.appendChild(document.createTextNode(part));
