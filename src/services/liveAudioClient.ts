@@ -54,6 +54,7 @@ export class LiveAudioClient {
 
   public async connect(): Promise<void> {
     this.callbacks.onStatusChange('connecting');
+    this.isFallbackSpeechActive = false;
     this.callbacks.onShawnStateChange('thinking');
 
     try {
@@ -111,6 +112,7 @@ export class LiveAudioClient {
       const wsUrl = `${protocol}//${window.location.host}/api/live-ws`;
 
       this.ws = new WebSocket(wsUrl);
+      this.ws.binaryType = 'arraybuffer';
 
       this.ws.onopen = () => {
         console.log('Connected to Shawn Live WebSocket');
