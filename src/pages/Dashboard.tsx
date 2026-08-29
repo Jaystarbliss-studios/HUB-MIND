@@ -7,7 +7,7 @@ import { db } from '../firebaseConfig';
 import { Task, Meeting, Client, DocumentInfo, InboxItem, ActivityLog } from '../types';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { isToday, isBefore, startOfDay, parseISO, format, startOfWeek, endOfWeek } from 'date-fns';
-import { CheckCircle2, Clock, Calendar as CalendarIcon, FileText, Loader2, Bell, Users, Inbox, Activity, Check } from 'lucide-react';
+import { CheckCircle2, Clock, Calendar as CalendarIcon, FileText, Loader2, Bell, Users, Inbox, Activity, Check, Clock3 } from 'lucide-react';
 import { setDoc, doc, getDoc } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { clsx, type ClassValue } from "clsx";
@@ -84,6 +84,8 @@ export function Dashboard() {
   const [completedTasksCount, setCompletedTasksCount] = useState(0);
   const [totalProjectsCount, setTotalProjectsCount] = useState(0);
   const [activeProjectsCount, setActiveProjectsCount] = useState(0);
+  const [followUpsDueCount, setFollowUpsDueCount] = useState(0);
+  const [followUpsWaitingCount, setFollowUpsWaitingCount] = useState(0);
   
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
   const [notes, setNotes] = useState('');
@@ -181,6 +183,19 @@ export function Dashboard() {
           setInboxItemsCount(inboxSnap.docs.length);
         } catch (e) {
           console.warn('Dashboard inbox query warning:', e);
+        }
+
+        // Fetch operational follow-ups. Assistant/Admin see the workspace; other users see their own.
+        try {
+          const followUpsQuery = profile.role === 'admin' || profile.role === 'assistant'
+            ? query(collection(db, 'followUps'), where('status', 'not-in', ['resolved', 'cancelled']))
+            : query(collection(db, 'followUps'), where('ownerId', '==', profile.id), where('status', 'not-in', ['resolved', 'cancelled']));
+          const followUpsSnap = await getDocs(followUpsQuery);
+          const now = Date.now();
+          setFollowUpsDueCount(followUpsSnap.docs.filter(d => new Date((d.data() as any).dueAt).getTime() <= now).length);
+          setFollowUpsWaitingCount(followUpsSnap.docs.filter(d => (d.data() as any).status === 'waiting').length);
+        } catch (e) {
+          console.warn('Dashboard follow-up query warning:', e);
         }
 
         // Fetch Quick Notes
@@ -414,10 +429,18 @@ export function Dashboard() {
               <Users className="w-5 h-5 text-accent" />
               <span className="font-medium">{clientsWaitingCount} Client{clientsWaitingCount !== 1 ? 's' : ''} Waiting</span>
             </div>
-            <div className="flex items-center gap-3 text-slate-300 hover:text-white transition-colors cursor-pointer">
+            <Link to="/follow-ups" className="flex items-center gap-3 text-slate-300 hover:text-white transition-colors">
+              <Clock3 className="w-5 h-5 text-accent" />
+              <span className="font-medium">{followUpsDueCount} Follow-up{followUpsDueCount !== 1 ? 's' : ''} Due</span>
+            </Link>
+            <Link to="/inbox" className="flex items-center gap-3 text-slate-300 hover:text-white transition-colors">
               <Inbox className="w-5 h-5 text-accent" />
               <span className="font-medium">{inboxItemsCount} Inbox Item{inboxItemsCount !== 1 ? 's' : ''}</span>
-            </div>
+            </Link>
+            <Link to="/follow-ups" className="flex items-center gap-3 text-slate-300 hover:text-white transition-colors">
+              <Clock className="w-5 h-5 text-accent" />
+              <span className="font-medium">{followUpsWaitingCount} Waiting on Someone</span>
+            </Link>
           </div>
         </section>
 
