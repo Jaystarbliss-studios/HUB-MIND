@@ -90,10 +90,10 @@ export function getOfficialLetterheadHTML(): string {
   return `
   <table style="width: 100%; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 24px; font-family: Arial, Helvetica, sans-serif; text-align: center;">
     <tr>
-      <td style="width: 100px; vertical-align: middle; text-align: left;">
+      <td style="width: 100px; vertical-align: middle; text-align: center;">
         <img src="${REAL_LOGO_BASE64}" width="88" height="88" alt="Jaystarbliss Logo" style="display: block; margin: 0; border-radius: 50%; filter: grayscale(100%) contrast(140%);" />
       </td>
-      <td style="vertical-align: middle; text-align: left;">
+      <td style="vertical-align: middle; text-align: center;">
         <h1 style="margin: 0 0 6px 0; font-size: 19pt; font-weight: bold; color: #000000; letter-spacing: 0.5px; text-transform: uppercase;">
           JAYSTARBLISS DYNAMIC INSTITUTE
         </h1>
