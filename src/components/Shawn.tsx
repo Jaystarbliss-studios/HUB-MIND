@@ -322,7 +322,7 @@ export function Shawn() {
     // two Shawn answers for one message.
     if (connectionState === 'connected' && liveClientRef.current) {
       if (imageBase64) {
-        liveClientRef.current.sendImageFrame(imageBase64.replace(/^data:image\\/[^;]+;base64,/, ''));
+        liveClientRef.current.sendImageFrame(imageBase64.replace(/^data:image[^;]+;base64,/, ''));
       }
       liveClientRef.current.sendText(text);
       setIsChatLoading(false);
