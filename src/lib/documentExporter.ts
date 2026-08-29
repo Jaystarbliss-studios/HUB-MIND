@@ -275,8 +275,28 @@ export async function printDocumentDirect(
   doc.write(fullHtml);
   doc.close();
 
-  // Wait for all images & fonts to load before triggering print
-  await new Promise((resolve) => setTimeout(resolve, 350));
+  // Wait for the generated document to finish layout before printing.
+  // A fixed delay is unreliable on slower phones and can print before fonts/images
+  // have affected pagination.
+  await new Promise<void>((resolve) => {
+    const win = iframe.contentWindow;
+    if (!win) return resolve();
+    const images = Array.from(doc.images);
+    const imagePromises = images.map((img) => {
+      if (img.complete) return Promise.resolve();
+      return new Promise<void>((done) => {
+        img.addEventListener('load', () => done(), { once: true });
+        img.addEventListener('error', () => done(), { once: true });
+      });
+    });
+    Promise.all(imagePromises).then(async () => {
+      try {
+        if (doc.fonts?.ready) await doc.fonts.ready;
+      } catch (_) {}
+      // Allow one layout frame after all resources resolve.
+      win.requestAnimationFrame(() => win.requestAnimationFrame(() => resolve()));
+    });
+  });
 
   try {
     iframe.contentWindow?.focus();
