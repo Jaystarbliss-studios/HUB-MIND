@@ -33,7 +33,12 @@ export function Login() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      // The popup has completed successfully. Move immediately to the protected
+      // shell; AuthProvider will finish hydrating the Firestore profile while
+      // ProtectedRoute displays its loading state. This avoids leaving the user
+      // stranded on /login while the auth observer catches up.
+      if (result.user) navigate('/', { replace: true });
     } catch (err: any) {
       console.error('Google login error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
@@ -51,7 +56,8 @@ export function Login() {
     setLoading(true);
     setError('');
     try {
-      await signInAnonymously(auth);
+      const result = await signInAnonymously(auth);
+      if (result.user) navigate('/', { replace: true });
     } catch (err: any) {
       console.error('Guest login error:', err);
       setError(err.message || 'Guest sign-in failed');
