@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
+import { onAuthStateChanged, User as FirebaseUser, signOut, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { User } from '../types';
@@ -27,6 +27,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Keep an authenticated browser session across app closes/reopens.
+    // Firebase restores the user automatically from local persistence.
+    setPersistence(auth, browserLocalPersistence).catch((e) => {
+      console.warn('Could not enable local auth persistence:', e);
+    });
+
     // Safety timeout to guarantee the loading screen NEVER hangs indefinitely
     const timeoutId = setTimeout(() => {
       setLoading(false);
