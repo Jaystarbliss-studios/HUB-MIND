@@ -54,11 +54,6 @@ export function PaginatedPageContainer({
   const [internalPageCount, setInternalPageCount] = useState<number>(Math.max(1, pageCount));
 
   const deskGapPx = 40;
-  const mobileCanvasScale = useMemo(() => {
-    if (!isMobileScreen) return 1;
-    const viewportWidth = Math.max(280, containerRef.current?.clientWidth || window.innerWidth);
-    return Math.min(1, Math.max(0.42, (viewportWidth - 24) / layout.pageWidthPx));
-  }, [isMobileScreen, layout.pageWidthPx]);
 
   // Calculate physical layout from single source of truth
   const layout = useMemo(() => {
@@ -69,6 +64,16 @@ export function PaginatedPageContainer({
       includeLetterheadOnPage1: true,
     });
   }, [paperSize, orientation, marginOption]);
+
+  // Umo-style page view: keep physical paper geometry fixed and scale the
+  // complete page surface for the device viewport.
+  const [mobileZoomFactor, setMobileZoomFactor] = useState(1);
+  const mobileCanvasScale = useMemo(() => {
+    if (!isMobileScreen) return 1;
+    const viewportWidth = Math.max(280, containerRef.current?.clientWidth || window.innerWidth);
+    const fitScale = Math.min(1, Math.max(0.42, (viewportWidth - 24) / layout.pageWidthPx));
+    return Math.min(2.5, Math.max(0.42, fitScale * mobileZoomFactor));
+  }, [isMobileScreen, layout.pageWidthPx, mobileZoomFactor]);
 
   // Check mobile viewport width
   useEffect(() => {
@@ -84,6 +89,34 @@ export function PaginatedPageContainer({
   const breakSpacerHeight = useMemo(() => {
     return layout.marginsPx.bottom + deskGapPx + layout.marginsPx.top + layout.subsequentHeaderHeightPx + 24;
   }, [layout.marginsPx.bottom, deskGapPx, layout.marginsPx.top, layout.subsequentHeaderHeightPx]);
+
+  const pinchStartDistanceRef = useRef<number | null>(null);
+  const pinchStartZoomRef = useRef(1);
+
+  const getTouchDistance = useCallback((touches: TouchList) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }, []);
+
+  const handleTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobileScreen || event.touches.length !== 2) return;
+    pinchStartDistanceRef.current = getTouchDistance(event.touches);
+    pinchStartZoomRef.current = mobileZoomFactor;
+  }, [getTouchDistance, isMobileScreen, mobileZoomFactor]);
+
+  const handleTouchMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobileScreen || event.touches.length !== 2 || !pinchStartDistanceRef.current) return;
+    event.preventDefault();
+    const distance = getTouchDistance(event.touches);
+    if (!distance) return;
+    setMobileZoomFactor(Math.min(2.5, Math.max(0.72, pinchStartZoomRef.current * (distance / pinchStartDistanceRef.current))));
+  }, [getTouchDistance, isMobileScreen]);
+
+  const handleTouchEnd = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length < 2) pinchStartDistanceRef.current = null;
+  }, []);
 
   // Layout function that measures live DOM elements in the editor and distributes them across physical pages
   const reflowEditorPages = useCallback(() => {
@@ -238,6 +271,9 @@ export function PaginatedPageContainer({
   return (
     <div
       ref={containerRef}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
       style={
         isMobileScreen
           ? {
