@@ -213,7 +213,10 @@ export function Shawn() {
   // Wake word detector initialization using robust WakeWordDetector
   useEffect(() => {
     const isLiveActive = connectionState === 'connected';
-    const isWwEnabled = audioSettings.wakeWord?.enabled !== false;
+    // Wake-word listening is opt-in. Never start a microphone listener merely
+    // because the user opened Hub-Mind; this prevents repeated Android
+    // microphone activation sounds and battery drain.
+    const isWwEnabled = audioSettings.wakeWord?.enabled === true;
 
     if (!isWwEnabled || isLiveActive) {
       if (wakeWordDetectorRef.current) {
