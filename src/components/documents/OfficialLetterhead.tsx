@@ -21,7 +21,7 @@ export const OfficialLetterhead: React.FC<OfficialLetterheadProps> = ({
         isWhite ? 'border-b-2 border-slate-300 text-slate-900' : 'border-b-2 border-slate-700/60 text-slate-100'
       } ${className}`}
     >
-      <div className="flex flex-row items-start justify-start gap-4 md:gap-6 text-left">
+      <div className="flex flex-row items-center justify-center gap-4 md:gap-6 text-center">
         {/* Real Black and White Circular Emblem Logo */}
         <div className="shrink-0 flex items-center justify-center">
           <div className={`w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden shadow-lg bg-black flex items-center justify-center p-0.5 ${
@@ -40,7 +40,7 @@ export const OfficialLetterhead: React.FC<OfficialLetterheadProps> = ({
         </div>
 
         {/* Institution Info Header Details */}
-        <div className="flex flex-col items-start text-left space-y-1.5 flex-1 min-w-0">
+        <div className="flex flex-col items-center text-center space-y-1.5 flex-1 min-w-0">
           <h1 className={`text-lg sm:text-xl md:text-2xl font-extrabold uppercase tracking-tight font-sans print:text-black ${
             isWhite ? 'text-slate-950' : 'text-white'
           }`}>
@@ -56,7 +56,7 @@ export const OfficialLetterhead: React.FC<OfficialLetterheadProps> = ({
           }`}>
             +234 9136518194, +2349130529010
           </p>
-          <div className="flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-xs sm:text-sm pt-0.5 font-medium">
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs sm:text-sm pt-0.5 font-medium">
             <a
               href="mailto:jaystarblissstudios@gmail.com"
               className={`hover:underline print:text-black font-semibold ${
