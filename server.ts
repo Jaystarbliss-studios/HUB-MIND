@@ -785,6 +785,8 @@ call returns.`;
           model: "gemini-3.1-flash-live-preview",
           config: {
             responseModalities: [Modality.AUDIO],
+            inputAudioTranscription: {},
+            outputAudioTranscription: {},
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } },
             tools: LIVE_TOOLS as any,
             systemInstruction: {
