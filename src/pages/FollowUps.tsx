@@ -36,9 +36,11 @@ export function FollowUps() {
       const base = collection(db, 'followUps');
       const q = profile.role === 'admin' || profile.role === 'assistant'
         ? query(base, orderBy('dueAt', 'asc'))
-        : query(base, where('ownerId', '==', profile.id), orderBy('dueAt', 'asc'));
+        : query(base, where('ownerId', '==', profile.id));
       const snap = await getDocs(q);
-      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() } as FollowUp)));
+      const next = snap.docs.map(d => ({ id: d.id, ...d.data() } as FollowUp));
+      next.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+      setItems(next);
     } catch (e) {
       console.error('Failed to load follow-ups', e);
     } finally {
