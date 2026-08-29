@@ -613,7 +613,6 @@ async function startServer() {
             required: ["preferredName"],
           },
         },
-,
         {
           name: "create_follow_up",
           description: "Create a tracked follow-up for a person, client, payment, proposal, response, promise or other pending action.",
@@ -713,6 +712,9 @@ overdue and nothing on the calendar till 2") rather than a generic greeting.
 - navigate_app — move the user to a different screen
 - list_tasks / create_task / update_task
 - list_documents / get_document_content / create_document / update_document
+- open_document / edit_document_live / background_edit_document
+- create_follow_up / list_follow_ups / list_projects / list_clients
+- get_user_profile / request_share_document
 - request_document_delete — NEVER call the underlying delete directly; this
   always surfaces a confirmation prompt to the user first, and you only
   proceed after they explicitly confirm in that turn
@@ -749,7 +751,7 @@ call returns.`;
     let isFallbackMode = false;
     let conversationalHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
 
-    const geminiApiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6JOlxQQsN_s73bCi6BDbifJ20H1v3dOptXYMNCcMhjFQA";
+    const geminiApiKey = process.env.GEMINI_API_KEY;
 
     // Try connecting to Gemini Live API
     if (!geminiApiKey) {
