@@ -613,7 +613,52 @@ async function startServer() {
             required: ["preferredName"],
           },
         },
-      ],
+,
+        {
+          name: "create_follow_up",
+          description: "Create a tracked follow-up for a person, client, payment, proposal, response, promise or other pending action.",
+          parameters: { type: "OBJECT", properties: { title: {type:"STRING"}, person:{type:"STRING"}, reason:{type:"STRING"}, dueAt:{type:"STRING"}, priority:{type:"STRING", enum:["urgent","high","medium","low"]}}, required:["title","dueAt"] }
+        },
+        {
+          name: "list_follow_ups",
+          description: "List active follow-ups and their due dates/statuses.",
+          parameters: { type: "OBJECT", properties: { status:{type:"STRING"}, limit:{type:"NUMBER"} } }
+        },
+        {
+          name: "open_document",
+          description: "Open a document in the Hub-Mind editor.",
+          parameters: { type: "OBJECT", properties: { documentId:{type:"STRING"}, documentTitle:{type:"STRING"} } }
+        },
+        {
+          name: "edit_document_live",
+          description: "Open a document and stream approved edits into the visible editor.",
+          parameters: { type: "OBJECT", properties: { documentId:{type:"STRING"}, documentTitle:{type:"STRING"}, contentToInsert:{type:"STRING"}, summary:{type:"STRING"}, mode:{type:"STRING", enum:["append","prepend","replace"]} }, required:["contentToInsert"] }
+        },
+        {
+          name: "background_edit_document",
+          description: "Apply a document edit in the background while the user continues chatting.",
+          parameters: { type: "OBJECT", properties: { documentId:{type:"STRING"}, documentTitle:{type:"STRING"}, contentToInsertOrUpdate:{type:"STRING"}, taskDescription:{type:"STRING"} }, required:["documentId","contentToInsertOrUpdate"] }
+        },
+        {
+          name: "get_user_profile",
+          description: "Get the active Hub-Mind user profile, role and permissions.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "request_share_document",
+          description: "Request confirmation before sharing a document.",
+          parameters: { type: "OBJECT", properties: { documentId:{type:"STRING"}, documentTitle:{type:"STRING"}, recipient:{type:"STRING"}, confirmed:{type:"BOOLEAN"} }, required:["documentId","documentTitle"] }
+        },
+        {
+          name: "list_projects",
+          description: "List active Hub-Mind projects.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "list_clients",
+          description: "List active Hub-Mind clients.",
+          parameters: { type: "OBJECT", properties: {} }
+        }      ],
     },
   ];
 
@@ -707,6 +752,13 @@ call returns.`;
     const geminiApiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6JOlxQQsN_s73bCi6BDbifJ20H1v3dOptXYMNCcMhjFQA";
 
     // Try connecting to Gemini Live API
+    if (!geminiApiKey) {
+      if (clientWs.readyState === 1) {
+        clientWs.send(JSON.stringify({ type: "error", message: "Shawn Live is not configured. Add GEMINI_API_KEY to the server environment." }));
+      }
+      return;
+    }
+
     try {
       const { GoogleGenAI, Modality } = await import("@google/genai");
       const ai = new GoogleGenAI({
