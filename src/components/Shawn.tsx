@@ -832,14 +832,14 @@ call returns.`;
   // Floating trigger button when closed
   if (!isOpen) {
     const isLive = connectionState === 'connected';
-    const positionStyle: React.CSSProperties = iconPos 
-      ? { left: `${iconPos.x}px`, top: `${iconPos.y}px` } 
+    const positionStyle: React.CSSProperties = iconPos
+      ? { left: `${iconPos.x}px`, top: `${iconPos.y}px` }
       : { right: '24px', bottom: '24px' };
 
     return (
       <div
         style={{ ...positionStyle, touchAction: 'none' }}
-        className="fixed z-[100] flex items-center gap-3 select-none print:hidden"
+        className="fixed z-[100] select-none print:hidden"
       >
         <button
           id="shawn-assistant-toggle-btn"
@@ -850,20 +850,11 @@ call returns.`;
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
           style={{ touchAction: 'none' }}
-          className={`p-3.5 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing select-none ${
-            isLive
-              ? 'bg-gradient-to-tr from-teal-400 to-emerald-400 animate-pulse ring-4 ring-teal-500/40 text-slate-950 shadow-teal-500/30'
-              : 'bg-gradient-to-tr from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 shadow-teal-500/25'
-          }`}
-          title="Open Shawn Assistant (Touch & Drag to Move)"
+          className={`relative p-3.5 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing ${isLive ? 'bg-teal-400 text-slate-950 ring-4 ring-teal-500/30' : 'bg-gradient-to-tr from-teal-500 to-emerald-500 text-slate-950'}`}
+          title="Open Shawn Assistant"
         >
           <LogoIcon className="w-6 h-6 pointer-events-none" />
-          {isLive && (
-            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 pointer-events-none">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-teal-500"></span>
-            </span>
-          )}
+          {isLive && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-teal-300 ring-2 ring-slate-950" />}
         </button>
       </div>
     );
@@ -874,24 +865,30 @@ call returns.`;
       id="shawn-assistant-modal"
       className={`fixed z-[100] transition-all duration-200 overflow-hidden shadow-2xl flex flex-col bg-slate-950 text-slate-100 font-sans border border-slate-800/90 ${getSizeClasses()}`}
     >
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[500px] h-[350px] bg-gradient-to-b from-teal-600/10 via-emerald-700/5 to-transparent blur-3xl rounded-full" />
       </div>
 
-      <div className="relative z-20 px-3.5 py-2.5 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 flex items-center justify-between gap-2">
+      <header className="relative z-20 px-3.5 py-2.5 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-slate-950 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-slate-950 flex items-center justify-center shrink-0">
             <LogoIcon className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-sm font-bold text-slate-100">Shawn</h2>
+            <h2 className="text-sm font-bold truncate">Shawn</h2>
             <p className="text-[10px] text-slate-400 truncate">
               {connectionState === 'connected' ? 'Live connected' : 'Hub-Mind assistant'}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={handleNewConversation} className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-teal-300" title="New chat"><Plus className="w-4 h-4" /></button>
+          <button
+            onClick={handleNewConversation}
+            className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-teal-300"
+            title="New chat"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
           <button
             onClick={() => {
               if (connectionState === 'connected') {
@@ -907,16 +904,22 @@ call returns.`;
           >
             <Radio className="w-4 h-4" />
           </button>
-          <button onClick={() => setIsOpen(false)} className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-rose-300" title="Close Shawn"><X className="w-4 h-4" /></button>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-rose-300"
+            title="Close Shawn"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
-      </div>
+      </header>
 
-      {/* Error Notice */}
+      <div className="flex-1 relative z-10 flex flex-col overflow-hidden">
         {errorMessage && (
-          <div className="m-3 bg-red-950/50 border border-red-800/60 text-red-300 p-2.5 rounded-xl flex items-start gap-2.5 text-xs z-10">
-            <Shield className="w-4 h-4 flex-shrink-0 text-red-400 mt-0.5" />
+          <div className="m-3 bg-red-950/50 border border-red-800/60 text-red-300 p-2.5 rounded-xl flex items-start gap-2.5 text-xs">
+            <Shield className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
             <div className="flex-1">
-              <p className="font-semibold">Notice</p>
+              <p className="font-semibold">Shawn notice</p>
               <p className="opacity-90">{errorMessage}</p>
             </div>
             <button onClick={() => setErrorMessage(null)} className="text-red-400 hover:text-red-200">
@@ -925,35 +928,25 @@ call returns.`;
           </div>
         )}
 
-        {/* Collapsible Live Voice Visualizer Panel (Visible when Voice Mode is active) */}
         {isVoiceModeActive && (
-          <div className="relative z-10 px-3 py-2 bg-slate-900/90 border-b border-slate-800 flex flex-col items-center justify-center animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="flex items-center justify-between w-full mb-1">
-              <span className="text-[10px] font-mono text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
-                Live Multimodal Voice
-              </span>
+          <div className="relative shrink-0 bg-slate-900/80 border-b border-slate-800 px-3 py-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] uppercase tracking-wider text-teal-400">Live Shawn</span>
               <button
                 onClick={() => setIsVoiceModeActive(false)}
-                className="text-[10px] text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                className="text-[10px] text-slate-400 hover:text-slate-200"
               >
-                Hide Visualizer <ChevronUp className="w-3 h-3" />
+                Hide
               </button>
             </div>
-
-            {/* Compact Minimal Orb Visualizer */}
-            <div className="w-full">
-              <ShawnOrbVisualizer
-                state={shawnState}
-                inputLevel={inputLevel}
-                outputLevel={outputLevel}
-                isConnected={connectionState === 'connected'}
-                compact={true}
-              />
-            </div>
-
-            {/* Voice Controls with Working Mute & Push-to-talk */}
-            <div className="mt-3 w-full flex justify-center">
+            <ShawnOrbVisualizer
+              state={shawnState}
+              inputLevel={inputLevel}
+              outputLevel={outputLevel}
+              isConnected={connectionState === 'connected'}
+              compact
+            />
+            <div className="mt-2">
               <LiveVoiceControls
                 connectionState={connectionState}
                 isMuted={isMuted}
@@ -973,8 +966,7 @@ call returns.`;
           </div>
         )}
 
-        {/* Primary View: Text Chat & Transcript Stream */}
-        <div className="flex-1 relative z-10 flex flex-col overflow-hidden">
+        <div className="flex-1 relative flex flex-col overflow-hidden">
           <TranscriptView
             messages={activeBranchMessages}
             allConversationMessages={allMessages}
@@ -989,8 +981,6 @@ call returns.`;
             liveShawnTranscript={liveShawnTranscript}
             isLiveActive={connectionState === 'connected'}
           />
-
-          {/* Chat Input Bar */}
           <ChatDrawer
             onSendMessage={handleSendMessage}
             isLoading={isChatLoading}
