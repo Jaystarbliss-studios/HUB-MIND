@@ -40,6 +40,17 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
 
   if (!user || !profile) return <Navigate to="/login" />;
 
+  if (profile.status === 'inactive') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center p-6">
+        <div className="max-w-md text-center bg-slate-900 border border-slate-800 rounded-2xl p-8">
+          <h1 className="text-xl font-bold text-white mb-2">Account inactive</h1>
+          <p className="text-sm text-slate-400">Your Hub-Mind account is currently inactive. Please contact an administrator to restore access.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (allowedRoles && !allowedRoles.includes(profile.role)) {
     return <div className="p-8 text-center text-red-400">Access Denied</div>;
   }
