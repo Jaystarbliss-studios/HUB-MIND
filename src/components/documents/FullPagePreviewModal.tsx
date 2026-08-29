@@ -324,7 +324,7 @@ export const FullPagePreviewModal: React.FC<FullPagePreviewModalProps> = ({
 
                   {/* Page Body Content Slice */}
                   <div
-                    className="prose prose-slate max-w-none text-slate-900 leading-relaxed font-sans text-[11pt] pt-1 prose-headings:font-bold prose-headings:text-slate-950 prose-h1:text-2xl prose-h1:mb-3 prose-h2:text-xl prose-h2:mb-2.5 prose-h3:text-lg prose-h3:mb-2 prose-p:my-2.5 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-blockquote:border-l-4 prose-blockquote:border-slate-300 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:bg-slate-50 prose-table:border-collapse prose-th:bg-slate-100 prose-th:border prose-th:border-slate-300 prose-th:p-2.5 prose-td:border prose-td:border-slate-300 prose-td:p-2.5"
+                    className="ProseMirror paper-white max-w-none text-slate-900 font-sans pt-1"
                     dangerouslySetInnerHTML={{ __html: pageHtml || '<p class="text-slate-400 italic">Empty page.</p>' }}
                   />
                 </div>
