@@ -25,8 +25,12 @@ service cloud.firestore {
       );
     }
 
+    function isWorkspaceUser() {
+      return signedIn() && hasUserDoc(request.auth.uid) && userDoc(request.auth.uid).status != 'inactive';
+    }
+
     function isAssistantOrAdmin() {
-      return isAdmin() || roleIs('assistant');
+      return isAdmin() || (isWorkspaceUser() && roleIs('assistant'));
     }
 
     function isSelf(uid) {
@@ -65,108 +69,108 @@ service cloud.firestore {
 
     match /tasks/{taskId} {
       allow read: if isAssistantOrAdmin()
-        || (signedIn() && (
+        || (isWorkspaceUser() && (
           resource.data.assignedTo == request.auth.uid ||
           resource.data.createdBy == request.auth.uid
         ));
       allow create: if isAssistantOrAdmin()
-        || (signedIn() && request.resource.data.createdBy == request.auth.uid);
+        || (isWorkspaceUser() && request.resource.data.createdBy == request.auth.uid);
       allow update: if isAssistantOrAdmin()
-        || (signedIn() && (
+        || (isWorkspaceUser() && (
           resource.data.assignedTo == request.auth.uid ||
           resource.data.createdBy == request.auth.uid
         ));
       allow delete: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.createdBy == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
     }
 
     match /documents/{documentId} {
       allow read: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
       allow create: if isAssistantOrAdmin()
-        || (signedIn() && request.resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
       allow update: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
       allow delete: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
 
       match /versions/{versionId} {
         allow read, write: if isAssistantOrAdmin()
-          || (signedIn() && get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId == request.auth.uid);
+          || (isWorkspaceUser() && get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId == request.auth.uid);
       }
     }
 
     match /projects/{projectId} {
       allow read: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
       allow create: if isAssistantOrAdmin()
-        || (signedIn() && request.resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
     }
 
     match /clients/{clientId} {
       allow read: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
       allow create: if isAssistantOrAdmin()
-        || (signedIn() && request.resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
     }
 
     match /meetings/{meetingId} {
       allow read: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
       allow create: if isAssistantOrAdmin()
-        || (signedIn() && request.resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
     }
 
     match /inbox/{inboxId} {
       allow read: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.createdBy == request.auth.uid);
-      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+        || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
+      allow create: if isWorkspaceUser() && request.resource.data.createdBy == request.auth.uid;
       allow update, delete: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.createdBy == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
     }
 
     match /followUps/{followUpId} {
       allow read: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
       allow create: if isAssistantOrAdmin()
-        || (signedIn() && request.resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
     }
 
     match /knowledge/{knowledgeId} {
       allow read: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.createdBy == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
       allow create: if isAssistantOrAdmin()
-        || (signedIn() && request.resource.data.createdBy == request.auth.uid);
+        || (isWorkspaceUser() && request.resource.data.createdBy == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.createdBy == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
     }
 
     match /notifications/{notificationId} {
-      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow read: if isWorkspaceUser() && resource.data.userId == request.auth.uid;
       allow create: if isAssistantOrAdmin()
-        || (signedIn() && request.resource.data.userId == request.auth.uid);
-      allow update: if signedIn() && resource.data.userId == request.auth.uid;
+        || (isWorkspaceUser() && request.resource.data.userId == request.auth.uid);
+      allow update: if isWorkspaceUser() && resource.data.userId == request.auth.uid;
       allow delete: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.userId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.userId == request.auth.uid);
     }
 
     match /activityLogs/{activityId} {
       allow read: if isAssistantOrAdmin();
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if isWorkspaceUser() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
     match /activity/{activityId} {
       allow read: if isAssistantOrAdmin();
-      allow create: if signedIn();
+      allow create: if isWorkspaceUser();
       allow update, delete: if isAdmin();
     }
 
@@ -178,11 +182,11 @@ service cloud.firestore {
     match /memories/{memoryId} {
       // Memories are private unless deliberately managed by an admin/assistant.
       allow read: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.userId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.userId == request.auth.uid);
       allow create: if isAssistantOrAdmin()
-        || (signedIn() && request.resource.data.userId == request.auth.uid);
+        || (isWorkspaceUser() && request.resource.data.userId == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin()
-        || (signedIn() && resource.data.userId == request.auth.uid);
+        || (isWorkspaceUser() && resource.data.userId == request.auth.uid);
     }
   }
 }
