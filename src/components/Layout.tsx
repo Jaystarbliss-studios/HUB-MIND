@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CheckSquare, Users, Calendar, Folder, Bell, LogOut, Settings, Inbox, Plus, X, Brain, Book, Briefcase, Search, Clock3 } from 'lucide-react';
 import { auth, db } from '../firebaseConfig';
 import { signOut } from 'firebase/auth';
-import { collection, addDoc, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, query, where, onSnapshot, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../lib/auth';
 import { usePushNotifications } from '../lib/usePushNotifications';
 import { SyncStatusIndicator } from './SyncStatusIndicator';
@@ -51,9 +51,58 @@ export function Layout() {
   }, []);
 
   useEffect(() => {
-    if (profile && !recurringChecked.current) {
-      recurringChecked.current = true;
-          }
+    if (!profile || recurringChecked.current || !['admin', 'assistant'].includes(profile.role)) return;
+    recurringChecked.current = true;
+
+    // Lightweight operational maintenance: generate due recurring tasks once
+    // per signed-in workspace session. The template's lastGeneratedDate is
+    // used as an idempotency guard so refreshes do not create duplicates.
+    const runRecurringTaskMaintenance = async () => {
+      try {
+        const templateSnap = await getDocs(query(collection(db, 'recurringTaskTemplates'), where('active', '==', true)));
+        const now = new Date();
+        const todayKey = now.toISOString().slice(0, 10);
+
+        for (const templateDoc of templateSnap.docs) {
+          const template = templateDoc.data() as any;
+          if (template.lastGeneratedDate === todayKey) continue;
+
+          const day = now.getDay();
+          const date = now.getDate();
+          const weekdayMatches = template.frequency === 'daily'
+            || (template.frequency === 'weekly' && Number(template.dayOfWeek) === day)
+            || (template.frequency === 'monthly' && Number(template.dayOfMonth) === date);
+
+          if (!weekdayMatches) continue;
+
+          const deadline = new Date(now);
+          deadline.setHours(17, 0, 0, 0);
+
+          await addDoc(collection(db, 'tasks'), {
+            title: template.title,
+            description: template.description || '',
+            priority: template.priority || 'medium',
+            status: 'pending',
+            assignedTo: template.assignedTo || profile.id,
+            createdBy: profile.id,
+            deadline: deadline.toISOString(),
+            checklist: [],
+            comments: [],
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+            recurringTemplateId: templateDoc.id,
+          });
+
+          await updateDoc(doc(db, 'recurringTaskTemplates', templateDoc.id), {
+            lastGeneratedDate: todayKey,
+          });
+        }
+      } catch (error) {
+        console.warn('Recurring task maintenance warning:', error);
+      }
+    };
+
+    runRecurringTaskMaintenance();
   }, [profile]);
 
   useEffect(() => {
