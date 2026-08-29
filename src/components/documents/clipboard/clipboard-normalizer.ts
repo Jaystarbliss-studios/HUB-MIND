@@ -18,6 +18,9 @@ export function normalizeClipboardHtml(sanitizedHtml: string, source: string): s
   // Some generated/template content arrives as literal text rather than HTML line breaks.
   normalizeEscapedLineBreaks(body);
 
+  // Step 2: Resolve named paragraph styles and block-level Word/Google Docs formatting.
+  normalizeParagraphStyles(body);
+
   // Step 2: Handle Microsoft Word lists (MsoListParagraph / mso-list)
   normalizeWordLists(body);
 
@@ -95,6 +98,43 @@ function normalizeGoogleDocsWrappers(root: HTMLElement) {
  * Microsoft Word exports lists as ordinary <p class="MsoListParagraph"> with symbol spans.
  * This converts them into real semantic <ul> and <ol> elements.
  */
+
+function normalizeParagraphStyles(root: HTMLElement) {
+  const blocks = Array.from(root.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6'));
+  blocks.forEach((el) => {
+    const style = el.getAttribute('style') || '';
+    const className = el.getAttribute('class') || '';
+    const combined = `${className} ${style}`.toLowerCase();
+
+    // Word named styles frequently survive as class/style metadata rather than semantic headings.
+    const headingMatch = combined.match(/(?:^|[ ._-])heading\s*([1-9])(?:$|[ ._-])/i);
+    if (headingMatch && /^p|^div$/i.test(el.tagName)) {
+      const heading = document.createElement(`h${Math.min(6, Number(headingMatch[1]))}`);
+      copyAttributes(el, heading);
+      while (el.firstChild) heading.appendChild(el.firstChild);
+      el.parentNode?.replaceChild(heading, el);
+      return;
+    }
+
+    // Preserve paragraph alignment and indentation even when the source used HTML align attributes.
+    const align = el.getAttribute('align');
+    if (align && !/text-align\s*:/i.test(style)) {
+      el.style.textAlign = align;
+    }
+
+    // Convert common Word break controls into a stable marker that survives HTML import.
+    if (/page-break-(?:before|after)\s*:\s*(?:always|page|left|right)|break-(?:before|after)\s*:\s*page/i.test(style)) {
+      el.setAttribute('data-hubmind-page-break', 'true');
+    }
+  });
+}
+
+function copyAttributes(from: HTMLElement, to: HTMLElement) {
+  Array.from(from.attributes).forEach((attr) => {
+    if (attr.name !== 'class') to.setAttribute(attr.name, attr.value);
+  });
+}
+
 function normalizeWordLists(root: HTMLElement) {
   const listParagraphs = Array.from(root.querySelectorAll('p[class*="MsoList"], p[style*="mso-list"]'));
   if (listParagraphs.length === 0) return;
