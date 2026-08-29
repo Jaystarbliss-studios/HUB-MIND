@@ -125,6 +125,8 @@ export function Documents() {
         docsData = docsData.filter(d => !d.ownerId || d.ownerId === profile.id || d.createdBy === profile.id || d.type === 'internal' || d.category === 'sop' || d.category === 'contracts');
       }
       
+      // Keep the document list as the primary surface; metadata is available from each item's properties menu.
+      docsData = docsData.map(d => ({ ...d }));
       setDocsList(docsData);
       setLoading(false);
     }, (error) => {
