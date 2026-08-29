@@ -3,7 +3,6 @@ import {
   LiveConnectionState,
   ShawnState,
   ChatMessage,
-  AudioSettings,
   StoredConversation,
 } from '../types';
 import { LiveAudioClient } from '../services/liveAudioClient';
@@ -71,50 +70,6 @@ export function Shawn() {
   const [liveShawnTranscript, setLiveShawnTranscript] = useState<string>('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [activeDocumentContext, setActiveDocumentContext] = useState<{ documentId: string; title: string } | null>(null);
-
-  // Live voice settings. Wake-word detection has been intentionally removed.
-  // Shawn starts listening only after the user explicitly starts a Live session.
-  const [audioSettings, setAudioSettings] = useState<AudioSettings>(() => {
-    try {
-      const saved = localStorage.getItem('shawn_audio_settings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return {
-          voice: parsed.voice || 'Puck',
-          micGain: parsed.micGain ?? 1.0,
-          outputVolume: parsed.outputVolume ?? 1.0,
-          pushToTalk: parsed.pushToTalk ?? false,
-          noiseSuppression: parsed.noiseSuppression ?? true,
-          echoCancellation: parsed.echoCancellation ?? true,
-          wakeWord: { enabled: false },
-        } as AudioSettings;
-      }
-    } catch (e) {
-      console.warn('Failed to parse saved audio settings', e);
-    }
-    return {
-      voice: 'Puck',
-      micGain: 1.0,
-      outputVolume: 1.0,
-      pushToTalk: false,
-      noiseSuppression: true,
-      echoCancellation: true,
-      wakeWord: { enabled: false },
-    } as AudioSettings;
-  });
-
-  const handleUpdateAudioSettings = useCallback((newPartial: Partial<AudioSettings>) => {
-    setAudioSettings((prev) => {
-      const updated = { ...prev, ...newPartial, wakeWord: { enabled: false } } as AudioSettings;
-      try {
-        localStorage.setItem('shawn_audio_settings', JSON.stringify(updated));
-      } catch (e) {
-        console.warn('Failed to save voice settings', e);
-      }
-      return updated;
-    });
-  }, []);
-
 
   const liveClientRef = useRef<LiveAudioClient | null>(null);
 
@@ -959,8 +914,6 @@ call returns.`;
                 isCameraActive={isCameraActive}
                 onToggleCamera={() => setIsCameraActive(!isCameraActive)}
                 onSendImageFrame={(b64) => liveClientRef.current?.sendImageFrame(b64)}
-                audioSettings={audioSettings}
-                onUpdateAudioSettings={handleUpdateAudioSettings}
                 inputLevel={inputLevel}
                 outputLevel={outputLevel}
               />
