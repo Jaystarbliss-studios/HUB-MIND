@@ -279,7 +279,7 @@ export function Shawn() {
     liveClientRef.current = client;
 
     try {
-      await client.connect();
+      await client.connect(activeDocumentContext || undefined);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to connect to Live Audio session.');
       setConnectionState('error');
