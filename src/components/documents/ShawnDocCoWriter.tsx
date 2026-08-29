@@ -6,6 +6,7 @@ import {
   ChevronUp, Minimize2, Maximize2
 } from 'lucide-react';
 import { shawnTaskManager } from '../../lib/shawnTaskManager';
+import { apiUrl } from '../../lib/apiBase';
 
 interface ShawnDocCoWriterProps {
   editor: Editor | null;
@@ -99,7 +100,7 @@ export const ShawnDocCoWriter: React.FC<ShawnDocCoWriterProps> = ({
       shawnTaskManager.updateTask(task.id, { progress: 45, currentStepMessage: 'Drafting structured response...' });
       
       const currentDocHtml = editor.getHTML();
-      const response = await fetch('/api/chat', {
+      const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
