@@ -413,7 +413,6 @@ export class LiveAudioClient {
   }
 
   public disconnect(): void {
-    this.isFallbackSpeechActive = false;
     if ('speechSynthesis' in window) {
       try { window.speechSynthesis.cancel(); } catch (e) {}
     }
