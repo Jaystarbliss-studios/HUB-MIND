@@ -220,10 +220,10 @@ export function buildDocumentHTML(
       font-size: 11pt;
       line-height: 1.6;
     }
-    h1 { font-size: 19pt; font-weight: 800; color: #000000; margin: 14px 0 6px 0; line-height: 1.25; page-break-after: avoid; break-after: avoid; }
-    h2 { font-size: 15pt; font-weight: 700; color: #0f172a; margin: 12px 0 5px 0; line-height: 1.3; page-break-after: avoid; break-after: avoid; }
-    h3 { font-size: 13pt; font-weight: 600; color: #1e293b; margin: 10px 0 4px 0; line-height: 1.35; page-break-after: avoid; break-after: avoid; }
-    p { margin: 0 0 8px 0; }
+    h1 { font-size: 28px; font-weight: 800; color: #000000; margin: 20px 0 9.6px 0; line-height: 1.25; page-break-after: avoid; break-after: avoid; }
+    h2 { font-size: 23.2px; font-weight: 700; color: #0f172a; margin: 17.6px 0 8px 0; line-height: 1.3; page-break-after: avoid; break-after: avoid; }
+    h3 { font-size: 19.5px; font-weight: 600; color: #1e293b; margin: 14.4px 0 6.4px 0; line-height: 1.35; page-break-after: avoid; break-after: avoid; }
+    p { margin: 0 0 12px 0; }
     table { width: 100%; border-collapse: collapse; margin: 12px 0; page-break-inside: auto; break-inside: auto; }
     tr { page-break-inside: avoid; break-inside: avoid; }
     th, td { border: 1px solid #cbd5e1; padding: 7px 10px; font-size: 10pt; text-align: left; }
@@ -380,10 +380,10 @@ export async function exportDocumentAsPDF(
       pageCard.innerHTML = `
         <style>
           * { box-sizing: border-box; }
-          h1 { font-size: 19pt; font-weight: 800; color: #000000; margin: 14px 0 6px 0; line-height: 1.25; }
-          h2 { font-size: 15pt; font-weight: 700; color: #0f172a; margin: 12px 0 5px 0; line-height: 1.3; }
-          h3 { font-size: 13pt; font-weight: 600; color: #1e293b; margin: 10px 0 4px 0; line-height: 1.35; }
-          p { font-size: 11pt; line-height: 1.6; color: #0f172a; margin: 0 0 8px 0; }
+          h1 { font-size: 28px; font-weight: 800; color: #000000; margin: 20px 0 9.6px 0; line-height: 1.25; }
+          h2 { font-size: 23.2px; font-weight: 700; color: #0f172a; margin: 17.6px 0 8px 0; line-height: 1.3; }
+          h3 { font-size: 19.5px; font-weight: 600; color: #1e293b; margin: 14.4px 0 6.4px 0; line-height: 1.35; }
+          p { font-size: 11pt; line-height: 1.6; color: #0f172a; margin: 0 0 12px 0; }
           strong, b { font-weight: 700; color: inherit; }
           em, i { font-style: italic; }
           u { text-decoration: underline; }
