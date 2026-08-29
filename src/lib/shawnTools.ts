@@ -42,6 +42,32 @@ export const SHAWN_TOOLS_DECLARATIONS: ToolDefinition[] = [
     },
   },
   {
+    name: 'create_follow_up',
+    description: 'Create a tracked follow-up for a person, client, payment, proposal, response, promise or other pending action.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'What needs to be followed up.' },
+        person: { type: 'string', description: 'Person or organisation involved.' },
+        reason: { type: 'string', description: 'Why the follow-up is needed.' },
+        dueAt: { type: 'string', description: 'ISO 8601 date-time when the follow-up is due.' },
+        priority: { type: 'string', enum: ['urgent', 'high', 'medium', 'low'] }
+      },
+      required: ['title', 'dueAt']
+    }
+  },
+  {
+    name: 'list_follow_ups',
+    description: 'List active follow-ups and their due dates/statuses.',
+    parameters: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['scheduled', 'due', 'contacted', 'waiting', 'resolved', 'cancelled'] },
+        limit: { type: 'number' }
+      }
+    }
+  },
+  {
     name: 'create_task',
     description: 'Create a new operational task in Hub-Mind.',
     parameters: {
@@ -308,6 +334,46 @@ export async function executeShawnTool(
               link: e.htmlLink,
             })),
           },
+        };
+      }
+
+      case 'create_follow_up': {
+        const now = new Date().toISOString();
+        const followUpData = {
+          title: args.title,
+          person: args.person || '',
+          reason: args.reason || '',
+          ownerId: currentUser?.id,
+          dueAt: args.dueAt,
+          status: 'scheduled',
+          priority: args.priority || 'medium',
+          createdAt: now,
+          updatedAt: now,
+        };
+        const ref = await addDoc(collection(db, 'followUps'), followUpData);
+        return {
+          result: {
+            success: true,
+            followUpId: ref.id,
+            followUp: { id: ref.id, ...followUpData },
+            message: `Follow-up "${args.title}" scheduled for ${args.dueAt}.`,
+          },
+        };
+      }
+
+      case 'list_follow_ups': {
+        const base = collection(db, 'followUps');
+        const conditions: any[] = [];
+        if (currentUser?.role !== 'admin' && currentUser?.role !== 'assistant') {
+          conditions.push(where('ownerId', '==', currentUser?.id));
+        }
+        if (args.status) conditions.push(where('status', '==', args.status));
+        const q = conditions.length ? query(base, ...conditions, limit(args.limit || 20)) : query(base, limit(args.limit || 20));
+        const snap = await getDocs(q);
+        return {
+          result: {
+            followUps: snap.docs.map(d => ({ id: d.id, ...d.data() }))
+          }
         };
       }
 
