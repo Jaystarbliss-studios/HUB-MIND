@@ -1,3 +1,7 @@
+export type PaperSizeOption = 'a4' | 'letter' | 'legal';
+export type OrientationOption = 'portrait' | 'landscape';
+export type MarginOption = 'normal' | 'narrow' | 'moderate' | 'wide' | 'custom';
+
 export type Role = 'admin' | 'assistant' | 'teacher' | 'staff';
 export type UserStatus = 'active' | 'training' | 'inactive';
 export type ClientType = 'school' | 'parent' | 'partner';
@@ -86,6 +90,9 @@ export interface DocumentInfo {
   lastSavedAt?: string;  // Exact ISO timestamp with seconds
   lastModifiedBy?: string; // e.g. User name or "Shawn AI"
   content?: string;
+  pageSize?: PaperSizeOption;
+  orientation?: OrientationOption;
+  marginOption?: MarginOption;
 }
 
 export interface Notification {
