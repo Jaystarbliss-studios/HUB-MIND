@@ -109,6 +109,27 @@ export interface InboxItem {
   } | null;
 }
 
+export type FollowUpStatus = 'scheduled' | 'due' | 'contacted' | 'waiting' | 'resolved' | 'cancelled';
+
+export interface FollowUp {
+  id: string;
+  title: string;
+  person?: string;
+  clientId?: string;
+  relatedTaskId?: string;
+  relatedProjectId?: string;
+  reason?: string;
+  ownerId: string;
+  dueAt: string;
+  status: FollowUpStatus;
+  priority: TaskPriority;
+  lastContactAt?: string;
+  nextContactAt?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RecurringTaskTemplate {
   id: string;
   title: string;
