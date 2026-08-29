@@ -261,6 +261,16 @@ export function DocumentEditor() {
     );
   };
 
+  // Publish the active document to the global Shawn assistant so questions
+  // such as "what does this document say about..." can be grounded in the
+  // current document via Shawn's get_document_content tool.
+  useEffect(() => {
+    if (!docMeta?.id) return;
+    window.dispatchEvent(new CustomEvent('shawn:document_context', {
+      detail: { documentId: docMeta.id, title: docMeta.title || 'Current document' }
+    }));
+  }, [docMeta?.id, docMeta?.title]);
+
   // Listen for real-time Shawn AI document modification events
   useEffect(() => {
     const handleLiveDocEdit = (e: any) => {
