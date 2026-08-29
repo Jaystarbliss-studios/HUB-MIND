@@ -189,7 +189,7 @@ export function DocumentEditor() {
     void saveLayoutSettings(pageSize, orientation, next);
   };
 
-  const saveDocument = async (content: any, editTimestamp?: string) => {
+  const saveDocument = async (content: any, editTimestamp?: string, titleOverride?: string) => {
     if (!id) return;
     try {
       setSaveStatus('saving');
@@ -200,7 +200,7 @@ export function DocumentEditor() {
       await saveDocumentOffline(
         id,
         {
-          title: docMeta?.title || 'Untitled Document',
+          title: titleOverride ?? docMeta?.title ?? 'Untitled Document',
           content: htmlString,
           updatedAt: saveNow,
           lastEditedAt: actualEditTime,
@@ -444,11 +444,12 @@ export function DocumentEditor() {
                 value={docMeta?.title || 'Untitled Document'}
                 onChange={(e) => {
                   const newT = e.target.value;
-                  setDocMeta({ ...docMeta, title: newT });
+                  setDocMeta(prev => prev ? { ...prev, title: newT } : prev);
                   const now = new Date().toISOString();
                   setLastEditedTime(now);
-                  saveDocumentOffline(id!, { title: newT, updatedAt: now, lastEditedAt: now }, profile || undefined);
-                  setLastSavedTime(now);
+                  // Persist the title through the same offline/cloud save path as document content.
+                  // Passing the title explicitly prevents a stale docMeta closure from restoring "Untitled Document".
+                  void saveDocument(editor?.getHTML() || '', now, newT);
                 }}
                 className="bg-transparent text-slate-100 font-bold focus:outline-none focus:border-b border-accent px-1 truncate w-full max-w-[125px] xs:max-w-[170px] sm:max-w-[240px] md:max-w-sm text-xs sm:text-sm md:text-base"
                 placeholder="Document Title"
