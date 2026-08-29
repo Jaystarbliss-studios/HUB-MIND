@@ -112,15 +112,24 @@ export function PaginatedPageContainer({
       const isExplicitBreak = tagName === 'hr' || child.classList.contains('page-break') || child.getAttribute('data-page-break') === 'true';
 
       const maxCapacity = currentPage === 1 ? firstPageCapacity : subsequentPageCapacity;
-      const childHeight = child.offsetHeight || 28;
+      const style = window.getComputedStyle(child);
+      const marginTop = parseFloat(style.marginTop || '0') || 0;
+      const marginBottom = parseFloat(style.marginBottom || '0') || 0;
+      const childHeight = (child.offsetHeight || 28) + marginTop + marginBottom;
       const wouldOrphanHeading = isHeading && (accumulatedHeightOnPage + childHeight + 50 > maxCapacity);
 
-      const shouldBreak = isExplicitBreak || (index > 0 && (accumulatedHeightOnPage + childHeight > maxCapacity || wouldOrphanHeading));
+      // Keep block elements inside the printable content area. A block that
+      // does not fit is moved to the next sheet instead of being allowed to
+      // run into the bottom margin.
+      const shouldBreak = isExplicitBreak || (
+        index > 0 &&
+        (accumulatedHeightOnPage + childHeight > maxCapacity || wouldOrphanHeading)
+      );
 
       if (shouldBreak) {
         // Push this element to start of next physical page sheet
         currentPage++;
-        accumulatedHeightOnPage = childHeight;
+        accumulatedHeightOnPage = Math.min(childHeight, maxCapacity);
         child.setAttribute('data-page-break-before', String(currentPage));
         child.setAttribute('data-page-number', String(currentPage));
 
