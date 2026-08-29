@@ -248,16 +248,6 @@ export type WakeWordPreset =
   | 'shawn'
   | 'custom';
 
-export interface WakeWordConfig {
-  enabled: boolean;
-  selectedPreset: WakeWordPreset;
-  customKeyword: string;
-  sensitivity: 'low' | 'medium' | 'high';
-  autoRespond: boolean;
-  wakeGreetingPrompt: string;
-  soundFeedback: boolean;
-}
-
 export interface AudioSettings {
   voice: string;
   micGain: number;
@@ -265,7 +255,6 @@ export interface AudioSettings {
   pushToTalk: boolean;
   noiseSuppression: boolean;
   echoCancellation: boolean;
-  wakeWord: WakeWordConfig;
 }
 
 export interface StoredConversation {
