@@ -149,6 +149,46 @@ export function DocumentEditor() {
     },
   });
 
+  const saveLayoutSettings = async (
+    nextPageSize: PaperSizeOption,
+    nextOrientation: OrientationOption,
+    nextMarginOption: MarginOption
+  ) => {
+    if (!id) return;
+    const now = new Date().toISOString();
+    try {
+      await saveDocumentOffline(
+        id,
+        {
+          pageSize: nextPageSize,
+          orientation: nextOrientation,
+          marginOption: nextMarginOption,
+          updatedAt: now,
+          lastEditedAt: now,
+        },
+        profile || undefined
+      );
+      setLastSavedTime(now);
+    } catch (error) {
+      console.error('Error saving document page layout:', error);
+    }
+  };
+
+  const handlePageSizeChange = (next: PaperSizeOption) => {
+    setPageSize(next);
+    void saveLayoutSettings(next, orientation, marginOption);
+  };
+
+  const handleOrientationChange = (next: OrientationOption) => {
+    setOrientation(next);
+    void saveLayoutSettings(pageSize, next, marginOption);
+  };
+
+  const handleMarginChange = (next: MarginOption) => {
+    setMarginOption(next);
+    void saveLayoutSettings(pageSize, orientation, next);
+  };
+
   const saveDocument = async (content: any, editTimestamp?: string) => {
     if (!id) return;
     try {
@@ -277,6 +317,9 @@ export function DocumentEditor() {
 
         if (data) {
           setDocMeta(data);
+          if (data.pageSize) setPageSize(data.pageSize as PaperSizeOption);
+          if (data.orientation) setOrientation(data.orientation as OrientationOption);
+          if (data.marginOption) setMarginOption(data.marginOption as MarginOption);
           setLastEditedTime(data.lastEditedAt || data.updatedAt || data.createdAt || null);
           setLastSavedTime(data.lastSavedAt || data.updatedAt || data.createdAt || null);
 
@@ -525,11 +568,11 @@ export function DocumentEditor() {
           editor={editor}
           docTitle={docMeta?.title || 'Untitled Document'}
           pageSize={pageSize}
-          setPageSize={setPageSize}
+          setPageSize={handlePageSizeChange}
           orientation={orientation}
-          setOrientation={setOrientation}
+          setOrientation={handleOrientationChange}
           marginOption={marginOption}
-          setMarginOption={setMarginOption}
+          setMarginOption={handleMarginChange}
           paperTheme={paperTheme}
           setPaperTheme={setPaperTheme}
           zoomLevel={zoomLevel}
