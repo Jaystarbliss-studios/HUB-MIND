@@ -865,18 +865,53 @@ call returns.`;
             </span>
           )}
         </button>
+      </div>
+    );
+  }
 
   return (
     <div
       id="shawn-assistant-modal"
       className={`fixed z-[100] transition-all duration-200 overflow-hidden shadow-2xl flex flex-col bg-slate-950 text-slate-100 font-sans border border-slate-800/90 ${getSizeClasses()}`}
     >
-      {/* Background Ambience */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[500px] h-[350px] bg-gradient-to-b from-teal-600/10 via-emerald-700/5 to-transparent blur-3xl rounded-full" />
       </div>
 
-        {/* Error Notice */}
+      <div className="relative z-20 px-3.5 py-2.5 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-slate-950 flex items-center justify-center">
+            <LogoIcon className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-slate-100">Shawn</h2>
+            <p className="text-[10px] text-slate-400 truncate">
+              {connectionState === 'connected' ? 'Live connected' : 'Hub-Mind assistant'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={handleNewConversation} className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-teal-300" title="New chat"><Plus className="w-4 h-4" /></button>
+          <button
+            onClick={() => {
+              if (connectionState === 'connected') {
+                handleDisconnectLive();
+                setIsVoiceModeActive(false);
+              } else {
+                setIsVoiceModeActive(true);
+                handleConnectLive();
+              }
+            }}
+            className={`p-1.5 rounded-lg border ${connectionState === 'connected' ? 'bg-teal-500/20 text-teal-300 border-teal-500/40' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
+            title={connectionState === 'connected' ? 'End Live session' : 'Start Live session'}
+          >
+            <Radio className="w-4 h-4" />
+          </button>
+          <button onClick={() => setIsOpen(false)} className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-rose-300" title="Close Shawn"><X className="w-4 h-4" /></button>
+        </div>
+      </div>
+
+      {/* Error Notice */}
         {errorMessage && (
           <div className="m-3 bg-red-950/50 border border-red-800/60 text-red-300 p-2.5 rounded-xl flex items-start gap-2.5 text-xs z-10">
             <Shield className="w-4 h-4 flex-shrink-0 text-red-400 mt-0.5" />
