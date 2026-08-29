@@ -21,6 +21,8 @@ import { TaskList } from '@tiptap/extension-task-list';
 import { TaskItem } from '@tiptap/extension-task-item';
 import { CharacterCount } from '@tiptap/extension-character-count';
 import { HubMindPasteEngine } from '../components/documents/clipboard/paste-engine';
+import { sanitizeClipboardHtml } from '../components/documents/clipboard/clipboard-sanitizer';
+import { normalizeClipboardHtml } from '../components/documents/clipboard/clipboard-normalizer';
 import { DocumentRibbon } from '../components/documents/DocumentRibbon';
 import { ImportExportMenu } from '../components/documents/ImportExportMenu';
 import { PaginatedPageContainer } from '../components/documents/PaginatedPageContainer';
@@ -337,6 +339,12 @@ export function DocumentEditor() {
             try {
               if (typeof data.content === 'string' && (data.content.startsWith('{') || data.content.startsWith('['))) {
                 editor.commands.setContent(JSON.parse(data.content));
+              } else if (typeof data.content === 'string') {
+                const cleanHtml = normalizeClipboardHtml(
+                  sanitizeClipboardHtml(data.content),
+                  'stored-document'
+                );
+                editor.commands.setContent(cleanHtml || data.content);
               } else {
                 editor.commands.setContent(data.content);
               }
