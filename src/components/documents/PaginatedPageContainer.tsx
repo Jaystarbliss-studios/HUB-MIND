@@ -111,11 +111,14 @@ export function PaginatedPageContainer({
     event.preventDefault();
     const distance = getTouchDistance(event.touches);
     if (!distance) return;
-    setMobileZoomFactor(Math.min(2.5, Math.max(0.72, pinchStartZoomRef.current * (distance / pinchStartDistanceRef.current))));
+    setMobileZoomFactor(Math.min(2.5, Math.max(1, pinchStartZoomRef.current * (distance / pinchStartDistanceRef.current))));
   }, [getTouchDistance, isMobileScreen]);
 
   const handleTouchEnd = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    if (event.touches.length < 2) pinchStartDistanceRef.current = null;
+    if (event.touches.length < 2) {
+      pinchStartDistanceRef.current = null;
+      setMobileZoomFactor((current) => Math.abs(current - 1) < 0.06 ? 1 : current);
+    }
   }, []);
 
   // Layout function that measures live DOM elements in the editor and distributes them across physical pages
