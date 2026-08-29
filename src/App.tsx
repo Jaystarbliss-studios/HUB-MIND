@@ -25,6 +25,7 @@ const Notifications = lazy(() => import('./pages/Notifications').then(m => ({ de
 const Projects = lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail').then(m => ({ default: m.ProjectDetail })));
 const Knowledge = lazy(() => import('./pages/Knowledge').then(m => ({ default: m.Knowledge })));
+const FollowUps = lazy(() => import('./pages/FollowUps').then(m => ({ default: m.FollowUps })));
 
 const LoadingScreen = () => (
   <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-slate-400">
@@ -70,6 +71,8 @@ export default function App() {
                 <Route path="projects/:id" element={<ProjectDetail />} />
 
                 <Route path="knowledge" element={<Knowledge />} />
+
+                <Route path="follow-ups" element={<FollowUps />} />
 
                 <Route path="clients" element={<Clients />} />
                 <Route path="clients/:id" element={<ClientDetail />} />
