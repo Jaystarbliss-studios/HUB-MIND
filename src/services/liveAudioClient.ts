@@ -52,7 +52,7 @@ export class LiveAudioClient {
     }
   }
 
-  public async connect(): Promise<void> {
+  public async connect(documentContext?: { documentId: string; title: string }): Promise<void> {
     this.callbacks.onStatusChange('connecting');
     this.callbacks.onShawnStateChange('thinking');
 
@@ -111,7 +111,10 @@ export class LiveAudioClient {
       const configuredWsBase = API_BASE_URL
         ? API_BASE_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
         : `${protocol}//${window.location.host}`;
-      const wsUrl = `${configuredWsBase}/api/live-ws`;
+      const contextQuery = documentContext?.documentId
+        ? `?documentId=${encodeURIComponent(documentContext.documentId)}&documentTitle=${encodeURIComponent(documentContext.title || 'Current document')}`
+        : '';
+      const wsUrl = `${configuredWsBase}/api/live-ws${contextQuery}`;
 
       this.ws = new WebSocket(wsUrl);
       this.ws.binaryType = 'arraybuffer';
