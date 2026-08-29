@@ -71,8 +71,10 @@ export function filterSafeStyles(styleString: string): string {
       'text-align', 'line-height',
       'width', 'height', 'max-width',
       'border', 'border-color', 'border-width', 'border-style',
-      'padding', 'margin-left', 'text-indent',
-      'vertical-align'
+      'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+      'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'text-indent',
+      'letter-spacing', 'white-space', 'vertical-align',
+      'border-collapse', 'border-spacing', 'page-break-before', 'page-break-after', 'break-before', 'break-after'
     ];
 
     if (allowedProps.includes(prop)) {
