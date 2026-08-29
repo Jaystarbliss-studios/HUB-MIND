@@ -841,7 +841,13 @@ export async function executeShawnTool(
       case 'get_workspace_overview': {
         const tasksSnap = await getDocs(query(collection(db, 'tasks'), where('status', '!=', 'completed'), limit(20)));
         const docsSnap = await getDocs(query(collection(db, 'documents'), limit(5)));
-        const today = new Date().toISOString().split('T')[0];
+        const followUpBase = collection(db, 'followUps');
+        const followUpQuery = currentUser?.role === 'admin' || currentUser?.role === 'assistant'
+          ? query(followUpBase, limit(20))
+          : query(followUpBase, where('ownerId', '==', currentUser?.id), limit(20));
+        const followUpsSnap = await getDocs(followUpQuery);
+        const activeFollowUps = followUpsSnap.docs.filter(d => !['resolved', 'cancelled'].includes((d.data() as any).status));
+        const now = Date.now();
         
         return {
           result: {
@@ -853,6 +859,8 @@ export async function executeShawnTool(
             summary: {
               openTasksCount: tasksSnap.docs.length,
               recentDocumentsCount: docsSnap.docs.length,
+              followUpsDueCount: activeFollowUps.filter(d => new Date((d.data() as any).dueAt).getTime() <= now).length,
+              followUpsWaitingCount: activeFollowUps.filter(d => (d.data() as any).status === 'waiting').length,
             }
           },
         };
