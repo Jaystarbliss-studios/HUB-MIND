@@ -317,9 +317,16 @@ export function Shawn() {
     setIsChatLoading(true);
     setErrorMessage(null);
 
-    // If live session is active, push text to live client too
+    // A Live session is the single source of truth while connected.
+    // Do not also call the normal /api/chat route or the user would receive
+    // two Shawn answers for one message.
     if (connectionState === 'connected' && liveClientRef.current) {
+      if (imageBase64) {
+        liveClientRef.current.sendImageFrame(imageBase64.replace(/^data:image\\/[^;]+;base64,/, ''));
+      }
       liveClientRef.current.sendText(text);
+      setIsChatLoading(false);
+      return;
     }
 
     try {
@@ -380,7 +387,6 @@ overdue and nothing on the calendar till 2") rather than a generic greeting.
 ## CURRENT DOCUMENT CONTEXT
 ${activeDocumentContext ? `The user is currently working in "${activeDocumentContext.title}" (document ID: ${activeDocumentContext.documentId}). If they ask what is in the document, what a section means, or request a document-specific change, call get_document_content or the appropriate document tool using this ID before answering.` : `No document is currently attached to this Shawn session. If the user asks about a particular document, use list_documents/search_workspace to identify it first.`}
 
-## TOOLS AVAILABLE TO YOU
 ## TOOLS AVAILABLE TO YOU
 - navigate_app — move the user to a different screen
 - list_tasks / create_task / update_task
