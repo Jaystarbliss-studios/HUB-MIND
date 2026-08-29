@@ -89,7 +89,12 @@ async function startServer() {
   app.post("/api/tts", async (req, res) => {
     try {
       const { text } = req.body;
-      const geminiApiKey = process.env.GEMINI_API_KEY;
+      const liveSystemPrompt = SHAWN_PROMPT_INSTRUCTION +
+      (activeDocumentId
+        ? `\n\n## CURRENT DOCUMENT\nThe user is currently working in "${activeDocumentTitle || 'Current document'}" (document ID: ${activeDocumentId}). If the user asks about this document, its contents, a section, or requests an edit, use the document tools with this ID before answering. Do not guess document contents.`
+        : "");
+
+    const geminiApiKey = process.env.GEMINI_API_KEY;
       if (!geminiApiKey) {
         return res.status(500).json({ error: "GEMINI_API_KEY is required for voice model." });
       }
@@ -784,10 +789,7 @@ call returns.`;
             tools: LIVE_TOOLS as any,
             systemInstruction: {
               parts: [{
-                text: SHAWN_PROMPT_INSTRUCTION +
-                  (activeDocumentId
-                    ? `\n\n## CURRENT DOCUMENT\nThe user is currently working in "${activeDocumentTitle || 'Current document'}" (document ID: ${activeDocumentId}). If the user asks about this document, its contents, a section, or requests an edit, use the document tools with this ID before answering. Do not guess document contents.`
-                    : "")
+                text: liveSystemPrompt
               }]
             },
           },
@@ -949,7 +951,7 @@ call returns.`;
                 model: "gemini-3.7-flash",
                 contents: conversationalHistory as any,
                 config: {
-                  systemInstruction: SHAWN_PROMPT_INSTRUCTION,
+                  systemInstruction: liveSystemPrompt,
                   tools: LIVE_TOOLS as any,
                 },
               });
