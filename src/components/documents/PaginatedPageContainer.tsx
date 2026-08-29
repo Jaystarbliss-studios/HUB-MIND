@@ -93,7 +93,7 @@ export function PaginatedPageContainer({
   const pinchStartDistanceRef = useRef<number | null>(null);
   const pinchStartZoomRef = useRef(1);
 
-  const getTouchDistance = useCallback((touches: TouchList) => {
+  const getTouchDistance = useCallback((touches: React.TouchList) => {
     if (touches.length < 2) return 0;
     const dx = touches[0].clientX - touches[1].clientX;
     const dy = touches[0].clientY - touches[1].clientY;
