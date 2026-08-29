@@ -44,6 +44,34 @@ body {
 .ProseMirror {
   @apply outline-none w-full leading-relaxed;
   font-size: 11pt;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  orphans: 3;
+  widows: 3;
+}
+
+.ProseMirror > * {
+  break-inside: auto;
+}
+
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4,
+.ProseMirror h5,
+.ProseMirror h6 {
+  break-after: avoid;
+}
+
+.ProseMirror table,
+.ProseMirror img,
+.ProseMirror blockquote {
+  break-inside: avoid;
+}
+
+.document-paginated-editor-content {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Explicit high-contrast rules for Paper White */
