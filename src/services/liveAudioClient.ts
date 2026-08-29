@@ -3,6 +3,8 @@
  * Provides low-latency 16kHz PCM streaming capture and 24kHz gapless playback
  */
 
+import { API_BASE_URL } from '../lib/apiBase';
+
 export interface LiveAudioCallbacks {
   onStatusChange: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
   onShawnStateChange: (state: 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted' | 'muted') => void;
@@ -109,7 +111,10 @@ export class LiveAudioClient {
 
       // 3. Connect WebSocket to backend Live proxy
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/api/live-ws`;
+      const configuredWsBase = API_BASE_URL
+        ? API_BASE_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+        : `${protocol}//${window.location.host}`;
+      const wsUrl = `${configuredWsBase}/api/live-ws`;
 
       this.ws = new WebSocket(wsUrl);
       this.ws.binaryType = 'arraybuffer';
