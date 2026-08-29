@@ -9,6 +9,9 @@ export interface OfflineDocRecord {
   lastSavedAt: string;
   lastEditedAt?: string;
   lastModifiedBy?: string;
+  pageSize?: 'a4' | 'letter' | 'legal';
+  orientation?: 'portrait' | 'landscape';
+  marginOption?: 'normal' | 'narrow' | 'moderate' | 'wide' | 'custom';
   synced: boolean;
 }
 
