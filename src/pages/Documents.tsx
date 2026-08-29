@@ -10,6 +10,8 @@ import { safeParseISO, safeFormat, formatExactTimestamp, formatShortTimestampWit
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
 import { TemplateSelector } from '../components/documents/TemplateSelector';
+import { sanitizeClipboardHtml } from '../components/documents/clipboard/clipboard-sanitizer';
+import { normalizeClipboardHtml } from '../components/documents/clipboard/clipboard-normalizer';
 
 export function Documents() {
   const { profile, user } = useAuth();
@@ -95,12 +97,13 @@ export function Documents() {
   
   
   const handleCreateDocument = async (title: string = 'Untitled Document', content: string = '') => {
+    const normalizedTemplate = content ? normalizeClipboardHtml(sanitizeClipboardHtml(content), 'hubmind-template') : '';
     if (!profile) return;
     try {
       const newDocRef = await addDoc(collection(db, 'documents'), {
         title: title,
         type: 'internal',
-        content: JSON.stringify(content ? content : { type: 'doc', content: [{ type: 'paragraph' }] }),
+        content: JSON.stringify(normalizedTemplate ? normalizedTemplate : { type: 'doc', content: [{ type: 'paragraph' }] }),
         category: 'other',
         ownerId: profile.id,
         createdAt: new Date().toISOString(),
