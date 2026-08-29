@@ -225,6 +225,9 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
           lastSavedAt: cloudData.lastSavedAt || cloudData.updatedAt || new Date().toISOString(),
           lastEditedAt: cloudData.lastEditedAt || cloudData.updatedAt,
           lastModifiedBy: cloudData.lastModifiedBy || 'User',
+          pageSize: cloudData.pageSize,
+          orientation: cloudData.orientation,
+          marginOption: cloudData.marginOption,
           synced: true,
         };
         localDocs[docId] = syncedRecord;
