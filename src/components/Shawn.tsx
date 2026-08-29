@@ -866,6 +866,16 @@ call returns.`;
           )}
         </button>
 
+  return (
+    <div
+      id="shawn-assistant-modal"
+      className={`fixed z-[100] transition-all duration-200 overflow-hidden shadow-2xl flex flex-col bg-slate-950 text-slate-100 font-sans border border-slate-800/90 ${getSizeClasses()}`}
+    >
+      {/* Background Ambience */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[500px] h-[350px] bg-gradient-to-b from-teal-600/10 via-emerald-700/5 to-transparent blur-3xl rounded-full" />
+      </div>
+
         {/* Error Notice */}
         {errorMessage && (
           <div className="m-3 bg-red-950/50 border border-red-800/60 text-red-300 p-2.5 rounded-xl flex items-start gap-2.5 text-xs z-10">
