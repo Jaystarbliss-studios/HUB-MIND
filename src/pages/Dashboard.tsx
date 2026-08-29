@@ -258,6 +258,26 @@ export function Dashboard() {
         <p className="text-slate-400">Welcome to your Operations Hub.</p>
       </div>
 
+      {/* Daily operations briefing */}
+      <section className="mb-8 bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-accent font-bold mb-2">Shawn's Daily Briefing</p>
+            <h3 className="text-xl font-bold text-white">Here's what needs your attention.</h3>
+            <p className="text-sm text-slate-400 mt-1">
+              {urgentTasksCount} urgent task{urgentTasksCount !== 1 ? 's' : ''}, {followUpsDueCount} follow-up{followUpsDueCount !== 1 ? 's' : ''} due, {todayMeetingsCount} meeting{todayMeetingsCount !== 1 ? 's' : ''} today
+              {followUpsWaitingCount > 0 ? `, and ${followUpsWaitingCount} item${followUpsWaitingCount !== 1 ? 's' : ''} waiting on someone else.` : '.'}
+            </p>
+          </div>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('shawn:open', { detail: { mode: 'chat', context: 'workspace' } }))}
+            className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-accent text-slate-950 font-bold text-sm shrink-0"
+          >
+            Ask Shawn
+          </button>
+        </div>
+      </section>
+
       {/* Circular Progress Indicators Section */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
         {/* Gauge 1: Task Completion Rate */}
