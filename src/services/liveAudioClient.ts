@@ -167,8 +167,11 @@ export class LiveAudioClient {
       };
 
       this.ws.onerror = (err) => {
-        console.warn('WebSocket connection error / not supported in this host, switching to Web Speech voice mode:', err);
-        this.fallbackToWebSpeech();
+        console.warn('Shawn Live WebSocket error:', err);
+        if (this.callbacks.onError) this.callbacks.onError('Shawn could not reach the live AI service. Check the deployment/API connection and try again.');
+        this.callbacks.onStatusChange('error');
+        // Do not silently switch to a second microphone/recognition engine.
+        // On Android this used to create competing mic sessions.
       };
 
       this.ws.onclose = () => {
