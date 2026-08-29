@@ -384,7 +384,7 @@ export function PaginatedPageContainer({
             position: 'absolute',
             top: 0,
             left: 0,
-            width: isMobileScreen ? '100%' : `${layout.pageWidthPx}px`,
+            width: `${layout.pageWidthPx}px`,
             paddingTop: `${layout.marginsPx.top + layout.page1HeaderHeightPx}px`,
             paddingRight: `${layout.marginsPx.right}px`,
             paddingBottom: `${layout.marginsPx.bottom}px`,
