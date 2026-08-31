@@ -86,6 +86,12 @@ export function Dashboard() {
   const [activeProjectsCount, setActiveProjectsCount] = useState(0);
   const [followUpsDueCount, setFollowUpsDueCount] = useState(0);
   const [followUpsWaitingCount, setFollowUpsWaitingCount] = useState(0);
+  const [documentsAttentionCount, setDocumentsAttentionCount] = useState(0);
+  const [paymentsAwaitingCount, setPaymentsAwaitingCount] = useState(0);
+  const [weekTasksCount, setWeekTasksCount] = useState(0);
+  const [reportText, setReportText] = useState('');
+  const [reportSaving, setReportSaving] = useState(false);
+  const [reportSaved, setReportSaved] = useState(false);
   
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
   const [notes, setNotes] = useState('');
@@ -133,6 +139,10 @@ export function Dashboard() {
           setTasksOverdueCount(overdueTasks);
           setTotalTasksCount(tasksSnap.docs.length);
           setCompletedTasksCount(completedTasks);
+          setWeekTasksCount(tasksSnap.docs.filter(d => {
+            const t = d.data() as Task;
+            return t.deadline && safeParseISO(t.deadline) >= weekStart && safeParseISO(t.deadline) <= weekEnd && t.status !== 'archived';
+          }).length);
         } catch (e) {
           console.warn('Dashboard tasks query warning:', e);
         }
@@ -199,6 +209,30 @@ export function Dashboard() {
           console.warn('Dashboard follow-up query warning:', e);
         }
 
+        // Documents needing attention: support common review/draft flags without assuming a field exists.
+        try {
+          const docsSnap = await getDocs(collection(db, 'documents'));
+          const attention = docsSnap.docs.filter(d => {
+            const x = d.data() as any;
+            return x.status === 'pending_review' || x.status === 'needs_review' || x.reviewRequired === true;
+          }).length;
+          setDocumentsAttentionCount(attention);
+        } catch (e) {
+          console.warn('Dashboard documents query warning:', e);
+        }
+
+        // Payments awaiting confirmation. The collection is optional; an absent/empty collection is simply zero.
+        try {
+          const paymentsSnap = await getDocs(collection(db, 'payments'));
+          const awaiting = paymentsSnap.docs.filter(d => {
+            const x = d.data() as any;
+            return ['pending', 'awaiting_confirmation', 'awaiting_payment', 'pending_confirmation'].includes(x.status);
+          }).length;
+          setPaymentsAwaitingCount(awaiting);
+        } catch (e) {
+          console.warn('Dashboard payments query warning:', e);
+        }
+
         // Fetch Quick Notes
         try {
           const notesDoc = await getDoc(doc(db, 'users', profile.id, 'private', 'quickNotes'));
@@ -228,6 +262,21 @@ export function Dashboard() {
 
     fetchData();
   }, [profile, startLoading, stopLoading]);
+
+  const saveDailyReport = async () => {
+    if (!profile || !reportText.trim()) return;
+    setReportSaving(true); setReportSaved(false);
+    try {
+      const dateKey = format(new Date(), 'yyyy-MM-dd');
+      await setDoc(doc(db, 'users', profile.id, 'dailyReports', dateKey), {
+        date: dateKey, authorId: profile.id, authorName: profile.name,
+        report: reportText.trim(), updatedAt: new Date().toISOString(),
+        snapshot: { urgentTasksCount, todayMeetingsCount, inboxItemsCount, followUpsDueCount, followUpsWaitingCount, paymentsAwaitingCount }
+      }, { merge: true });
+      setReportSaved(true);
+    } catch (e) { console.error('Failed to save daily report:', e); }
+    finally { setReportSaving(false); }
+  };
 
   
   const handleSaveNotes = async () => {
@@ -462,6 +511,14 @@ export function Dashboard() {
               <Clock className="w-5 h-5 text-accent" />
               <span className="font-medium">{followUpsWaitingCount} Waiting on Someone</span>
             </Link>
+            <Link to="/documents" className="flex items-center gap-3 text-slate-300 hover:text-white transition-colors">
+              <FileText className="w-5 h-5 text-accent" />
+              <span className="font-medium">{documentsAttentionCount} Documents Need Attention</span>
+            </Link>
+            <div className="flex items-center gap-3 text-slate-300">
+              <Clock className="w-5 h-5 text-accent" />
+              <span className="font-medium">{paymentsAwaitingCount} Payments Awaiting Confirmation</span>
+            </Link>
           </div>
         </section>
 
@@ -491,7 +548,26 @@ export function Dashboard() {
         </section>
       </div>
 
-      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div><h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">This Week</h3><p className="text-sm text-slate-400 mt-1">Your operating picture for the current week.</p></div>
+            <Link to="/calendar" className="text-xs font-bold text-accent">Open calendar →</Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[['Tasks due', weekTasksCount], ['Meetings', meetingsThisWeekCount], ['Follow-ups due', followUpsDueCount], ['Waiting', followUpsWaitingCount]].map(([label,value]) => (
+              <div key={label as string} className="rounded-xl border border-slate-800 bg-slate-950/50 p-4"><div className="text-2xl font-bold text-white">{value}</div><div className="text-xs text-slate-500 mt-1">{label}</div></div>
+            ))}
+          </div>
+        </section>
+        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">End-of-Day Report</h3>
+          <p className="text-sm text-slate-400 mb-4">Record what was completed, what is pending, and what needs your decision.</p>
+          <textarea value={reportText} onChange={e=>{setReportText(e.target.value);setReportSaved(false)}} placeholder="Completed…\nPending…\nNeeds your decision…\nTomorrow…" className="w-full min-h-[120px] rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200 outline-none focus:border-accent resize-y" />
+          <div className="flex items-center justify-between mt-3"><span className="text-xs text-slate-500">Saved privately to your daily reports.</span><button onClick={saveDailyReport} disabled={reportSaving || !reportText.trim()} className="px-4 py-2 rounded-lg bg-accent text-slate-950 text-sm font-bold disabled:opacity-50">{reportSaving ? 'Saving…' : reportSaved ? 'Saved ✓' : 'Save report'}</button></div>
+        </section>
+      </div>
+
       {/* Third row: Scratchpad & Recent Activity */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
         <div className="md:col-span-8">
