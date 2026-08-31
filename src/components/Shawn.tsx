@@ -827,36 +827,9 @@ call returns.`;
     handleDragEnd();
   };
 
-  // Floating trigger button when closed
-  if (!isOpen) {
-    const isLive = connectionState === 'connected';
-    const positionStyle: React.CSSProperties = iconPos
-      ? { left: `${iconPos.x}px`, top: `${iconPos.y}px` }
-      : { right: '24px', bottom: '24px' };
-
-    return (
-      <div
-        style={{ ...positionStyle, touchAction: 'none' }}
-        className="fixed z-[100] select-none print:hidden"
-      >
-        <button
-          id="shawn-assistant-toggle-btn"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          style={{ touchAction: 'none' }}
-          className={`relative p-3.5 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing ${isLive ? 'bg-teal-400 text-slate-950 ring-4 ring-teal-500/30' : 'bg-gradient-to-tr from-teal-500 to-emerald-500 text-slate-950'}`}
-          title="Open Shawn Assistant"
-        >
-          <LogoIcon className="w-6 h-6 pointer-events-none" />
-          {isLive && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-teal-300 ring-2 ring-slate-950" />}
-        </button>
-      </div>
-    );
-  }
+  // Floating Shawn launcher is temporarily hidden. The full chat remains
+  // available wherever Hub-Mind embeds/opens it.
+  if (!isOpen) return null;
 
   return (
     <div
