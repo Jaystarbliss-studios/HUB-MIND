@@ -518,8 +518,10 @@ call returns.`;
         }
       }
 
-      // If backend API was unreachable (e.g. static hosting on Netlify or 404), execute client-side intelligence
-      if (!apiSuccess || !finalResponseText) {
+      // Only use the local deterministic fallback when the production AI endpoint
+      // genuinely failed. Never replace a successful but empty/model-processing turn
+      // with the same generic greeting; that was the source of Shawn repeating himself.
+      if (!apiSuccess) {
         const lower = text.toLowerCase().trim();
         if (lower.includes('task') && (lower.includes('go to') || lower.includes('open') || lower.includes('show') || lower.includes('view') || lower.includes('navigate'))) {
           navigate('/tasks');
@@ -571,7 +573,7 @@ call returns.`;
             finalResponseText = `Brilliant! I'll call you ${name} from now on.`;
           }
         } else {
-          finalResponseText = finalResponseText || `Right then! I'm Shawn, your Hub-Mind companion. I have direct access to your tasks, calendar, clients, and documents. What shall we tackle next?`;
+          finalResponseText = "I couldn't reach my AI service just now. Please try that again in a moment.";
         }
       }
 
