@@ -91,6 +91,11 @@ export function DocumentEditor() {
   const [shawnActivityFlash, setShawnActivityFlash] = useState<string | null>(null);
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const latestTitleRef = useRef('Untitled Document');
+
+  useEffect(() => {
+    latestTitleRef.current = docMeta?.title || 'Untitled Document';
+  }, [docMeta?.title]);
 
   const currentLayout = useMemo(() => {
     return computePageLayout({ paperSize: pageSize, orientation, marginOption });
@@ -204,7 +209,7 @@ export function DocumentEditor() {
       await saveDocumentOffline(
         id,
         {
-          title: titleOverride ?? docMeta?.title ?? 'Untitled Document',
+          title: titleOverride ?? latestTitleRef.current ?? 'Untitled Document',
           content: htmlString,
           updatedAt: saveNow,
           lastEditedAt: actualEditTime,
@@ -455,6 +460,7 @@ export function DocumentEditor() {
                 onChange={(e) => {
                   const newT = e.target.value;
                   setDocMeta(prev => prev ? { ...prev, title: newT } : prev);
+                  latestTitleRef.current = newT;
                   const now = new Date().toISOString();
                   setLastEditedTime(now);
                   // Persist the title through the same offline/cloud save path as document content.
@@ -510,6 +516,21 @@ export function DocumentEditor() {
               <span>{pendingSyncCount}</span>
             </button>
           ) : null}
+
+          {/* Explicit Save Button — useful on mobile and as a guaranteed manual save */}
+          <button
+            onClick={() => {
+              if (!editor) return;
+              const now = new Date().toISOString();
+              void saveDocument(editor.getHTML(), now, latestTitleRef.current);
+            }}
+            disabled={saveStatus === 'saving'}
+            className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-slate-950 text-xs font-bold transition-colors disabled:opacity-60 flex items-center gap-1.5"
+            title="Save document now"
+          >
+            <Save className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{saveStatus === 'saving' ? 'Saving…' : 'Save'}</span>
+          </button>
 
           {/* Version History Button */}
           <button
