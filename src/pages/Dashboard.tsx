@@ -538,7 +538,7 @@ export function Dashboard() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-400">Documents Pending Review</span>
-              <span className="text-sm font-bold text-slate-200">0</span> {/* Hardcoded for now */}
+              <span className="text-sm font-bold text-slate-200">{documentsAttentionCount}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-400">Team Availability</span>
