@@ -65,22 +65,3 @@ function normalizeEscapedLineBreaks(root: HTMLElement) {
     textNode.parentNode?.replaceChild(fragment, textNode);
   });
 }
-function normalizeEscapedLineBreaks(root: HTMLElement) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const nodes: Text[] = [];
-  let node: Node | null;
-  while ((node = walker.nextNode())) nodes.push(node as Text);
-
-  nodes.forEach((textNode) => {
-    const value = textNode.nodeValue || '';
-    if (!/(?:\r?\n|\\n|\r)/.test(value)) return;
-
-    const parts = value.split(/(?:\r?\n|\\n|\r)/g);
-    const fragment = document.createDocumentFragment();
-    parts.forEach((part, index) => {
-      if (part) fragment.appendChild(document.createTextNode(part));
-      if (index < parts.length - 1) fragment.appendChild(document.createElement('br'));
-    });
-    textNode.parentNode?.replaceChild(fragment, textNode);
-  });
-}
