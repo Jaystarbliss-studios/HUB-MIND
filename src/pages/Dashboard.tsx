@@ -92,6 +92,7 @@ export function Dashboard() {
   const [reportText, setReportText] = useState('');
   const [reportSaving, setReportSaving] = useState(false);
   const [reportSaved, setReportSaved] = useState(false);
+  const [whatsappSending, setWhatsappSending] = useState(false);
   
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
   const [notes, setNotes] = useState('');
@@ -279,6 +280,33 @@ export function Dashboard() {
   };
 
   
+
+  const buildDailyReportMessage = () => {
+    const dateLabel = format(new Date(), 'dd MMMM yyyy');
+    return [
+      `JAYSTARBLISS DAILY REPORT — ${dateLabel}`,
+      '',
+      reportText.trim(),
+      '',
+      '— Sent from Hub-Mind'
+    ].join('\\n');
+  };
+
+  const sendReportToWhatsApp = async () => {
+    if (!reportText.trim()) return;
+    setWhatsappSending(true);
+    try {
+      const message = buildDailyReportMessage();
+      const encoded = encodeURIComponent(message);
+      // WhatsApp's supported share URL opens the user's contact picker with the
+      // report already composed. No phone number or WhatsApp API credential is stored.
+      const whatsappUrl = `https://wa.me/?text=${encoded}`;
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    } finally {
+      setTimeout(() => setWhatsappSending(false), 700);
+    }
+  };
+
   const handleSaveNotes = async () => {
     if (!profile) return;
     setSavingNotes(true);
@@ -564,7 +592,17 @@ export function Dashboard() {
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">End-of-Day Report</h3>
           <p className="text-sm text-slate-400 mb-4">Record what was completed, what is pending, and what needs your decision.</p>
           <textarea value={reportText} onChange={e=>{setReportText(e.target.value);setReportSaved(false)}} placeholder="Completed…\nPending…\nNeeds your decision…\nTomorrow…" className="w-full min-h-[120px] rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200 outline-none focus:border-accent resize-y" />
-          <div className="flex items-center justify-between mt-3"><span className="text-xs text-slate-500">Saved privately to your daily reports.</span><button onClick={saveDailyReport} disabled={reportSaving || !reportText.trim()} className="px-4 py-2 rounded-lg bg-accent text-slate-950 text-sm font-bold disabled:opacity-50">{reportSaving ? 'Saving…' : reportSaved ? 'Saved ✓' : 'Save report'}</button></div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
+            <span className="text-xs text-slate-500">Saved privately to your daily reports.</span>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={saveDailyReport} disabled={reportSaving || !reportText.trim()} className="px-4 py-2 rounded-lg bg-accent text-slate-950 text-sm font-bold disabled:opacity-50">
+                {reportSaving ? 'Saving…' : reportSaved ? 'Saved ✓' : 'Save report'}
+              </button>
+              <button onClick={sendReportToWhatsApp} disabled={whatsappSending || !reportText.trim()} className="px-4 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-sm font-bold hover:bg-emerald-500/20 disabled:opacity-50">
+                {whatsappSending ? 'Opening WhatsApp…' : 'Send via WhatsApp'}
+              </button>
+            </div>
+          </div>
         </section>
       </div>
 
