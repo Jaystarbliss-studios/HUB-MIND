@@ -93,6 +93,7 @@ export function Dashboard() {
   const [reportSaving, setReportSaving] = useState(false);
   const [reportSaved, setReportSaved] = useState(false);
   const [whatsappSending, setWhatsappSending] = useState(false);
+  const [scheduleSending, setScheduleSending] = useState(false);
   
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
   const [notes, setNotes] = useState('');
@@ -263,6 +264,36 @@ export function Dashboard() {
 
     fetchData();
   }, [profile, startLoading, stopLoading]);
+
+  const sendTodayScheduleToWhatsApp = async () => {
+    if (!profile) return;
+    setScheduleSending(true);
+    try {
+      const today = new Date();
+      const [tasksSnap, meetingsSnap] = await Promise.all([
+        getDocs(query(collection(db, 'tasks'), profile.role === 'admin' || profile.role === 'assistant' ? undefined : where('assignedTo', '==', profile.id) as any)),
+        getDocs(collection(db, 'meetings'))
+      ]);
+      const tasks = tasksSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+        .filter((t: any) => t.deadline && isToday(safeParseISO(t.deadline)));
+      const meetings = meetingsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+        .filter((m: any) => m.date && isToday(safeParseISO(m.date)));
+      const lines = [
+        `JAYSTARBLISS DAILY SCHEDULE — ${format(today, 'dd MMMM yyyy')}`,
+        '',
+        'MEETINGS:',
+        ...(meetings.length ? meetings.sort((a:any,b:any)=>safeParseISO(a.date).getTime()-safeParseISO(b.date).getTime()).map((m:any)=>`• ${safeFormat(m.date, 'h:mma')} — ${(m.notesRaw || 'Meeting').split('\\n')[0]}`) : ['• No meetings scheduled']),
+        '',
+        'TASKS:',
+        ...(tasks.length ? tasks.sort((a:any,b:any)=>safeParseISO(a.deadline).getTime()-safeParseISO(b.deadline).getTime()).map((t:any)=>`• ${t.title}${t.priority ? ` [${t.priority}]` : ''}`) : ['• No tasks due today']),
+        '',
+        '— Sent from Hub-Mind'
+      ];
+      window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\\n'))}`, '_blank', 'noopener,noreferrer');
+    } finally {
+      setTimeout(() => setScheduleSending(false), 700);
+    }
+  };
 
   const saveDailyReport = async () => {
     if (!profile || !reportText.trim()) return;
@@ -513,7 +544,12 @@ export function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
         {/* Today's Focus */}
         <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-6">Today's Focus</h3>
+          <div className="flex items-center justify-between gap-3 mb-6">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Today's Focus</h3>
+            <button onClick={sendTodayScheduleToWhatsApp} disabled={scheduleSending} className="px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-bold hover:bg-emerald-500/20 disabled:opacity-50" title="Share today's schedule through WhatsApp">
+              {scheduleSending ? 'Opening WhatsApp…' : 'Share Today’s Schedule'}
+            </button>
+          </div>
           <div className="space-y-4">
             <div className="flex items-center gap-3 text-slate-300 hover:text-white transition-colors cursor-pointer">
               <CheckCircle2 className="w-5 h-5 text-accent" />
