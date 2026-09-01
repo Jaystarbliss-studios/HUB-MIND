@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { shareHubMindItem, copyShareUrl } from '../lib/shareLinks';
 import { useEditor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Underline } from '@tiptap/extension-underline';
@@ -66,6 +67,7 @@ export interface PageSizeConfig {
 
 export function DocumentEditor() {
   const { id } = useParams<{ id: string }>();
+  const isSharedView = new URLSearchParams(window.location.search).get('shared') === '1';
   const navigate = useNavigate();
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -96,6 +98,10 @@ export function DocumentEditor() {
   useEffect(() => {
     latestTitleRef.current = docMeta?.title || 'Untitled Document';
   }, [docMeta?.title]);
+
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) editor.setEditable(!isSharedView);
+  }, [editor, isSharedView]);
 
   const currentLayout = useMemo(() => {
     return computePageLayout({ paperSize: pageSize, orientation, marginOption });
@@ -136,6 +142,7 @@ export function DocumentEditor() {
       HubMindPasteEngine,
     ],
     content: '',
+    editable: !isSharedView,
     onUpdate: ({ editor }) => {
       const editNow = new Date().toISOString();
       setLastEditedTime(editNow);
@@ -497,6 +504,18 @@ export function DocumentEditor() {
         
         {/* Quick Top Right Action Buttons */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <button
+            onClick={async () => {
+              if (!id) return;
+              const path = `/documents/${id}?shared=1`;
+              try { await copyShareUrl(path); } catch {}
+              shareHubMindItem(path, docMeta?.title || 'Document');
+            }}
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent border border-accent/20 transition-colors text-xs flex items-center gap-1.5 font-semibold"
+            title="Share this document"
+          >
+            <span className="text-sm">↗</span><span className="hidden sm:inline">Share</span>
+          </button>
           {/* Offline / Online Sync Status Pill */}
           {!isOnline ? (
             <div 
@@ -517,8 +536,7 @@ export function DocumentEditor() {
             </button>
           ) : null}
 
-          {/* Explicit Save Button — useful on mobile and as a guaranteed manual save */}
-          <button
+          {!isSharedView && <button
             onClick={() => {
               if (!editor) return;
               const now = new Date().toISOString();
@@ -528,9 +546,8 @@ export function DocumentEditor() {
             className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-slate-950 text-xs font-bold transition-colors disabled:opacity-60 flex items-center gap-1.5"
             title="Save document now"
           >
-            <Save className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{saveStatus === 'saving' ? 'Saving…' : 'Save'}</span>
-          </button>
+            <Save className="w-3.5 h-3.5" /><span className="hidden sm:inline">{saveStatus === 'saving' ? 'Saving…' : 'Save'}</span>
+          </button>}
 
           {/* Version History Button */}
           <button
