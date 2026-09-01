@@ -1,4 +1,4 @@
-import { doc, updateDoc, setDoc, getDoc, collection, addDoc, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, getDoc, deleteDoc, collection, addDoc, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 export interface OfflineDocRecord {
@@ -198,6 +198,23 @@ export async function saveDocumentOffline(
   return updatedRecord;
 }
 
+/**
+ * Permanently delete a document from Firestore and local persistence.
+ * Deletion is never queued for offline sync, preventing stale edits from
+ * recreating a document after it has been deleted.
+ */
+export async function deleteDocumentOffline(docId: string): Promise<void> {
+  if (!docId) throw new Error('Document ID is required');
+  if (!navigator.onLine) throw new Error('You must be online to permanently delete a document.');
+  await deleteDoc(doc(db, 'documents', docId));
+  const docsMap = getLocalDocsMap();
+  delete docsMap[docId];
+  setLocalDocsMap(docsMap);
+  setSyncQueue(getSyncQueue().filter(id => id !== docId));
+  try { localStorage.removeItem(`${LOCAL_VERSIONS_KEY}_${docId}`); } catch {}
+  const verify = await getDoc(doc(db, 'documents', docId));
+  if (verify.exists()) throw new Error('Firestore did not confirm document deletion.');
+}
 /**
  * Retrieve document with local cache fallback for full offline editing
  */
