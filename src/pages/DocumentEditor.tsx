@@ -123,6 +123,10 @@ export function DocumentEditor() {
   const [showMarginGuides, setShowMarginGuides] = useState<boolean>(false);
   const [showDebugInfo, setShowDebugInfo] = useState<boolean>(false);
   const [pageCount, setPageCount] = useState<number>(1);
+  // Keep render-time consumers away from editor.getHTML()/getText(). Tiptap's
+  // ProseMirror view is mounted by EditorContent after the parent renders.
+  const [editorHtml, setEditorHtml] = useState<string>('');
+  const [editorText, setEditorText] = useState<string>('');
   const [activePage, setActivePage] = useState<number>(1);
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
   const [showPageBreaks, setShowPageBreaks] = useState<boolean>(true);
@@ -194,6 +198,8 @@ export function DocumentEditor() {
       setSaveStatus('saving');
       const htmlContent = editor.getHTML();
       latestContentRef.current = htmlContent;
+      setEditorHtml(htmlContent);
+      setEditorText(editor.getText());
       latestEditTimestampRef.current = editNow;
 
       // Recalculate page count
@@ -299,7 +305,20 @@ export function DocumentEditor() {
 
   // Keep the latest editor state available for all save paths.
   useEffect(() => {
-    latestContentRef.current = editor?.getHTML() || '';
+    if (!editor || editor.isDestroyed || !(editor as any).view?.dom) return;
+    const syncEditorSnapshot = () => {
+      try {
+        const html = editor.getHTML();
+        latestContentRef.current = html;
+        setEditorHtml(html);
+        setEditorText(editor.getText());
+      } catch (error) {
+        console.warn('Editor snapshot unavailable before ProseMirror view mount:', error);
+      }
+    };
+    syncEditorSnapshot();
+    editor.on('transaction', syncEditorSnapshot);
+    return () => editor.off('transaction', syncEditorSnapshot);
   }, [editor]);
 
   // Flush a pending debounce when the page is hidden/navigated away from.
@@ -481,7 +500,7 @@ export function DocumentEditor() {
 
   // Recalculate page count whenever layout settings (size, orientation, margins) change
   useEffect(() => {
-    if (!editor || editor.isDestroyed) return;
+    if (!editor || editor.isDestroyed || !(editor as any).view?.dom) return;
     const htmlContent = editor.getHTML();
     if (!htmlContent) return;
     const updatedCount = calculateExactPageCount(htmlContent, pageSize, orientation, marginOption);
@@ -867,8 +886,8 @@ export function DocumentEditor() {
           isOpen={isPreviewModalOpen}
           onClose={() => setIsPreviewModalOpen(false)}
           docTitle={docMeta?.title || 'Untitled Document'}
-          bodyHtml={editor.getHTML()}
-          textContent={editor.getText()}
+          bodyHtml={editorHtml}
+          textContent={editorText}
           pageSize={pageSize}
           orientation={orientation}
           marginOption={marginOption}
@@ -882,7 +901,7 @@ export function DocumentEditor() {
           onClose={() => setIsVersionHistoryOpen(false)}
           documentId={id}
           documentTitle={docMeta?.title || 'Untitled Document'}
-          currentContentHtml={editor.getHTML()}
+          currentContentHtml={editorHtml}
           onRestoreVersion={handleRestoreVersion}
           userProfile={profile || undefined}
         />
