@@ -10,7 +10,7 @@ export default defineConfig(() => {
       react(), 
       tailwindcss(),
       VitePWA({
-        registerType: 'prompt',
+        registerType: 'autoUpdate',
         injectRegister: 'auto',
         devOptions: {
           enabled: true,
@@ -19,6 +19,7 @@ export default defineConfig(() => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
           cleanupOutdatedCaches: true,
+          skipWaiting: true,
           clientsClaim: true,
           maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,
           runtimeCaching: [
