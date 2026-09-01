@@ -289,7 +289,7 @@ export function Dashboard() {
         '',
         '— Sent from Hub-Mind'
       ];
-      window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\\n'))}`, '_blank', 'noopener,noreferrer');
+      window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`, '_blank', 'noopener,noreferrer');
     } finally {
       setTimeout(() => setScheduleSending(false), 700);
     }
