@@ -42,12 +42,13 @@ export async function processRecurringTasks() {
           priority: template.priority,
           status: 'pending',
           assignedTo: template.assignedTo,
-          createdBy: 'system', // or an admin's ID
+          createdBy: template.ownerId || template.assignedTo || 'system',
           checklist: [],
           comments: [],
           deadline: new Date().toISOString(), // due today
           createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
+          recurringTemplateId: template.id
         });
 
         // Update the template
