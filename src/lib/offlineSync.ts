@@ -5,6 +5,8 @@ export interface OfflineDocRecord {
   id: string;
   title: string;
   content: string;
+  /** Canonical Tiptap/ProseMirror document state for lossless restoration. */
+  contentJson?: any;
   updatedAt: string;
   lastSavedAt: string;
   lastEditedAt?: string;
@@ -145,9 +147,10 @@ export async function saveDocumentOffline(
   // We only fall back to our explicit queue when the SDK rejects the write.
   try {
     const docRef = doc(db, 'documents', docId);
-    await updateDoc(docRef, {
+    await setDoc(docRef, {
       title: updatedRecord.title,
       content: updatedRecord.content,
+      ...(updatedRecord.contentJson ? { contentJson: updatedRecord.contentJson } : {}),
       updatedAt: updatedRecord.updatedAt,
       lastEditedAt: updatedRecord.lastEditedAt || updatedRecord.updatedAt,
       lastSavedAt: now,
@@ -243,6 +246,7 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
           id: docId,
           title: cloudData.title || 'Untitled Document',
           content: cloudData.content || '',
+          contentJson: cloudData.contentJson,
           updatedAt: cloudData.updatedAt || new Date().toISOString(),
           lastSavedAt: cloudData.lastSavedAt || cloudData.updatedAt || new Date().toISOString(),
           lastEditedAt: cloudData.lastEditedAt || cloudData.updatedAt,
@@ -289,9 +293,10 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
 
     try {
       const docRef = doc(db, 'documents', docId);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         title: record.title,
         content: record.content,
+        ...(record.contentJson ? { contentJson: record.contentJson } : {}),
         updatedAt: record.updatedAt,
         lastEditedAt: record.lastEditedAt || record.updatedAt,
         lastSavedAt: new Date().toISOString(),
