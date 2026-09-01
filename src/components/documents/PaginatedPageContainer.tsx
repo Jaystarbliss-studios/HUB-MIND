@@ -206,6 +206,7 @@ export function PaginatedPageContainer({
     if (!editor) return;
 
     const syncPagination = () => {
+      if (editor.isDestroyed || !(editor as any).view?.dom) return;
       reflowEditorPages();
 
       const html = editor.getHTML();
