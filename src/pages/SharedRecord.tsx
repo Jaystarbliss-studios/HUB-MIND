@@ -12,6 +12,7 @@ const config: Record<string, { collection: string; label: string; icon: React.Re
   client: { collection: 'clients', label: 'Client', icon: <Users className="w-5 h-5" />, back: '/clients' },
   project: { collection: 'projects', label: 'Project', icon: <Folder className="w-5 h-5" />, back: '/projects' },
   followup: { collection: 'followUps', label: 'Follow-up', icon: <Clock3 className="w-5 h-5" />, back: '/follow-ups' },
+  report: { collection: 'sharedRecords', label: 'Daily Report', icon: <FileText className="w-5 h-5" />, back: '/' },
 };
 
 function valueText(value: unknown): string {
@@ -33,7 +34,10 @@ export function SharedRecord() {
       if (!meta || !id) { setLoading(false); return; }
       try {
         const snap = await getDoc(doc(db, meta.collection, decodeURIComponent(id)));
-        if (active && snap.exists()) setData({ id: snap.id, ...snap.data() });
+        if (active && snap.exists()) {
+          const raw = snap.data() as any;
+          setData(raw.kind === 'report' && raw.payload ? { id: snap.id, ...raw.payload, sharedRecord: true } : { id: snap.id, ...raw });
+        }
       } catch (e) { console.error('Failed to load shared record', e); }
       finally { if (active) setLoading(false); }
     })();
