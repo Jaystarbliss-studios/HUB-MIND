@@ -162,6 +162,15 @@ service cloud.firestore {
         || (isWorkspaceUser() && resource.data.userId == request.auth.uid);
     }
 
+
+    // Read-only deep-link snapshots. These are created only by workspace operators and
+    // contain a deliberate copy of the item intended for sharing, not editable records.
+    match /sharedRecords/{shareId} {
+      allow read: if isWorkspaceUser();
+      allow create: if isAssistantOrAdmin();
+      allow update, delete: if isAssistantOrAdmin();
+    }
+
     match /activityLogs/{activityId} {
       allow read: if isAssistantOrAdmin();
       allow create: if isWorkspaceUser() && request.resource.data.userId == request.auth.uid;
