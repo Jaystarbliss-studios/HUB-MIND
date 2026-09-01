@@ -9,6 +9,8 @@ import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
 import { VoiceDictation } from '../components/VoiceDictation';
+import { Share2 } from 'lucide-react';
+import { shareHubMindItem, copyShareUrl } from '../lib/shareLinks';
 
 export function TaskDetail() {
   const { id } = useParams();
@@ -145,8 +147,21 @@ export function TaskDetail() {
           <ArrowLeft className="w-4 h-4" />
           Back
         </button>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           
+          <button
+            onClick={async () => {
+              const path = `/tasks/${task.id}?shared=1`;
+              try { await copyShareUrl(path); } catch {}
+              shareHubMindItem(path, task.title);
+            }}
+            className="flex items-center gap-2 px-3 py-2 bg-accent/10 text-accent hover:bg-accent/20 border border-accent/20 rounded-lg font-semibold transition-colors text-sm"
+            title="Share this task"
+          >
+            <Share2 className="w-4 h-4" />
+            <span className="hidden sm:inline">Share</span>
+          </button>
+
           <select
             value={task.status}
             onChange={handleStatusChange}
