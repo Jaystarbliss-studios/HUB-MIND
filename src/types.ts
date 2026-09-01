@@ -149,6 +149,7 @@ export interface RecurringTaskTemplate {
   lastGeneratedDate?: string;
   active: boolean;
   createdAt: string;
+  ownerId?: string;
 }
 
 export interface Project {
