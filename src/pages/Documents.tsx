@@ -144,7 +144,11 @@ export function Documents() {
 
     const unsubDocs = onSnapshot(collection(db, 'documents'), (docsSnap) => {
       let docsData = docsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as DocumentInfo));
-      docsData = docsData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      docsData = docsData.sort((a, b) => {
+        const aTime = new Date(a.lastEditedAt || a.lastSavedAt || a.updatedAt || a.createdAt || 0).getTime();
+        const bTime = new Date(b.lastEditedAt || b.lastSavedAt || b.updatedAt || b.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
       
       // If staff/teacher, show documents they created, own, or general workspace docs (templates/sop/reports)
       if (profile.role === 'staff' || profile.role === 'teacher') {
@@ -183,7 +187,11 @@ export function Documents() {
       let docsData = docsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as DocumentInfo));
       let clientsData = clientsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
       
-      docsData = docsData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      docsData = docsData.sort((a, b) => {
+        const aTime = new Date(a.lastEditedAt || a.lastSavedAt || a.updatedAt || a.createdAt || 0).getTime();
+        const bTime = new Date(b.lastEditedAt || b.lastSavedAt || b.updatedAt || b.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
       clientsData = clientsData.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       
       if (profile.role === 'staff' || profile.role === 'teacher') {
