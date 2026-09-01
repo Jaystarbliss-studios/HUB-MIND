@@ -246,6 +246,7 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
         // when the current document already contains valid content.
         let recoveredHtml = cloudHtml;
         let recoveredJson = cloudJson;
+        let recoveredFromHistory = false;
         if (!recoveredHtml.trim() && !recoveredJson) {
           try {
             const versionsColl = collection(db, 'documents', docId, 'versions');
@@ -260,6 +261,7 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
             if (recovery) {
               recoveredHtml = typeof recovery.content === 'string' ? recovery.content : '';
               recoveredJson = recovery.contentJson;
+              recoveredFromHistory = true;
               console.warn('[HubMind] Recovered document body from version history:', docId);
             }
           } catch (recoveryErr) {
@@ -277,6 +279,24 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
         if (!recoveredHtml.trim() && !recoveredJson && (localHtml.trim() || localJson)) {
           recoveredHtml = localHtml;
           recoveredJson = localJson;
+        }
+
+        // Heal the Firebase document itself when its body was blank but a
+        // valid historical version exists. This is a one-time repair per
+        // affected document and prevents the blank state from returning after
+        // another device/browser refresh.
+        if (recoveredFromHistory && (recoveredHtml.trim() || recoveredJson)) {
+          try {
+            await updateDoc(docRef, {
+              content: recoveredHtml,
+              ...(recoveredJson ? { contentJson: recoveredJson } : {}),
+              lastRecoveredAt: new Date().toISOString(),
+            });
+            cloudData.content = recoveredHtml;
+            cloudData.contentJson = recoveredJson;
+          } catch (repairErr) {
+            console.warn('[HubMind] Could display recovered content but could not repair Firebase:', repairErr);
+          }
         }
 
         // Cache fresh/recovered cloud data locally for future offline sessions
