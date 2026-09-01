@@ -123,10 +123,8 @@ export function DocumentEditor() {
   const [showMarginGuides, setShowMarginGuides] = useState<boolean>(false);
   const [showDebugInfo, setShowDebugInfo] = useState<boolean>(false);
   const [pageCount, setPageCount] = useState<number>(1);
-  const [editorHtml, setEditorHtml] = useState<string>('');
-  const [editorText, setEditorText] = useState<string>('');
-  // Keep render-time consumers away from editor.getHTML()/getText(). Tiptap's
-  // ProseMirror view is mounted by EditorContent after the parent renders.
+  // Keep render-time consumers away from editor.getHTML()/getText().
+  // Tiptap's ProseMirror view is mounted by EditorContent after the parent renders.
   const [editorHtml, setEditorHtml] = useState<string>('');
   const [editorText, setEditorText] = useState<string>('');
   const [activePage, setActivePage] = useState<number>(1);
@@ -266,12 +264,13 @@ export function DocumentEditor() {
     void saveLayoutSettings(pageSize, orientation, next);
   };
 
-  const saveDocument = async (content?: string, editTimestamp?: string, titleOverride?: string) => {
+  const saveDocument = async (content?: string, editTimestamp?: string, titleOverride?: string, contentJsonOverride?: any) => {
     if (!id || isSharedView) return;
 
     const htmlString = typeof content === 'string'
       ? content
-      : (latestContentRef.current || editor?.getHTML() || '');
+      : (latestContentRef.current || (editor && !editor.isDestroyed ? editor.getHTML() : '') || '');
+    const contentJson = contentJsonOverride ?? (editor && !editor.isDestroyed ? editor.getJSON() : undefined);
     const title = titleOverride ?? latestTitleRef.current ?? 'Untitled Document';
     const actualEditTime = editTimestamp || latestEditTimestampRef.current || lastEditedTime || new Date().toISOString();
     const saveNow = new Date().toISOString();
@@ -288,6 +287,7 @@ export function DocumentEditor() {
           {
             title,
             content: htmlString,
+            ...(contentJson ? { contentJson } : {}),
             updatedAt: saveNow,
             lastEditedAt: actualEditTime,
           },
@@ -334,7 +334,7 @@ export function DocumentEditor() {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
-      void saveDocument(latestContentRef.current, new Date().toISOString(), latestTitleRef.current);
+      void saveDocument(latestContentRef.current, new Date().toISOString(), latestTitleRef.current, editor.getJSON());
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') flushPendingSave();
@@ -463,9 +463,13 @@ export function DocumentEditor() {
           setLastEditedTime(data.lastEditedAt || data.updatedAt || data.createdAt || null);
           setLastSavedTime(data.lastSavedAt || data.updatedAt || data.createdAt || null);
 
-          if (data.content && editor && !editor.isDestroyed && editor.commands) {
+          if ((data.contentJson || data.content) && editor && !editor.isDestroyed && editor.commands) {
             try {
-              setEditorDocumentContent(editor, data.content, 'stored-document');
+              if (data.contentJson) {
+                editor.commands.setContent(data.contentJson, { emitUpdate: false });
+              } else {
+                setEditorDocumentContent(editor, data.content, 'stored-document');
+              }
             } catch (e) {
               console.error('Could not render stored document content:', e);
             }
@@ -491,11 +495,12 @@ export function DocumentEditor() {
 
   // Sync content if editor initializes after docMeta is loaded
   useEffect(() => {
-    if (!editor || !docMeta?.content || editor.isDestroyed || !editor.commands) return;
+    if (!editor || (!docMeta?.contentJson && !docMeta?.content) || editor.isDestroyed || !editor.commands) return;
     
     if (editor.isEmpty) {
       try {
-        setEditorDocumentContent(editor, docMeta.content, 'stored-document-sync');
+        if (docMeta.contentJson) editor.commands.setContent(docMeta.contentJson, { emitUpdate: false });
+      else setEditorDocumentContent(editor, docMeta.content, 'stored-document-sync');
       } catch (e) {
         console.error('Could not sync stored document content:', e);
       }
@@ -645,7 +650,7 @@ export function DocumentEditor() {
               const now = new Date().toISOString();
               latestEditTimestampRef.current = now;
               setLastEditedTime(now);
-              await saveDocument(latestContentRef.current, now, latestTitleRef.current);
+              await saveDocument(latestContentRef.current, now, latestTitleRef.current, editor.getJSON());
             }}
             disabled={!editor || isSharedView}
             className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-slate-950 text-xs font-bold transition-colors disabled:opacity-60 flex items-center gap-1.5"
