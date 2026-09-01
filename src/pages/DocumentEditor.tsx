@@ -123,6 +123,8 @@ export function DocumentEditor() {
   const [showMarginGuides, setShowMarginGuides] = useState<boolean>(false);
   const [showDebugInfo, setShowDebugInfo] = useState<boolean>(false);
   const [pageCount, setPageCount] = useState<number>(1);
+  const [editorHtml, setEditorHtml] = useState<string>('');
+  const [editorText, setEditorText] = useState<string>('');
   // Keep render-time consumers away from editor.getHTML()/getText(). Tiptap's
   // ProseMirror view is mounted by EditorContent after the parent renders.
   const [editorHtml, setEditorHtml] = useState<string>('');
@@ -198,6 +200,8 @@ export function DocumentEditor() {
       setSaveStatus('saving');
       const htmlContent = editor.getHTML();
       latestContentRef.current = htmlContent;
+      setEditorHtml(htmlContent);
+      setEditorText(editor.getText());
       setEditorHtml(htmlContent);
       setEditorText(editor.getText());
       latestEditTimestampRef.current = editNow;
