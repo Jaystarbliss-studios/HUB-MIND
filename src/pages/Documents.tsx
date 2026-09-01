@@ -12,6 +12,7 @@ import { useUsers } from '../lib/useUsers';
 import { TemplateSelector } from '../components/documents/TemplateSelector';
 import { sanitizeClipboardHtml } from '../components/documents/clipboard/clipboard-sanitizer';
 import { normalizeClipboardHtml } from '../components/documents/clipboard/clipboard-normalizer';
+import { deleteDocumentOffline } from '../lib/offlineSync';
 
 export function Documents() {
   const { profile, user } = useAuth();
@@ -29,6 +30,7 @@ export function Documents() {
   const [editTitle, setEditTitle] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [docToDelete, setDocToDelete] = useState<string | null>(null);
   const [openPropertiesId, setOpenPropertiesId] = useState<string | null>(null);
 
@@ -76,11 +78,12 @@ export function Documents() {
 
     setDeletingId(id);
     try {
-      const { doc, deleteDoc } = await import('firebase/firestore');
-      await deleteDoc(doc(db, 'documents', id));
-      setDocsList(docsList.filter(d => d.id !== id));
+      setDeleteError(null);
+      await deleteDocumentOffline(id);
+      setDocsList(prev => prev.filter(d => d.id !== id));
     } catch (error) {
       console.error("Error deleting document:", error);
+      setDeleteError(error instanceof Error ? error.message : 'Could not permanently delete this document.');
     } finally {
       setDeletingId(null);
     }
@@ -365,7 +368,8 @@ export function Documents() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-sm p-6 shadow-xl">
             <h3 className="text-lg font-bold text-white mb-2">Delete Document</h3>
-            <p className="text-sm text-slate-300 mb-6">Are you sure you want to delete this document? This action cannot be undone.</p>
+            <p className="text-sm text-slate-300 mb-2">Are you sure you want to permanently delete this document from Hub-Mind and Firebase? This action cannot be undone.</p>
+            {deleteError && <p className="text-xs text-rose-300 mb-4">{deleteError}</p>}
             <div className="flex justify-end gap-3">
               <button 
                 onClick={() => setDocToDelete(null)}
