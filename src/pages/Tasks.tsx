@@ -5,7 +5,7 @@ import { TasksSkeleton } from '../components/skeletons/TasksSkeleton';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task } from '../types';
-import { Loader2, Plus, Filter, Search } from 'lucide-react';
+import { Loader2, Plus, Filter, Search, Repeat2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
@@ -13,6 +13,8 @@ import { addDoc } from 'firebase/firestore';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
+import { processRecurringTasks } from '../lib/recurringTasks';
+import { RecurringTasksPanel } from '../components/RecurringTasksPanel';
 
 export function Tasks() {
   const { user, profile } = useAuth();
@@ -37,6 +39,7 @@ export function Tasks() {
 
   useEffect(() => {
     if (!user || !profile) return;
+    processRecurringTasks().catch(err => console.warn('Recurring task processing:', err));
     
     setLoading(true);
     startLoading('tasks');
@@ -126,6 +129,8 @@ export function Tasks() {
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 flex flex-col h-full min-h-0 pb-20 md:pb-0">
+      <RecurringTasksPanel />
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Tasks</h1>
