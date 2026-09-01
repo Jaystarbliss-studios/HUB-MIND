@@ -137,6 +137,29 @@ export interface FollowUp {
   updatedAt: string;
 }
 
+export interface RecurringMeetingTemplate {
+  id: string;
+  title: string;
+  type: 'class' | 'meeting' | 'appointment' | 'school_event' | 'other';
+  description?: string;
+  daysOfWeek: number[];
+  frequency: 'daily' | 'weekly' | 'monthly';
+  startTime: string;
+  endTime?: string;
+  startDate: string;
+  endDate?: string;
+  dayOfMonth?: number;
+  location?: string;
+  meetingLink?: string;
+  clientId?: string;
+  projectId?: string;
+  attendees?: string[];
+  ownerId: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RecurringTaskTemplate {
   id: string;
   title: string;
