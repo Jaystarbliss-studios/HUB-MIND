@@ -232,18 +232,60 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         const cloudData = snap.data();
-        // If local has unsynced newer changes, keep local content and enqueue sync
+
+        // Never let an empty/stale cloud payload erase a known-good local
+        // snapshot. This is especially important after editor migrations.
+        const cloudHtml = typeof cloudData.content === 'string' ? cloudData.content : '';
+        const cloudJson = cloudData.contentJson;
+        const localHtml = cached?.content || '';
+        const localJson = cached?.contentJson;
+
+        // If the document record itself lost its body, recover the newest
+        // non-empty body from its Firestore version history. Older versions
+        // are deliberately treated as recovery data, never as a replacement
+        // when the current document already contains valid content.
+        let recoveredHtml = cloudHtml;
+        let recoveredJson = cloudJson;
+        if (!recoveredHtml.trim() && !recoveredJson) {
+          try {
+            const versionsColl = collection(db, 'documents', docId, 'versions');
+            const versionQuery = query(versionsColl, orderBy('createdAt', 'desc'), limit(50));
+            const versionSnap = await getDocs(versionQuery);
+            const recovery = versionSnap.docs
+              .map(versionDoc => versionDoc.data() as any)
+              .find(version => {
+                const html = typeof version.content === 'string' ? version.content.trim() : '';
+                return !!html || !!version.contentJson;
+              });
+            if (recovery) {
+              recoveredHtml = typeof recovery.content === 'string' ? recovery.content : '';
+              recoveredJson = recovery.contentJson;
+              console.warn('[HubMind] Recovered document body from version history:', docId);
+            }
+          } catch (recoveryErr) {
+            console.warn('[HubMind] Version-history recovery failed:', recoveryErr);
+          }
+        }
+
+        // If local has unsynced newer changes, keep local content and enqueue sync.
         if (cached && !cached.synced && new Date(cached.updatedAt) > new Date(cloudData.updatedAt || 0)) {
           return { ...cloudData, ...cached, isOfflineLocal: true };
         }
 
-        // Cache fresh cloud data locally for future offline sessions
+        // If cloud is empty but this browser has a known non-empty snapshot,
+        // use the local body instead of displaying a blank document.
+        if (!recoveredHtml.trim() && !recoveredJson && (localHtml.trim() || localJson)) {
+          recoveredHtml = localHtml;
+          recoveredJson = localJson;
+        }
+
+        // Cache fresh/recovered cloud data locally for future offline sessions
         const syncedRecord: OfflineDocRecord = {
           id: docId,
-          title: cloudData.title || 'Untitled Document',
-          content: cloudData.content || '',
-          contentJson: cloudData.contentJson,
-          updatedAt: cloudData.updatedAt || new Date().toISOString(),
+          title: cloudData.title || cached?.title || 'Untitled Document',
+          content: recoveredHtml,
+          contentJson: recoveredJson,
+          updatedAt: cloudData.updatedAt || cached?.updatedAt || new Date().toISOString(),
           lastSavedAt: cloudData.lastSavedAt || cloudData.updatedAt || new Date().toISOString(),
           lastEditedAt: cloudData.lastEditedAt || cloudData.updatedAt,
           lastModifiedBy: cloudData.lastModifiedBy || 'User',
@@ -254,7 +296,15 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
         };
         localDocs[docId] = syncedRecord;
         setLocalDocsMap(localDocs);
-        return cloudData;
+
+        // Return the recovered canonical body as well. DocumentEditor will
+        // prefer contentJson when present and otherwise render HTML.
+        return {
+          ...cloudData,
+          content: recoveredHtml,
+          contentJson: recoveredJson,
+          title: syncedRecord.title,
+        };
       }
     } catch (err) {
       console.warn('Firestore fetch failed, relying on offline cache:', err);
