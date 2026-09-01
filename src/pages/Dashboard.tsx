@@ -282,7 +282,7 @@ export function Dashboard() {
         `JAYSTARBLISS DAILY SCHEDULE — ${format(today, 'dd MMMM yyyy')}`,
         '',
         'MEETINGS:',
-        ...(meetings.length ? meetings.sort((a:any,b:any)=>safeParseISO(a.date).getTime()-safeParseISO(b.date).getTime()).map((m:any)=>`• ${safeFormat(m.date, 'h:mma')} — ${(m.notesRaw || 'Meeting').split('\\n')[0]}`) : ['• No meetings scheduled']),
+        ...(meetings.length ? meetings.sort((a:any,b:any)=>safeParseISO(a.date).getTime()-safeParseISO(b.date).getTime()).map((m:any)=>`• ${safeFormat(m.date, 'h:mma')} — ${(m.notesRaw || 'Meeting').replace(/\\\\r?\\\\n|\\n|\\r/g, ' ').trim()}`) : ['• No meetings scheduled']),
         '',
         'TASKS:',
         ...(tasks.length ? tasks.sort((a:any,b:any)=>safeParseISO(a.deadline).getTime()-safeParseISO(b.deadline).getTime()).map((t:any)=>`• ${t.title}${t.priority ? ` [${t.priority}]` : ''}`) : ['• No tasks due today']),
@@ -320,7 +320,7 @@ export function Dashboard() {
       reportText.trim(),
       '',
       '— Sent from Hub-Mind'
-    ].join('\\n');
+    ].join('\n');
   };
 
   const sendReportToWhatsApp = async () => {
