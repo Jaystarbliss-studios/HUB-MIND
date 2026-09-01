@@ -135,6 +135,10 @@ export function DocumentEditor() {
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const latestTitleRef = useRef('Untitled Document');
+  const latestContentRef = useRef('');
+  const latestEditTimestampRef = useRef<string | null>(null);
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
+  const saveSequenceRef = useRef(0);
 
   useEffect(() => {
     latestTitleRef.current = docMeta?.title || 'Untitled Document';
@@ -185,6 +189,8 @@ export function DocumentEditor() {
       setLastEditedTime(editNow);
       setSaveStatus('saving');
       const htmlContent = editor.getHTML();
+      latestContentRef.current = htmlContent;
+      latestEditTimestampRef.current = editNow;
 
       // Recalculate page count
       const updatedPageCount = calculateExactPageCount(htmlContent, pageSize, orientation, marginOption);
@@ -197,8 +203,8 @@ export function DocumentEditor() {
       }
       
       timeoutRef.current = setTimeout(() => {
-        saveDocument(htmlContent, editNow);
-      }, 1200); // Autosave after 1.2s of inactivity
+        void saveDocument(htmlContent, editNow);
+      }, 800); // Autosave after 0.8s of inactivity
     },
   });
 
@@ -246,33 +252,73 @@ export function DocumentEditor() {
     void saveLayoutSettings(pageSize, orientation, next);
   };
 
-  const saveDocument = async (content: any, editTimestamp?: string, titleOverride?: string) => {
-    if (!id) return;
-    try {
-      setSaveStatus('saving');
-      const saveNow = new Date().toISOString();
-      const actualEditTime = editTimestamp || lastEditedTime || saveNow;
-      const htmlString = typeof content === 'string' ? content : (editor?.getHTML() || '');
+  const saveDocument = async (content?: string, editTimestamp?: string, titleOverride?: string) => {
+    if (!id || isSharedView) return;
 
-      await saveDocumentOffline(
-        id,
-        {
-          title: titleOverride ?? latestTitleRef.current ?? 'Untitled Document',
-          content: htmlString,
-          updatedAt: saveNow,
-          lastEditedAt: actualEditTime,
-        },
-        profile || undefined
-      );
+    const htmlString = typeof content === 'string'
+      ? content
+      : (latestContentRef.current || editor?.getHTML() || '');
+    const title = titleOverride ?? latestTitleRef.current ?? 'Untitled Document';
+    const actualEditTime = editTimestamp || latestEditTimestampRef.current || lastEditedTime || new Date().toISOString();
+    const saveNow = new Date().toISOString();
+    const sequence = ++saveSequenceRef.current;
 
-      setLastSavedTime(saveNow);
-      setSaveStatus('saved');
-    } catch (error) {
-      console.error('Error saving document:', error);
-      setSaveStatus('error');
-    }
+    // Serialize writes so title edits and content autosaves cannot race each other.
+    saveChainRef.current = saveChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        setSaveStatus('saving');
+
+        await saveDocumentOffline(
+          id,
+          {
+            title,
+            content: htmlString,
+            updatedAt: saveNow,
+            lastEditedAt: actualEditTime,
+          },
+          profile || undefined
+        );
+
+        if (sequence === saveSequenceRef.current) {
+          setLastSavedTime(saveNow);
+          setSaveStatus('saved');
+        }
+      })
+      .catch((error) => {
+        console.error('Error saving document:', error);
+        if (sequence === saveSequenceRef.current) setSaveStatus('error');
+      });
+
+    return saveChainRef.current;
   };
 
+  // Keep the latest editor state available for all save paths.
+  useEffect(() => {
+    latestContentRef.current = editor?.getHTML() || '';
+  }, [editor]);
+
+  // Flush a pending debounce when the page is hidden/navigated away from.
+  useEffect(() => {
+    const flushPendingSave = () => {
+      if (isSharedView || !id || !editor || editor.isDestroyed) return;
+      latestContentRef.current = editor.getHTML();
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      void saveDocument(latestContentRef.current, new Date().toISOString(), latestTitleRef.current);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushPendingSave();
+    };
+    window.addEventListener('pagehide', flushPendingSave);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', flushPendingSave);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [editor, id, isSharedView]);
   // Online / Offline & Sync Event Listeners
   useEffect(() => {
     const handleOnline = () => {
@@ -495,9 +541,9 @@ export function DocumentEditor() {
                   latestTitleRef.current = newT;
                   const now = new Date().toISOString();
                   setLastEditedTime(now);
-                  // Persist the title through the same offline/cloud save path as document content.
-                  // Passing the title explicitly prevents a stale docMeta closure from restoring "Untitled Document".
-                  void saveDocument(editor?.getHTML() || '', now, newT);
+                  latestEditTimestampRef.current = now;
+                  // Title changes use the same serialized save path as content changes.
+                  void saveDocument(undefined, now, newT);
                 }}
                 className="bg-transparent text-slate-100 font-bold focus:outline-none focus:border-b border-accent px-1 truncate w-full max-w-[125px] xs:max-w-[170px] sm:max-w-[240px] md:max-w-sm text-xs sm:text-sm md:text-base"
                 placeholder="Document Title"
@@ -562,16 +608,23 @@ export function DocumentEditor() {
           ) : null}
 
           {!isSharedView && <button
-            onClick={() => {
+            onClick={async () => {
               if (!editor) return;
+              if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+                timeoutRef.current = null;
+              }
+              latestContentRef.current = editor.getHTML();
               const now = new Date().toISOString();
-              void saveDocument(editor.getHTML(), now, latestTitleRef.current);
+              latestEditTimestampRef.current = now;
+              setLastEditedTime(now);
+              await saveDocument(latestContentRef.current, now, latestTitleRef.current);
             }}
-            disabled={saveStatus === 'saving'}
+            disabled={!editor || isSharedView}
             className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-slate-950 text-xs font-bold transition-colors disabled:opacity-60 flex items-center gap-1.5"
             title="Save document now"
           >
-            <Save className="w-3.5 h-3.5" /><span className="hidden sm:inline">{saveStatus === 'saving' ? 'Saving…' : 'Save'}</span>
+            <Save className="w-3.5 h-3.5" /><span className="hidden sm:inline">{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Retry Save' : 'Save'}</span>
           </button>}
 
           {/* Version History Button */}
