@@ -1,3 +1,5 @@
+import { Share2 } from 'lucide-react';
+import { shareHubMindItem, copyShareUrl } from '../lib/shareLinks';
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { doc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
@@ -67,7 +69,8 @@ export function ProjectDetail() {
           </div>
           <div>
             <h1 className="text-3xl font-bold text-white tracking-tight">{project.name}</h1>
-            <p className="text-slate-400 mt-1">{project.description}</p>
+<button onClick={async () => { const path = `/projects/${project?.id}?shared=1`; if (!project) return; try { await copyShareUrl(path); } catch {} await shareHubMindItem(path, project.name); }} className="ml-auto inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 text-sm font-semibold shrink-0" title="Share project"><Share2 className="w-4 h-4" /><span className="hidden sm:inline">Share</span></button>
+                      <p className="text-slate-400 mt-1">{project.description}</p>
           </div>
         </div>
       </div>
