@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { X, Search, FileText, FileSignature, FileArchive, FileCheck, FileCog, Briefcase, Calculator, Building, BookOpen, GraduationCap, BarChart3, ClipboardList, Mail, CalendarDays } from 'lucide-react';
+import { X, Search, FileText, FilePlus2, FileSignature, FileArchive, FileCheck, FileCog, Briefcase, Calculator, Building, BookOpen, GraduationCap, BarChart3, ClipboardList, Mail, CalendarDays } from 'lucide-react';
 import { getOfficialLetterheadHTML } from './OfficialLetterhead';
 
 type Template = { id: string; name: string; description: string; icon: React.ElementType; category: string; content: string };
@@ -8,6 +8,9 @@ const FIELD = (name: string) => `{{${name}}}`;
 const letterhead = getOfficialLetterheadHTML();
 
 const templates: Template[] = [
+  {
+    id: 'blank', name: 'Blank Document', description: 'Start from a completely blank A4 page.', icon: FilePlus2, category: 'General', content: ''
+  },
   {
     id: 'contract', name: 'Contract Agreement', description: 'Professional service or business agreement with reusable clauses.', icon: FileSignature, category: 'Business',
     content: letterhead + `<h1 style="text-align:center">CONTRACT AGREEMENT</h1>
@@ -23,6 +26,28 @@ const templates: Template[] = [
 <h2>8. Entire Agreement</h2><p>This document represents the agreement between the parties concerning the stated scope and supersedes prior understandings relating to it.</p>
 <h2>9. Signatures</h2>
 <table><tr><td><strong>FIRST PARTY</strong><br>Name: ${FIELD('First Party Name')}<br>Signature: ____________________<br>Date: ${FIELD('Signature Date')}</td><td><strong>SECOND PARTY</strong><br>Name: ${FIELD('Second Party Name')}<br>Signature: ____________________<br>Date: ${FIELD('Signature Date')}</td></tr></table>`
+  },
+  {
+    id: 'report', name: 'Report', description: 'Professional report with findings, recommendations and action points.', icon: FileText, category: 'Management',
+    content: letterhead + `<h1 style="text-align:center">REPORT</h1>
+<p><strong>Report Title:</strong> ${FIELD('Report Title')}<br><strong>Prepared for:</strong> ${FIELD('Prepared For')}<br><strong>Prepared by:</strong> ${FIELD('Prepared By')}<br><strong>Date:</strong> ${FIELD('Date')}</p>
+<h2>1. Executive Summary</h2><p>${FIELD('Executive Summary')}</p>
+<h2>2. Background / Context</h2><p>${FIELD('Background')}</p>
+<h2>3. Findings</h2><ol><li>${FIELD('Finding 1')}</li><li>${FIELD('Finding 2')}</li><li>${FIELD('Finding 3')}</li></ol>
+<h2>4. Analysis</h2><p>${FIELD('Analysis')}</p>
+<h2>5. Recommendations</h2><ol><li>${FIELD('Recommendation 1')}</li><li>${FIELD('Recommendation 2')}</li><li>${FIELD('Recommendation 3')}</li></ol>
+<h2>6. Action Items</h2><table><tr><th>Action</th><th>Responsible Person</th><th>Due Date</th></tr><tr><td>${FIELD('Action')}</td><td>${FIELD('Responsible Person')}</td><td>${FIELD('Due Date')}</td></tr></table>
+<h2>7. Conclusion</h2><p>${FIELD('Conclusion')}</p>`
+  },
+  {
+    id: 'certificate', name: 'Certificate', description: 'Formal certificate layout for recognition, completion or achievement.', icon: GraduationCap, category: 'Education',
+    content: letterhead + `<div style="text-align:center">
+<h1>CERTIFICATE</h1><p><strong>OF ${FIELD('Certificate Type')}</strong></p>
+<p>This is to certify that</p><h2>${FIELD('Recipient Name')}</h2>
+<p>has successfully ${FIELD('Achievement Statement')}</p>
+<p><strong>Programme / Course:</strong> ${FIELD('Programme')}<br><strong>Duration:</strong> ${FIELD('Duration')}<br><strong>Date Issued:</strong> ${FIELD('Date Issued')}</p>
+<table style="width:100%"><tr><td style="text-align:center">________________________<br>${FIELD('Authorized Signatory')}<br>${FIELD('Signatory Role')}</td><td style="text-align:center">________________________<br>Official Stamp</td></tr></table>
+</div>`
   },
   {
     id: 'performance', name: 'Performance Analysis', description: 'Structured staff, student, project or business performance review.', icon: BarChart3, category: 'Management',
@@ -68,9 +93,6 @@ const templates: Template[] = [
     id: 'performance-review', name: 'Staff Performance Review', description: 'Formal employee review with ratings, feedback and next steps.', icon: ClipboardList, category: 'Management',
     content: letterhead + `<h1 style="text-align:center">STAFF PERFORMANCE REVIEW</h1><p><strong>Staff Member:</strong> ${FIELD('Staff Name')}<br><strong>Role:</strong> ${FIELD('Role')}<br><strong>Review Period:</strong> ${FIELD('Review Period')}</p><h2>Performance Summary</h2><p>${FIELD('Summary')}</p><h2>Performance Areas</h2><table><tr><th>Area</th><th>Rating</th><th>Comments</th></tr><tr><td>Reliability</td><td>${FIELD('Reliability')}</td><td>${FIELD('Reliability Comments')}</td></tr><tr><td>Quality</td><td>${FIELD('Quality')}</td><td>${FIELD('Quality Comments')}</td></tr><tr><td>Communication</td><td>${FIELD('Communication')}</td><td>${FIELD('Communication Comments')}</td></tr><tr><td>Initiative</td><td>${FIELD('Initiative')}</td><td>${FIELD('Initiative Comments')}</td></tr></table><h2>Development Plan</h2><p>${FIELD('Development Plan')}</p><p><strong>Reviewer:</strong> ${FIELD('Reviewer')}<br><strong>Date:</strong> ${FIELD('Date')}</p>`
   },
-  {
-    id: 'blank', name: 'Blank Document', description: 'Start from a completely blank page.', icon: FileText, category: 'General', content: ''
-  }
 ];
 
 interface TemplateSelectorProps { onSelect: (title: string, content: string) => void; onClose: () => void; }
