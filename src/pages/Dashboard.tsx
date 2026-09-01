@@ -90,6 +90,7 @@ export function Dashboard() {
   const [paymentsAwaitingCount, setPaymentsAwaitingCount] = useState(0);
   const [weekTasksCount, setWeekTasksCount] = useState(0);
   const [reportText, setReportText] = useState('');
+  const [reportGenerating, setReportGenerating] = useState(false);
   const [reportSaving, setReportSaving] = useState(false);
   const [reportSaved, setReportSaved] = useState(false);
   const [whatsappSending, setWhatsappSending] = useState(false);
@@ -279,7 +280,7 @@ export function Dashboard() {
       const meetings = meetingsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
         .filter((m: any) => m.date && isToday(safeParseISO(m.date)));
       const lines = [
-        `JAYSTARBLISS DAILY SCHEDULE — ${format(today, 'dd MMMM yyyy')}`,
+        `Schedule for Today - ${format(today, 'dd MMMM yyyy')}`,
         '',
         'MEETINGS:',
         ...(meetings.length ? meetings.sort((a:any,b:any)=>safeParseISO(a.date).getTime()-safeParseISO(b.date).getTime()).map((m:any)=>`• ${safeFormat(m.date, 'h:mma')} — ${(m.notesRaw || 'Meeting').replace(/\\\\r?\\\\n|\\n|\\r/g, ' ').trim()}`) : ['• No meetings scheduled']),
@@ -312,6 +313,77 @@ export function Dashboard() {
 
   
 
+  const generateDailyReport = async () => {
+    if (!profile) return;
+    setReportGenerating(true);
+    setReportSaved(false);
+    try {
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+
+      const tasksQuery = profile.role === 'admin' || profile.role === 'assistant'
+        ? query(collection(db, 'tasks'))
+        : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
+      const [tasksSnap, followUpsSnap] = await Promise.all([
+        getDocs(tasksQuery),
+        getDocs(collection(db, 'followUps'))
+      ]);
+
+      const tasks = tasksSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      const followUps = followUpsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+
+      const isSameDay = (value: any, date: Date) => {
+        if (!value) return false;
+        try { return format(safeParseISO(value), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'); } catch { return false; }
+      };
+      const completedToday = tasks.filter(t =>
+        t.status === 'completed' &&
+        (isSameDay(t.completedAt, today) || isSameDay(t.updatedAt, today) || isSameDay(t.completedDate, today))
+      );
+      const dueToday = tasks.filter(t =>
+        t.status !== 'completed' && t.status !== 'archived' && isSameDay(t.deadline, today)
+      );
+      const tomorrowTasks = tasks.filter(t =>
+        t.status !== 'completed' && t.status !== 'archived' && isSameDay(t.deadline, tomorrow)
+      );
+      const waitingFollowUps = followUps.filter(f =>
+        !['resolved', 'cancelled'].includes(f.status) &&
+        (f.status === 'waiting' || (f.dueAt && isSameDay(f.dueAt, today)))
+      );
+      const decisionItems = [
+        ...tasks.filter(t => t.status !== 'completed' && t.needsDecision === true),
+        ...followUps.filter(f => !['resolved', 'cancelled'].includes(f.status) && (f.needsDecision === true || f.decisionRequired === true))
+      ];
+
+      const section = (title: string, items: any[], empty: string, formatter: (x:any) => string) => [
+        title,
+        ...(items.length ? items.map(formatter) : [empty])
+      ];
+
+      const lines = [
+        `JAYSTARBLISS DAILY REPORT — ${format(today, 'dd MMMM yyyy')}`,
+        '',
+        ...section('COMPLETED TODAY:', completedToday, '• Nothing marked completed today', t => `• ${t.title || 'Completed task'}`),
+        '',
+        ...section('STILL DUE:', dueToday, '• No outstanding tasks due today', t => `• ${t.title || 'Untitled task'}${t.priority ? ` [${t.priority}]` : ''}`),
+        '',
+        ...section('FOLLOW-UPS:', waitingFollowUps, '• No active follow-ups requiring attention today', f => `• ${f.title || f.subject || 'Follow-up'}${f.status === 'waiting' ? ' — waiting for response' : ''}`),
+        '',
+        ...section('NEEDS YOUR DECISION:', decisionItems, '• Nothing currently flagged for your decision', x => `• ${x.title || x.subject || 'Item requiring decision'}`),
+        '',
+        ...section('TOMORROW:', tomorrowTasks, '• No tasks scheduled for tomorrow', t => `• ${t.title || 'Untitled task'}`),
+        '',
+        '— Prepared from Hub-Mind'
+      ];
+      setReportText(lines.join('\\n'));
+    } catch (e) {
+      console.error('Failed to generate daily report:', e);
+    } finally {
+      setReportGenerating(false);
+    }
+  };
+
   const buildDailyReportMessage = () => {
     const dateLabel = format(new Date(), 'dd MMMM yyyy');
     return [
@@ -320,7 +392,7 @@ export function Dashboard() {
       reportText.trim(),
       '',
       '— Sent from Hub-Mind'
-    ].join('\n');
+    ].join('\\n');
   };
 
   const sendReportToWhatsApp = async () => {
@@ -377,26 +449,6 @@ export function Dashboard() {
         <h2 className="text-3xl font-bold text-white tracking-tight">{greeting}</h2>
         <p className="text-slate-400">Welcome to your Operations Hub.</p>
       </div>
-
-      {/* Daily operations briefing */}
-      <section className="mb-8 bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-accent font-bold mb-2">Shawn's Daily Briefing</p>
-            <h3 className="text-xl font-bold text-white">Here's what needs your attention.</h3>
-            <p className="text-sm text-slate-400 mt-1">
-              {urgentTasksCount} urgent task{urgentTasksCount !== 1 ? 's' : ''}, {followUpsDueCount} follow-up{followUpsDueCount !== 1 ? 's' : ''} due, {todayMeetingsCount} meeting{todayMeetingsCount !== 1 ? 's' : ''} today
-              {followUpsWaitingCount > 0 ? `, and ${followUpsWaitingCount} item${followUpsWaitingCount !== 1 ? 's' : ''} waiting on someone else.` : '.'}
-            </p>
-          </div>
-          <button
-            onClick={() => window.dispatchEvent(new CustomEvent('shawn:open', { detail: { mode: 'chat', context: 'workspace' } }))}
-            className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-accent text-slate-950 font-bold text-sm shrink-0"
-          >
-            Ask Shawn
-          </button>
-        </div>
-      </section>
 
       {/* Circular Progress Indicators Section */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
