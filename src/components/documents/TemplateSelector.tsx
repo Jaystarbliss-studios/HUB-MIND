@@ -93,6 +93,76 @@ const templates: Template[] = [
     id: 'performance-review', name: 'Staff Performance Review', description: 'Formal employee review with ratings, feedback and next steps.', icon: ClipboardList, category: 'Management',
     content: letterhead + `<h1 style="text-align:center">STAFF PERFORMANCE REVIEW</h1><p><strong>Staff Member:</strong> ${FIELD('Staff Name')}<br><strong>Role:</strong> ${FIELD('Role')}<br><strong>Review Period:</strong> ${FIELD('Review Period')}</p><h2>Performance Summary</h2><p>${FIELD('Summary')}</p><h2>Performance Areas</h2><table><tr><th>Area</th><th>Rating</th><th>Comments</th></tr><tr><td>Reliability</td><td>${FIELD('Reliability')}</td><td>${FIELD('Reliability Comments')}</td></tr><tr><td>Quality</td><td>${FIELD('Quality')}</td><td>${FIELD('Quality Comments')}</td></tr><tr><td>Communication</td><td>${FIELD('Communication')}</td><td>${FIELD('Communication Comments')}</td></tr><tr><td>Initiative</td><td>${FIELD('Initiative')}</td><td>${FIELD('Initiative Comments')}</td></tr></table><h2>Development Plan</h2><p>${FIELD('Development Plan')}</p><p><strong>Reviewer:</strong> ${FIELD('Reviewer')}<br><strong>Date:</strong> ${FIELD('Date')}</p>`
   },
+  {
+    id: 'school-director-update',
+    name: 'School Director Update',
+    description: 'Formal director-facing update covering schedules, fees, curriculum, examinations, certificates and performance information.',
+    icon: Building,
+    category: 'Education',
+    content: letterhead + `<h1 style="text-align:center">SCHOOL DIRECTOR UPDATE</h1>
+<p><strong>Date:</strong> ${FIELD('Date')}<br><strong>School:</strong> ${FIELD('School Name')}<br><strong>Period:</strong> ${FIELD('Period')}</p>
+<p>Dear School Director,</p>
+<p>${FIELD('Opening Message')}</p>
+<h2>1. Schedule & Attendance</h2><p>${FIELD('Schedule Information')}</p>
+<h2>2. Fees & Administrative Updates</h2><p>${FIELD('Fees and Administrative Updates')}</p>
+<h2>3. Academic Calendar & Curriculum</h2><p>${FIELD('Calendar and Curriculum')}</p>
+<h2>4. Lesson Plans & Learning Materials</h2><p>${FIELD('Lesson Plans and Materials')}</p>
+<h2>5. Examinations</h2><p>${FIELD('Examination Information')}</p>
+<h2>6. Results, Certificates & Performance Analysis</h2><p>${FIELD('Results and Performance Information')}</p>
+<h2>7. Next Steps</h2><ol><li>${FIELD('Next Step 1')}</li><li>${FIELD('Next Step 2')}</li><li>${FIELD('Next Step 3')}</li></ol>
+<p><strong>Contact / Support:</strong> ${FIELD('Contact Details')}</p>
+<p>Yours faithfully,<br><strong>${FIELD('Sender Name')}</strong><br>${FIELD('Sender Role')}<br>Jaystarbliss Dynamic Institute</p>`
+  },
+  {
+    id: 'school-admin-support',
+    name: 'School Administrator Support Notice',
+    description: 'Practical admin-facing notice for exam links, results, spreadsheets, PDFs and document requests.',
+    icon: ClipboardList,
+    category: 'Education',
+    content: letterhead + `<h1 style="text-align:center">SCHOOL ADMINISTRATOR SUPPORT NOTICE</h1>
+<p><strong>Date:</strong> ${FIELD('Date')}<br><strong>School:</strong> ${FIELD('School Name')}<br><strong>Subject:</strong> ${FIELD('Subject')}</p>
+<p>Hello ${FIELD('Administrator Name')},</p>
+<p>${FIELD('Opening Message')}</p>
+<h2>Available Support</h2>
+<ul><li>Examination links and access information</li><li>Examination results and result spreadsheets</li><li>PDF reports and official documents</li><li>Certificates and performance analysis</li><li>Schedule, lesson and calendar information</li></ul>
+<h2>Request / Action Required</h2><p>${FIELD('Request or Action')}</p>
+<h2>Important Dates</h2><p>${FIELD('Important Dates')}</p>
+<p>If you need anything else, please contact the Hub-Mind support channel.</p>
+<p>Kind regards,<br><strong>${FIELD('Sender Name')}</strong><br>${FIELD('Sender Role')}<br>Jaystarbliss Dynamic Institute</p>`
+  },
+  {
+    id: 'parent-programme-update',
+    name: 'Parent Programme Update',
+    description: 'Clear parent-facing update for class schedules, programme details and student performance information.',
+    icon: GraduationCap,
+    category: 'Education',
+    content: letterhead + `<h1 style="text-align:center">PARENT PROGRAMME UPDATE</h1>
+<p><strong>Date:</strong> ${FIELD('Date')}<br><strong>Student:</strong> ${FIELD('Student Name')}<br><strong>Programme:</strong> ${FIELD('Programme')}</p>
+<p>Dear Parent / Guardian,</p>
+<p>${FIELD('Opening Message')}</p>
+<h2>Class Schedule</h2><p>${FIELD('Schedule')}</p>
+<h2>Current Programme</h2><p>${FIELD('Programme Details')}</p>
+<h2>Performance & Progress</h2><p>${FIELD('Performance Information')}</p>
+<h2>Upcoming Activities</h2><ul><li>${FIELD('Upcoming Activity 1')}</li><li>${FIELD('Upcoming Activity 2')}</li></ul>
+<h2>What You Need to Know</h2><p>${FIELD('Important Information')}</p>
+<p>For additional information or assistance, please contact our support channel.</p>
+<p>Kind regards,<br><strong>${FIELD('Sender Name')}</strong><br>${FIELD('Sender Role')}<br>Jaystarbliss Dynamic Institute</p>`
+  },
+  {
+    id: 'daily-assistant-report',
+    name: 'Daily Assistant Report',
+    description: 'End-of-day operational report with completed work, pending items, follow-ups, decisions and tomorrow’s priorities.',
+    icon: ClipboardList,
+    category: 'Management',
+    content: `<h1 style="text-align:center">JAYSTARBLISS DAILY REPORT</h1>
+<p><strong>Date:</strong> ${FIELD('Date')}<br><strong>Prepared by:</strong> ${FIELD('Prepared By')}</p>
+<h2>COMPLETED</h2><ul><li>${FIELD('Completed 1')}</li><li>${FIELD('Completed 2')}</li><li>${FIELD('Completed 3')}</li></ul>
+<h2>PENDING</h2><ul><li>${FIELD('Pending 1')}</li><li>${FIELD('Pending 2')}</li></ul>
+<h2>FOLLOW-UPS</h2><ul><li>${FIELD('Follow-up 1')}</li><li>${FIELD('Follow-up 2')}</li></ul>
+<h2>NEEDS YOUR DECISION</h2><ul><li>${FIELD('Decision 1')}</li><li>${FIELD('Decision 2')}</li></ul>
+<h2>TOMORROW</h2><ul><li>${FIELD('Tomorrow 1')}</li><li>${FIELD('Tomorrow 2')}</li><li>${FIELD('Tomorrow 3')}</li></ul>
+<p><strong>Additional Notes:</strong> ${FIELD('Additional Notes')}</p>`
+  },
 ];
 
 interface TemplateSelectorProps {
