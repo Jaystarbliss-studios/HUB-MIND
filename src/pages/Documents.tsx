@@ -356,7 +356,7 @@ export function Documents() {
                 return (
                   <div key={doc.id} className="group relative p-3 sm:p-4 hover:bg-slate-800/30 transition-colors" onContextMenu={(e) => { e.preventDefault(); setOpenPropertiesId(doc.id); }}>
                     <div className="flex items-center gap-3 min-w-0">
-                      <button onClick={() => doc.type === 'internal' ? navigate('/documents/' + doc.id) : window.open(doc.fileRef, '_blank')} className="flex items-center gap-3 min-w-0 flex-1 text-left">
+                      <button onClick={() => (doc.type === 'internal' || !!doc.content) ? navigate('/documents/' + doc.id) : window.open(doc.fileRef, '_blank')} className="flex items-center gap-3 min-w-0 flex-1 text-left">
                         <div className="w-11 h-12 sm:w-12 sm:h-14 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-accent shrink-0 shadow-sm">
                           <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
                         </div>
@@ -367,7 +367,7 @@ export function Documents() {
                         </div>
                       </button>
                       <div className="flex items-center gap-1 shrink-0">
-                        <button onClick={() => doc.type === 'internal' ? navigate('/documents/' + doc.id) : window.open(doc.fileRef, '_blank')} className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-slate-950 text-xs font-bold hover:bg-accent-hover transition-colors">{doc.type === 'internal' ? 'Open' : 'View'}</button>
+                        <button onClick={() => doc.type === 'internal' ? navigate('/documents/' + doc.id) : window.open(doc.fileRef, '_blank')} className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-slate-950 text-xs font-bold hover:bg-accent-hover transition-colors">{(doc.type === 'internal' || !!doc.content) ? 'Open' : 'View'}</button>
                         <button onClick={() => setOpenPropertiesId(openPropertiesId === doc.id ? null : doc.id)} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors" aria-label="Document options"><MoreVertical className="w-5 h-5" /></button>
                       </div>
                     </div>
