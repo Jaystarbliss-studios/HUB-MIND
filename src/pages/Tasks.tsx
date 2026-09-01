@@ -228,13 +228,13 @@ export function Tasks() {
       {loading ? (
         <TasksSkeleton />
       ) : (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col min-h-0 shadow-sm flex-1">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-visible">
           {filteredTasks.length === 0 ? (
             <div className="p-12 text-center text-slate-500">
               No tasks found.
             </div>
           ) : (
-            <div className="divide-y divide-slate-800 overflow-y-auto">
+            <div className="divide-y divide-slate-800">
               {filteredTasks.map(task => (
                 <div key={task.id} className="p-4 md:p-5 hover:bg-slate-800/30 transition-colors flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex-1 min-w-0 w-full sm:w-auto">
