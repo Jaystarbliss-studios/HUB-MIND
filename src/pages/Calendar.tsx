@@ -10,6 +10,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
+import { materializeRecurringMeetings } from "../lib/recurringMeetings";
+import { RecurringSchedulePanel } from "../components/RecurringSchedulePanel";
 import { 
   format, addMonths, subMonths, startOfMonth, endOfMonth, 
   eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, isToday
@@ -55,6 +57,8 @@ export function Calendar() {
       }
     };
     fetchClients();
+    // Populate upcoming occurrences from the recurring schedule templates.
+    materializeRecurringMeetings(90).catch(err => console.warn('Recurring meetings:', err));
 
     const tasksQuery = profile.role === 'admin' || profile.role === 'assistant'
       ? query(collection(db, 'tasks'))
@@ -297,6 +301,9 @@ export function Calendar() {
           </div>
         </div>
       </div>
+
+      {/* Recurring Schedule */}
+      {(profile?.role === 'admin' || profile?.role === 'assistant') && <RecurringSchedulePanel />}
 
       {/* Main Calendar Card */}
       {viewMode === 'month' ? (
