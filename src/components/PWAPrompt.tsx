@@ -22,6 +22,7 @@ export function PWAPrompt() {
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     // Check if iOS
@@ -48,6 +49,52 @@ export function PWAPrompt() {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, [user]);
+
+  // Keep installed PWAs current too. iOS Safari can keep a standalone PWA alive for a long time,
+  // so waiting for a normal page refresh is not enough. Ask the active registration to check
+  // for a new service worker when the app becomes visible and periodically while it is open.
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const checkForUpdate = async () => {
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        if (cancelled) return;
+        await registration.update();
+      } catch (error) {
+        console.debug('Hub-Mind update check failed:', error);
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') void checkForUpdate();
+    };
+
+    void checkForUpdate();
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+    timer = window.setInterval(checkForUpdate, 5 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+      if (timer) window.clearInterval(timer);
+    };
+  }, []);
+
+  // Once a new service worker is detected, activate it and reload automatically.
+  // This means an installed iPhone PWA is not left running on an old build indefinitely.
+  useEffect(() => {
+    if (!needRefresh || updating) return;
+    setUpdating(true);
+    updateServiceWorker(true).catch((error) => {
+      console.error('Hub-Mind automatic update failed:', error);
+      setUpdating(false);
+    });
+  }, [needRefresh, updating, updateServiceWorker]);
 
   useEffect(() => {
     // Trigger prompt when user is logged in, not standalone, and we have the deferredPrompt or are on iOS
