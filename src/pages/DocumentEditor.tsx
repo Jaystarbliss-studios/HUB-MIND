@@ -100,9 +100,9 @@ function setEditorDocumentContent(editorInstance: any, content: unknown, source:
       sanitizeClipboardHtml(decoded),
       source
     );
-    editorInstance.commands.setContent(cleanHtml || decoded);
+    editorInstance.commands.setContent(cleanHtml || decoded, { emitUpdate: false });
   } else if (decoded) {
-    editorInstance.commands.setContent(decoded);
+    editorInstance.commands.setContent(decoded, { emitUpdate: false });
   }
 }
 
