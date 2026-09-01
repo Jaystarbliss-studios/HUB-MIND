@@ -233,6 +233,24 @@ export function Documents() {
     }
   };
 
+  const openDocument = (doc: DocumentInfo) => {
+    // Anything created/saved by Hub-Mind's editor must always open in the
+    // internal editor. Older records may not have type='internal' and newer
+    // records may persist canonical Tiptap JSON instead of HTML.
+    const isEditorDocument =
+      doc.type === 'internal' ||
+      !!(doc as any).content ||
+      !!(doc as any).contentJson ||
+      !!(doc as any).templateId;
+
+    if (isEditorDocument || !(doc as any).fileRef) {
+      navigate('/documents/' + doc.id);
+      return;
+    }
+
+    window.open((doc as any).fileRef, '_blank', 'noopener,noreferrer');
+  };
+
   const filteredDocs = docsList.filter(d => (d.title || '').toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -356,7 +374,7 @@ export function Documents() {
                 return (
                   <div key={doc.id} className="group relative p-3 sm:p-4 hover:bg-slate-800/30 transition-colors" onContextMenu={(e) => { e.preventDefault(); setOpenPropertiesId(doc.id); }}>
                     <div className="flex items-center gap-3 min-w-0">
-                      <button onClick={() => (doc.type === 'internal' || !!doc.content) ? navigate('/documents/' + doc.id) : window.open(doc.fileRef, '_blank')} className="flex items-center gap-3 min-w-0 flex-1 text-left">
+                      <button onClick={() => openDocument(doc)} className="flex items-center gap-3 min-w-0 flex-1 text-left">
                         <div className="w-11 h-12 sm:w-12 sm:h-14 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-accent shrink-0 shadow-sm">
                           <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
                         </div>
@@ -367,7 +385,7 @@ export function Documents() {
                         </div>
                       </button>
                       <div className="flex items-center gap-1 shrink-0">
-                        <button onClick={() => doc.type === 'internal' ? navigate('/documents/' + doc.id) : window.open(doc.fileRef, '_blank')} className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-slate-950 text-xs font-bold hover:bg-accent-hover transition-colors">{(doc.type === 'internal' || !!doc.content) ? 'Open' : 'View'}</button>
+                        <button onClick={() => openDocument(doc)} className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-slate-950 text-xs font-bold hover:bg-accent-hover transition-colors">{(doc.type === 'internal' || !!(doc as any).content || !!(doc as any).contentJson || !!(doc as any).templateId || !(doc as any).fileRef) ? 'Open' : 'View'}</button>
                         <button onClick={() => setOpenPropertiesId(openPropertiesId === doc.id ? null : doc.id)} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors" aria-label="Document options"><MoreVertical className="w-5 h-5" /></button>
                       </div>
                     </div>
@@ -380,7 +398,7 @@ export function Documents() {
                           <div><span className="text-slate-500 block">Owner</span><span className="text-slate-200 truncate">{doc.ownerId && users[doc.ownerId] ? users[doc.ownerId].name : 'Workspace'}</span></div>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <button onClick={() => { setOpenPropertiesId(null); doc.type === 'internal' ? navigate('/documents/' + doc.id) : window.open(doc.fileRef, '_blank'); }} className="px-3 py-2 rounded-lg bg-accent text-slate-950 text-xs font-bold">Open</button>
+                          <button onClick={() => { setOpenPropertiesId(null); openDocument(doc); }} className="px-3 py-2 rounded-lg bg-accent text-slate-950 text-xs font-bold">Open</button>
                           {canManage && <><button onClick={() => { setOpenPropertiesId(null); setEditingDocId(doc.id); setEditTitle(doc.title); }} className="px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-xs">Rename</button><button onClick={() => handleDuplicateDoc(doc)} className="px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-xs">Duplicate</button><button onClick={() => { setOpenPropertiesId(null); confirmDelete(doc.id); }} className="px-3 py-2 rounded-lg bg-rose-950/40 text-rose-300 text-xs">Delete</button></>}
                         </div>
                       </div>
