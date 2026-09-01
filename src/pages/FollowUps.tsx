@@ -1,3 +1,5 @@
+import { Share2 } from 'lucide-react';
+import { shareHubMindItem, copyShareUrl } from '../lib/shareLinks';
 import React, { useEffect, useMemo, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
@@ -177,6 +179,7 @@ export function FollowUps() {
                   <select value={state} onChange={e => changeStatus(item, e.target.value as FollowUpStatus)} className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-200">
                     {statusOptions.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
                   </select>
+                  <button onClick={async () => { const path = `/follow-ups/${item.id}?shared=1`; try { await copyShareUrl(path); } catch {} await shareHubMindItem(path, item.title); }} className="p-2 rounded-lg text-accent hover:bg-accent/10" title="Share follow-up"><Share2 className="w-4 h-4" /></button>
                   <button onClick={() => remove(item)} className="p-2 rounded-lg text-red-400 hover:bg-red-500/10" title="Delete">
                     <Trash2 className="w-4 h-4" />
                   </button>
