@@ -99,7 +99,12 @@ export function Documents() {
 
   
   
-  const handleCreateDocument = async (title: string = 'Untitled Document', content: string = '') => {
+  const handleCreateDocument = async (
+    title: string = 'Untitled Document',
+    content: string = '',
+    category: string = 'other',
+    templateId?: string
+  ) => {
     if (!profile) return;
 
     // Templates are already valid TipTap HTML. Store that HTML directly instead of
@@ -117,7 +122,8 @@ export function Documents() {
         title: title.trim() || 'Untitled Document',
         type: 'internal',
         content: documentContent,
-        category: 'other',
+        category: category || 'other',
+        templateId: templateId || 'blank',
         ownerId: profile.id,
         createdBy: profile.id,
         createdAt: now,
