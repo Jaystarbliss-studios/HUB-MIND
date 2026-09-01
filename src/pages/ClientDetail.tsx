@@ -138,6 +138,9 @@ export function ClientDetail() {
         </button>
 
         <div className="flex items-center gap-2">
+          <button onClick={async () => { if (!client) return; const path = `/clients/${client.id}?shared=1`; try { await copyShareUrl(path); } catch {} await shareHubMindItem(path, client.name); }} className="flex items-center gap-2 px-3 py-1.5 bg-accent/10 text-accent hover:bg-accent/20 border border-accent/20 rounded-lg transition-colors text-sm font-semibold" title="Share client">
+            <Share2 className="w-4 h-4" /><span className="hidden sm:inline">Share</span>
+          </button>
           {!isEditing && (
             <>
               <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-slate-300 hover:text-white rounded-lg transition-colors text-sm font-semibold">
