@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { DOMSerializer } from '@tiptap/pm/model';
 import { detectClipboardFormat, checkIsTsvSpreadsheet } from './clipboard-detector';
 import { sanitizeClipboardHtml } from './clipboard-sanitizer';
 import { normalizeClipboardHtml } from './clipboard-normalizer';
@@ -162,18 +163,16 @@ export const HubMindPasteEngine = Extension.create({
 
               try {
                 const slice = selection.content();
-                const serializer = (view as any).domSerializer || view.state.schema;
-                // Get selected HTML from editor
+                // Use ProseMirror's public serializer instead of the internal
+                // schema.cached serializer. The latter is not guaranteed to
+                // exist and can throw while the editor is mounting.
+                const serializer = DOMSerializer.fromSchema(view.state.schema);
                 const tempDiv = document.createElement('div');
-                const fragment = (view.state.schema as any).cached?.domSerializer 
-                  ? (view.state.schema as any).cached.domSerializer.serializeFragment(slice.content)
-                  : null;
+                const fragment = serializer.serializeFragment(slice.content);
 
-                if (fragment) {
-                  tempDiv.appendChild(fragment);
-                  const selectedHtml = tempDiv.innerHTML;
-                  event.clipboardData.setData('application/x-hubmind-document', selectedHtml);
-                }
+                tempDiv.appendChild(fragment);
+                const selectedHtml = tempDiv.innerHTML;
+                event.clipboardData.setData('application/x-hubmind-document', selectedHtml);
               } catch (e) {
                 // Non-critical, let default copy proceed
               }
