@@ -7,11 +7,14 @@ import { Meeting } from '../types';
 import { Loader2, ArrowLeft, Trash2, Calendar as CalendarIcon, Clock, Users, AlignLeft, CheckSquare } from 'lucide-react';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
+import { Share2 } from 'lucide-react';
+import { shareHubMindItem, copyShareUrl } from '../lib/shareLinks';
 import { useUsers } from '../lib/useUsers';
 import { VoiceDictation } from '../components/VoiceDictation';
 
 export function MeetingDetail() {
   const { id } = useParams();
+  const isSharedView = new URLSearchParams(window.location.search).get('shared') === '1';
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { users } = useUsers();
@@ -92,9 +95,20 @@ export function MeetingDetail() {
           <ArrowLeft className="w-4 h-4" />
           Back
         </button>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           
-          <select
+          <button
+            onClick={async () => {
+              const path = `/meetings/${id}?shared=1`;
+              try { await copyShareUrl(path); } catch {}
+              shareHubMindItem(path, meeting?.title || meeting?.notesRaw?.split('\\n')[0] || 'Meeting');
+            }}
+            className="flex items-center gap-2 px-3 py-2 bg-accent/10 text-accent hover:bg-accent/20 border border-accent/20 rounded-lg font-semibold transition-colors text-sm"
+            title="Share this meeting"
+          >
+            <Share2 className="w-4 h-4" /><span className="hidden sm:inline">Share</span>
+          </button>
+<select
             value={meeting.status || 'scheduled'}
             onChange={handleStatusChange}
             disabled={isUpdating}
@@ -117,7 +131,7 @@ export function MeetingDetail() {
             <option value="rescheduled">Rescheduled</option>
           </select>
 
-          {true && (
+          {!isSharedView && (
             <button 
               onClick={handleDelete}
               disabled={isDeleting}
