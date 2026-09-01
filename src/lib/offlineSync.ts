@@ -1,4 +1,4 @@
-import { doc, updateDoc, setDoc, getDoc, deleteDoc, collection, addDoc, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, deleteDoc, collection, addDoc, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 export interface OfflineDocRecord {
@@ -141,69 +141,65 @@ export async function saveDocumentOffline(
   };
   saveLocalVersion(versionSnapshot);
 
-  // Firestore persistence is enabled in firebaseConfig.ts, so writes should be
-  // sent through Firestore even while the browser is offline. Firestore will
-  // persist the mutation locally and synchronize it when connectivity returns.
-  // We only fall back to our explicit queue when the SDK rejects the write.
-  try {
-    const docRef = doc(db, 'documents', docId);
-    await setDoc(docRef, {
-      title: updatedRecord.title,
-      content: updatedRecord.content,
-      ...(updatedRecord.contentJson ? { contentJson: updatedRecord.contentJson } : {}),
-      updatedAt: updatedRecord.updatedAt,
-      lastEditedAt: updatedRecord.lastEditedAt || updatedRecord.updatedAt,
-      lastSavedAt: now,
-      lastModifiedBy: updatedRecord.lastModifiedBy,
-      ...(updatedRecord.pageSize ? { pageSize: updatedRecord.pageSize } : {}),
-      ...(updatedRecord.orientation ? { orientation: updatedRecord.orientation } : {}),
-      ...(updatedRecord.marginOption ? { marginOption: updatedRecord.marginOption } : {}),
-    }, { merge: true });
-
-    // Persist a version as a separate Firestore record. This write also benefits
-    // from Firestore's persistent offline queue.
+  // Match the known-good save architecture: local snapshot first, then a
+  // targeted Firestore update when online. Do not turn an editor save into a
+  // document create/replace operation. Existing documents already contain the
+  // ownership metadata required by Firestore rules.
+  if (navigator.onLine) {
     try {
-      const versionsColl = collection(db, 'documents', docId, 'versions');
-      await addDoc(versionsColl, versionSnapshot);
-    } catch (verErr) {
-      console.warn('Could not write version to Firestore subcollection:', verErr);
-    }
+      const docRef = doc(db, 'documents', docId);
+      await updateDoc(docRef, {
+        title: updatedRecord.title,
+        content: updatedRecord.content,
+        ...(updatedRecord.contentJson ? { contentJson: updatedRecord.contentJson } : {}),
+        updatedAt: updatedRecord.updatedAt,
+        lastEditedAt: updatedRecord.lastEditedAt || updatedRecord.updatedAt,
+        lastSavedAt: now,
+        lastModifiedBy: updatedRecord.lastModifiedBy,
+        ...(updatedRecord.pageSize ? { pageSize: updatedRecord.pageSize } : {}),
+        ...(updatedRecord.orientation ? { orientation: updatedRecord.orientation } : {}),
+        ...(updatedRecord.marginOption ? { marginOption: updatedRecord.marginOption } : {}),
+      });
 
-    updatedRecord.synced = navigator.onLine;
-    docsMap[docId] = updatedRecord;
-    setLocalDocsMap(docsMap);
-
-    const queue = getSyncQueue().filter(id => id !== docId);
-    setSyncQueue(queue);
-
-    window.dispatchEvent(new CustomEvent('hubmind:sync-status', {
-      detail: {
-        status: navigator.onLine ? 'synced' : 'offline-queued',
-        docId,
-        queueCount: queue.length
+      // Also persist version in Firestore subcollection for multi-device history.
+      try {
+        const versionsColl = collection(db, 'documents', docId, 'versions');
+        await addDoc(versionsColl, versionSnapshot);
+      } catch (verErr) {
+        console.warn('Could not write version to Firestore subcollection:', verErr);
       }
-    }));
 
-    return updatedRecord;
-  } catch (err) {
-    // Do not silently report a failed cloud save as successful. Keep the local
-    // snapshot and queue it for retry, while surfacing the original error to the
-    // editor so the user sees a real Save error.
-    console.error('Firestore document save failed:', err);
-    updatedRecord.synced = false;
-    docsMap[docId] = updatedRecord;
-    setLocalDocsMap(docsMap);
+      updatedRecord.synced = true;
+      docsMap[docId] = updatedRecord;
+      setLocalDocsMap(docsMap);
 
-    const queue = getSyncQueue();
-    if (!queue.includes(docId)) queue.push(docId);
-    setSyncQueue(queue);
+      const queue = getSyncQueue().filter(id => id !== docId);
+      setSyncQueue(queue);
 
-    window.dispatchEvent(new CustomEvent('hubmind:sync-status', {
-      detail: { status: 'save-error', docId, queueCount: queue.length }
-    }));
+      window.dispatchEvent(new CustomEvent('hubmind:sync-status', {
+        detail: { status: 'synced', docId, queueCount: queue.length }
+      }));
 
-    throw err;
+      return updatedRecord;
+    } catch (err) {
+      console.error('Firestore document update failed; keeping the local snapshot and queueing retry:', err);
+      updatedRecord.synced = false;
+      docsMap[docId] = updatedRecord;
+      setLocalDocsMap(docsMap);
+    }
   }
+
+  // Offline or failed network write: keep the latest editor state locally and
+  // queue the document for a later targeted update.
+  const queue = getSyncQueue();
+  if (!queue.includes(docId)) queue.push(docId);
+  setSyncQueue(queue);
+
+  window.dispatchEvent(new CustomEvent('hubmind:sync-status', {
+    detail: { status: 'offline-queued', docId, queueCount: queue.length }
+  }));
+
+  return updatedRecord;
 }
 
 /**
@@ -293,7 +289,7 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
 
     try {
       const docRef = doc(db, 'documents', docId);
-      await setDoc(docRef, {
+      await updateDoc(docRef, {
         title: record.title,
         content: record.content,
         ...(record.contentJson ? { contentJson: record.contentJson } : {}),
@@ -304,7 +300,7 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
         ...(record.pageSize ? { pageSize: record.pageSize } : {}),
         ...(record.orientation ? { orientation: record.orientation } : {}),
         ...(record.marginOption ? { marginOption: record.marginOption } : {}),
-      }, { merge: true });
+      });
 
       // Save version to Firestore
       try {
