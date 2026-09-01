@@ -14,6 +14,7 @@ import { shareHubMindItem, copyShareUrl } from '../lib/shareLinks';
 
 export function TaskDetail() {
   const { id } = useParams();
+  const isSharedView = new URLSearchParams(window.location.search).get('shared') === '1';
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { users } = useUsers();
@@ -189,14 +190,14 @@ export function TaskDetail() {
 
           
           
-          {!isEditing && (
+          {!isSharedView && !isEditing && (
             <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-semibold transition-colors text-sm border border-slate-700">
               <Edit className="w-4 h-4" />
               Edit
             </button>
           )}
   
-          {true && (
+          {!isSharedView && (
             <button 
               onClick={handleDelete}
               disabled={isDeleting}
@@ -210,7 +211,7 @@ export function TaskDetail() {
       </div>
 
       
-      {isEditing ? (
+      {!isSharedView && isEditing ? (
         <form onSubmit={handleUpdateDetails} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
           <h2 className="text-xl font-bold text-white mb-4">Edit Task Details</h2>
           <div>
