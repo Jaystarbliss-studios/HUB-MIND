@@ -7,3 +7,16 @@
   from = "/api/chat"
   to = "/.netlify/functions/chat"
   status = 200
+
+
+# Service-worker and app-shell files must always be revalidated so installed
+# PWAs can discover new deployments instead of serving an old worker indefinitely.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
