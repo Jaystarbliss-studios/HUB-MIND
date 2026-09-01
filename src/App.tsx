@@ -26,6 +26,7 @@ const Projects = lazy(() => import('./pages/Projects').then(m => ({ default: m.P
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail').then(m => ({ default: m.ProjectDetail })));
 const Knowledge = lazy(() => import('./pages/Knowledge').then(m => ({ default: m.Knowledge })));
 const FollowUps = lazy(() => import('./pages/FollowUps').then(m => ({ default: m.FollowUps })));
+const SharedRecord = lazy(() => import('./pages/SharedRecord').then(m => ({ default: m.SharedRecord })));
 
 const LoadingScreen = () => (
   <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-slate-400">
@@ -69,6 +70,7 @@ export default function App() {
           <Suspense fallback={<LoadingScreen />}>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/share/:type/:id" element={<ProtectedRoute><SharedRecord /></ProtectedRoute>} />
               
               <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                 <Route index element={<Dashboard />} />
