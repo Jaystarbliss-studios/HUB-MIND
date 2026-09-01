@@ -100,22 +100,36 @@ export function Documents() {
   
   
   const handleCreateDocument = async (title: string = 'Untitled Document', content: string = '') => {
-    const normalizedTemplate = content ? normalizeClipboardHtml(sanitizeClipboardHtml(content), 'hubmind-template') : '';
     if (!profile) return;
+
+    // Templates are already valid TipTap HTML. Store that HTML directly instead of
+    // JSON-stringifying the HTML string. The old implementation produced a JSON
+    // string literal (e.g. "\"<p>..."), which the editor could not render.
+    const normalizedTemplate = content
+      ? normalizeClipboardHtml(sanitizeClipboardHtml(content), 'hubmind-template')
+      : '';
+
+    const documentContent = normalizedTemplate || { type: 'doc', content: [{ type: 'paragraph' }] };
+    const now = new Date().toISOString();
+
     try {
       const newDocRef = await addDoc(collection(db, 'documents'), {
-        title: title,
+        title: title.trim() || 'Untitled Document',
         type: 'internal',
-        content: JSON.stringify(normalizedTemplate ? normalizedTemplate : { type: 'doc', content: [{ type: 'paragraph' }] }),
+        content: documentContent,
         category: 'other',
         ownerId: profile.id,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdBy: profile.id,
+        createdAt: now,
+        updatedAt: now,
+        lastEditedAt: now,
+        lastSavedAt: now,
       });
+
       setShowTemplates(false);
       navigate('/documents/' + newDocRef.id);
     } catch (error) {
-      console.error('Error creating doc:', error);
+      console.error('Error creating document:', error);
     }
   };
   useEffect(() => {
