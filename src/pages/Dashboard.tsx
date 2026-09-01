@@ -8,7 +8,7 @@ import { Task, Meeting, Client, DocumentInfo, InboxItem, ActivityLog } from '../
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { isToday, isBefore, startOfDay, parseISO, format, startOfWeek, endOfWeek } from 'date-fns';
 import { CheckCircle2, Clock, Calendar as CalendarIcon, FileText, Loader2, Bell, Users, Inbox, Activity, Check, Clock3 } from 'lucide-react';
-import { setDoc, doc, getDoc } from 'firebase/firestore';
+import { setDoc, doc, getDoc, addDoc } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -327,7 +327,19 @@ export function Dashboard() {
     if (!reportText.trim()) return;
     setWhatsappSending(true);
     try {
-      const message = buildDailyReportMessage();
+      const sharedSnap = await addDoc(collection(db, 'sharedRecords'), {
+        kind: 'report',
+        createdBy: profile?.id || null,
+        createdAt: new Date().toISOString(),
+        payload: {
+          title: `Daily Report — ${format(new Date(), 'dd MMMM yyyy')}`,
+          report: reportText.trim(),
+          date: format(new Date(), 'yyyy-MM-dd'),
+          authorName: profile?.name || 'Hub-Mind'
+        }
+      });
+      const shareUrl = new URL(`/share/report/${sharedSnap.id}`, window.location.origin).toString();
+      const message = `${buildDailyReportMessage()}\n\nOpen the full report in Hub-Mind:\n${shareUrl}`;
       const encoded = encodeURIComponent(message);
       // WhatsApp's supported share URL opens the user's contact picker with the
       // report already composed. No phone number or WhatsApp API credential is stored.
