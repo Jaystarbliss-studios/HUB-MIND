@@ -158,7 +158,7 @@ export async function saveDocumentOffline(
       ...(updatedRecord.pageSize ? { pageSize: updatedRecord.pageSize } : {}),
       ...(updatedRecord.orientation ? { orientation: updatedRecord.orientation } : {}),
       ...(updatedRecord.marginOption ? { marginOption: updatedRecord.marginOption } : {}),
-    });
+    }, { merge: true });
 
     // Persist a version as a separate Firestore record. This write also benefits
     // from Firestore's persistent offline queue.
@@ -304,7 +304,7 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
         ...(record.pageSize ? { pageSize: record.pageSize } : {}),
         ...(record.orientation ? { orientation: record.orientation } : {}),
         ...(record.marginOption ? { marginOption: record.marginOption } : {}),
-      });
+      }, { merge: true });
 
       // Save version to Firestore
       try {
