@@ -78,6 +78,7 @@ export interface DocumentInfo {
   id: string;
   title: string;
   category: string;
+  templateId?: string;
   type?: 'internal' | 'external'; // contract | report | invoice | exam | certificate | other
   clientId?: string;
   ownerId?: string; // userId
