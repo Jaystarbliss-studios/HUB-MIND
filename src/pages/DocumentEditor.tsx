@@ -99,10 +99,6 @@ export function DocumentEditor() {
     latestTitleRef.current = docMeta?.title || 'Untitled Document';
   }, [docMeta?.title]);
 
-  useEffect(() => {
-    if (editor && !editor.isDestroyed) editor.setEditable(!isSharedView);
-  }, [editor, isSharedView]);
-
   const currentLayout = useMemo(() => {
     return computePageLayout({ paperSize: pageSize, orientation, marginOption });
   }, [pageSize, orientation, marginOption]);
@@ -164,6 +160,10 @@ export function DocumentEditor() {
       }, 1200); // Autosave after 1.2s of inactivity
     },
   });
+
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) editor.setEditable(!isSharedView);
+  }, [editor, isSharedView]);
 
   const saveLayoutSettings = async (
     nextPageSize: PaperSizeOption,
