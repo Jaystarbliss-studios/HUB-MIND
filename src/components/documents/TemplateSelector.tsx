@@ -95,7 +95,10 @@ const templates: Template[] = [
   },
 ];
 
-interface TemplateSelectorProps { onSelect: (title: string, content: string) => void; onClose: () => void; }
+interface TemplateSelectorProps {
+  onSelect: (title: string, content: string, category: string, templateId: string) => void;
+  onClose: () => void;
+}
 
 export function TemplateSelector({ onSelect, onClose }: TemplateSelectorProps) {
   const [query, setQuery] = useState('');
@@ -116,7 +119,25 @@ export function TemplateSelector({ onSelect, onClose }: TemplateSelectorProps) {
         </div>
         <div className="p-4 sm:p-6 overflow-y-auto max-h-[calc(90vh-150px)]">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-            {filtered.map(t => { const Icon=t.icon; return <button key={t.id} onClick={()=>onSelect(t.id==='blank'?'Untitled Document':t.name,t.content)} className="text-left p-4 rounded-xl border border-slate-200 hover:border-teal-500 hover:shadow-md transition-all bg-white"><div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center mb-3"><Icon className="w-5 h-5 text-teal-700"/></div><div className="font-semibold text-sm">{t.name}</div><div className="text-xs text-slate-500 mt-1 leading-relaxed">{t.description}</div></button>; })}
+            {filtered.map(t => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onSelect(
+                    t.id === 'blank' ? 'Untitled Document' : t.name,
+                    t.content,
+                    t.category,
+                    t.id
+                  )}
+                  className="text-left p-4 rounded-xl border border-slate-200 hover:border-teal-500 hover:shadow-md transition-all bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+                ><div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center mb-3"><Icon className="w-5 h-5 text-teal-700"/></div>
+                  <div className="font-semibold text-sm">{t.name}</div>
+                  <div className="text-xs text-slate-500 mt-1 leading-relaxed">{t.description}</div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
