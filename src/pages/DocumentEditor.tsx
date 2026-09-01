@@ -200,9 +200,8 @@ export function DocumentEditor() {
       latestContentRef.current = htmlContent;
       setEditorHtml(htmlContent);
       setEditorText(editor.getText());
-      setEditorHtml(htmlContent);
-      setEditorText(editor.getText());
       latestEditTimestampRef.current = editNow;
+      const jsonContent = editor.getJSON();
 
       // Recalculate page count
       const updatedPageCount = calculateExactPageCount(htmlContent, pageSize, orientation, marginOption);
@@ -215,7 +214,7 @@ export function DocumentEditor() {
       }
       
       timeoutRef.current = setTimeout(() => {
-        void saveDocument(htmlContent, editNow);
+        void saveDocument(htmlContent, editNow, undefined, jsonContent);
       }, 800); // Autosave after 0.8s of inactivity
     },
   });
