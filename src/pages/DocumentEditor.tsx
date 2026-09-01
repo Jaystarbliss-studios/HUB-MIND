@@ -65,6 +65,47 @@ export interface PageSizeConfig {
   heightPx: number;
 }
 
+/**
+ * Reads document content from both the current format and legacy records.
+ * Older template creation stored HTML as a JSON-encoded string, so decode
+ * that representation before handing the content to TipTap.
+ */
+function parseStoredDocumentContent(content: unknown): unknown {
+  if (typeof content !== 'string') return content;
+
+  const trimmed = content.trim();
+  if (!trimmed) return '';
+
+  if (trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed.startsWith('"')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      // A legacy template is JSON.stringify("<html>...</html>"), so JSON.parse
+      // returns a string. Decode once and continue through normal HTML handling.
+      return typeof parsed === 'string' ? parsed : parsed;
+    } catch {
+      // It is ordinary HTML/text; leave it untouched.
+    }
+  }
+
+  return content;
+}
+
+function setEditorDocumentContent(editorInstance: any, content: unknown, source: string): void {
+  if (!editorInstance || editorInstance.isDestroyed || !editorInstance.commands) return;
+
+  const decoded = parseStoredDocumentContent(content);
+
+  if (typeof decoded === 'string') {
+    const cleanHtml = normalizeClipboardHtml(
+      sanitizeClipboardHtml(decoded),
+      source
+    );
+    editorInstance.commands.setContent(cleanHtml || decoded);
+  } else if (decoded) {
+    editorInstance.commands.setContent(decoded);
+  }
+}
+
 export function DocumentEditor() {
   const { id } = useParams<{ id: string }>();
   const isSharedView = new URLSearchParams(window.location.search).get('shared') === '1';
@@ -351,21 +392,9 @@ export function DocumentEditor() {
 
           if (data.content && editor && !editor.isDestroyed && editor.commands) {
             try {
-              if (typeof data.content === 'string' && (data.content.startsWith('{') || data.content.startsWith('['))) {
-                editor.commands.setContent(JSON.parse(data.content));
-              } else if (typeof data.content === 'string') {
-                const cleanHtml = normalizeClipboardHtml(
-                  sanitizeClipboardHtml(data.content),
-                  'stored-document'
-                );
-                editor.commands.setContent(cleanHtml || data.content);
-              } else {
-                editor.commands.setContent(data.content);
-              }
+              setEditorDocumentContent(editor, data.content, 'stored-document');
             } catch (e) {
-              if (editor && !editor.isDestroyed && editor.commands) {
-                editor.commands.setContent(data.content);
-              }
+              console.error('Could not render stored document content:', e);
             }
           }
         } else {
@@ -393,13 +422,9 @@ export function DocumentEditor() {
     
     if (editor.isEmpty) {
       try {
-        if (typeof docMeta.content === 'string' && (docMeta.content.startsWith('{') || docMeta.content.startsWith('['))) {
-          editor.commands.setContent(JSON.parse(docMeta.content));
-        } else {
-          editor.commands.setContent(docMeta.content);
-        }
+        setEditorDocumentContent(editor, docMeta.content, 'stored-document-sync');
       } catch (e) {
-        editor.commands.setContent(docMeta.content);
+        console.error('Could not sync stored document content:', e);
       }
     }
   }, [editor, docMeta?.content]);
