@@ -16,10 +16,41 @@ import { deleteDocumentOffline, repairBlankDocumentsFromHistory, getLocalDocsMap
 
 export function Documents() {
   const { profile, user } = useAuth();
-  const [docsList, setDocsList] = useState<DocumentInfo[]>([]);
+
+  // Load any cached documents immediately on mount so documents appear in 0ms with no hanging spinner
+  const getInitialDocs = (): DocumentInfo[] => {
+    try {
+      const localMap = getLocalDocsMap();
+      const items = Object.values(localMap || {}).map(doc => ({
+        id: doc.id,
+        title: doc.title || 'Untitled Document',
+        content: doc.content || '',
+        contentJson: doc.contentJson,
+        updatedAt: doc.updatedAt,
+        lastSavedAt: doc.lastSavedAt,
+        lastEditedAt: doc.lastEditedAt,
+        category: 'other',
+        type: 'internal' as const,
+        version: 1,
+        ownerId: '',
+        createdBy: '',
+        createdAt: doc.updatedAt || new Date().toISOString(),
+      } as DocumentInfo));
+
+      return items.sort((a, b) => {
+        const aTime = new Date(a.lastEditedAt || a.lastSavedAt || a.updatedAt || a.createdAt || 0).getTime();
+        const bTime = new Date(b.lastEditedAt || b.lastSavedAt || b.updatedAt || b.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
+    } catch {
+      return [];
+    }
+  };
+
+  const [docsList, setDocsList] = useState<DocumentInfo[]>(() => getInitialDocs());
   const [clients, setClients] = useState<Client[]>([]);
   const [projectsList, setProjectsList] = useState<{id: string, name: string}[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => getInitialDocs().length === 0);
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [isUploading, setIsUploading] = useState(false);
@@ -169,45 +200,114 @@ export function Documents() {
     }
   };
   useEffect(() => {
-    if (!profile) return;
-    setLoading(true);
+    // Failsafe timeout: ensure loading spinner never hangs indefinitely (max 1.5s)
+    const safetyTimeout = setTimeout(() => {
+      setLoading(false);
+    }, 1500);
 
-    const unsubDocs = onSnapshot(collection(db, 'documents'), (docsSnap) => {
-      let docsData = docsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as DocumentInfo));
-      docsData = docsData.sort((a, b) => {
-        const aTime = new Date(a.lastEditedAt || a.lastSavedAt || a.updatedAt || a.createdAt || 0).getTime();
-        const bTime = new Date(b.lastEditedAt || b.lastSavedAt || b.updatedAt || b.createdAt || 0).getTime();
-        return bTime - aTime;
+    let unsubDocs = () => {};
+    let unsubClients = () => {};
+
+    try {
+      unsubDocs = onSnapshot(collection(db, 'documents'), (docsSnap) => {
+        clearTimeout(safetyTimeout);
+        let docsData = docsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as DocumentInfo));
+
+        // Sync retrieved documents into local storage cache for instant offline access
+        try {
+          const localMap = getLocalDocsMap();
+          let localModified = false;
+          docsData.forEach(d => {
+            if (!localMap[d.id] || (d.updatedAt && (!localMap[d.id].updatedAt || d.updatedAt > (localMap[d.id].updatedAt || '')))) {
+              localMap[d.id] = {
+                id: d.id,
+                title: d.title || 'Untitled Document',
+                content: (d as any).content || '',
+                contentJson: (d as any).contentJson,
+                updatedAt: d.updatedAt || d.lastEditedAt || new Date().toISOString(),
+                lastSavedAt: d.lastSavedAt || d.updatedAt || new Date().toISOString(),
+                lastEditedAt: d.lastEditedAt || d.updatedAt || new Date().toISOString(),
+                synced: true,
+              };
+              localModified = true;
+            }
+          });
+
+          // Also merge in any local drafts not yet present in the Firestore collection
+          const cloudIds = new Set(docsData.map(d => d.id));
+          Object.entries(localMap).forEach(([id, localDoc]) => {
+            if (!cloudIds.has(id)) {
+              docsData.push({
+                id,
+                title: localDoc.title || 'Untitled Document',
+                content: localDoc.content || '',
+                contentJson: localDoc.contentJson,
+                updatedAt: localDoc.updatedAt,
+                lastSavedAt: localDoc.lastSavedAt,
+                lastEditedAt: localDoc.lastEditedAt,
+                category: 'other',
+                type: 'internal',
+                version: 1,
+                ownerId: '',
+                createdBy: '',
+                createdAt: localDoc.updatedAt || new Date().toISOString(),
+              } as DocumentInfo);
+            }
+          });
+
+          if (localModified) {
+            setLocalDocsMap(localMap);
+          }
+        } catch (e) {
+          console.warn('Could not sync cloud docs to local map:', e);
+        }
+
+        docsData = docsData.sort((a, b) => {
+          const aTime = new Date(a.lastEditedAt || a.lastSavedAt || a.updatedAt || a.createdAt || 0).getTime();
+          const bTime = new Date(b.lastEditedAt || b.lastSavedAt || b.updatedAt || b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+
+        // If staff/teacher, show documents they created, own, or general workspace docs (templates/sop/reports)
+        if (profile && (profile.role === 'staff' || profile.role === 'teacher')) {
+          docsData = docsData.filter(d => !d.ownerId || d.ownerId === profile.id || d.createdBy === profile.id || d.type === 'internal' || d.category === 'sop' || d.category === 'contracts');
+        }
+
+        // Keep the document list as the primary surface; metadata is available from each item's properties menu.
+        docsData = docsData.map(d => ({ ...d }));
+        setDocsList(docsData);
+        setLoading(false);
+      }, (error) => {
+        clearTimeout(safetyTimeout);
+        console.warn("Error subscribing to documents:", error);
+        setLoading(false);
       });
-      
-      // If staff/teacher, show documents they created, own, or general workspace docs (templates/sop/reports)
-      if (profile.role === 'staff' || profile.role === 'teacher') {
-        docsData = docsData.filter(d => !d.ownerId || d.ownerId === profile.id || d.createdBy === profile.id || d.type === 'internal' || d.category === 'sop' || d.category === 'contracts');
-      }
-      
-      // Keep the document list as the primary surface; metadata is available from each item's properties menu.
-      docsData = docsData.map(d => ({ ...d }));
-      setDocsList(docsData);
+    } catch (e) {
+      clearTimeout(safetyTimeout);
+      console.warn("Failed to subscribe to documents:", e);
       setLoading(false);
-    }, (error) => {
-      console.warn("Error subscribing to documents:", error);
-      setLoading(false);
-    });
+    }
 
-    const unsubClients = onSnapshot(collection(db, 'clients'), (clientsSnap) => {
-      let clientsData = clientsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
-      clientsData = clientsData.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      setClients(clientsData);
-    });
+    try {
+      unsubClients = onSnapshot(collection(db, 'clients'), (clientsSnap) => {
+        let clientsData = clientsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
+        clientsData = clientsData.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        setClients(clientsData);
+      }, (error) => {
+        console.warn("Error subscribing to clients:", error);
+      });
+    } catch (e) {
+      console.warn("Failed to subscribe to clients:", e);
+    }
 
     return () => {
+      clearTimeout(safetyTimeout);
       unsubDocs();
       unsubClients();
     };
   }, [user, profile]);
 
   const fetchData = async () => {
-    if (!profile) return;
     try {
       const [docsSnap, clientsSnap] = await Promise.all([
         getDocs(collection(db, 'documents')),
@@ -224,14 +324,16 @@ export function Documents() {
       });
       clientsData = clientsData.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       
-      if (profile.role === 'staff' || profile.role === 'teacher') {
+      if (profile && (profile.role === 'staff' || profile.role === 'teacher')) {
         docsData = docsData.filter(d => !d.ownerId || d.ownerId === profile.id || d.createdBy === profile.id || d.type === 'internal' || d.category === 'sop' || d.category === 'contracts');
       }
       
       setDocsList(docsData);
       setClients(clientsData);
+      setLoading(false);
     } catch (error) {
       console.warn("Error fetching documents:", error);
+      setLoading(false);
     }
   };
 
@@ -283,19 +385,25 @@ export function Documents() {
 
   // One-time conservative recovery pass for documents whose canonical
   // Firebase body is empty but whose saved version history still contains
-  // the document. It never overwrites non-empty documents.
+  // the document. Runs non-blockingly with a delay so it never slows down page load.
   useEffect(() => {
     if (!profile || (profile.role !== 'admin' && profile.role !== 'assistant')) return;
     let cancelled = false;
-    void repairBlankDocumentsFromHistory()
-      .then(result => {
-        if (!cancelled && result.repaired > 0) {
-          console.info('[HubMind] Repaired blank documents:', result.repaired, 'of', result.checked);
-          fetchData();
-        }
-      })
-      .catch(error => console.warn('[HubMind] Document recovery pass failed:', error));
-    return () => { cancelled = true; };
+    const timer = setTimeout(() => {
+      void repairBlankDocumentsFromHistory()
+        .then(result => {
+          if (!cancelled && result.repaired > 0) {
+            console.info('[HubMind] Repaired blank documents:', result.repaired, 'of', result.checked);
+            fetchData();
+          }
+        })
+        .catch(error => console.warn('[HubMind] Document recovery pass failed:', error));
+    }, 3500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [profile?.id, profile?.role]);
 
   const filteredDocs = docsList.filter(d => (d.title || '').toLowerCase().includes(search.toLowerCase()));

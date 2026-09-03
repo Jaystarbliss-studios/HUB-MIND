@@ -68,11 +68,7 @@ service cloud.firestore {
     }
 
     match /tasks/{taskId} {
-      allow read: if isAssistantOrAdmin()
-        || (isWorkspaceUser() && (
-          resource.data.assignedTo == request.auth.uid ||
-          resource.data.createdBy == request.auth.uid
-        ));
+      allow read: if signedIn();
       allow create: if isAssistantOrAdmin()
         || (isWorkspaceUser() && request.resource.data.createdBy == request.auth.uid);
       allow update: if isAssistantOrAdmin()
@@ -85,24 +81,18 @@ service cloud.firestore {
     }
 
     match /documents/{documentId} {
-      allow read: if isAssistantOrAdmin()
-        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
-      allow create: if isAssistantOrAdmin()
-        || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
-      allow update: if isAssistantOrAdmin()
-        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
+      allow read: if signedIn();
+      allow create, update: if signedIn();
       allow delete: if isAssistantOrAdmin()
         || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
 
       match /versions/{versionId} {
-        allow read, write: if isAssistantOrAdmin()
-          || (isWorkspaceUser() && get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId == request.auth.uid);
+        allow read, write: if signedIn();
       }
     }
 
     match /projects/{projectId} {
-      allow read: if isAssistantOrAdmin()
-        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
+      allow read: if signedIn();
       allow create: if isAssistantOrAdmin()
         || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin()
@@ -110,8 +100,7 @@ service cloud.firestore {
     }
 
     match /clients/{clientId} {
-      allow read: if isAssistantOrAdmin()
-        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
+      allow read: if signedIn();
       allow create: if isAssistantOrAdmin()
         || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin()
@@ -119,8 +108,7 @@ service cloud.firestore {
     }
 
     match /meetings/{meetingId} {
-      allow read: if isAssistantOrAdmin()
-        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
+      allow read: if signedIn();
       allow create: if isAssistantOrAdmin()
         || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin()
@@ -128,16 +116,14 @@ service cloud.firestore {
     }
 
     match /inbox/{inboxId} {
-      allow read: if isAssistantOrAdmin()
-        || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
+      allow read: if signedIn();
       allow create: if isWorkspaceUser() && request.resource.data.createdBy == request.auth.uid;
       allow update, delete: if isAssistantOrAdmin()
         || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
     }
 
     match /followUps/{followUpId} {
-      allow read: if isAssistantOrAdmin()
-        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
+      allow read: if signedIn();
       allow create: if isAssistantOrAdmin()
         || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin()
@@ -145,8 +131,7 @@ service cloud.firestore {
     }
 
     match /knowledge/{knowledgeId} {
-      allow read: if isAssistantOrAdmin()
-        || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
+      allow read: if signedIn();
       allow create: if isAssistantOrAdmin()
         || (isWorkspaceUser() && request.resource.data.createdBy == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin()

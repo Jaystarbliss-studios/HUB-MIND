@@ -459,7 +459,10 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
   if (navigator.onLine) {
     try {
       const docRef = doc(db, 'documents', docId);
-      const snap = await getDoc(docRef);
+      const snap = await Promise.race([
+        getDoc(docRef),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore fetch timeout')), 3500))
+      ]);
       if (snap.exists()) {
         const cloudData = snap.data();
 
