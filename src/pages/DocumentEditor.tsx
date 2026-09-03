@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { shareHubMindItem, copyShareUrl } from '../lib/shareLinks';
 import { useEditor } from '@tiptap/react';
@@ -42,7 +42,8 @@ import {
   ArrowLeft, Loader2, Save, Sun, Moon, 
   FileText, Eye, Sparkles,
   Clock, Cloud, History, WifiOff, RefreshCw,
-  Bold, Italic, List, Undo, Redo
+  Bold, Italic, List, Undo, Redo,
+  SplitSquareVertical, AlertTriangle
 } from 'lucide-react';
 import { 
   PaperSizeOption, 
@@ -52,6 +53,14 @@ import {
   computePageLayout, 
   calculateExactPageCount
 } from '../lib/paginationEngine';
+import {
+  PageBreak,
+  calculateDocumentHeight,
+  autoPaginateDocument,
+  insertHardPageBreak,
+  insertAutoSoftPageBreaks,
+  removeSoftPageBreaks,
+} from '../lib/paginationHelper';
 
 export type { PaperSizeOption, OrientationOption, MarginOption, PaperThemeOption };
 
@@ -158,6 +167,13 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
   const [shawnActivityFlash, setShawnActivityFlash] = useState<string | null>(null);
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
 
+  // Pagination Helper Status & Dynamic Height Metrics
+  const [docHeightPx, setDocHeightPx] = useState<number>(0);
+  const [isApproachingBoundary, setIsApproachingBoundary] = useState<boolean>(false);
+  const [remainingBoundaryPx, setRemainingBoundaryPx] = useState<number>(0);
+  const [hasSoftBreaks, setHasSoftBreaks] = useState<boolean>(false);
+  const metricsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const latestTitleRef = useRef(initialDoc?.title || 'Untitled Document');
@@ -223,6 +239,7 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
       TaskItem.configure({ nested: true }),
       CharacterCount,
       HubMindPasteEngine,
+      PageBreak,
     ],
     content: initialContent,
     editable: !isSharedView,
@@ -306,8 +323,63 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
       timeoutRef.current = setTimeout(() => {
         void saveDocument(htmlContent, editNow, undefined, jsonContent, false);
       }, 1000); // Autosave after 1s of inactivity
+
+      // 5. Update pagination helper metrics & calculate document height
+      if (metricsTimeoutRef.current) {
+        clearTimeout(metricsTimeoutRef.current);
+      }
+      metricsTimeoutRef.current = setTimeout(() => {
+        updatePaginationMetrics();
+      }, 250);
     },
   });
+
+  // Measure document height and boundary status with pagination helper
+  const updatePaginationMetrics = useCallback(() => {
+    if (!editor || editor.isDestroyed) return;
+    const host = document.getElementById('hubmind-active-editor-content-host');
+    if (!host) return;
+
+    const measuredHeight = calculateDocumentHeight(host);
+    setDocHeightPx(measuredHeight);
+
+    const status = autoPaginateDocument(editor, host, pageSize, orientation, marginOption);
+    setIsApproachingBoundary(status.isApproachingBoundary);
+    setRemainingBoundaryPx(status.activePageRemainingPx);
+    setHasSoftBreaks(status.hasSoftBreaks);
+
+    if (status.pageCount !== pageCount && status.pageCount > 0) {
+      setPageCount(status.pageCount);
+    }
+  }, [editor, pageSize, orientation, marginOption, pageCount]);
+
+  const handleInsertHardPageBreak = useCallback(() => {
+    if (!editor) return;
+    insertHardPageBreak(editor);
+    setTimeout(updatePaginationMetrics, 100);
+  }, [editor, updatePaginationMetrics]);
+
+  const handleRunAutoPaginate = useCallback(() => {
+    if (!editor) return;
+    const host = document.getElementById('hubmind-active-editor-content-host');
+    const result = insertAutoSoftPageBreaks(editor, host, pageSize, orientation, marginOption);
+    setTimeout(updatePaginationMetrics, 100);
+    return result;
+  }, [editor, pageSize, orientation, marginOption, updatePaginationMetrics]);
+
+  const handleRemoveSoftBreaks = useCallback(() => {
+    if (!editor) return;
+    removeSoftPageBreaks(editor);
+    setTimeout(updatePaginationMetrics, 100);
+  }, [editor, updatePaginationMetrics]);
+
+  // Recalculate pagination metrics when page layout settings change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      updatePaginationMetrics();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [pageSize, orientation, marginOption, updatePaginationMetrics]);
 
   useEffect(() => {
     if (editor && !editor.isDestroyed) {
@@ -885,6 +957,10 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
           activePage={activePage}
           onOpenPreview={() => setIsPreviewModalOpen(true)}
           onOpenVersionHistory={() => setIsVersionHistoryOpen(true)}
+          onInsertPageBreak={handleInsertHardPageBreak}
+          onAutoPaginate={handleRunAutoPaginate}
+          isApproachingBoundary={isApproachingBoundary}
+          docHeightPx={docHeightPx}
         />
       )}
 
@@ -991,7 +1067,33 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
 
           <div className="hidden md:flex items-center gap-2 text-slate-400">
             <span>{editor?.storage.characterCount?.words() || 0} words</span>
+            <span className="text-slate-600">•</span>
+            <span className="font-mono text-[10px]" title="Calculated document pixel height">
+              {docHeightPx ? `${docHeightPx}px` : ''}
+            </span>
           </div>
+
+          {/* Near Page Boundary Warning & Action */}
+          {isApproachingBoundary && (
+            <button
+              onClick={handleRunAutoPaginate}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-colors text-[10px] animate-pulse cursor-pointer"
+              title="Content is near the bottom page boundary. Click to insert a soft page break."
+            >
+              <AlertTriangle className="w-2.5 h-2.5" />
+              <span>Near Page End ({remainingBoundaryPx}px left) - Auto Break</span>
+            </button>
+          )}
+
+          {hasSoftBreaks && (
+            <button
+              onClick={handleRemoveSoftBreaks}
+              className="hidden lg:inline-flex items-center text-slate-500 hover:text-rose-400 transition-colors text-[10px] cursor-pointer"
+              title="Remove all automatically inserted soft page breaks"
+            >
+              Clear Soft Breaks
+            </button>
+          )}
         </div>
 
         {/* Real-time Second-Level Timestamps & Status in Footer Bar */}

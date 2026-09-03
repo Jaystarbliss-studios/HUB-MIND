@@ -40,6 +40,10 @@ interface DocumentRibbonProps {
   activePage?: number;
   onOpenPreview?: () => void;
   onOpenVersionHistory?: () => void;
+  onInsertPageBreak?: () => void;
+  onAutoPaginate?: () => void;
+  isApproachingBoundary?: boolean;
+  docHeightPx?: number;
 }
 
 export function DocumentRibbon({
@@ -65,6 +69,10 @@ export function DocumentRibbon({
   activePage = 1,
   onOpenPreview,
   onOpenVersionHistory,
+  onInsertPageBreak,
+  onAutoPaginate,
+  isApproachingBoundary,
+  docHeightPx,
 }: DocumentRibbonProps) {
   const [activeTab, setActiveTab] = useState<RibbonTab>('home');
   const [isPinned, setIsPinned] = useState<boolean>(() => {
@@ -776,15 +784,37 @@ export function DocumentRibbon({
 
             <div className="flex items-center gap-2 pr-3 border-r border-slate-800">
               <button
-                onClick={() => editor.chain().focus().setHorizontalRule().run()}
+                onClick={() => {
+                  if (onInsertPageBreak) {
+                    onInsertPageBreak();
+                  } else if (editor?.commands?.setPageBreak) {
+                    editor.commands.setPageBreak('hard');
+                  } else {
+                    editor?.chain().focus().setHorizontalRule().run();
+                  }
+                }}
                 className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 transition-colors"
-                title="Insert Page Break / Dividing Rule"
+                title="Insert Page Break (Ctrl+Enter / Mod+Enter)"
               >
                 <SplitSquareVertical className="w-3.5 h-3.5 text-accent" />
                 <span>Page Break</span>
               </button>
+              {onAutoPaginate && (
+                <button
+                  onClick={onAutoPaginate}
+                  className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors text-xs ${
+                    isApproachingBoundary
+                      ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 animate-pulse'
+                      : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+                  }`}
+                  title="Auto Paginate: Inserts soft page breaks when content approaches A4 boundaries"
+                >
+                  <SplitSquareVertical className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Auto Paginate (A4)</span>
+                </button>
+              )}
               <button
-                onClick={() => editor.chain().focus().setHorizontalRule().run()}
+                onClick={() => editor?.chain().focus().setHorizontalRule().run()}
                 className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 transition-colors"
                 title="Horizontal Dividing Line"
               >
@@ -980,13 +1010,36 @@ export function DocumentRibbon({
               </button>
 
               <button
-                onClick={() => editor.chain().focus().setHorizontalRule().run()}
+                onClick={() => {
+                  if (onInsertPageBreak) {
+                    onInsertPageBreak();
+                  } else if (editor?.commands?.setPageBreak) {
+                    editor.commands.setPageBreak('hard');
+                  } else {
+                    editor?.chain().focus().setHorizontalRule().run();
+                  }
+                }}
                 className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 font-medium transition-colors cursor-pointer"
-                title="Insert explicit page break"
+                title="Insert explicit page break (Ctrl+Enter / Mod+Enter)"
               >
                 <Plus className="w-3.5 h-3.5 text-accent" />
                 <span>Page Break</span>
               </button>
+
+              {onAutoPaginate && (
+                <button
+                  onClick={onAutoPaginate}
+                  className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 font-medium transition-colors cursor-pointer ${
+                    isApproachingBoundary
+                      ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 animate-pulse'
+                      : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+                  }`}
+                  title="Auto Paginate: Inserts soft page breaks when content approaches A4 boundaries"
+                >
+                  <SplitSquareVertical className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Auto Paginate (A4)</span>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -998,6 +1051,10 @@ export function DocumentRibbon({
               <div className="flex flex-col">
                 <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Total Pages</span>
                 <span className="text-sm font-bold text-slate-200">{pageCount} {pageCount === 1 ? 'Page' : 'Pages'}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Doc Height</span>
+                <span className="text-sm font-bold text-cyan-300 font-mono">{docHeightPx ? `${docHeightPx}px` : 'Dynamic'}</span>
               </div>
               <div className="flex flex-col">
                 <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Word Count</span>

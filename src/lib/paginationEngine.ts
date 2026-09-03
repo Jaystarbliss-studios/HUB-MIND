@@ -541,7 +541,9 @@ export function paginateDocument(
     const isExplicitBreak =
       node.tagName.toLowerCase() === 'hr' ||
       node.classList.contains('page-break') ||
-      node.getAttribute('data-page-break') === 'true';
+      node.classList.contains('soft-page-break') ||
+      node.classList.contains('hard-page-break') ||
+      Boolean(node.getAttribute('data-page-break'));
 
     const maxAllowedHeight =
       currentPageIndex === 0
