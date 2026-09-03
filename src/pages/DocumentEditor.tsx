@@ -141,6 +141,9 @@ export function DocumentEditor() {
   const latestEditTimestampRef = useRef<string | null>(null);
   const saveChainRef = useRef<Promise<void>>(Promise.resolve());
   const saveSequenceRef = useRef(0);
+  // Do not autosave Tiptap's initial empty state before Firestore has loaded.
+  const documentLoadedRef = useRef(false);
+  const hasUserChangesRef = useRef(false);
 
   useEffect(() => {
     latestTitleRef.current = docMeta?.title || 'Untitled Document';
@@ -193,6 +196,8 @@ export function DocumentEditor() {
     content: '',
     editable: !isSharedView,
     onUpdate: ({ editor }) => {
+      if (!documentLoadedRef.current) return;
+      hasUserChangesRef.current = true;
       const editNow = new Date().toISOString();
       setLastEditedTime(editNow);
       setSaveStatus('saving');
@@ -264,7 +269,8 @@ export function DocumentEditor() {
   };
 
   const saveDocument = async (content?: string, editTimestamp?: string, titleOverride?: string, contentJsonOverride?: any) => {
-    if (!id || isSharedView) return;
+    if (!id || isSharedView || !documentLoadedRef.current) return;
+    if (!hasUserChangesRef.current && !titleOverride) return;
 
     const htmlString = typeof content === 'string'
       ? content
@@ -456,6 +462,8 @@ export function DocumentEditor() {
 
         if (data) {
           setDocMeta(data);
+          documentLoadedRef.current = false;
+          hasUserChangesRef.current = false;
           if (data.pageSize) setPageSize(data.pageSize as PaperSizeOption);
           if (data.orientation) setOrientation(data.orientation as OrientationOption);
           if (data.marginOption) setMarginOption(data.marginOption as MarginOption);
@@ -473,6 +481,8 @@ export function DocumentEditor() {
               console.error('Could not render stored document content:', e);
             }
           }
+          documentLoadedRef.current = true;
+          hasUserChangesRef.current = false;
         } else {
           navigate('/documents');
         }
