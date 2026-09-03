@@ -141,6 +141,12 @@ export function DocumentEditor() {
   const latestEditTimestampRef = useRef<string | null>(null);
   const saveChainRef = useRef<Promise<void>>(Promise.resolve());
   const saveSequenceRef = useRef(0);
+  // Prevent initialization/navigation races from ever persisting an empty
+  // editor over a document that already has content. Once the user actually
+  // edits (including deleting all text), dirtyRef becomes true and an empty
+  // document is a legitimate value that can be saved.
+  const dirtyRef = useRef(false);
+  const loadedContentRef = useRef('');
 
   useEffect(() => {
     latestTitleRef.current = docMeta?.title || 'Untitled Document';
@@ -198,6 +204,7 @@ export function DocumentEditor() {
       setSaveStatus('saving');
       const htmlContent = editor.getHTML();
       latestContentRef.current = htmlContent;
+      dirtyRef.current = true;
       setEditorHtml(htmlContent);
       setEditorText(editor.getText());
       latestEditTimestampRef.current = editNow;
@@ -266,9 +273,16 @@ export function DocumentEditor() {
   const saveDocument = async (content?: string, editTimestamp?: string, titleOverride?: string, contentJsonOverride?: any) => {
     if (!id || isSharedView) return;
 
-    const htmlString = typeof content === 'string'
+    let htmlString = typeof content === 'string'
       ? content
       : (latestContentRef.current || (editor && !editor.isDestroyed ? editor.getHTML() : '') || '');
+
+    // Critical safety guard: during document initialization, Tiptap briefly
+    // contains an empty document. A title save/pagehide/autosave must never
+    // turn that transient state into the canonical Firebase body.
+    if (!dirtyRef.current && !htmlString.trim() && loadedContentRef.current.trim()) {
+      htmlString = loadedContentRef.current;
+    }
     const contentJson = contentJsonOverride ?? (editor && !editor.isDestroyed ? editor.getJSON() : undefined);
     const title = titleOverride ?? latestTitleRef.current ?? 'Untitled Document';
     const actualEditTime = editTimestamp || latestEditTimestampRef.current || lastEditedTime || new Date().toISOString();
@@ -456,6 +470,11 @@ export function DocumentEditor() {
 
         if (data) {
           setDocMeta(data);
+          const storedContent = typeof data.content === 'string' ? data.content : '';
+          const storedJson = data.contentJson;
+          loadedContentRef.current = storedContent;
+          latestContentRef.current = storedContent;
+          dirtyRef.current = false;
           if (data.pageSize) setPageSize(data.pageSize as PaperSizeOption);
           if (data.orientation) setOrientation(data.orientation as OrientationOption);
           if (data.marginOption) setMarginOption(data.marginOption as MarginOption);
