@@ -1,24 +1,26 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { 
   initializeAuth, 
   getAuth, 
   browserLocalPersistence, 
   browserSessionPersistence, 
   indexedDBLocalPersistence, 
-  browserPopupRedirectResolver 
+  browserPopupRedirectResolver,
+  Auth
 } from 'firebase/auth';
 import { 
   initializeFirestore, 
   getFirestore, 
   persistentLocalCache, 
-  persistentMultipleTabManager 
+  persistentMultipleTabManager,
+  Firestore
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 // Initialize Auth with durable browser persistence and safe fallback
-let authInstance;
+let authInstance: Auth;
 try {
   authInstance = initializeAuth(app, {
     persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
@@ -27,18 +29,22 @@ try {
 } catch {
   authInstance = getAuth(app);
 }
-export const auth = authInstance;
+export const auth: Auth = authInstance;
 
 export const FIRESTORE_DATABASE_ID = '(default)';
 
 // Initialize Firestore targeting the default database with offline persistence and resilient fallback
-let dbInstance;
+let dbInstance: Firestore;
 try {
   dbInstance = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
   });
 } catch {
-  dbInstance = getFirestore(app);
+  try {
+    dbInstance = getFirestore(app);
+  } catch {
+    dbInstance = initializeFirestore(app, {});
+  }
 }
-export const db = dbInstance;
+export const db: Firestore = dbInstance;
 

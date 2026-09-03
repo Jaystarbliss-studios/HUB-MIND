@@ -1,7 +1,7 @@
 import { Share2 } from 'lucide-react';
 import { shareHubMindItem, copyShareUrl } from '../lib/shareLinks';
 import React, { useEffect, useMemo, useState } from 'react';
-import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { FollowUp, FollowUpStatus, TaskPriority } from '../types';
@@ -31,26 +31,27 @@ export function FollowUps() {
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
+  useEffect(() => {
     if (!profile) return;
     setLoading(true);
-    try {
-      const base = collection(db, 'followUps');
-      const q = profile.role === 'admin' || profile.role === 'assistant'
-        ? query(base, orderBy('dueAt', 'asc'))
-        : query(base, where('ownerId', '==', profile.id));
-      const snap = await getDocs(q);
+
+    const base = collection(db, 'followUps');
+    const q = profile.role === 'admin' || profile.role === 'assistant'
+      ? query(base, orderBy('dueAt', 'asc'))
+      : query(base, where('ownerId', '==', profile.id));
+
+    const unsubscribe = onSnapshot(q, (snap) => {
       const next = snap.docs.map(d => ({ id: d.id, ...d.data() } as FollowUp));
       next.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
       setItems(next);
-    } catch (e) {
-      console.error('Failed to load follow-ups', e);
-    } finally {
       setLoading(false);
-    }
-  };
+    }, (e) => {
+      console.warn('Real-time follow-ups listener fallback:', e);
+      setLoading(false);
+    });
 
-  useEffect(() => { load(); }, [profile?.id, profile?.role]);
+    return () => unsubscribe();
+  }, [profile?.id, profile?.role]);
 
   const summary = useMemo(() => {
     const active = items.filter(i => !['resolved', 'cancelled'].includes(i.status));
@@ -84,7 +85,6 @@ export function FollowUps() {
       });
       setTitle(''); setPerson(''); setReason(''); setDueAt(''); setPriority('medium');
       setShowForm(false);
-      await load();
     } finally {
       setSaving(false);
     }
@@ -96,13 +96,11 @@ export function FollowUps() {
       lastContactAt: status === 'contacted' ? new Date().toISOString() : item.lastContactAt || null,
       updatedAt: new Date().toISOString(),
     });
-    await load();
   };
 
   const remove = async (item: FollowUp) => {
     if (!window.confirm(`Delete follow-up “${item.title}”?`)) return;
     await deleteDoc(doc(db, 'followUps', item.id));
-    await load();
   };
 
   return (

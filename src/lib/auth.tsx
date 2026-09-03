@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
-import { collection, query, where, getDocs, doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { User } from '../types';
 import { checkAndSeedWorkspaceData } from './dbSeed';
@@ -32,7 +32,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }, 2000);
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    let unsubscribeProfile: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Clean up previous profile listener if any
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
+      }
+
       setUser(firebaseUser);
       
       if (firebaseUser) {
@@ -56,82 +64,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(timeoutId);
 
         try {
-          // 1. Try to find the user by UID with 2.5s timeout
           const docRef = doc(db, 'users', firebaseUser.uid);
-          let docSnap: any = null;
-          try {
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500));
-            docSnap = await Promise.race([getDoc(docRef), timeoutPromise]);
-          } catch (e) {
-            console.warn('User UID lookup completed or timed out:', e);
-          }
 
-          if (docSnap && docSnap.exists()) {
-            const data = docSnap.data();
-            const role = isAppAdmin ? 'admin' : (data.role || 'staff');
-            const updatedProfile: User = {
-              ...data,
-              id: firebaseUser.uid,
-              name: data.name || defaultName,
-              email: firebaseUser.email || data.email || userEmail,
-              // Authenticated identity takes precedence over stale Firestore role data.
-              role,
-              status: data.status || 'active',
-              photoUrl: firebaseUser.photoURL || data.photoUrl,
-              preferredName: data.preferredName || undefined,
-              createdAt: data.createdAt || new Date().toISOString(),
-            };
-
-            // Sync photo or role if needed in background
-            if ((firebaseUser.photoURL && data.photoUrl !== firebaseUser.photoURL) || (isAppAdmin && data.role !== 'admin')) {
-              setDoc(docRef, { photoUrl: firebaseUser.photoURL, role: role }, { merge: true }).catch(() => {});
-            }
-
-            setProfile(updatedProfile);
-            checkAndSeedWorkspaceData(firebaseUser.uid, userEmail).catch(() => {});
-          } else {
-            // 2. Try to find by email if userEmail exists
-            let existingDocData: any = null;
-
-            if (userEmail) {
-              try {
-                const emailDocRef = doc(db, 'users', userEmail);
-                const emailSnap = await Promise.race([
-                  getDoc(emailDocRef),
-                  new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-                ]) as any;
-
-                if (emailSnap && emailSnap.exists()) {
-                  existingDocData = emailSnap.data();
-                }
-              } catch (e) {
-                console.warn('User email doc lookup skipped:', e);
-              }
-            }
-
-            if (existingDocData) {
-              const role = isAppAdmin ? 'admin' : (existingDocData.role || 'staff');
-              const resolvedProfile: User = {
-                ...existingDocData,
+          // Real-time listener for user profile changes in Firestore
+          unsubscribeProfile = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              const role = isAppAdmin ? 'admin' : (data.role || 'staff');
+              const updatedProfile: User = {
+                ...data,
                 id: firebaseUser.uid,
-                name: existingDocData.name || defaultName,
-                email: firebaseUser.email || existingDocData.email,
+                name: data.name || defaultName,
+                email: firebaseUser.email || data.email || userEmail,
                 role,
-                status: existingDocData.status || 'active',
-                photoUrl: firebaseUser.photoURL || existingDocData.photoUrl,
-                preferredName: existingDocData.preferredName || undefined,
-                createdAt: existingDocData.createdAt || new Date().toISOString(),
+                status: data.status || 'active',
+                photoUrl: firebaseUser.photoURL || data.photoUrl,
+                preferredName: data.preferredName || undefined,
+                createdAt: data.createdAt || new Date().toISOString(),
               };
 
-              setDoc(docRef, resolvedProfile, { merge: true }).catch(() => {});
-              setProfile(resolvedProfile);
+              // Sync photo or role if needed in background
+              if ((firebaseUser.photoURL && data.photoUrl !== firebaseUser.photoURL) || (isAppAdmin && data.role !== 'admin')) {
+                setDoc(docRef, { photoUrl: firebaseUser.photoURL, role: role }, { merge: true }).catch(() => {});
+              }
+
+              setProfile(updatedProfile);
+              checkAndSeedWorkspaceData(firebaseUser.uid, userEmail).catch(() => {});
             } else {
-              // 3. Persist new user profile in background
-              setDoc(docRef, baseProfile, { merge: true }).catch(() => {});
+              // Persist initial user profile in Firestore
+              setDoc(docRef, baseProfile, { merge: true }).catch((err) => {
+                console.warn('Initial user profile write warning:', err);
+              });
             }
-          }
+          }, (err) => {
+            console.warn('Real-time profile listener warning (using optimistic base profile):', err);
+          });
         } catch (error) {
-          console.error("Non-blocking error in auth background sync:", error);
+          console.error("Non-blocking error in auth setup:", error);
         }
       } else {
         setProfile(null);
@@ -142,7 +111,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       clearTimeout(timeoutId);
-      unsubscribe();
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+      }
+      unsubscribeAuth();
     };
   }, []);
 

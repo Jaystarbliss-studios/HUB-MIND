@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { useLoading } from '../lib/loadingContext';
 import { DashboardSkeleton } from '../components/skeletons/DashboardSkeleton';
-import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task, Meeting, Client, DocumentInfo, InboxItem, ActivityLog } from '../types';
+import { getLocalTasks, getLocalProjects, getLocalMeetings, getLocalClients } from '../lib/localWorkspaceStore';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { isToday, isBefore, startOfDay, parseISO, format, startOfWeek, endOfWeek } from 'date-fns';
 import { CheckCircle2, Clock, Calendar as CalendarIcon, FileText, Loader2, Bell, Users, Inbox, Activity, Check, Clock3 } from 'lucide-react';
@@ -73,22 +74,50 @@ export function Dashboard() {
   const { startLoading, stopLoading } = useLoading();
   const [loading, setLoading] = useState(true);
 
-  // Data states
-  const [urgentTasksCount, setUrgentTasksCount] = useState(0);
-  const [todayMeetingsCount, setTodayMeetingsCount] = useState(0);
-  const [clientsWaitingCount, setClientsWaitingCount] = useState(0);
+  // Data states initialized from durable local store for zero-latency initial paint
+  const [urgentTasksCount, setUrgentTasksCount] = useState(() => {
+    const local = getLocalTasks();
+    return local.filter(t => t.priority === 'urgent' && t.status !== 'completed' && t.status !== 'archived').length;
+  });
+  const [todayMeetingsCount, setTodayMeetingsCount] = useState(() => {
+    const local = getLocalMeetings();
+    return local.filter(m => isToday(safeParseISO(m.date))).length;
+  });
+  const [clientsWaitingCount, setClientsWaitingCount] = useState(() => {
+    const local = getLocalClients();
+    return local.filter(c => c.status === 'lead').length;
+  });
   const [inboxItemsCount, setInboxItemsCount] = useState(0);
-  const [tasksOverdueCount, setTasksOverdueCount] = useState(0);
-  const [meetingsThisWeekCount, setMeetingsThisWeekCount] = useState(0);
-  const [totalTasksCount, setTotalTasksCount] = useState(0);
-  const [completedTasksCount, setCompletedTasksCount] = useState(0);
-  const [totalProjectsCount, setTotalProjectsCount] = useState(0);
-  const [activeProjectsCount, setActiveProjectsCount] = useState(0);
+  const [tasksOverdueCount, setTasksOverdueCount] = useState(() => {
+    const local = getLocalTasks();
+    const startOfToday = startOfDay(new Date());
+    return local.filter(t => t.deadline && isBefore(safeParseISO(t.deadline), startOfToday) && t.status !== 'completed' && t.status !== 'archived').length;
+  });
+  const [meetingsThisWeekCount, setMeetingsThisWeekCount] = useState(() => {
+    const local = getLocalMeetings();
+    const today = new Date();
+    const weekStart = startOfWeek(today);
+    const weekEnd = endOfWeek(today);
+    return local.filter(m => {
+      const d = safeParseISO(m.date);
+      return d >= weekStart && d <= weekEnd;
+    }).length;
+  });
+  const [totalTasksCount, setTotalTasksCount] = useState(() => getLocalTasks().length);
+  const [completedTasksCount, setCompletedTasksCount] = useState(() => getLocalTasks().filter(t => t.status === 'completed').length);
+  const [totalProjectsCount, setTotalProjectsCount] = useState(() => getLocalProjects().length);
+  const [activeProjectsCount, setActiveProjectsCount] = useState(() => getLocalProjects().filter(p => p.status === 'active').length);
   const [followUpsDueCount, setFollowUpsDueCount] = useState(0);
   const [followUpsWaitingCount, setFollowUpsWaitingCount] = useState(0);
   const [documentsAttentionCount, setDocumentsAttentionCount] = useState(0);
   const [paymentsAwaitingCount, setPaymentsAwaitingCount] = useState(0);
-  const [weekTasksCount, setWeekTasksCount] = useState(0);
+  const [weekTasksCount, setWeekTasksCount] = useState(() => {
+    const local = getLocalTasks();
+    const today = new Date();
+    const weekStart = startOfWeek(today);
+    const weekEnd = endOfWeek(today);
+    return local.filter(t => t.deadline && safeParseISO(t.deadline) >= weekStart && safeParseISO(t.deadline) <= weekEnd && t.status !== 'archived').length;
+  });
   const [reportText, setReportText] = useState('');
   const [reportGenerating, setReportGenerating] = useState(false);
   const [reportSaving, setReportSaving] = useState(false);
@@ -111,159 +140,147 @@ export function Dashboard() {
 
   useEffect(() => {
     if (!profile) return;
+    startLoading('dashboard');
 
-    const fetchData = async () => {
-      startLoading('dashboard');
-      try {
+    const unsubscribers: (() => void)[] = [];
+
+    try {
+      // 1. Real-time Tasks Listener
+      const tasksQuery = profile.role === 'admin' || profile.role === 'assistant' 
+         ? query(collection(db, 'tasks'))
+         : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
+
+      const unsubTasks = onSnapshot(tasksQuery, (tasksSnap) => {
         const today = new Date();
         const startOfToday = startOfDay(today);
         const weekStart = startOfWeek(today);
         const weekEnd = endOfWeek(today);
-
-        // Fetch Tasks (Urgent, Overdue, Total, Completed)
-        try {
-          const tasksQuery = profile.role === 'admin' || profile.role === 'assistant' 
-             ? query(collection(db, 'tasks'))
-             : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
-          const tasksSnap = await getDocs(tasksQuery);
-          let urgentTasks = 0;
-          let overdueTasks = 0;
-          let completedTasks = 0;
-          tasksSnap.docs.forEach(doc => {
-            const t = doc.data() as Task;
-            if (t.status === 'completed') {
-              completedTasks++;
-            } else if (t.status !== 'archived') {
-              if (t.priority === 'urgent') urgentTasks++;
-              if (t.deadline && isBefore(safeParseISO(t.deadline), startOfToday)) overdueTasks++;
-            }
-          });
-          setUrgentTasksCount(urgentTasks);
-          setTasksOverdueCount(overdueTasks);
-          setTotalTasksCount(tasksSnap.docs.length);
-          setCompletedTasksCount(completedTasks);
-          setWeekTasksCount(tasksSnap.docs.filter(d => {
-            const t = d.data() as Task;
-            return t.deadline && safeParseISO(t.deadline) >= weekStart && safeParseISO(t.deadline) <= weekEnd && t.status !== 'archived';
-          }).length);
-        } catch (e) {
-          console.warn('Dashboard tasks query warning:', e);
-        }
-
-        // Fetch Projects for Progress Ring
-        try {
-          const projSnap = await getDocs(collection(db, 'projects'));
-          setTotalProjectsCount(projSnap.docs.length);
-          const active = projSnap.docs.filter(d => (d.data() as any).status === 'active').length;
-          setActiveProjectsCount(active);
-        } catch (e) {
-          console.warn('Dashboard projects query warning:', e);
-        }
-
-        // Fetch Meetings
-        try {
-          const meetingsQuery = query(collection(db, 'meetings'));
-          const meetingsSnap = await getDocs(meetingsQuery);
-          let meetingsToday = 0;
-          let meetingsWeek = 0;
-          meetingsSnap.docs.forEach(doc => {
-            const m = doc.data() as Meeting;
-            const mDate = safeParseISO(m.date);
-            if (isToday(mDate)) meetingsToday++;
-            if (mDate >= weekStart && mDate <= weekEnd) meetingsWeek++;
-          });
-          setTodayMeetingsCount(meetingsToday);
-          setMeetingsThisWeekCount(meetingsWeek);
-        } catch (e) {
-          console.warn('Dashboard meetings query warning:', e);
-        }
-
-        // Fetch Clients Waiting (Lead status)
-        try {
-          const clientsQuery = query(collection(db, 'clients'), where('status', '==', 'lead'));
-          const clientsSnap = await getDocs(clientsQuery);
-          setClientsWaitingCount(clientsSnap.docs.length);
-        } catch (e) {
-          console.warn('Dashboard clients query warning:', e);
-        }
-
-        // Fetch Inbox Items
-        try {
-          const inboxQuery = profile.role === 'admin' || profile.role === 'assistant'
-             ? query(collection(db, 'inbox'), where('status', '==', 'unprocessed'))
-             : query(collection(db, 'inbox'), where('status', '==', 'unprocessed'), where('createdBy', '==', profile.id));
-          const inboxSnap = await getDocs(inboxQuery);
-          setInboxItemsCount(inboxSnap.docs.length);
-        } catch (e) {
-          console.warn('Dashboard inbox query warning:', e);
-        }
-
-        // Fetch operational follow-ups. Assistant/Admin see the workspace; other users see their own.
-        try {
-          const followUpsQuery = profile.role === 'admin' || profile.role === 'assistant'
-            ? query(collection(db, 'followUps'))
-            : query(collection(db, 'followUps'), where('ownerId', '==', profile.id));
-          const followUpsSnap = await getDocs(followUpsQuery);
-          const active = followUpsSnap.docs.filter(d => !['resolved', 'cancelled'].includes((d.data() as any).status));
-          const now = Date.now();
-          setFollowUpsDueCount(active.filter(d => new Date((d.data() as any).dueAt).getTime() <= now).length);
-          setFollowUpsWaitingCount(active.filter(d => (d.data() as any).status === 'waiting').length);
-        } catch (e) {
-          console.warn('Dashboard follow-up query warning:', e);
-        }
-
-        // Documents needing attention: support common review/draft flags without assuming a field exists.
-        try {
-          const docsSnap = await getDocs(collection(db, 'documents'));
-          const attention = docsSnap.docs.filter(d => {
-            const x = d.data() as any;
-            return x.status === 'pending_review' || x.status === 'needs_review' || x.reviewRequired === true;
-          }).length;
-          setDocumentsAttentionCount(attention);
-        } catch (e) {
-          console.warn('Dashboard documents query warning:', e);
-        }
-
-        // Payments awaiting confirmation. The collection is optional; an absent/empty collection is simply zero.
-        try {
-          const paymentsSnap = await getDocs(collection(db, 'payments'));
-          const awaiting = paymentsSnap.docs.filter(d => {
-            const x = d.data() as any;
-            return ['pending', 'awaiting_confirmation', 'awaiting_payment', 'pending_confirmation'].includes(x.status);
-          }).length;
-          setPaymentsAwaitingCount(awaiting);
-        } catch (e) {
-          console.warn('Dashboard payments query warning:', e);
-        }
-
-        // Fetch Quick Notes
-        try {
-          const notesDoc = await getDoc(doc(db, 'users', profile.id, 'private', 'quickNotes'));
-          if (notesDoc.exists()) {
-            setNotes(notesDoc.data().content || '');
+        let urgentTasks = 0;
+        let overdueTasks = 0;
+        let completedTasks = 0;
+        tasksSnap.docs.forEach(doc => {
+          const t = doc.data() as Task;
+          if (t.status === 'completed') {
+            completedTasks++;
+          } else if (t.status !== 'archived') {
+            if (t.priority === 'urgent') urgentTasks++;
+            if (t.deadline && isBefore(safeParseISO(t.deadline), startOfToday)) overdueTasks++;
           }
-        } catch (e) {
-          console.warn('Dashboard quick notes warning:', e);
-        }
-
-        // Fetch Recent Activity
-        try {
-          const activityQuery = query(collection(db, 'activityLogs'), orderBy('createdAt', 'desc'), limit(10));
-          const activitySnap = await getDocs(activityQuery);
-          setRecentActivity(activitySnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog)));
-        } catch (e) {
-          console.warn('Dashboard activity query warning:', e);
-        }
-
-      } catch (error) {
-        console.error("Error fetching operations hub data", error);
-      } finally {
+        });
+        setUrgentTasksCount(urgentTasks);
+        setTasksOverdueCount(overdueTasks);
+        setTotalTasksCount(tasksSnap.docs.length);
+        setCompletedTasksCount(completedTasks);
+        setWeekTasksCount(tasksSnap.docs.filter(d => {
+          const t = d.data() as Task;
+          return t.deadline && safeParseISO(t.deadline) >= weekStart && safeParseISO(t.deadline) <= weekEnd && t.status !== 'archived';
+        }).length);
         setLoading(false);
         stopLoading('dashboard');
-      }
-    };
+      }, (e) => {
+        console.warn('Dashboard tasks subscription fallback:', e);
+        setLoading(false);
+        stopLoading('dashboard');
+      });
+      unsubscribers.push(unsubTasks);
 
-    fetchData();
+      // 2. Real-time Projects Listener
+      const unsubProjects = onSnapshot(collection(db, 'projects'), (projSnap) => {
+        setTotalProjectsCount(projSnap.docs.length);
+        const active = projSnap.docs.filter(d => (d.data() as any).status === 'active').length;
+        setActiveProjectsCount(active);
+      }, (e) => console.warn('Dashboard projects subscription fallback:', e));
+      unsubscribers.push(unsubProjects);
+
+      // 3. Real-time Meetings Listener
+      const meetingsQuery = query(collection(db, 'meetings'));
+      const unsubMeetings = onSnapshot(meetingsQuery, (meetingsSnap) => {
+        const today = new Date();
+        const weekStart = startOfWeek(today);
+        const weekEnd = endOfWeek(today);
+        let meetingsToday = 0;
+        let meetingsWeek = 0;
+        meetingsSnap.docs.forEach(doc => {
+          const m = doc.data() as Meeting;
+          const mDate = safeParseISO(m.date);
+          if (isToday(mDate)) meetingsToday++;
+          if (mDate >= weekStart && mDate <= weekEnd) meetingsWeek++;
+        });
+        setTodayMeetingsCount(meetingsToday);
+        setMeetingsThisWeekCount(meetingsWeek);
+      }, (e) => console.warn('Dashboard meetings subscription fallback:', e));
+      unsubscribers.push(unsubMeetings);
+
+      // 4. Real-time Clients Waiting Listener
+      const clientsQuery = query(collection(db, 'clients'), where('status', '==', 'lead'));
+      const unsubClients = onSnapshot(clientsQuery, (clientsSnap) => {
+        setClientsWaitingCount(clientsSnap.docs.length);
+      }, (e) => console.warn('Dashboard clients subscription fallback:', e));
+      unsubscribers.push(unsubClients);
+
+      // 5. Real-time Inbox Listener
+      const inboxQuery = profile.role === 'admin' || profile.role === 'assistant'
+         ? query(collection(db, 'inbox'), where('status', '==', 'unprocessed'))
+         : query(collection(db, 'inbox'), where('status', '==', 'unprocessed'), where('createdBy', '==', profile.id));
+      const unsubInbox = onSnapshot(inboxQuery, (inboxSnap) => {
+        setInboxItemsCount(inboxSnap.docs.length);
+      }, (e) => console.warn('Dashboard inbox subscription fallback:', e));
+      unsubscribers.push(unsubInbox);
+
+      // 6. Real-time Follow-Ups Listener
+      const followUpsQuery = profile.role === 'admin' || profile.role === 'assistant'
+        ? query(collection(db, 'followUps'))
+        : query(collection(db, 'followUps'), where('ownerId', '==', profile.id));
+      const unsubFollowUps = onSnapshot(followUpsQuery, (followUpsSnap) => {
+        const active = followUpsSnap.docs.filter(d => !['resolved', 'cancelled'].includes((d.data() as any).status));
+        const now = Date.now();
+        setFollowUpsDueCount(active.filter(d => new Date((d.data() as any).dueAt).getTime() <= now).length);
+        setFollowUpsWaitingCount(active.filter(d => (d.data() as any).status === 'waiting').length);
+      }, (e) => console.warn('Dashboard follow-ups subscription fallback:', e));
+      unsubscribers.push(unsubFollowUps);
+
+      // 7. Real-time Activity Logs Listener
+      const activityQuery = query(collection(db, 'activityLogs'), orderBy('createdAt', 'desc'), limit(10));
+      const unsubActivity = onSnapshot(activityQuery, (activitySnap) => {
+        setRecentActivity(activitySnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog)));
+      }, (e) => console.warn('Dashboard activity subscription fallback:', e));
+      unsubscribers.push(unsubActivity);
+
+      // 8. One-time reads for Documents Attention & Notes
+      getDocs(collection(db, 'documents')).then((docsSnap) => {
+        const attention = docsSnap.docs.filter(d => {
+          const x = d.data() as any;
+          return x.status === 'pending_review' || x.status === 'needs_review' || x.reviewRequired === true;
+        }).length;
+        setDocumentsAttentionCount(attention);
+      }).catch((e) => console.warn('Dashboard documents attention warning:', e));
+
+      getDocs(collection(db, 'payments')).then((paymentsSnap) => {
+        const awaiting = paymentsSnap.docs.filter(d => {
+          const x = d.data() as any;
+          return ['pending', 'awaiting_confirmation', 'awaiting_payment', 'pending_confirmation'].includes(x.status);
+        }).length;
+        setPaymentsAwaitingCount(awaiting);
+      }).catch(() => {});
+
+      getDoc(doc(db, 'users', profile.id, 'private', 'quickNotes')).then((notesDoc) => {
+        if (notesDoc.exists()) {
+          setNotes(notesDoc.data().content || '');
+        }
+      }).catch((e) => console.warn('Dashboard quick notes warning:', e));
+
+    } catch (err) {
+      console.error('Error setting up dashboard subscriptions:', err);
+      setLoading(false);
+      stopLoading('dashboard');
+    }
+
+    return () => {
+      unsubscribers.forEach(unsub => {
+        try { unsub(); } catch {}
+      });
+      stopLoading('dashboard');
+    };
   }, [profile, startLoading, stopLoading]);
 
   const sendTodayScheduleToWhatsApp = async () => {

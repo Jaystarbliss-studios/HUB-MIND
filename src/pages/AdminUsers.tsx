@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, query, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, getAuth, signOut } from 'firebase/auth';
 import { getApps, getApp, initializeApp } from 'firebase/app';
 import { db, auth } from '../firebaseConfig';
@@ -54,9 +54,27 @@ export function AdminUsers() {
 
   useEffect(() => {
     if (activeTab === 'users') {
-      fetchUsers();
+      setLoadingUsers(true);
+      const q = query(collection(db, 'users'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+        setLoadingUsers(false);
+      }, (err) => {
+        console.warn('Real-time users subscription warning:', err);
+        setLoadingUsers(false);
+      });
+      return () => unsubscribe();
     } else {
-      fetchTemplates();
+      setLoadingTemplates(true);
+      const q = query(collection(db, 'recurringTaskTemplates'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RecurringTaskTemplate)));
+        setLoadingTemplates(false);
+      }, (err) => {
+        console.warn('Real-time templates subscription warning:', err);
+        setLoadingTemplates(false);
+      });
+      return () => unsubscribe();
     }
   }, [activeTab]);
 

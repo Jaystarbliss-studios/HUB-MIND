@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, getDocs, addDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, addDoc, doc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { Knowledge as KnowledgeType } from '../types';
@@ -19,21 +19,19 @@ export function Knowledge() {
   const [newCategory, setNewCategory] = useState<'sop' | 'template' | 'faq' | 'lesson'>('sop');
   const [search, setSearch] = useState('');
 
-  const fetchItems = async () => {
-    setLoading(true);
-    try {
-      const q = query(collection(db, 'knowledge'), orderBy('createdAt', 'desc'));
-      const snap = await getDocs(q);
-      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() } as KnowledgeType)));
-    } catch (error) {
-      console.error("Error fetching knowledge", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    if (profile) fetchItems();
+    if (!profile) return;
+    setLoading(true);
+    const q = query(collection(db, 'knowledge'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() } as KnowledgeType)));
+      setLoading(false);
+    }, (error) => {
+      console.warn("Real-time knowledge listener warning:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [profile]);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -53,7 +51,6 @@ export function Knowledge() {
       setNewTitle('');
       setNewContent('');
       setShowCreate(false);
-      fetchItems();
     } catch (error) {
       console.error("Error creating knowledge", error);
     }

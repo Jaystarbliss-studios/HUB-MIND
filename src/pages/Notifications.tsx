@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, query, orderBy, getDocs, limit } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { ActivityLog } from '../types';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
@@ -21,19 +21,16 @@ export function Notifications() {
   useEffect(() => {
     if (!profile) return;
     
-    const fetchLogs = async () => {
-      try {
-        const q = query(collection(db, 'activityLogs'), orderBy('createdAt', 'desc'), limit(50));
-        const snap = await getDocs(q);
-        setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as ActivityLog)));
-      } catch (error) {
-        console.error("Error fetching logs", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    const q = query(collection(db, 'activityLogs'), orderBy('createdAt', 'desc'), limit(50));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as ActivityLog)));
+      setLoading(false);
+    }, (error) => {
+      console.warn("Real-time activity logs listener warning:", error);
+      setLoading(false);
+    });
     
-    fetchLogs();
+    return () => unsubscribe();
   }, [profile]);
 
   if (loading) {
