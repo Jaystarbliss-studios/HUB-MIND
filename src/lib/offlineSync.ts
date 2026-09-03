@@ -29,6 +29,7 @@ export interface DocumentVersion {
   wordCount?: number;
   isCheckpoint?: boolean;
   checkpointName?: string;
+  contentJson?: any;
 }
 
 const OFFLINE_DOCS_KEY = 'hubmind_offline_documents_v1';
@@ -133,6 +134,7 @@ export async function saveDocumentOffline(
     documentId: docId,
     title: updatedRecord.title,
     content: updatedRecord.content,
+    ...(updatedRecord.contentJson ? { contentJson: updatedRecord.contentJson } : {}),
     createdAt: now,
     authorName: updatedRecord.lastModifiedBy || 'User',
     authorEmail: userProfile?.email || '',
@@ -219,6 +221,84 @@ export async function deleteDocumentOffline(docId: string): Promise<void> {
   const verify = await getDoc(doc(db, 'documents', docId));
   if (verify.exists()) throw new Error('Firestore did not confirm document deletion.');
 }
+/**
+ * Repair all blank document bodies that still have a valid saved version.
+ * This is deliberately conservative: it ONLY writes to a document when the
+ * current body is empty and a non-empty historical/local snapshot exists.
+ */
+export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: number; checked: number }> {
+  if (!navigator.onLine) return { repaired: 0, checked: 0 };
+
+  const docsSnap = await getDocs(collection(db, 'documents'));
+  const localDocs = getLocalDocsMap();
+  let repaired = 0;
+
+  for (const docSnap of docsSnap.docs) {
+    const data = docSnap.data() as any;
+    const currentHtml = typeof data.content === 'string' ? data.content.trim() : '';
+    const currentJson = data.contentJson;
+    if (currentHtml || currentJson) continue;
+
+    const docId = docSnap.id;
+    let recovery: any = null;
+
+    // Prefer Firestore history because it is device-independent.
+    try {
+      const versionsSnap = await getDocs(
+        query(collection(db, 'documents', docId, 'versions'), orderBy('createdAt', 'desc'), limit(100))
+      );
+      recovery = versionsSnap.docs
+        .map(v => v.data() as any)
+        .find(v => (typeof v.content === 'string' && v.content.trim()) || v.contentJson);
+    } catch (err) {
+      console.warn('[HubMind recovery] Could not inspect version history for', docId, err);
+    }
+
+    // If history is unavailable, use a known-good local snapshot.
+    if (!recovery) {
+      const local = localDocs[docId];
+      if (local && ((typeof local.content === 'string' && local.content.trim()) || local.contentJson)) {
+        recovery = local;
+      }
+    }
+
+    if (!recovery) continue;
+
+    const restoredContent = typeof recovery.content === 'string' ? recovery.content : '';
+    const restoredJson = recovery.contentJson;
+
+    try {
+      await updateDoc(doc(db, 'documents', docId), {
+        content: restoredContent,
+        ...(restoredJson ? { contentJson: restoredJson } : {}),
+        lastRecoveredAt: new Date().toISOString(),
+      });
+
+      localDocs[docId] = {
+        ...(localDocs[docId] || {
+          id: docId,
+          title: data.title || 'Untitled Document',
+          updatedAt: data.updatedAt || new Date().toISOString(),
+          lastSavedAt: data.lastSavedAt || new Date().toISOString(),
+          synced: true,
+          content: '',
+        }),
+        title: data.title || localDocs[docId]?.title || 'Untitled Document',
+        content: restoredContent,
+        ...(restoredJson ? { contentJson: restoredJson } : {}),
+        synced: true,
+      };
+
+      repaired++;
+    } catch (err) {
+      console.error('[HubMind recovery] Failed to repair', docId, err);
+    }
+  }
+
+  setLocalDocsMap(localDocs);
+  return { repaired, checked: docsSnap.size };
+}
+
 /**
  * Retrieve document with local cache fallback for full offline editing
  */
@@ -380,6 +460,7 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
           documentId: docId,
           title: record.title,
           content: record.content,
+          ...(record.contentJson ? { contentJson: record.contentJson } : {}),
           createdAt: record.updatedAt,
           authorName: record.lastModifiedBy || 'User',
           summary: 'Synced from offline edit',
