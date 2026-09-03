@@ -31,19 +31,23 @@ try {
 }
 export const auth: Auth = authInstance;
 
-export const FIRESTORE_DATABASE_ID = '(default)';
+export const FIRESTORE_DATABASE_ID = (firebaseConfig as any).firestoreDatabaseId || '(default)';
 
-// Initialize Firestore targeting the default database with offline persistence and resilient fallback
+// Initialize Firestore targeting the configured database with offline persistence and resilient fallback
 let dbInstance: Firestore;
 try {
-  dbInstance = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-  });
+  dbInstance = initializeFirestore(
+    app,
+    {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    },
+    FIRESTORE_DATABASE_ID === '(default)' ? undefined : FIRESTORE_DATABASE_ID
+  );
 } catch {
   try {
-    dbInstance = getFirestore(app);
+    dbInstance = FIRESTORE_DATABASE_ID === '(default)' ? getFirestore(app) : getFirestore(app, FIRESTORE_DATABASE_ID);
   } catch {
-    dbInstance = initializeFirestore(app, {});
+    dbInstance = initializeFirestore(app, {}, FIRESTORE_DATABASE_ID === '(default)' ? undefined : FIRESTORE_DATABASE_ID);
   }
 }
 export const db: Firestore = dbInstance;

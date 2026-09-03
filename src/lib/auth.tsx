@@ -92,9 +92,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               checkAndSeedWorkspaceData(firebaseUser.uid, userEmail).catch(() => {});
             } else {
               // Persist initial user profile in Firestore
-              setDoc(docRef, baseProfile, { merge: true }).catch((err) => {
-                console.warn('Initial user profile write warning:', err);
-              });
+              setDoc(docRef, baseProfile, { merge: true })
+                .then(() => {
+                  checkAndSeedWorkspaceData(firebaseUser.uid, userEmail).catch(() => {});
+                })
+                .catch((err) => {
+                  console.warn('Initial user profile write warning:', err);
+                });
             }
           }, (err) => {
             console.warn('Real-time profile listener warning (using optimistic base profile):', err);

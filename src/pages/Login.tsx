@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithPopup, GoogleAuthProvider, signInAnonymously } from 'firebase/auth';
-import { auth } from '../firebaseConfig';
+import { auth, FIRESTORE_DATABASE_ID } from '../firebaseConfig';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Brain, LogIn, AlertCircle } from 'lucide-react';
+import { Loader2, Brain, LogIn, AlertCircle, Copy, Check, Database, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 
 export function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState(false);
   const navigate = useNavigate();
   const { user, profile } = useAuth();
 
@@ -44,7 +46,11 @@ export function Login() {
       if (err.code === 'auth/popup-closed-by-user') {
         setError('Sign in popup was closed before completing. Please try again.');
       } else if (err.code === 'auth/popup-blocked') {
-        setError('Pop-up was blocked by browser. Please allow popups or open in a new tab.');
+        setError('Pop-up was blocked by browser. Please allow popups in your browser address bar.');
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError(`Domain not authorized: "${window.location.hostname}". Please add this domain to Firebase Console -> Authentication -> Settings -> Authorized domains.`);
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setError('Google sign-in provider is not enabled. In Firebase Console, go to Build -> Authentication -> Sign-in method, click Google, and enable it.');
       } else {
         setError(err.message || 'Failed to log in with Google.');
       }
@@ -60,7 +66,11 @@ export function Login() {
       if (result.user) navigate('/', { replace: true });
     } catch (err: any) {
       console.error('Guest login error:', err);
-      setError(err.message || 'Guest sign-in failed');
+      if (err.code === 'auth/operation-not-allowed' || err.code === 'auth/admin-restricted-operation') {
+        setError('Anonymous sign-in is not enabled. In Firebase Console, go to Build -> Authentication -> Sign-in method, click Anonymous, and enable it.');
+      } else {
+        setError(err.message || 'Guest sign-in failed');
+      }
       setLoading(false);
     }
   };
@@ -102,9 +112,40 @@ export function Login() {
           </button>
         </div>
 
-        <p className="text-center text-xs text-slate-500 mt-6">
-          Authorized operations personnel only.
-        </p>
+        <div className="mt-6 pt-5 border-t border-slate-800/80 space-y-3">
+          <div className="flex items-center justify-between text-[11px] text-slate-400">
+            <span className="flex items-center gap-1.5 text-slate-400">
+              <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+              Connected Project
+            </span>
+            <span className="font-mono text-slate-300 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700/50">
+              {firebaseConfig.projectId}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-slate-400">
+            <span className="flex items-center gap-1.5 text-slate-400">
+              <Database className="w-3.5 h-3.5 text-teal-400" />
+              Database
+            </span>
+            <span className="font-mono text-slate-300 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700/50 max-w-[150px] truncate" title={FIRESTORE_DATABASE_ID}>
+              {FIRESTORE_DATABASE_ID}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(window.location.hostname);
+              setCopiedDomain(true);
+              setTimeout(() => setCopiedDomain(false), 2500);
+            }}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-slate-800/40 hover:bg-slate-800 border border-slate-700/40 text-[11px] text-slate-400 hover:text-slate-300 transition-colors"
+          >
+            {copiedDomain ? <Check className="w-3 h-3 text-teal-400" /> : <Copy className="w-3 h-3 text-slate-500" />}
+            <span>{copiedDomain ? 'Domain Copied to Clipboard' : 'Copy Preview Domain for Firebase Auth'}</span>
+          </button>
+        </div>
       </div>
     </div>
   );
