@@ -3,6 +3,7 @@ import { collection, query, orderBy, getDocs, addDoc, doc, updateDoc, onSnapshot
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { Project, Task, Client } from '../types';
+import { getLocalProjects, setLocalProjects, upsertLocalProject } from '../lib/localWorkspaceStore';
 import { logActivity } from '../lib/activity';
 import { Loader2, Plus, Folder, Search, LayoutGrid, CalendarRange } from 'lucide-react';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
@@ -19,11 +20,11 @@ function cn(...inputs: ClassValue[]) {
 
 export function Projects() {
   const { profile } = useAuth();
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<Project[]>(() => getLocalProjects());
   const [tasks, setTasks] = useState<Task[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'timeline'>('grid');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -31,27 +32,32 @@ export function Projects() {
 
   useEffect(() => {
     if (!profile) return;
-    setLoading(true);
 
     const unsubProjects = onSnapshot(collection(db, 'projects'), (snap) => {
-      const pData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Project));
-      pData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      setProjects(pData);
+      if (snap.docs.length > 0) {
+        const pData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Project));
+        pData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setLocalProjects(pData);
+        setProjects(pData);
+      } else {
+        setProjects(getLocalProjects());
+      }
       setLoading(false);
     }, (err) => {
-      console.warn("Error subscribing to projects:", err);
+      console.warn("Error subscribing to projects, using local storage fallback:", err);
+      setProjects(getLocalProjects());
       setLoading(false);
     });
 
     const unsubTasks = onSnapshot(collection(db, 'tasks'), (snap) => {
       const tData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
       setTasks(tData);
-    });
+    }, () => {});
 
     const unsubClients = onSnapshot(collection(db, 'clients'), (snap) => {
       const cData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Client));
       setClients(cData);
-    });
+    }, () => {});
 
     return () => {
       unsubProjects();
@@ -63,6 +69,19 @@ export function Projects() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
+    const newProj: Project = {
+      id: `proj-${Date.now()}`,
+      name: newTitle,
+      description: newDesc,
+      status: 'active',
+      ownerId: profile?.id || 'default_user',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    upsertLocalProject(newProj);
+    setProjects(prev => [newProj, ...prev]);
+
     try {
       const docRef = await addDoc(collection(db, 'projects'), {
         name: newTitle,
@@ -73,11 +92,12 @@ export function Projects() {
         updatedAt: new Date().toISOString()
       });
       await logActivity(docRef.id, 'project', 'created project', newTitle, profile?.name || 'User');
+    } catch (error) {
+      console.warn("Saved project locally (cloud sync pending):", error);
+    } finally {
       setNewTitle('');
       setNewDesc('');
       setShowCreate(false);
-    } catch (error) {
-      console.error("Error creating project", error);
     }
   };
 

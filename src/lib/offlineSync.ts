@@ -110,15 +110,54 @@ export function extractDocumentBody(data: any): { html: string; json: any | null
   return { html, json };
 }
 
+export function getDefaultDocs(): Record<string, OfflineDocRecord> {
+  const now = Date.now();
+  return {
+    'doc-seed-1': {
+      id: 'doc-seed-1',
+      title: 'Standard Operating Procedures - Client SLA & Escalations',
+      content: '<h2>Standard Operating Procedures: Client SLA & Escalations</h2><p>This operational handbook dictates turnaround time targets, tier-1 customer response guarantees, and emergency incident workflows across all academic and enterprise client engagements.</p><h3>1. Core Service Commitments</h3><p>• Tier 1 response within 15 minutes during standard operational hours.</p><p>• Incident post-mortem generated within 24 hours.</p>',
+      updatedAt: new Date(now - 86400000 * 7).toISOString(),
+      lastSavedAt: new Date(now - 86400000 * 7).toISOString(),
+      synced: true,
+    },
+    'doc-seed-2': {
+      id: 'doc-seed-2',
+      title: 'Service Master Agreement & Terms Template',
+      content: '<h2>Master Service Agreement & Workspace Governance</h2><p>Legal provisions, confidentiality covenants, data protection standards, and billing terms for educational institutions and corporate partners.</p>',
+      updatedAt: new Date(now - 86400000 * 4).toISOString(),
+      lastSavedAt: new Date(now - 86400000 * 4).toISOString(),
+      synced: true,
+    },
+    'doc-seed-3': {
+      id: 'doc-seed-3',
+      title: 'Operations Hub Weekly Briefing - Aug 2026',
+      content: '<h2>Operations Hub Executive Summary</h2><p>Weekly executive report detailing departmental milestones, client onboarding pipelines, Shawn voice assistant calibrations, and automated task execution benchmarks.</p>',
+      updatedAt: new Date(now - 86400000 * 1).toISOString(),
+      lastSavedAt: new Date(now - 86400000 * 1).toISOString(),
+      synced: true,
+    }
+  };
+}
+
 // Helpers to access local storage safely
 export function getLocalDocsMap(): Record<string, OfflineDocRecord> {
   try {
     const raw = localStorage.getItem(OFFLINE_DOCS_KEY);
-    return raw ? JSON.parse(raw) : {};
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+        return parsed;
+      }
+    }
   } catch (e) {
     console.warn('Failed to parse offline docs storage', e);
-    return {};
   }
+  const defaults = getDefaultDocs();
+  try {
+    localStorage.setItem(OFFLINE_DOCS_KEY, JSON.stringify(defaults));
+  } catch {}
+  return defaults;
 }
 
 export function setLocalDocsMap(map: Record<string, OfflineDocRecord>) {

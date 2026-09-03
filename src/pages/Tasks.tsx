@@ -5,6 +5,7 @@ import { TasksSkeleton } from '../components/skeletons/TasksSkeleton';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task } from '../types';
+import { getLocalTasks, setLocalTasks, upsertLocalTask } from '../lib/localWorkspaceStore';
 import { Loader2, Plus, Filter, Search, Repeat2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -19,8 +20,8 @@ import { RecurringTasksPanel } from '../components/RecurringTasksPanel';
 export function Tasks() {
   const { user, profile } = useAuth();
   const { startLoading, stopLoading } = useLoading();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tasks, setTasks] = useState<Task[]>(() => getLocalTasks());
+  const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState('all'); // all, active, completed
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -41,7 +42,6 @@ export function Tasks() {
     if (!user || !profile) return;
     processRecurringTasks().catch(err => console.warn('Recurring task processing:', err));
     
-    setLoading(true);
     startLoading('tasks');
     let q = query(collection(db, 'tasks'));
     
@@ -49,7 +49,9 @@ export function Tasks() {
       try {
         const { getDocs, collection } = await import('firebase/firestore');
         const snap = await getDocs(collection(db, 'clients'));
-        setClientsList(snap.docs.map(d => ({id: d.id, name: d.data().name})));
+        if (snap && snap.docs.length > 0) {
+          setClientsList(snap.docs.map(d => ({id: d.id, name: d.data().name})));
+        }
       } catch (e) {
         console.warn('Could not load clients for tasks:', e);
       }
@@ -57,20 +59,36 @@ export function Tasks() {
     fetchClients();
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Task));
-      // Sort in memory by createdAt descending
-      data = data.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      
-      // If staff, filter to their assigned/created tasks or unassigned workspace tasks
-      if (profile.role === 'staff' || profile.role === 'teacher') {
-        data = data.filter(t => !t.assignedTo || t.assignedTo === profile.id || t.createdBy === profile.id);
+      if (snapshot.docs.length > 0) {
+        let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Task));
+        // Sort in memory by createdAt descending
+        data = data.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setLocalTasks(data);
+        
+        // If staff, filter to their assigned/created tasks or unassigned workspace tasks
+        if (profile.role === 'staff' || profile.role === 'teacher') {
+          data = data.filter(t => !t.assignedTo || t.assignedTo === profile.id || t.createdBy === profile.id);
+        }
+        
+        setTasks(data);
+      } else {
+        const local = getLocalTasks();
+        let filtered = local;
+        if (profile.role === 'staff' || profile.role === 'teacher') {
+          filtered = local.filter(t => !t.assignedTo || t.assignedTo === profile.id || t.createdBy === profile.id);
+        }
+        setTasks(filtered);
       }
-      
-      setTasks(data);
       setLoading(false);
       stopLoading('tasks');
     }, (error) => {
-      console.warn("Error subscribing to tasks, attempting fallback:", error);
+      console.warn("Error subscribing to tasks, utilizing local storage fallback:", error);
+      const local = getLocalTasks();
+      let filtered = local;
+      if (profile.role === 'staff' || profile.role === 'teacher') {
+        filtered = local.filter(t => !t.assignedTo || t.assignedTo === profile.id || t.createdBy === profile.id);
+      }
+      setTasks(filtered);
       setLoading(false);
       stopLoading('tasks');
     });
@@ -86,6 +104,26 @@ export function Tasks() {
     e.preventDefault();
     if (!newTaskTitle.trim() || !profile) return;
     setIsSubmitting(true);
+    const newTask: Task = {
+      id: `task-${Date.now()}`,
+      title: newTaskTitle,
+      description: newTaskDesc,
+      priority: newTaskPriority as any,
+      status: 'pending',
+      assignedTo: newTaskAssignee || profile.id,
+      createdBy: profile.id,
+      clientId: newTaskClient || undefined,
+      projectId: newTaskProject || undefined,
+      deadline: newTaskDeadline ? new Date(newTaskDeadline).toISOString() : undefined,
+      checklist: [],
+      comments: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    upsertLocalTask(newTask);
+    setTasks(prev => [newTask, ...prev]);
+
     try {
       await addDoc(collection(db, 'tasks'), {
         title: newTaskTitle,
@@ -102,6 +140,9 @@ export function Tasks() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
+    } catch (error) {
+      console.warn("Saved task locally (cloud sync pending):", error);
+    } finally {
       setIsDialogOpen(false);
       setNewTaskTitle('');
       setNewTaskDesc('');
@@ -110,9 +151,6 @@ export function Tasks() {
       setNewTaskProject('');
       setNewTaskAssignee('');
       setNewTaskDeadline('');
-    } catch (error) {
-      console.error("Error creating task:", error);
-    } finally {
       setIsSubmitting(false);
     }
   };

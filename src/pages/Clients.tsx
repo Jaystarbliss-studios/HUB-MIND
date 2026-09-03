@@ -5,6 +5,7 @@ import { ClientsSkeleton } from '../components/skeletons/ClientsSkeleton';
 import { collection, query, getDocs, orderBy, where, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Client } from '../types';
+import { getLocalClients, setLocalClients, upsertLocalClient } from '../lib/localWorkspaceStore';
 import { Loader2, Plus, Search, Building2, User, Users as UsersIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -15,8 +16,8 @@ import { getThumbnailUrl } from '../lib/cloudinary';
 export function Clients() {
   const { profile } = useAuth();
   const { startLoading, stopLoading } = useLoading();
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [clients, setClients] = useState<Client[]>(() => getLocalClients());
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'school' | 'parent' | 'partner'>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -29,18 +30,23 @@ export function Clients() {
 
   useEffect(() => {
     if (!profile) return;
-    setLoading(true);
     startLoading('clients');
     
     const q = query(collection(db, 'clients'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
-      data = data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      setClients(data);
+      if (snapshot.docs.length > 0) {
+        let data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
+        data = data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        setLocalClients(data);
+        setClients(data);
+      } else {
+        setClients(getLocalClients());
+      }
       setLoading(false);
       stopLoading('clients');
     }, (error) => {
-      console.error("Error fetching clients:", error);
+      console.warn("Clients listener warning, fallback to local storage:", error);
+      setClients(getLocalClients());
       setLoading(false);
       stopLoading('clients');
     });
@@ -62,8 +68,21 @@ export function Clients() {
     e.preventDefault();
     if (!newClientName.trim() || !profile) return;
     setIsSubmitting(true);
+    const newClient: Client = {
+      id: `client-${Date.now()}`,
+      name: newClientName,
+      type: newClientType,
+      email: newClientEmail,
+      phone: newClientPhone,
+      status: 'active',
+      ownerId: profile.id,
+      createdAt: new Date().toISOString()
+    };
+    upsertLocalClient(newClient);
+    setClients(prev => [newClient, ...prev].sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+
     try {
-      const docRef = await addDoc(collection(db, 'clients'), {
+      await addDoc(collection(db, 'clients'), {
         name: newClientName,
         type: newClientType,
         email: newClientEmail,
@@ -72,25 +91,14 @@ export function Clients() {
         ownerId: profile.id,
         createdAt: new Date().toISOString()
       });
-      const newClient = {
-        id: docRef.id,
-        name: newClientName,
-        type: newClientType,
-        email: newClientEmail,
-        phone: newClientPhone,
-        status: 'active',
-        ownerId: profile.id,
-        createdAt: new Date().toISOString()
-      } as Client;
-      setClients(prev => [newClient, ...prev].sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+    } catch (error) {
+      console.warn("Saved client locally (cloud sync pending):", error);
+    } finally {
       setIsDialogOpen(false);
       setNewClientName('');
       setNewClientEmail('');
       setNewClientPhone('');
       setNewClientType('school');
-    } catch (error) {
-      console.error("Error adding client:", error);
-    } finally {
       setIsSubmitting(false);
     }
   };

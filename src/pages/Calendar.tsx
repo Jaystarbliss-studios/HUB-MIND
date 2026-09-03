@@ -3,6 +3,7 @@ import { useAuth } from '../lib/auth';
 import { collection, query, getDocs, where, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Task, Meeting } from '../types';
+import { getLocalTasks, setLocalTasks, upsertLocalTask, getLocalMeetings, setLocalMeetings, upsertLocalMeeting } from '../lib/localWorkspaceStore';
 import { Link } from 'react-router-dom';
 import { 
   Loader2, ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, 
@@ -23,9 +24,9 @@ type FilterType = 'all' | 'meetings' | 'tasks';
 
 export function Calendar() {
   const { profile } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tasks, setTasks] = useState<Task[]>(() => getLocalTasks());
+  const [meetings, setMeetings] = useState<Meeting[]>(() => getLocalMeetings());
+  const [loading, setLoading] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
   const [filterType, setFilterType] = useState<FilterType>('all');
@@ -45,15 +46,18 @@ export function Calendar() {
 
   useEffect(() => {
     if (!profile) return;
-    setLoading(true);
     const fetchClients = async () => {
       try {
         const pSnap = await getDocs(collection(db, 'projects'));
-        setProjectsList(pSnap.docs.map(d => ({id: d.id, name: d.data().name})));
+        if (pSnap && pSnap.docs.length > 0) {
+          setProjectsList(pSnap.docs.map(d => ({id: d.id, name: d.data().name})));
+        }
         const snap = await getDocs(collection(db, 'clients'));
-        setClients(snap.docs.map(d => ({id: d.id, name: d.data().name})));
+        if (snap && snap.docs.length > 0) {
+          setClients(snap.docs.map(d => ({id: d.id, name: d.data().name})));
+        }
       } catch (err) {
-        console.error("Error fetching clients/projects:", err);
+        console.warn("Could not load clients/projects for calendar:", err);
       }
     };
     fetchClients();
@@ -66,31 +70,34 @@ export function Calendar() {
       
     const meetingsQuery = query(collection(db, 'meetings'));
 
-    let tasksLoaded = false;
-    let meetingsLoaded = false;
-
-    const checkLoading = () => {
-      if (tasksLoaded && meetingsLoaded) setLoading(false);
-    };
-
     const unsubTasks = onSnapshot(tasksQuery, (snap) => {
-      setTasks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task)));
-      tasksLoaded = true;
-      checkLoading();
+      if (snap.docs.length > 0) {
+        const loadedTasks = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+        setLocalTasks(loadedTasks);
+        setTasks(loadedTasks);
+      } else {
+        setTasks(getLocalTasks());
+      }
+      setLoading(false);
     }, (error) => {
-      console.error("Error fetching tasks:", error);
-      tasksLoaded = true;
-      checkLoading();
+      console.warn("Tasks listener warning, fallback to local storage:", error);
+      setTasks(getLocalTasks());
+      setLoading(false);
     });
 
     const unsubMeetings = onSnapshot(meetingsQuery, (snap) => {
-      setMeetings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Meeting)));
-      meetingsLoaded = true;
-      checkLoading();
+      if (snap.docs.length > 0) {
+        const loadedMeetings = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Meeting));
+        setLocalMeetings(loadedMeetings);
+        setMeetings(loadedMeetings);
+      } else {
+        setMeetings(getLocalMeetings());
+      }
+      setLoading(false);
     }, (error) => {
-      console.error("Error fetching meetings:", error);
-      meetingsLoaded = true;
-      checkLoading();
+      console.warn("Meetings listener warning, fallback to local storage:", error);
+      setMeetings(getLocalMeetings());
+      setLoading(false);
     });
 
     return () => {
@@ -120,7 +127,26 @@ export function Calendar() {
     try {
       if (formType === 'task') {
         const deadline = new Date(selectedDay);
-        await addDoc(collection(db, 'tasks'), {
+        const newTask: Task = {
+          id: `task-${Date.now()}`,
+          title,
+          description: '',
+          priority,
+          status: 'pending',
+          assignedTo: profile.id,
+          clientId: clientId || undefined,
+          projectId: projectId || undefined,
+          createdBy: profile.id,
+          deadline: deadline.toISOString(),
+          checklist: [],
+          comments: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        upsertLocalTask(newTask);
+        setTasks(prev => [newTask, ...prev]);
+
+        addDoc(collection(db, 'tasks'), {
           title,
           description: '',
           priority,
@@ -132,13 +158,29 @@ export function Calendar() {
           deadline: deadline.toISOString(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
-        });
+        }).catch(e => console.warn('Cloud task sync pending:', e));
       } else if (formType === 'meeting') {
         const [hours, minutes] = time.split(':').map(Number);
         const meetingDate = new Date(selectedDay);
         meetingDate.setHours(hours || 9, minutes || 0, 0, 0);
         
-        await addDoc(collection(db, 'meetings'), {
+        const newMeeting: Meeting = {
+          id: `meeting-${Date.now()}`,
+          title,
+          notesRaw: title,
+          date: meetingDate.toISOString(),
+          status: 'scheduled',
+          attendees: [],
+          actionPoints: [],
+          generatedDocs: [],
+          ownerId: profile.id,
+          projectId: projectId || undefined,
+          createdAt: new Date().toISOString()
+        };
+        upsertLocalMeeting(newMeeting);
+        setMeetings(prev => [newMeeting, ...prev]);
+
+        addDoc(collection(db, 'meetings'), {
           notesRaw: title,
           date: meetingDate.toISOString(),
           attendees: [],
@@ -147,7 +189,7 @@ export function Calendar() {
           ownerId: profile.id,
           projectId: projectId || null,
           createdAt: new Date().toISOString()
-        });
+        }).catch(e => console.warn('Cloud meeting sync pending:', e));
       }
       
       setSelectedDay(null);
