@@ -12,7 +12,7 @@ import { useUsers } from '../lib/useUsers';
 import { TemplateSelector } from '../components/documents/TemplateSelector';
 import { sanitizeClipboardHtml } from '../components/documents/clipboard/clipboard-sanitizer';
 import { normalizeClipboardHtml } from '../components/documents/clipboard/clipboard-normalizer';
-import { deleteDocumentOffline } from '../lib/offlineSync';
+import { deleteDocumentOffline, repairBlankDocumentsFromHistory } from '../lib/offlineSync';
 
 export function Documents() {
   const { profile, user } = useAuth();
@@ -250,6 +250,23 @@ export function Documents() {
 
     window.open((doc as any).fileRef, '_blank', 'noopener,noreferrer');
   };
+
+  // One-time conservative recovery pass for documents whose canonical
+  // Firebase body is empty but whose saved version history still contains
+  // the document. It never overwrites non-empty documents.
+  useEffect(() => {
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'assistant')) return;
+    let cancelled = false;
+    void repairBlankDocumentsFromHistory()
+      .then(result => {
+        if (!cancelled && result.repaired > 0) {
+          console.info('[HubMind] Repaired blank documents:', result.repaired, 'of', result.checked);
+          fetchData();
+        }
+      })
+      .catch(error => console.warn('[HubMind] Document recovery pass failed:', error));
+    return () => { cancelled = true; };
+  }, [profile?.id, profile?.role]);
 
   const filteredDocs = docsList.filter(d => (d.title || '').toLowerCase().includes(search.toLowerCase()));
 
