@@ -70,15 +70,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const data = docSnap.data();
             const role = isAppAdmin ? 'admin' : (data.role || 'staff');
             const updatedProfile: User = {
-              id: docSnap.id,
+              ...data,
+              id: firebaseUser.uid,
               name: data.name || defaultName,
               email: firebaseUser.email || data.email || userEmail,
-              role: role,
+              // Authenticated identity takes precedence over stale Firestore role data.
+              role,
               status: data.status || 'active',
               photoUrl: firebaseUser.photoURL || data.photoUrl,
               preferredName: data.preferredName || undefined,
               createdAt: data.createdAt || new Date().toISOString(),
-              ...data,
             };
 
             // Sync photo or role if needed in background
@@ -111,15 +112,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (existingDocData) {
               const role = isAppAdmin ? 'admin' : (existingDocData.role || 'staff');
               const resolvedProfile: User = {
+                ...existingDocData,
                 id: firebaseUser.uid,
                 name: existingDocData.name || defaultName,
                 email: firebaseUser.email || existingDocData.email,
-                role: role,
+                role,
                 status: existingDocData.status || 'active',
                 photoUrl: firebaseUser.photoURL || existingDocData.photoUrl,
                 preferredName: existingDocData.preferredName || undefined,
                 createdAt: existingDocData.createdAt || new Date().toISOString(),
-                ...existingDocData,
               };
 
               setDoc(docRef, resolvedProfile, { merge: true }).catch(() => {});
