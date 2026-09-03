@@ -121,7 +121,9 @@ export function PaginatedPageContainer({
     }
   }, []);
 
-  // Layout function that measures live DOM elements in the editor and distributes them across physical pages
+  // Calculate page placement without permanently rewriting the user's paragraph margins.
+  // Page geometry remains controlled by the central pagination engine while the
+  // ProseMirror document retains its own typography and alignment.
   const reflowEditorPages = useCallback(() => {
     if (!editorHostRef.current) return 1;
 
@@ -129,70 +131,110 @@ export function PaginatedPageContainer({
     if (!editorProse) return 1;
 
     const children = Array.from(editorProse.children) as HTMLElement[];
-    if (children.length === 0) return 1;
+    if (children.length === 0) {
+      setInternalPageCount(1);
+      if (pageCount !== 1) onPageCountChange(1);
+      return 1;
+    }
 
-    // Guaranteed margin safety distance at the bottom of each page
-    // Text must stop before this buffer, ensuring it never touches or enters the bottom margin or footer
-    const bottomMarginSafetyPx = 28;
+    // Clear only our previous temporary page-placement overrides before measuring.
+    children.forEach((child) => {
+      const original = child.dataset.hubmindOriginalMarginTop;
+      if (original !== undefined) child.style.marginTop = original;
+      delete child.dataset.hubmindOriginalMarginTop;
+      delete child.dataset.pageNumber;
+    });
 
-    const firstPageStartY = layout.marginsPx.top + layout.page1HeaderHeightPx;
-    const firstPageMaxY = layout.pageHeightPx - layout.marginsPx.bottom - bottomMarginSafetyPx;
-    const firstPageCapacity = Math.max(150, firstPageMaxY - firstPageStartY);
-
-    const subsequentStartY = layout.marginsPx.top + layout.subsequentHeaderHeightPx + 20;
-    const subsequentMaxY = layout.pageHeightPx - layout.marginsPx.bottom - bottomMarginSafetyPx;
-    const subsequentPageCapacity = Math.max(200, subsequentMaxY - subsequentStartY);
+    // Leave a small safety buffer so glyph descenders/anti-aliasing never appear
+    // inside the physical bottom margin.
+    const safetyPx = 12;
+    const firstPageCapacity = Math.max(
+      150,
+      layout.pageHeightPx -
+        layout.marginsPx.top -
+        layout.marginsPx.bottom -
+        layout.page1HeaderHeightPx -
+        safetyPx
+    );
+    const subsequentPageCapacity = Math.max(
+      200,
+      layout.pageHeightPx -
+        layout.marginsPx.top -
+        layout.marginsPx.bottom -
+        layout.subsequentHeaderHeightPx -
+        20 -
+        safetyPx
+    );
 
     let currentPage = 1;
-    let accumulatedHeightOnPage = 0;
+    let usedHeight = 0;
 
     children.forEach((child, index) => {
       const tagName = child.tagName.toLowerCase();
-      const isHeading = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName);
-      const isExplicitBreak = tagName === 'hr' || child.classList.contains('page-break') || child.getAttribute('data-page-break') === 'true';
+      const isExplicitBreak =
+        tagName === 'hr' ||
+        child.classList.contains('page-break') ||
+        child.classList.contains('soft-page-break') ||
+        child.classList.contains('hard-page-break') ||
+        child.getAttribute('data-page-break') === 'true' ||
+        child.getAttribute('data-page-break') === 'hard' ||
+        child.getAttribute('data-page-break') === 'soft';
 
-      const maxCapacity = currentPage === 1 ? firstPageCapacity : subsequentPageCapacity;
       const style = window.getComputedStyle(child);
       const marginTop = parseFloat(style.marginTop || '0') || 0;
       const marginBottom = parseFloat(style.marginBottom || '0') || 0;
-      const childHeight = (child.offsetHeight || 28) + marginTop + marginBottom;
-      const wouldOrphanHeading = isHeading && (accumulatedHeightOnPage + childHeight + 50 > maxCapacity);
+      const childHeight =
+        Math.max(1, child.getBoundingClientRect().height) +
+        marginTop +
+        marginBottom;
 
-      // Keep block elements strictly inside the printable content area.
-      // Once text reaches close to the page boundary, it automatically moves to the next sheet.
-      const shouldBreak = isExplicitBreak || (
-        index > 0 &&
-        (accumulatedHeightOnPage + childHeight > maxCapacity || wouldOrphanHeading)
-      );
+      const capacity =
+        currentPage === 1 ? firstPageCapacity : subsequentPageCapacity;
+      const isHeading = /^h[1-6]$/.test(tagName);
+      const orphanBuffer = isHeading ? 48 : 0;
 
-      if (shouldBreak) {
-        // Push this element to start of next physical page sheet
-        currentPage++;
-        accumulatedHeightOnPage = Math.min(childHeight, maxCapacity);
-        child.setAttribute('data-page-break-before', String(currentPage));
-        child.setAttribute('data-page-number', String(currentPage));
-
-        // Exact Y coordinate where content on Sheet (currentPage) must start
-        // Sheet N starts at: (currentPage - 1) * (layout.pageHeightPx + deskGapPx)
-        // Content on Sheet N starts at: Sheet N top + subsequentStartY
-        const targetContentTop = (currentPage - 1) * (layout.pageHeightPx + deskGapPx) + subsequentStartY;
-
-        // Measure previous sibling's bottom offset to calculate the exact bridge spacer needed
-        const prevChild = children[index - 1];
-        const prevBottom = prevChild ? (prevChild.offsetTop + prevChild.offsetHeight) : 0;
-
-        // Calculate exact margin-top to position this child precisely at targetContentTop
-        const neededMarginTop = Math.max(20, Math.round(targetContentTop - prevBottom));
-        if (child.style.marginTop !== `${neededMarginTop}px`) {
-          child.style.marginTop = `${neededMarginTop}px`;
-        }
-      } else {
-        accumulatedHeightOnPage += childHeight;
-        child.setAttribute('data-page-number', String(currentPage));
-        if (child.style.marginTop !== '') {
-          child.style.marginTop = '';
-        }
+      if (
+        isExplicitBreak ||
+        (index > 0 &&
+          usedHeight > 0 &&
+          usedHeight + childHeight + orphanBuffer > capacity)
+      ) {
+        currentPage += 1;
+        usedHeight = 0;
       }
+
+      child.dataset.pageNumber = String(currentPage);
+
+      if (isExplicitBreak) {
+        usedHeight = 0;
+        return;
+      }
+
+      // Position the first block of every subsequent sheet at that sheet's
+      // printable top. The original author-defined margin is retained and restored
+      // before every measurement, so alignment/spacing never becomes cumulative.
+      if (currentPage > 1 && usedHeight === 0) {
+        const originalMarginTop = child.style.marginTop;
+        child.dataset.hubmindOriginalMarginTop = originalMarginTop;
+
+        const editorTop = editorProse.getBoundingClientRect().top;
+        const pageTop =
+          editorTop +
+          (currentPage - 1) * (layout.pageHeightPx + deskGapPx) +
+          layout.marginsPx.top +
+          layout.subsequentHeaderHeightPx +
+          20;
+
+        const previous = children[index - 1];
+        const previousBottom = previous
+          ? previous.getBoundingClientRect().bottom
+          : editorTop;
+
+        const bridge = Math.max(0, Math.round(pageTop - previousBottom));
+        child.style.marginTop = `${Math.max(marginTop, bridge)}px`;
+      }
+
+      usedHeight += childHeight;
     });
 
     const totalPagesComputed = Math.max(1, currentPage);
