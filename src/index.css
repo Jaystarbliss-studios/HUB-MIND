@@ -48,9 +48,13 @@ body {
   overflow-wrap: anywhere;
   orphans: 3;
   widows: 3;
-  margin-top: 1rem;
-  margin-bottom: 2rem;
-  min-height: 100%;
+  /* The page surface owns its margins. Keeping ProseMirror margin-free prevents
+     margin-collapsing from shifting the first/last lines outside the printable area. */
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  width: 100%;
+  text-align: left;
 }
 
 .ProseMirror > * {
@@ -75,9 +79,48 @@ body {
 .document-paginated-editor-content {
   width: 100%;
   box-sizing: border-box;
-  margin-top: 0.5rem;
-  margin-bottom: 2rem;
+  margin: 0;
+  padding: 0;
   position: relative;
+  /* Never introduce a second page offset inside the already padded paper host. */
+  text-align: initial;
+}
+
+.document-paginated-editor-content .ProseMirror {
+  /* TipTap's editor must fill exactly the printable content width. */
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+/* Paginated editor physical-page safeguards */
+.document-paginated-editor-content .ProseMirror > * {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.document-paginated-editor-content .ProseMirror p,
+.document-paginated-editor-content .ProseMirror h1,
+.document-paginated-editor-content .ProseMirror h2,
+.document-paginated-editor-content .ProseMirror h3,
+.document-paginated-editor-content .ProseMirror h4,
+.document-paginated-editor-content .ProseMirror h5,
+.document-paginated-editor-content .ProseMirror h6 {
+  /* Preserve Tiptap's explicit text-align attribute (left/center/right/justify). */
+  text-align: inherit;
+}
+
+.document-paginated-editor-content .ProseMirror [style*="text-align"] {
+  text-align: revert;
+}
+
+.document-paginated-editor-content .ProseMirror img {
+  max-width: 100%;
+  height: auto;
 }
 
 /* Explicit high-contrast rules for Paper White */
