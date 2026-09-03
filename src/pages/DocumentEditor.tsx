@@ -168,6 +168,16 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
   const dirtyRef = useRef(false);
   const hasMountedRef = useRef(false);
 
+  // Firestore Document Loading & User Edit Guards:
+  // Autosave must NEVER run automatically until:
+  // 1) The document from Firestore has completely loaded into the editor
+  // 2) Actual modifications have been made by the user
+  // 3) The document is NOT a blank page of 0 words
+  const baselineHtmlRef = useRef<string>('');
+  const baselineTextRef = useRef<string>('');
+  const isDocumentLoadedRef = useRef<boolean>(false);
+  const hasUserEditedRef = useRef<boolean>(false);
+
   // Compute layout specs for dynamic display
   const currentLayout = useMemo(() => {
     return computePageLayout({ paperSize: pageSize, orientation, marginOption });
@@ -216,44 +226,88 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
     ],
     content: initialContent,
     editable: !isSharedView,
-    onUpdate: ({ editor }) => {
-      // Guard against false update triggers during mount initialization
-      if (!hasMountedRef.current) return;
+    onCreate: ({ editor }) => {
+      // Document is mounted in ProseMirror
+      const loadedHtml = editor.getHTML();
+      const loadedText = editor.getText();
+      baselineHtmlRef.current = loadedHtml;
+      baselineTextRef.current = loadedText;
 
-      const editNow = new Date().toISOString();
-      setLastEditedTime(editNow);
-      setSaveStatus('saving');
+      // Allow TipTap / ProseMirror schemas and extensions to complete initial normalization
+      setTimeout(() => {
+        if (editor && !editor.isDestroyed) {
+          baselineHtmlRef.current = editor.getHTML();
+          baselineTextRef.current = editor.getText();
+        }
+        isDocumentLoadedRef.current = true;
+        hasMountedRef.current = true;
+        dirtyRef.current = false;
+        hasUserEditedRef.current = false;
+        setSaveStatus('saved');
+      }, 400);
+    },
+    onUpdate: ({ editor, transaction }) => {
+      // 1. MUST wait for Firestore document content to be completely loaded and ready
+      if (!isDocumentLoadedRef.current || !hasMountedRef.current) {
+        return;
+      }
+
+      // 2. MUST be an actual document content change transaction
+      if (!transaction || !transaction.docChanged) {
+        return;
+      }
+
       const htmlContent = editor.getHTML();
-      latestContentRef.current = htmlContent;
-      dirtyRef.current = true;
-      setEditorHtml(htmlContent);
-      setEditorText(editor.getText());
-      latestEditTimestampRef.current = editNow;
-      const jsonContent = editor.getJSON();
+      const textContent = editor.getText();
+      const wordCount = editor.storage.characterCount?.words() ?? 0;
+      const textLength = textContent.trim().length;
+
+      // 3. MUST NOT save if content has not actually changed from the loaded Firestore baseline
+      if (htmlContent === baselineHtmlRef.current && textContent === baselineTextRef.current) {
+        return;
+      }
 
       // Recalculate page count
       const updatedPageCount = calculateExactPageCount(htmlContent, pageSize, orientation, marginOption);
       if (updatedPageCount !== pageCount) {
         setPageCount(updatedPageCount);
       }
-      
+      setEditorHtml(htmlContent);
+      setEditorText(textContent);
+      latestContentRef.current = htmlContent;
+
+      // 4. STRICT USER DIRECTIVE: Never save a blank page of 0 words automatically!
+      // If current document has 0 words or is empty, DO NOT schedule autosave!
+      if (wordCount === 0 || textLength === 0 || isContentEffectivelyEmpty(htmlContent, editor.getJSON())) {
+        console.log('[DocumentEditor] Autosave suppressed: blank document or 0 words.');
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        setSaveStatus('saved');
+        return;
+      }
+
+      // Mark that genuine user edits have been made
+      hasUserEditedRef.current = true;
+      dirtyRef.current = true;
+
+      const editNow = new Date().toISOString();
+      setLastEditedTime(editNow);
+      setSaveStatus('saving');
+      latestEditTimestampRef.current = editNow;
+      const jsonContent = editor.getJSON();
+
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
-      
+
+      // Autosave only after user has made real edits and document has > 0 words
       timeoutRef.current = setTimeout(() => {
-        void saveDocument(htmlContent, editNow, undefined, jsonContent);
-      }, 800); // Autosave after 0.8s of inactivity
+        void saveDocument(htmlContent, editNow, undefined, jsonContent, false);
+      }, 1000); // Autosave after 1s of inactivity
     },
   });
-
-  // Mark editor as mounted and ready
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      hasMountedRef.current = true;
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     if (editor && !editor.isDestroyed) {
@@ -310,8 +364,16 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
   ) => {
     if (!docId || isSharedView) return;
 
-    // Guard 1: Never save if user hasn't made an edit and it's not a forced save
-    if (!dirtyRef.current && !forceSave) return;
+    // Guard 1: Must wait for Firestore to load the document before saving
+    if (!isDocumentLoadedRef.current && !forceSave) {
+      console.warn('[DocumentEditor] Autosave blocked: document is still loading from Firestore.');
+      return;
+    }
+
+    // Guard 2: Never save automatically until there are changes being made
+    if (!hasUserEditedRef.current && !dirtyRef.current && !forceSave) {
+      return;
+    }
 
     const htmlString = typeof content === 'string'
       ? content
@@ -319,8 +381,19 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
 
     const contentJson = contentJsonOverride ?? (editor && !editor.isDestroyed ? editor.getJSON() : undefined);
 
-    // Guard 2: If content is effectively empty and dirtyRef is false, block save
-    if (isContentEffectivelyEmpty(htmlString, contentJson) && !dirtyRef.current && !forceSave) {
+    const words = editor?.storage.characterCount?.words() ?? 0;
+    const textLength = (editor ? editor.getText() : (typeof content === 'string' ? content : '')).trim().length;
+    const isBlankOrZeroWords = isContentEffectivelyEmpty(htmlString, contentJson) || words === 0 || textLength === 0;
+
+    // Guard 3: Strict user directive: never save a blank page of 0 words automatically!
+    if (isBlankOrZeroWords && !forceSave) {
+      console.log('[DocumentEditor] Autosave blocked: will never automatically save a blank page of 0 words.');
+      setSaveStatus('saved');
+      return;
+    }
+
+    // Guard 4: If blank and no user edits were made, block even if forceSave was called
+    if (isBlankOrZeroWords && !hasUserEditedRef.current && !forceSave) {
       return;
     }
 
@@ -340,7 +413,7 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
           ...(contentJson ? { contentJson } : {}),
           updatedAt: saveNow,
           lastEditedAt: actualEditTime,
-          allowEmpty: dirtyRef.current || forceSave,
+          allowEmpty: forceSave && !isBlankOrZeroWords,
         };
         if (titleOverride !== undefined) {
           payload.title = title;
@@ -402,11 +475,23 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    const words = editor.storage.characterCount?.words() ?? 0;
+    const textLength = editor.getText().trim().length;
+    const html = editor.getHTML();
+    const json = editor.getJSON();
+
+    if ((words === 0 || textLength === 0 || isContentEffectivelyEmpty(html, json)) && !hasUserEditedRef.current) {
+      console.log('[DocumentEditor] Manual save skipped: document has 0 words with no edits.');
+      setSaveStatus('saved');
+      return;
+    }
+
     const now = new Date().toISOString();
     latestEditTimestampRef.current = now;
     setLastEditedTime(now);
     dirtyRef.current = true;
-    await saveDocument(editor.getHTML(), now, undefined, editor.getJSON(), true);
+    hasUserEditedRef.current = true;
+    await saveDocument(html, now, undefined, json, true);
   };
 
   // Keep the latest editor state available for all save paths and consumer modals
@@ -433,13 +518,24 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
   useEffect(() => {
     const flushPendingSave = () => {
       if (isSharedView || !docId || !editor || editor.isDestroyed) return;
-      if (!dirtyRef.current) return;
+      if (!isDocumentLoadedRef.current) return;
+      if (!dirtyRef.current || !hasUserEditedRef.current) return;
+
+      const words = editor.storage.characterCount?.words() ?? 0;
+      const textLength = editor.getText().trim().length;
+      const html = editor.getHTML();
+      const json = editor.getJSON();
+
+      // STRICT USER RULE: Never flush/save a blank page of 0 words!
+      if (words === 0 || textLength === 0 || isContentEffectivelyEmpty(html, json)) {
+        return;
+      }
 
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
-      void saveDocument(editor.getHTML(), new Date().toISOString(), undefined, editor.getJSON(), true);
+      void saveDocument(html, new Date().toISOString(), undefined, json, false);
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') flushPendingSave();
@@ -536,6 +632,7 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
         setDocMeta({ ...docMeta, title });
       }
 
+      hasUserEditedRef.current = true;
       dirtyRef.current = true;
       const updatedHtml = editor.getHTML();
       void saveDocument(updatedHtml, now, undefined, editor.getJSON(), true);
@@ -573,6 +670,7 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
       }
       const now = new Date().toISOString();
       setLastEditedTime(now);
+      hasUserEditedRef.current = true;
       dirtyRef.current = true;
       void saveDocument(contentHtml, now, versionTitle || undefined, editor.getJSON(), true);
       if (versionTitle && docMeta) {
@@ -584,7 +682,18 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 overflow-hidden font-sans">
+    <div 
+      className="flex flex-col h-full bg-slate-950 overflow-hidden font-sans"
+      onKeyDown={() => {
+        if (isDocumentLoadedRef.current) hasUserEditedRef.current = true;
+      }}
+      onPaste={() => {
+        if (isDocumentLoadedRef.current) hasUserEditedRef.current = true;
+      }}
+      onDrop={() => {
+        if (isDocumentLoadedRef.current) hasUserEditedRef.current = true;
+      }}
+    >
       {/* Top Application Bar */}
       <div className="flex items-center justify-between px-2.5 sm:px-4 py-2 border-b border-slate-800 bg-slate-950 shrink-0 print:hidden gap-2">
         <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1">

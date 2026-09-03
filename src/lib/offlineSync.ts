@@ -17,6 +17,7 @@ export interface OfflineDocRecord {
   synced: boolean;
   allowEmpty?: boolean;
   allowUntitled?: boolean;
+  forceAllowEmptyOverwrite?: boolean;
 }
 
 export interface DocumentVersion {
@@ -202,11 +203,19 @@ export async function saveDocumentOffline(
     const isTargetEmpty = isContentEffectivelyEmpty(data.content, data.contentJson);
     const isExistingEmpty = existing ? isContentEffectivelyEmpty(existing.content, existing.contentJson) : false;
 
-    if (!isTargetEmpty || data.allowEmpty || isExistingEmpty) {
+    if (isTargetEmpty && !isExistingEmpty && !data.forceAllowEmptyOverwrite) {
+      console.warn(`[HubMind] Blocked accidental blank content overwrite for document: ${docId}. Retaining existing non-empty content.`);
+      safeContent = existing.content;
+      safeContentJson = existing.contentJson;
+    } else if (!isTargetEmpty || data.forceAllowEmptyOverwrite || isExistingEmpty) {
       safeContent = data.content;
       safeContentJson = data.contentJson;
     } else {
       console.warn(`[HubMind] Blocked accidental empty content overwrite for document: ${docId}`);
+      if (existing) {
+        safeContent = existing.content;
+        safeContentJson = existing.contentJson;
+      }
     }
   }
 
@@ -383,7 +392,12 @@ export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: num
       console.warn('[HubMind recovery] Could not inspect version history for', docId, err);
     }
 
-    // If history is unavailable, use a known-good local snapshot.
+    // If Firestore history is unavailable, check local versions then local snapshot.
+    if (!recovery) {
+      const localVersions = getLocalVersions(docId);
+      recovery = localVersions.find(v => !isContentEffectivelyEmpty(v.content, v.contentJson));
+    }
+
     if (!recovery) {
       const local = localDocs[docId];
       if (local && !isContentEffectivelyEmpty(local.content, local.contentJson)) {
@@ -481,7 +495,22 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
             console.warn('[HubMind] Version-history recovery failed:', recoveryErr);
           }
 
-          // If history didn't have it, try local cache
+          // If history didn't have it, check local versions history
+          if (isContentEffectivelyEmpty(recoveredHtml, recoveredJson)) {
+            const localVersions = getLocalVersions(docId);
+            const localRecovery = localVersions.find(v => !isContentEffectivelyEmpty(v.content, v.contentJson));
+            if (localRecovery) {
+              recoveredHtml = typeof localRecovery.content === 'string' ? localRecovery.content : '';
+              recoveredJson = localRecovery.contentJson || (typeof localRecovery.content === 'object' ? localRecovery.content : null);
+              if ((recoveredTitle === 'Untitled Document' || !recoveredTitle) && localRecovery.title && localRecovery.title !== 'Untitled Document') {
+                recoveredTitle = localRecovery.title;
+              }
+              recoveredFromHistory = true;
+              console.warn('[HubMind] Recovered document body from local version history for doc:', docId);
+            }
+          }
+
+          // If local versions didn't have it, try local cache
           if (isContentEffectivelyEmpty(recoveredHtml, recoveredJson) && !isContentEffectivelyEmpty(localHtml, localJson)) {
             recoveredHtml = localHtml;
             recoveredJson = localJson;
@@ -492,9 +521,17 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
           }
         }
 
-        // If local has unsynced newer changes, keep local content and enqueue sync.
+        // If local has unsynced newer changes, keep local content and enqueue sync,
+        // BUT NEVER let a blank local cache overwrite non-empty cloud content!
+        const isLocalEmpty = isContentEffectivelyEmpty(localHtml, localJson);
+        const isCloudEffectivelyEmpty = isContentEffectivelyEmpty(recoveredHtml, recoveredJson);
+
         if (cached && !cached.synced && new Date(cached.updatedAt) > new Date(cloudData.updatedAt || 0)) {
-          return { ...cloudData, ...cached, isOfflineLocal: true };
+          if (!isLocalEmpty || isCloudEffectivelyEmpty) {
+            return { ...cloudData, ...cached, isOfflineLocal: true };
+          } else {
+            console.warn('[HubMind] Discarded invalid blank local cache in favor of valid non-empty cloud content for doc:', docId);
+          }
         }
 
         // Heal the Firebase document itself when its body was blank but a
