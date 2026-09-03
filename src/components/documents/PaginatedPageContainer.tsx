@@ -53,7 +53,7 @@ export function PaginatedPageContainer({
   const [debugData, setDebugData] = useState<PageDebugInfo[]>([]);
   const [internalPageCount, setInternalPageCount] = useState<number>(Math.max(1, pageCount));
 
-  const deskGapPx = 40;
+  const deskGapPx = 48;
 
   // Calculate physical layout from single source of truth
   const layout = useMemo(() => {
@@ -87,7 +87,7 @@ export function PaginatedPageContainer({
 
   // Compute exact spacer needed to bridge from bottom of Sheet (N) to content top of Sheet (N+1)
   const breakSpacerHeight = useMemo(() => {
-    return layout.marginsPx.bottom + deskGapPx + layout.marginsPx.top + layout.subsequentHeaderHeightPx + 24;
+    return layout.marginsPx.bottom + deskGapPx + layout.marginsPx.top + layout.subsequentHeaderHeightPx + 20;
   }, [layout.marginsPx.bottom, deskGapPx, layout.marginsPx.top, layout.subsequentHeaderHeightPx]);
 
   const pinchStartDistanceRef = useRef<number | null>(null);
@@ -131,21 +131,20 @@ export function PaginatedPageContainer({
     const children = Array.from(editorProse.children) as HTMLElement[];
     if (children.length === 0) return 1;
 
-    // Reset previous inline styles and attributes before recalculating
-    children.forEach((child) => {
-      child.style.marginTop = '';
-      child.removeAttribute('data-page-break-before');
-      child.removeAttribute('data-page-number');
-    });
+    // Guaranteed margin safety distance at the bottom of each page
+    // Text must stop before this buffer, ensuring it never touches or enters the bottom margin or footer
+    const bottomMarginSafetyPx = 28;
 
-    const hostRect = editorHostRef.current.getBoundingClientRect();
-    const effectiveZoom = isMobileScreen ? mobileCanvasScale : (zoomLevel || 1);
+    const firstPageStartY = layout.marginsPx.top + layout.page1HeaderHeightPx;
+    const firstPageMaxY = layout.pageHeightPx - layout.marginsPx.bottom - bottomMarginSafetyPx;
+    const firstPageCapacity = Math.max(150, firstPageMaxY - firstPageStartY);
+
+    const subsequentStartY = layout.marginsPx.top + layout.subsequentHeaderHeightPx + 20;
+    const subsequentMaxY = layout.pageHeightPx - layout.marginsPx.bottom - bottomMarginSafetyPx;
+    const subsequentPageCapacity = Math.max(200, subsequentMaxY - subsequentStartY);
 
     let currentPage = 1;
     let accumulatedHeightOnPage = 0;
-
-    const firstPageCapacity = layout.page1UsableHeightPx;
-    const subsequentPageCapacity = layout.subsequentUsableHeightPx;
 
     children.forEach((child, index) => {
       const tagName = child.tagName.toLowerCase();
@@ -159,9 +158,8 @@ export function PaginatedPageContainer({
       const childHeight = (child.offsetHeight || 28) + marginTop + marginBottom;
       const wouldOrphanHeading = isHeading && (accumulatedHeightOnPage + childHeight + 50 > maxCapacity);
 
-      // Keep block elements inside the printable content area. A block that
-      // does not fit is moved to the next sheet instead of being allowed to
-      // run into the bottom margin.
+      // Keep block elements strictly inside the printable content area.
+      // Once text reaches close to the page boundary, it automatically moves to the next sheet.
       const shouldBreak = isExplicitBreak || (
         index > 0 &&
         (accumulatedHeightOnPage + childHeight > maxCapacity || wouldOrphanHeading)
@@ -174,21 +172,26 @@ export function PaginatedPageContainer({
         child.setAttribute('data-page-break-before', String(currentPage));
         child.setAttribute('data-page-number', String(currentPage));
 
-        // Target Y for content on Sheet (currentPage) relative to the top of editorHostRef
-        // Sheet N top = (N - 1) * (pageHeightPx + deskGapPx)
-        // Content on Sheet N starts at: Sheet N top + margins.top + subsequentHeaderHeight + 20px gap below header line
-        const targetTopRelativeToHost = (currentPage - 1) * (layout.pageHeightPx + deskGapPx) + layout.marginsPx.top + layout.subsequentHeaderHeightPx + 20;
+        // Exact Y coordinate where content on Sheet (currentPage) must start
+        // Sheet N starts at: (currentPage - 1) * (layout.pageHeightPx + deskGapPx)
+        // Content on Sheet N starts at: Sheet N top + subsequentStartY
+        const targetContentTop = (currentPage - 1) * (layout.pageHeightPx + deskGapPx) + subsequentStartY;
 
-        // Measure where the child is naturally positioned relative to host top
-        const childRect = child.getBoundingClientRect();
-        const currentTopRelativeToHost = (childRect.top - hostRect.top) / effectiveZoom;
+        // Measure previous sibling's bottom offset to calculate the exact bridge spacer needed
+        const prevChild = children[index - 1];
+        const prevBottom = prevChild ? (prevChild.offsetTop + prevChild.offsetHeight) : 0;
 
-        // Margin needed to push this element cleanly below the running header of Sheet (currentPage)
-        const neededMarginTop = Math.max(24, Math.round(targetTopRelativeToHost - currentTopRelativeToHost));
-        child.style.marginTop = `${neededMarginTop}px`;
+        // Calculate exact margin-top to position this child precisely at targetContentTop
+        const neededMarginTop = Math.max(20, Math.round(targetContentTop - prevBottom));
+        if (child.style.marginTop !== `${neededMarginTop}px`) {
+          child.style.marginTop = `${neededMarginTop}px`;
+        }
       } else {
         accumulatedHeightOnPage += childHeight;
         child.setAttribute('data-page-number', String(currentPage));
+        if (child.style.marginTop !== '') {
+          child.style.marginTop = '';
+        }
       }
     });
 
@@ -199,7 +202,7 @@ export function PaginatedPageContainer({
     }
 
     return totalPagesComputed;
-  }, [layout, deskGapPx, zoomLevel, isMobileScreen, mobileCanvasScale, pageCount, onPageCountChange]);
+  }, [layout, deskGapPx, pageCount, onPageCountChange]);
 
   // Synchronize layout & pagination engine debug stats whenever editor changes
   useEffect(() => {
@@ -394,22 +397,20 @@ export function PaginatedPageContainer({
                   </div>
                 </div>
 
-                {/* Desk Gap & Page Break Ribbon Divider Between Consecutive Sheets */}
-                {showPageBreaks && !isMobileScreen && idx < pagesArray.length - 1 && (
+                {/* Desk Gap & Clean Visual Separation Between Consecutive Sheets */}
+                {idx < pagesArray.length - 1 && (
                   <div 
                     style={{ height: `${deskGapPx}px` }}
-                    className="w-full flex items-center justify-between px-6 py-1 bg-slate-950 border border-slate-800/80 text-[11px] font-mono text-slate-400 print:hidden select-none pointer-events-auto shadow-inner"
+                    className="w-full flex items-center justify-center select-none pointer-events-none print:hidden"
                   >
-                    <div className="flex items-center gap-2 font-semibold text-slate-300">
-                      <SplitSquareVertical className="w-3.5 h-3.5 text-accent" />
-                      <span>PAGE BREAK &bull; {paperSize.toUpperCase()} ({orientation.toUpperCase()})</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-500 text-[10px]">Passing into</span>
-                      <span className="text-teal-300 font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-800 text-[10px]">
-                        SHEET {pageNum + 1} OF {effectivePageCount}
-                      </span>
-                    </div>
+                    {showPageBreaks && (
+                      <div className="flex items-center gap-2 px-3 py-1 bg-slate-900/90 border border-slate-800 backdrop-blur-xs rounded-full text-[10px] font-mono text-slate-400 shadow-md">
+                        <SplitSquareVertical className="w-3 h-3 text-accent" />
+                        <span>Page Break</span>
+                        <span className="text-slate-600">•</span>
+                        <span className="text-teal-400 font-bold">Sheet {pageNum + 1} of {effectivePageCount}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </React.Fragment>

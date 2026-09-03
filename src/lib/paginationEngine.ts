@@ -496,8 +496,9 @@ export function paginateDocument(
   // Fast check: if entire content fits into Page 1 and contains no explicit page breaks
   const containsExplicitPageBreak = htmlContent.includes('page-break') || htmlContent.includes('<hr');
   const totalRawHeight = offscreen.offsetHeight;
+  const bottomMarginSafetyPx = 28;
 
-  if (!containsExplicitPageBreak && totalRawHeight <= layout.page1UsableHeightPx) {
+  if (!containsExplicitPageBreak && totalRawHeight <= layout.page1UsableHeightPx - bottomMarginSafetyPx) {
     document.body.removeChild(offscreen);
     return {
       pages: [htmlContent],
@@ -544,8 +545,8 @@ export function paginateDocument(
 
     const maxAllowedHeight =
       currentPageIndex === 0
-        ? layout.page1UsableHeightPx
-        : layout.subsequentUsableHeightPx;
+        ? Math.max(150, layout.page1UsableHeightPx - bottomMarginSafetyPx)
+        : Math.max(200, layout.subsequentUsableHeightPx - bottomMarginSafetyPx);
 
     // Handle Manual Page Break
     if (isExplicitBreak) {
