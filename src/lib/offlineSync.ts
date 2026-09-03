@@ -15,6 +15,8 @@ export interface OfflineDocRecord {
   orientation?: 'portrait' | 'landscape';
   marginOption?: 'normal' | 'narrow' | 'moderate' | 'wide' | 'custom';
   synced: boolean;
+  allowEmpty?: boolean;
+  allowUntitled?: boolean;
 }
 
 export interface DocumentVersion {
@@ -36,8 +38,79 @@ const OFFLINE_DOCS_KEY = 'hubmind_offline_documents_v1';
 const SYNC_QUEUE_KEY = 'hubmind_offline_sync_queue_v1';
 const LOCAL_VERSIONS_KEY = 'hubmind_local_versions_v1';
 
+/**
+ * Accurately check if a document's content (HTML or JSON) is effectively empty.
+ * Detects empty tags like <p></p>, <p><br></p>, whitespace, and TipTap empty doc nodes.
+ */
+export function isContentEffectivelyEmpty(content: any, contentJson?: any): boolean {
+  // Check JSON representation
+  const jsonToCheck = contentJson || (typeof content === 'object' && content !== null ? content : null);
+  if (jsonToCheck && typeof jsonToCheck === 'object') {
+    if (jsonToCheck.type === 'doc') {
+      if (!Array.isArray(jsonToCheck.content) || jsonToCheck.content.length === 0) {
+        return true;
+      }
+      if (jsonToCheck.content.length === 1) {
+        const first = jsonToCheck.content[0];
+        if (first.type === 'paragraph' && (!Array.isArray(first.content) || first.content.length === 0)) {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+
+  // Check string representation
+  if (typeof content === 'string') {
+    const trimmed = content.trim();
+    if (!trimmed) return true;
+    if (trimmed === '<p></p>' || trimmed === '<p><br></p>' || trimmed === '<p><br/></p>') return true;
+    const stripped = trimmed.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+    if (stripped.length === 0 && !/<(img|table|hr|iframe|figure)/i.test(trimmed)) {
+      return true;
+    }
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Safely extract both HTML string and TipTap JSON from whatever payload
+ * Firestore or local storage returns, handling legacy or mixed formats.
+ */
+export function extractDocumentBody(data: any): { html: string; json: any | null } {
+  if (!data) return { html: '', json: null };
+
+  let json: any = null;
+  let html: string = '';
+
+  // 1. Check contentJson
+  if (data.contentJson && typeof data.contentJson === 'object' && data.contentJson.type === 'doc') {
+    json = data.contentJson;
+  }
+
+  // 2. Check content (could be string or object)
+  if (data.content) {
+    if (typeof data.content === 'object' && data.content.type === 'doc') {
+      json = json || data.content;
+    } else if (typeof data.content === 'string') {
+      const trimmed = data.content.trim();
+      if (trimmed.startsWith('{') && trimmed.includes('"type":"doc"')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed && parsed.type === 'doc') json = json || parsed;
+        } catch {}
+      }
+      html = trimmed;
+    }
+  }
+
+  return { html, json };
+}
+
 // Helpers to access local storage safely
-function getLocalDocsMap(): Record<string, OfflineDocRecord> {
+export function getLocalDocsMap(): Record<string, OfflineDocRecord> {
   try {
     const raw = localStorage.getItem(OFFLINE_DOCS_KEY);
     return raw ? JSON.parse(raw) : {};
@@ -47,7 +120,7 @@ function getLocalDocsMap(): Record<string, OfflineDocRecord> {
   }
 }
 
-function setLocalDocsMap(map: Record<string, OfflineDocRecord>) {
+export function setLocalDocsMap(map: Record<string, OfflineDocRecord>) {
   try {
     localStorage.setItem(OFFLINE_DOCS_KEY, JSON.stringify(map));
   } catch (e) {
@@ -93,7 +166,8 @@ function saveLocalVersion(version: DocumentVersion) {
 }
 
 /**
- * Save document offline with automatic queueing for cloud synchronization
+ * Save document offline with automatic queueing for cloud synchronization.
+ * Protects existing content and title from accidental overwrite by blank initialization states.
  */
 export async function saveDocumentOffline(
   docId: string,
@@ -102,19 +176,54 @@ export async function saveDocumentOffline(
 ): Promise<OfflineDocRecord> {
   const now = new Date().toISOString();
   const docsMap = getLocalDocsMap();
-  const existing = docsMap[docId] || {
-    id: docId,
-    title: 'Untitled Document',
-    content: '',
-    updatedAt: now,
-    lastSavedAt: now,
-    synced: false,
-  };
+  const existing = docsMap[docId];
+
+  // Determine title safely: never overwrite a real title with 'Untitled Document' unless explicitly requested
+  let safeTitle = existing?.title || 'Untitled Document';
+  if (data.title !== undefined) {
+    const trimmedTitle = data.title.trim();
+    if (trimmedTitle) {
+      if (trimmedTitle === 'Untitled Document') {
+        // Only accept 'Untitled Document' if existing was also untitled or allowUntitled is true
+        if (data.allowUntitled || !existing?.title || existing.title === 'Untitled Document') {
+          safeTitle = 'Untitled Document';
+        }
+      } else {
+        safeTitle = trimmedTitle;
+      }
+    }
+  }
+
+  // Determine content safely: never overwrite valid content with blank content unless allowEmpty is true
+  let safeContent = existing?.content || '';
+  let safeContentJson = existing?.contentJson;
+
+  if (data.content !== undefined) {
+    const isTargetEmpty = isContentEffectivelyEmpty(data.content, data.contentJson);
+    const isExistingEmpty = existing ? isContentEffectivelyEmpty(existing.content, existing.contentJson) : false;
+
+    if (!isTargetEmpty || data.allowEmpty || isExistingEmpty) {
+      safeContent = data.content;
+      safeContentJson = data.contentJson;
+    } else {
+      console.warn(`[HubMind] Blocked accidental empty content overwrite for document: ${docId}`);
+    }
+  }
 
   const updatedRecord: OfflineDocRecord = {
-    ...existing,
+    ...(existing || {
+      id: docId,
+      title: safeTitle,
+      content: safeContent,
+      updatedAt: now,
+      lastSavedAt: now,
+      synced: false,
+    }),
     ...data,
     id: docId,
+    title: safeTitle,
+    content: safeContent,
+    ...(safeContentJson !== undefined ? { contentJson: safeContentJson } : {}),
     updatedAt: data.updatedAt || now,
     lastSavedAt: now,
     lastModifiedBy: userProfile?.preferredName || userProfile?.name || 'User',
@@ -124,52 +233,72 @@ export async function saveDocumentOffline(
   docsMap[docId] = updatedRecord;
   setLocalDocsMap(docsMap);
 
-  // Add to local version history snapshot
-  const wordCount = typeof updatedRecord.content === 'string'
-    ? updatedRecord.content.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length
-    : 0;
+  // Add to local version history snapshot ONLY if content is not empty
+  if (!isContentEffectivelyEmpty(updatedRecord.content, updatedRecord.contentJson)) {
+    const wordCount = typeof updatedRecord.content === 'string'
+      ? updatedRecord.content.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length
+      : 0;
 
-  const versionSnapshot: DocumentVersion = {
-    id: `ver_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    documentId: docId,
-    title: updatedRecord.title,
-    content: updatedRecord.content,
-    ...(updatedRecord.contentJson ? { contentJson: updatedRecord.contentJson } : {}),
-    createdAt: now,
-    authorName: updatedRecord.lastModifiedBy || 'User',
-    authorEmail: userProfile?.email || '',
-    summary: `Autosaved (${wordCount} words)`,
-    wordCount,
-  };
-  saveLocalVersion(versionSnapshot);
+    const versionSnapshot: DocumentVersion = {
+      id: `ver_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      documentId: docId,
+      title: updatedRecord.title,
+      content: updatedRecord.content,
+      ...(updatedRecord.contentJson ? { contentJson: updatedRecord.contentJson } : {}),
+      createdAt: now,
+      authorName: updatedRecord.lastModifiedBy || 'User',
+      authorEmail: userProfile?.email || '',
+      summary: `Autosaved (${wordCount} words)`,
+      wordCount,
+    };
+    saveLocalVersion(versionSnapshot);
 
-  // Match the known-good save architecture: local snapshot first, then a
-  // targeted Firestore update when online. Do not turn an editor save into a
-  // document create/replace operation. Existing documents already contain the
-  // ownership metadata required by Firestore rules.
-  if (navigator.onLine) {
-    try {
-      const docRef = doc(db, 'documents', docId);
-      await updateDoc(docRef, {
-        title: updatedRecord.title,
-        content: updatedRecord.content,
-        ...(updatedRecord.contentJson ? { contentJson: updatedRecord.contentJson } : {}),
-        updatedAt: updatedRecord.updatedAt,
-        lastEditedAt: updatedRecord.lastEditedAt || updatedRecord.updatedAt,
-        lastSavedAt: now,
-        lastModifiedBy: updatedRecord.lastModifiedBy,
-        ...(updatedRecord.pageSize ? { pageSize: updatedRecord.pageSize } : {}),
-        ...(updatedRecord.orientation ? { orientation: updatedRecord.orientation } : {}),
-        ...(updatedRecord.marginOption ? { marginOption: updatedRecord.marginOption } : {}),
-      });
-
-      // Also persist version in Firestore subcollection for multi-device history.
+    // Save version in Firestore subcollection when online
+    if (navigator.onLine) {
       try {
         const versionsColl = collection(db, 'documents', docId, 'versions');
         await addDoc(versionsColl, versionSnapshot);
       } catch (verErr) {
         console.warn('Could not write version to Firestore subcollection:', verErr);
       }
+    }
+  }
+
+  // Persist targeted updates to Firestore when online
+  if (navigator.onLine) {
+    try {
+      const docRef = doc(db, 'documents', docId);
+
+      // Build safe update payload with ONLY fields intended to change
+      const updatePayload: Record<string, any> = {
+        updatedAt: updatedRecord.updatedAt,
+        lastSavedAt: now,
+        lastModifiedBy: updatedRecord.lastModifiedBy,
+      };
+
+      if (data.title !== undefined) {
+        updatePayload.title = safeTitle;
+      }
+      if (data.content !== undefined) {
+        updatePayload.content = safeContent;
+        if (safeContentJson !== undefined) {
+          updatePayload.contentJson = safeContentJson;
+        }
+      }
+      if (data.lastEditedAt !== undefined) {
+        updatePayload.lastEditedAt = data.lastEditedAt;
+      }
+      if (data.pageSize !== undefined) {
+        updatePayload.pageSize = data.pageSize;
+      }
+      if (data.orientation !== undefined) {
+        updatePayload.orientation = data.orientation;
+      }
+      if (data.marginOption !== undefined) {
+        updatePayload.marginOption = data.marginOption;
+      }
+
+      await updateDoc(docRef, updatePayload);
 
       updatedRecord.synced = true;
       docsMap[docId] = updatedRecord;
@@ -184,15 +313,14 @@ export async function saveDocumentOffline(
 
       return updatedRecord;
     } catch (err) {
-      console.error('Firestore document update failed; keeping the local snapshot and queueing retry:', err);
+      console.error('Firestore document update failed; keeping local snapshot and queueing retry:', err);
       updatedRecord.synced = false;
       docsMap[docId] = updatedRecord;
       setLocalDocsMap(docsMap);
     }
   }
 
-  // Offline or failed network write: keep the latest editor state locally and
-  // queue the document for a later targeted update.
+  // Offline or failed network write: keep latest editor state locally and queue
   const queue = getSyncQueue();
   if (!queue.includes(docId)) queue.push(docId);
   setSyncQueue(queue);
@@ -235,9 +363,10 @@ export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: num
 
   for (const docSnap of docsSnap.docs) {
     const data = docSnap.data() as any;
-    const currentHtml = typeof data.content === 'string' ? data.content.trim() : '';
-    const currentJson = data.contentJson;
-    if (currentHtml || currentJson) continue;
+    const { html: currentHtml, json: currentJson } = extractDocumentBody(data);
+    
+    // Only attempt repair if the current document is actually blank
+    if (!isContentEffectivelyEmpty(currentHtml, currentJson)) continue;
 
     const docId = docSnap.id;
     let recovery: any = null;
@@ -249,7 +378,7 @@ export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: num
       );
       recovery = versionsSnap.docs
         .map(v => v.data() as any)
-        .find(v => (typeof v.content === 'string' && v.content.trim()) || v.contentJson);
+        .find(v => !isContentEffectivelyEmpty(v.content, v.contentJson));
     } catch (err) {
       console.warn('[HubMind recovery] Could not inspect version history for', docId, err);
     }
@@ -257,7 +386,7 @@ export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: num
     // If history is unavailable, use a known-good local snapshot.
     if (!recovery) {
       const local = localDocs[docId];
-      if (local && ((typeof local.content === 'string' && local.content.trim()) || local.contentJson)) {
+      if (local && !isContentEffectivelyEmpty(local.content, local.contentJson)) {
         recovery = local;
       }
     }
@@ -265,31 +394,38 @@ export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: num
     if (!recovery) continue;
 
     const restoredContent = typeof recovery.content === 'string' ? recovery.content : '';
-    const restoredJson = recovery.contentJson;
+    const restoredJson = recovery.contentJson || (typeof recovery.content === 'object' ? recovery.content : null);
+    const restoredTitle = (data.title === 'Untitled Document' || !data.title) && recovery.title && recovery.title !== 'Untitled Document'
+      ? recovery.title
+      : data.title || 'Untitled Document';
 
     try {
-      await updateDoc(doc(db, 'documents', docId), {
+      const repairUpdate: Record<string, any> = {
         content: restoredContent,
-        ...(restoredJson ? { contentJson: restoredJson } : {}),
         lastRecoveredAt: new Date().toISOString(),
-      });
+      };
+      if (restoredJson) repairUpdate.contentJson = restoredJson;
+      if (restoredTitle && restoredTitle !== data.title) repairUpdate.title = restoredTitle;
+
+      await updateDoc(doc(db, 'documents', docId), repairUpdate);
 
       localDocs[docId] = {
         ...(localDocs[docId] || {
           id: docId,
-          title: data.title || 'Untitled Document',
+          title: restoredTitle,
           updatedAt: data.updatedAt || new Date().toISOString(),
           lastSavedAt: data.lastSavedAt || new Date().toISOString(),
           synced: true,
           content: '',
         }),
-        title: data.title || localDocs[docId]?.title || 'Untitled Document',
+        title: restoredTitle,
         content: restoredContent,
         ...(restoredJson ? { contentJson: restoredJson } : {}),
         synced: true,
       };
 
       repaired++;
+      console.log(`[HubMind recovery] Repaired blank document ${docId} with title: "${restoredTitle}"`);
     } catch (err) {
       console.error('[HubMind recovery] Failed to repair', docId, err);
     }
@@ -313,39 +449,46 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
       if (snap.exists()) {
         const cloudData = snap.data();
 
-        // Never let an empty/stale cloud payload erase a known-good local
-        // snapshot. This is especially important after editor migrations.
-        const cloudHtml = typeof cloudData.content === 'string' ? cloudData.content : '';
-        const cloudJson = cloudData.contentJson;
-        const localHtml = cached?.content || '';
-        const localJson = cached?.contentJson;
+        // Safely extract canonical HTML and TipTap JSON from cloud payload
+        const { html: cloudHtml, json: cloudJson } = extractDocumentBody(cloudData);
+        const { html: localHtml, json: localJson } = extractDocumentBody(cached);
 
-        // If the document record itself lost its body, recover the newest
-        // non-empty body from its Firestore version history. Older versions
-        // are deliberately treated as recovery data, never as a replacement
-        // when the current document already contains valid content.
         let recoveredHtml = cloudHtml;
         let recoveredJson = cloudJson;
+        let recoveredTitle = cloudData.title || cached?.title || 'Untitled Document';
         let recoveredFromHistory = false;
-        if (!recoveredHtml.trim() && !recoveredJson) {
+
+        // If cloud payload is blank, check version history or local snapshot
+        if (isContentEffectivelyEmpty(recoveredHtml, recoveredJson)) {
           try {
             const versionsColl = collection(db, 'documents', docId, 'versions');
             const versionQuery = query(versionsColl, orderBy('createdAt', 'desc'), limit(50));
             const versionSnap = await getDocs(versionQuery);
             const recovery = versionSnap.docs
               .map(versionDoc => versionDoc.data() as any)
-              .find(version => {
-                const html = typeof version.content === 'string' ? version.content.trim() : '';
-                return !!html || !!version.contentJson;
-              });
+              .find(version => !isContentEffectivelyEmpty(version.content, version.contentJson));
+
             if (recovery) {
               recoveredHtml = typeof recovery.content === 'string' ? recovery.content : '';
-              recoveredJson = recovery.contentJson;
+              recoveredJson = recovery.contentJson || (typeof recovery.content === 'object' ? recovery.content : null);
+              if ((recoveredTitle === 'Untitled Document' || !recoveredTitle) && recovery.title && recovery.title !== 'Untitled Document') {
+                recoveredTitle = recovery.title;
+              }
               recoveredFromHistory = true;
-              console.warn('[HubMind] Recovered document body from version history:', docId);
+              console.warn('[HubMind] Recovered document body from version history for doc:', docId);
             }
           } catch (recoveryErr) {
             console.warn('[HubMind] Version-history recovery failed:', recoveryErr);
+          }
+
+          // If history didn't have it, try local cache
+          if (isContentEffectivelyEmpty(recoveredHtml, recoveredJson) && !isContentEffectivelyEmpty(localHtml, localJson)) {
+            recoveredHtml = localHtml;
+            recoveredJson = localJson;
+            if (cached?.title && (recoveredTitle === 'Untitled Document' || !recoveredTitle)) {
+              recoveredTitle = cached.title;
+            }
+            recoveredFromHistory = true;
           }
         }
 
@@ -354,26 +497,22 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
           return { ...cloudData, ...cached, isOfflineLocal: true };
         }
 
-        // If cloud is empty but this browser has a known non-empty snapshot,
-        // use the local body instead of displaying a blank document.
-        if (!recoveredHtml.trim() && !recoveredJson && (localHtml.trim() || localJson)) {
-          recoveredHtml = localHtml;
-          recoveredJson = localJson;
-        }
-
         // Heal the Firebase document itself when its body was blank but a
         // valid historical version exists. This is a one-time repair per
-        // affected document and prevents the blank state from returning after
-        // another device/browser refresh.
-        if (recoveredFromHistory && (recoveredHtml.trim() || recoveredJson)) {
+        // affected document and prevents the blank state from returning.
+        if (recoveredFromHistory && !isContentEffectivelyEmpty(recoveredHtml, recoveredJson)) {
           try {
-            await updateDoc(docRef, {
+            const repairData: Record<string, any> = {
               content: recoveredHtml,
-              ...(recoveredJson ? { contentJson: recoveredJson } : {}),
               lastRecoveredAt: new Date().toISOString(),
-            });
+            };
+            if (recoveredJson) repairData.contentJson = recoveredJson;
+            if (recoveredTitle && recoveredTitle !== cloudData.title) repairData.title = recoveredTitle;
+
+            await updateDoc(docRef, repairData);
             cloudData.content = recoveredHtml;
             cloudData.contentJson = recoveredJson;
+            cloudData.title = recoveredTitle;
           } catch (repairErr) {
             console.warn('[HubMind] Could display recovered content but could not repair Firebase:', repairErr);
           }
@@ -382,7 +521,7 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
         // Cache fresh/recovered cloud data locally for future offline sessions
         const syncedRecord: OfflineDocRecord = {
           id: docId,
-          title: cloudData.title || cached?.title || 'Untitled Document',
+          title: recoveredTitle,
           content: recoveredHtml,
           contentJson: recoveredJson,
           updatedAt: cloudData.updatedAt || cached?.updatedAt || new Date().toISOString(),
@@ -397,8 +536,6 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
         localDocs[docId] = syncedRecord;
         setLocalDocsMap(localDocs);
 
-        // Return the recovered canonical body as well. DocumentEditor will
-        // prefer contentJson when present and otherwise render HTML.
         return {
           ...cloudData,
           content: recoveredHtml,
@@ -436,6 +573,12 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
   for (const docId of queue) {
     const record = docsMap[docId];
     if (!record) continue;
+
+    // Safety guard: do not push empty content to Firestore unless allowEmpty was explicitly permitted
+    if (isContentEffectivelyEmpty(record.content, record.contentJson) && !record.allowEmpty) {
+      console.warn(`[HubMind] Skipping offline sync of empty content for document: ${docId}`);
+      continue;
+    }
 
     try {
       const docRef = doc(db, 'documents', docId);

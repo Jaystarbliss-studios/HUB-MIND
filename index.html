@@ -4,6 +4,107 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Hub-Mind</title>
+    <script>
+      // Suppress benign [vite] HMR connection notices and websocket connection messages in container environment
+      (function() {
+        const isViteNotice = (args) => {
+          if (!args || !args.length) return false;
+          const fullText = Array.from(args).map(arg => {
+            if (arg === null || arg === undefined) return '';
+            if (typeof arg === 'string') return arg;
+            if (typeof arg === 'object') {
+              return String(arg.message || arg.stack || arg.reason || arg.name || '');
+            }
+            return String(arg);
+          }).join(' ');
+          
+          return (
+            fullText.includes('[vite]') ||
+            fullText.includes('failed to connect to websocket') ||
+            fullText.includes('vite:') ||
+            fullText.includes('/@vite/') ||
+            fullText.includes('@vite')
+          );
+        };
+
+        const origWarn = console.warn;
+        const origError = console.error;
+        const origLog = console.log;
+        const origInfo = console.info;
+        const origDebug = console.debug;
+
+        console.warn = function(...args) {
+          if (isViteNotice(args)) return;
+          origWarn.apply(console, args);
+        };
+        console.error = function(...args) {
+          if (isViteNotice(args)) return;
+          origError.apply(console, args);
+        };
+        console.log = function(...args) {
+          if (isViteNotice(args)) return;
+          origLog.apply(console, args);
+        };
+        if (origInfo) {
+          console.info = function(...args) {
+            if (isViteNotice(args)) return;
+            origInfo.apply(console, args);
+          };
+        }
+        if (origDebug) {
+          console.debug = function(...args) {
+            if (isViteNotice(args)) return;
+            origDebug.apply(console, args);
+          };
+        }
+
+        window.onerror = function(msg, url, line, col, error) {
+          const str = String(msg || '') + ' ' + String(url || '') + ' ' + String(error ? (error.message || error.stack || error) : '');
+          if (
+            str.includes('[vite]') ||
+            str.includes('failed to connect to websocket') ||
+            str.includes('/@vite/') ||
+            str.includes('@vite') ||
+            str.includes('vite:')
+          ) {
+            return true; // suppresses window error reporting
+          }
+        };
+
+        window.addEventListener('error', function(event) {
+          if (!event) return;
+          const msg = String(event.message || '');
+          const filename = String(event.filename || '');
+          const errorMsg = event.error ? String(event.error.message || event.error.stack || '') : '';
+          const full = msg + ' ' + filename + ' ' + errorMsg;
+          if (
+            full.includes('[vite]') ||
+            full.includes('failed to connect to websocket') ||
+            full.includes('/@vite/') ||
+            full.includes('@vite') ||
+            full.includes('vite:')
+          ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (!event) return;
+          const reasonStr = event.reason ? String(event.reason.message || event.reason.stack || event.reason) : '';
+          if (
+            reasonStr.includes('[vite]') ||
+            reasonStr.includes('failed to connect to websocket') ||
+            reasonStr.includes('/@vite/') ||
+            reasonStr.includes('@vite') ||
+            reasonStr.includes('vite:')
+          ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        }, true);
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     
     <!-- PWA Meta Tags -->
@@ -16,14 +117,14 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180.png" />
     
     <!-- Primary Meta Tags -->
-    <meta name="title" content="Hub Mind" />
-    <meta name="description" content="Your central operations hub for tasks, meetings, clients, and projects." />
+    <meta name="title" content="Hub-Mind" />
+    <meta name="description" content="Internal business operations platform for Jaystarbliss Studios" />
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://hub-mind.netlify.app/" />
-    <meta property="og:title" content="Hub Mind" />
-    <meta property="og:description" content="Your central operations hub for tasks, meetings, clients, and projects." />
+    <meta property="og:title" content="Hub-Mind" />
+    <meta property="og:description" content="Internal business operations platform for Jaystarbliss Studios" />
     <meta property="og:image" content="https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=1200&auto=format&fit=crop" />
 
     <!-- Twitter -->
@@ -86,6 +187,17 @@
         <h1 class="pwa-title">Hub-Mind</h1>
         <p class="pwa-subtitle">Loading Workspace...</p>
       </div>
+      <script>
+        // Failsafe auto-dismiss splash screen after max 1.5s
+        setTimeout(function() {
+          var el = document.getElementById('pwa-splash');
+          if (el) {
+            el.style.transition = 'opacity 0.3s ease';
+            el.style.opacity = '0';
+            setTimeout(function() { if (el && el.parentNode) el.parentNode.removeChild(el); }, 350);
+          }
+        }, 1500);
+      </script>
     </div>
 
     <script type="module" src="/src/main.tsx"></script>

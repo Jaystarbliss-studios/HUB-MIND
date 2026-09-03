@@ -1,25 +1,44 @@
-import { initializeApp } from 'firebase/app';
-import { initializeAuth, browserLocalPersistence, browserSessionPersistence, indexedDBLocalPersistence, browserPopupRedirectResolver } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { 
+  initializeAuth, 
+  getAuth, 
+  browserLocalPersistence, 
+  browserSessionPersistence, 
+  indexedDBLocalPersistence, 
+  browserPopupRedirectResolver 
+} from 'firebase/auth';
+import { 
+  initializeFirestore, 
+  getFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
-// Initialize Auth with durable browser persistence BEFORE any login call.
-// This is important for Google OAuth on mobile browsers: the auth state must
-// survive the provider popup/redirect lifecycle instead of being initialized
-// with the default persistence after the login has already started.
-export const auth = initializeAuth(app, {
-  persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
-  popupRedirectResolver: browserPopupRedirectResolver,
-});
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-export const FIRESTORE_DATABASE_ID = 'ai-studio-hubmind-4cac2024-c6eb-4208-80cf-928714dfd430';
+// Initialize Auth with durable browser persistence and safe fallback
+let authInstance;
+try {
+  authInstance = initializeAuth(app, {
+    persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+    popupRedirectResolver: browserPopupRedirectResolver,
+  });
+} catch {
+  authInstance = getAuth(app);
+}
+export const auth = authInstance;
 
-// Initialize Firestore targeting the dedicated HubMind database with offline persistence
-export const db = initializeFirestore(
-  app,
-  {
+export const FIRESTORE_DATABASE_ID = '(default)';
+
+// Initialize Firestore targeting the default database with offline persistence and resilient fallback
+let dbInstance;
+try {
+  dbInstance = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-  },
-  FIRESTORE_DATABASE_ID
-);
+  });
+} catch {
+  dbInstance = getFirestore(app);
+}
+export const db = dbInstance;
+

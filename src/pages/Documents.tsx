@@ -12,7 +12,7 @@ import { useUsers } from '../lib/useUsers';
 import { TemplateSelector } from '../components/documents/TemplateSelector';
 import { sanitizeClipboardHtml } from '../components/documents/clipboard/clipboard-sanitizer';
 import { normalizeClipboardHtml } from '../components/documents/clipboard/clipboard-normalizer';
-import { deleteDocumentOffline, repairBlankDocumentsFromHistory } from '../lib/offlineSync';
+import { deleteDocumentOffline, repairBlankDocumentsFromHistory, getLocalDocsMap, setLocalDocsMap } from '../lib/offlineSync';
 
 export function Documents() {
   const { profile, user } = useAuth();
@@ -37,13 +37,21 @@ export function Documents() {
   const handleUpdateTitle = async (id: string) => {
     if (!editTitle.trim()) return;
     setIsUpdating(true);
+    const trimmedTitle = editTitle.trim();
+    const now = new Date().toISOString();
     try {
       const { doc, updateDoc } = await import('firebase/firestore');
       await updateDoc(doc(db, 'documents', id), {
-        title: editTitle.trim(),
-        updatedAt: new Date().toISOString()
+        title: trimmedTitle,
+        updatedAt: now,
       });
-      setDocsList(docsList.map(d => d.id === id ? { ...d, title: editTitle.trim() } : d));
+      const localDocs = getLocalDocsMap();
+      if (localDocs[id]) {
+        localDocs[id].title = trimmedTitle;
+        localDocs[id].updatedAt = now;
+        setLocalDocsMap(localDocs);
+      }
+      setDocsList(docsList.map(d => d.id === id ? { ...d, title: trimmedTitle } : d));
       setEditingDocId(null);
     } catch (error) {
       console.error("Error updating document:", error);
@@ -114,14 +122,16 @@ export function Documents() {
       ? normalizeClipboardHtml(sanitizeClipboardHtml(content), 'hubmind-template')
       : '';
 
-    const documentContent = normalizedTemplate || { type: 'doc', content: [{ type: 'paragraph' }] };
+    const initialHtml = normalizedTemplate || '<p></p>';
+    const initialJson = normalizedTemplate ? null : { type: 'doc', content: [{ type: 'paragraph' }] };
+    const initialTitle = title.trim() || 'Untitled Document';
     const now = new Date().toISOString();
 
     try {
-      const newDocRef = await addDoc(collection(db, 'documents'), {
-        title: title.trim() || 'Untitled Document',
+      const newDocPayload: Record<string, any> = {
+        title: initialTitle,
         type: 'internal',
-        content: documentContent,
+        content: initialHtml,
         category: category || 'other',
         templateId: templateId || 'blank',
         ownerId: profile.id,
@@ -130,7 +140,27 @@ export function Documents() {
         updatedAt: now,
         lastEditedAt: now,
         lastSavedAt: now,
-      });
+      };
+      if (initialJson) {
+        newDocPayload.contentJson = initialJson;
+      }
+
+      const newDocRef = await addDoc(collection(db, 'documents'), newDocPayload);
+
+      // Pre-populate local cache so document is immediately available locally
+      const localDocs = getLocalDocsMap();
+      localDocs[newDocRef.id] = {
+        id: newDocRef.id,
+        title: initialTitle,
+        content: initialHtml,
+        ...(initialJson ? { contentJson: initialJson } : {}),
+        updatedAt: now,
+        lastSavedAt: now,
+        lastEditedAt: now,
+        lastModifiedBy: profile.preferredName || profile.name || 'User',
+        synced: true,
+      };
+      setLocalDocsMap(localDocs);
 
       setShowTemplates(false);
       navigate('/documents/' + newDocRef.id);

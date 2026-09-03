@@ -270,7 +270,9 @@ export class LiveAudioClient {
 
   private playAudioChunk(base64Audio: string): void {
     if (!this.outputAudioCtx || !this.outputGainNode) { console.warn('Cannot play audio: outputAudioCtx or outputGainNode missing'); return; }
-    if (this.outputAudioCtx.state === 'suspended') { console.warn('AudioContext is suspended! Audio will not play unless resumed by a user gesture.'); }
+    if (this.outputAudioCtx.state === 'suspended') {
+      this.outputAudioCtx.resume().catch(() => {});
+    }
 
     try {
       const binaryString = atob(base64Audio);
@@ -280,11 +282,14 @@ export class LiveAudioClient {
         bytes[i] = binaryString.charCodeAt(i);
       }
 
-      const int16Array = new Int16Array(bytes.buffer);
-      const float32Array = new Float32Array(int16Array.length);
+      // Safe PCM 16-bit little-endian decoding that never throws RangeError on odd byte lengths
+      const numSamples = Math.floor(bytes.byteLength / 2);
+      if (numSamples === 0) return;
+      const dataView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const float32Array = new Float32Array(numSamples);
 
-      for (let i = 0; i < int16Array.length; i++) {
-        const sample = int16Array[i];
+      for (let i = 0; i < numSamples; i++) {
+        const sample = dataView.getInt16(i * 2, true);
         float32Array[i] = sample < 0 ? sample / 32768 : sample / 32767;
       }
 

@@ -6,6 +6,7 @@ import {
   StoredConversation,
 } from '../types';
 import { LiveAudioClient } from '../services/liveAudioClient';
+import { voiceSynthesizer } from '../services/voiceSynth';
 import { ShawnOrbVisualizer } from './ShawnOrbVisualizer';
 import { LiveVoiceControls } from './LiveVoiceControls';
 import { TranscriptView } from './TranscriptView';
@@ -944,6 +945,13 @@ call returns.`;
             onClearTranscript={() => {
               setAllMessages([]);
               setActiveLeafId(null);
+            }}
+            onPlayTTS={(text) => {
+              if (voiceSynthesizer.isSpeaking()) {
+                voiceSynthesizer.stopAll();
+              } else {
+                voiceSynthesizer.speakText(text);
+              }
             }}
             onBranchMessage={handleBranchMessage}
             onSwitchSiblingBranch={handleSwitchSiblingBranch}

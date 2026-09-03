@@ -30,25 +30,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Safety timeout to guarantee the loading screen NEVER hangs indefinitely
     const timeoutId = setTimeout(() => {
       setLoading(false);
-    }, 4000);
+    }, 2000);
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      clearTimeout(timeoutId);
       setUser(firebaseUser);
       
       if (firebaseUser) {
-        try {
-          const userEmail = (firebaseUser.email || '').toLowerCase().trim();
-          const isAppAdmin = userEmail === 'johnrufai242@gmail.com' || userEmail.includes('admin');
-          const defaultName = firebaseUser.displayName || (userEmail ? userEmail.split('@')[0] : 'User');
+        const userEmail = (firebaseUser.email || '').toLowerCase().trim();
+        const isAppAdmin = userEmail === 'johnrufai242@gmail.com' || userEmail.includes('admin');
+        const defaultName = firebaseUser.displayName || (userEmail ? userEmail.split('@')[0] : 'User');
 
-          // 1. Try to find the user by UID
+        // Immediately populate optimistic profile so the workspace renders with ZERO delay
+        const baseProfile: User = {
+          id: firebaseUser.uid,
+          name: defaultName,
+          email: firebaseUser.email || userEmail,
+          role: isAppAdmin ? 'admin' : 'staff',
+          status: 'active',
+          photoUrl: firebaseUser.photoURL || undefined,
+          createdAt: new Date().toISOString(),
+        };
+
+        setProfile((prev) => prev || baseProfile);
+        setLoading(false);
+        clearTimeout(timeoutId);
+
+        try {
+          // 1. Try to find the user by UID with 2.5s timeout
           const docRef = doc(db, 'users', firebaseUser.uid);
-          let docSnap = null;
+          let docSnap: any = null;
           try {
-            docSnap = await getDoc(docRef);
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500));
+            docSnap = await Promise.race([getDoc(docRef), timeoutPromise]);
           } catch (e) {
-            console.warn('Error reading user by UID from Firestore:', e);
+            console.warn('User UID lookup completed or timed out:', e);
           }
 
           if (docSnap && docSnap.exists()) {
@@ -57,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const updatedProfile: User = {
               id: docSnap.id,
               name: data.name || defaultName,
-              email: firebaseUser.email || data.email || '',
+              email: firebaseUser.email || data.email || userEmail,
               role: role,
               status: data.status || 'active',
               photoUrl: firebaseUser.photoURL || data.photoUrl,
@@ -72,29 +87,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             setProfile(updatedProfile);
-            checkAndSeedWorkspaceData(firebaseUser.uid, userEmail);
+            checkAndSeedWorkspaceData(firebaseUser.uid, userEmail).catch(() => {});
           } else {
-            // 2. Try to find by email
+            // 2. Try to find by email if userEmail exists
             let existingDocData: any = null;
-            let existingDocId: string | null = null;
 
             if (userEmail) {
               try {
                 const emailDocRef = doc(db, 'users', userEmail);
-                const emailSnap = await getDoc(emailDocRef);
-                if (emailSnap.exists()) {
+                const emailSnap = await Promise.race([
+                  getDoc(emailDocRef),
+                  new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+                ]) as any;
+
+                if (emailSnap && emailSnap.exists()) {
                   existingDocData = emailSnap.data();
-                  existingDocId = emailSnap.id;
-                } else {
-                  const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
-                  const querySnapshot = await getDocs(q);
-                  if (!querySnapshot.empty) {
-                    existingDocData = querySnapshot.docs[0].data();
-                    existingDocId = querySnapshot.docs[0].id;
-                  }
                 }
               } catch (e) {
-                console.warn('Error querying user by email:', e);
+                console.warn('User email doc lookup skipped:', e);
               }
             }
 
@@ -112,47 +122,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 ...existingDocData,
               };
 
-              // Link to UID doc for fast lookups
               setDoc(docRef, resolvedProfile, { merge: true }).catch(() => {});
               setProfile(resolvedProfile);
             } else {
-              // 3. New user profile creation
-              const newProfile: User = {
-                id: firebaseUser.uid,
-                name: defaultName,
-                email: firebaseUser.email || '',
-                role: isAppAdmin ? 'admin' : 'staff',
-                status: 'active',
-                photoUrl: firebaseUser.photoURL || undefined,
-                createdAt: new Date().toISOString(),
-              };
-
-              try {
-                await setDoc(docRef, newProfile);
-              } catch (err) {
-                console.warn('Could not write new user doc immediately:', err);
-              }
-              setProfile(newProfile);
+              // 3. Persist new user profile in background
+              setDoc(docRef, baseProfile, { merge: true }).catch(() => {});
             }
           }
         } catch (error) {
-          console.error("Error in auth state handling:", error);
-          // Fallback so user is not locked out
-          const email = firebaseUser.email || '';
-          setProfile({
-            id: firebaseUser.uid,
-            name: firebaseUser.displayName || (email ? email.split('@')[0] : 'User'),
-            email: email,
-            role: (email === 'johnrufai242@gmail.com' || email.includes('admin')) ? 'admin' : 'staff',
-            status: 'active',
-            photoUrl: firebaseUser.photoURL || undefined,
-            createdAt: new Date().toISOString(),
-          });
+          console.error("Non-blocking error in auth background sync:", error);
         }
       } else {
         setProfile(null);
+        setLoading(false);
+        clearTimeout(timeoutId);
       }
-      setLoading(false);
     });
 
     return () => {

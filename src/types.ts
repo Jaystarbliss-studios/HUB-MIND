@@ -57,11 +57,12 @@ export interface Task {
 
 export type MeetingStatus = 'scheduled' | 'in_session' | 'completed' | 'canceled' | 'rescheduled';
 export interface Meeting {
+  id: string;
+  title?: string;
   status?: MeetingStatus;
   projectId?: string;
   decisions?: string[];
   openQuestions?: string[];
-  id: string;
   clientId?: string;
   ownerId?: string; // userId
   attendees: string[]; // names or userIds

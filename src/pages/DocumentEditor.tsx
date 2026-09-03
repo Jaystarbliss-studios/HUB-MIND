@@ -32,25 +32,24 @@ import { ShawnDocCoWriter } from '../components/documents/ShawnDocCoWriter';
 import { 
   saveDocumentOffline, 
   getDocumentWithOfflineFallback, 
-  processOfflineSyncQueue 
+  processOfflineSyncQueue,
+  isContentEffectivelyEmpty,
+  extractDocumentBody
 } from '../lib/offlineSync';
 import { useAuth } from '../lib/auth';
 import { formatExactTimestamp, formatTimeWithSeconds } from '../lib/dateUtils';
 import { 
   ArrowLeft, Loader2, Save, Sun, Moon, 
   FileText, Eye, Sparkles,
-  Clock, Cloud, CheckCheck, Mic, History, WifiOff, RefreshCw,
-  Bold, Italic, List, Heading1, Heading2, Undo, Redo, Smartphone, Monitor
+  Clock, Cloud, History, WifiOff, RefreshCw,
+  Bold, Italic, List, Undo, Redo
 } from 'lucide-react';
 import { 
   PaperSizeOption, 
   OrientationOption, 
   MarginOption, 
   PaperThemeOption, 
-  PAPER_SIZES, 
-  MARGIN_PRESETS,
   computePageLayout, 
-  paginateDocument,
   calculateExactPageCount
 } from '../lib/paginationEngine';
 
@@ -77,55 +76,78 @@ function parseStoredDocumentContent(content: unknown): unknown {
   if (trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed.startsWith('"')) {
     try {
       const parsed = JSON.parse(trimmed);
-      // A legacy template is JSON.stringify("<html>...</html>"), so JSON.parse
-      // returns a string. Decode once and continue through normal HTML handling.
       return typeof parsed === 'string' ? parsed : parsed;
     } catch {
-      // It is ordinary HTML/text; leave it untouched.
+      // Ordinary HTML or text; leave untouched
     }
   }
 
   return content;
 }
 
-function setEditorDocumentContent(editorInstance: any, content: unknown, source: string): void {
-  if (!editorInstance || editorInstance.isDestroyed || !editorInstance.commands) return;
-
-  const decoded = parseStoredDocumentContent(content);
-
-  if (typeof decoded === 'string') {
-    const cleanHtml = normalizeClipboardHtml(
-      sanitizeClipboardHtml(decoded),
-      source
-    );
-    editorInstance.commands.setContent(cleanHtml || decoded, { emitUpdate: false });
-  } else if (decoded) {
-    editorInstance.commands.setContent(decoded, { emitUpdate: false });
+/**
+ * Derives initial content for TipTap from a loaded document payload.
+ * Prefers TipTap JSON when present, otherwise decodes and sanitizes stored HTML.
+ */
+function resolveInitialEditorContent(data: any): any {
+  if (!data) return '<p></p>';
+  const { html, json } = extractDocumentBody(data);
+  if (json && !isContentEffectivelyEmpty(null, json)) {
+    return json;
   }
+  if (html && !isContentEffectivelyEmpty(html, null)) {
+    const decoded = parseStoredDocumentContent(html);
+    if (typeof decoded === 'string') {
+      const cleanHtml = normalizeClipboardHtml(
+        sanitizeClipboardHtml(decoded),
+        'stored-doc'
+      );
+      return cleanHtml || decoded;
+    }
+    return decoded;
+  }
+  if (json) return json;
+  return '<p></p>';
 }
 
-export function DocumentEditor() {
-  const { id } = useParams<{ id: string }>();
-  const isSharedView = new URLSearchParams(window.location.search).get('shared') === '1';
+/**
+ * Active Document Editor Workspace.
+ * This component is ONLY rendered after the document data has been successfully
+ * fetched and resolved asynchronously from Firestore and local offline storage.
+ */
+function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId: string }) {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [docMeta, setDocMeta] = useState<any>(null);
+  const isSharedView = new URLSearchParams(window.location.search).get('shared') === '1';
+
+  const [docMeta, setDocMeta] = useState<any>(initialDoc);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
-  const [lastEditedTime, setLastEditedTime] = useState<string | null>(null);
-  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
-  const [pageSize, setPageSize] = useState<PaperSizeOption>('a4');
-  const [orientation, setOrientation] = useState<OrientationOption>('portrait');
-  const [marginOption, setMarginOption] = useState<MarginOption>('normal');
+  const [lastEditedTime, setLastEditedTime] = useState<string | null>(
+    initialDoc?.lastEditedAt || initialDoc?.updatedAt || initialDoc?.createdAt || null
+  );
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(
+    initialDoc?.lastSavedAt || initialDoc?.updatedAt || initialDoc?.createdAt || null
+  );
+  const [pageSize, setPageSize] = useState<PaperSizeOption>(initialDoc?.pageSize || 'a4');
+  const [orientation, setOrientation] = useState<OrientationOption>(initialDoc?.orientation || 'portrait');
+  const [marginOption, setMarginOption] = useState<MarginOption>(initialDoc?.marginOption || 'normal');
   const [paperTheme, setPaperTheme] = useState<PaperThemeOption>('white');
   const [showMarginGuides, setShowMarginGuides] = useState<boolean>(false);
   const [showDebugInfo, setShowDebugInfo] = useState<boolean>(false);
-  const [pageCount, setPageCount] = useState<number>(1);
-  // Keep render-time consumers away from editor.getHTML()/getText().
-  // Tiptap's ProseMirror view is mounted by EditorContent after the parent renders.
-  const [editorHtml, setEditorHtml] = useState<string>('');
+  const [pageCount, setPageCount] = useState<number>(() => {
+    const initialHtml = typeof initialDoc?.content === 'string' ? initialDoc.content : '';
+    return calculateExactPageCount(
+      initialHtml, 
+      initialDoc?.pageSize || 'a4', 
+      initialDoc?.orientation || 'portrait', 
+      initialDoc?.marginOption || 'normal'
+    );
+  });
+  const [editorHtml, setEditorHtml] = useState<string>(
+    typeof initialDoc?.content === 'string' ? initialDoc.content : ''
+  );
   const [editorText, setEditorText] = useState<string>('');
   const [activePage, setActivePage] = useState<number>(1);
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
@@ -135,23 +157,18 @@ export function DocumentEditor() {
   const [isCoWriterOpen, setIsCoWriterOpen] = useState<boolean>(false);
   const [shawnActivityFlash, setShawnActivityFlash] = useState<string | null>(null);
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
+
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const latestTitleRef = useRef('Untitled Document');
-  const latestContentRef = useRef('');
+  const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const latestTitleRef = useRef(initialDoc?.title || 'Untitled Document');
+  const latestContentRef = useRef(typeof initialDoc?.content === 'string' ? initialDoc.content : '');
   const latestEditTimestampRef = useRef<string | null>(null);
   const saveChainRef = useRef<Promise<void>>(Promise.resolve());
   const saveSequenceRef = useRef(0);
-  // Prevent initialization/navigation races from ever persisting an empty
-  // editor over a document that already has content. Once the user actually
-  // edits (including deleting all text), dirtyRef becomes true and an empty
-  // document is a legitimate value that can be saved.
   const dirtyRef = useRef(false);
-  const loadedContentRef = useRef('');
+  const hasMountedRef = useRef(false);
 
-  useEffect(() => {
-    latestTitleRef.current = docMeta?.title || 'Untitled Document';
-  }, [docMeta?.title]);
-
+  // Compute layout specs for dynamic display
   const currentLayout = useMemo(() => {
     return computePageLayout({ paperSize: pageSize, orientation, marginOption });
   }, [pageSize, orientation, marginOption]);
@@ -166,12 +183,14 @@ export function DocumentEditor() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Compute resolved initial content once on mount
+  const initialContent = useMemo(() => {
+    return resolveInitialEditorContent(initialDoc);
+  }, [initialDoc]);
+
+  // Initialize TipTap editor instance with the already-fetched document content
   const editor = useEditor({
     extensions: [
-      // Tiptap v3 StarterKit already includes Link and Underline.
-      // Keep a single instance of each mark in the schema; duplicate mark
-      // names corrupt ProseMirror's schema and can make editor.getHTML()
-      // throw, blanking the entire editor.
       StarterKit.configure({
         link: { openOnClick: false },
         underline: {},
@@ -190,15 +209,17 @@ export function DocumentEditor() {
       TableHeader,
       TableCell,
       Image.configure({ inline: true, allowBase64: true }),
-      // Link is configured through StarterKit above (Tiptap v3).
       TaskList,
       TaskItem.configure({ nested: true }),
       CharacterCount,
       HubMindPasteEngine,
     ],
-    content: '',
+    content: initialContent,
     editable: !isSharedView,
     onUpdate: ({ editor }) => {
+      // Guard against false update triggers during mount initialization
+      if (!hasMountedRef.current) return;
+
       const editNow = new Date().toISOString();
       setLastEditedTime(editNow);
       setSaveStatus('saving');
@@ -226,8 +247,18 @@ export function DocumentEditor() {
     },
   });
 
+  // Mark editor as mounted and ready
   useEffect(() => {
-    if (editor && !editor.isDestroyed) editor.setEditable(!isSharedView);
+    const timer = setTimeout(() => {
+      hasMountedRef.current = true;
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) {
+      editor.setEditable(!isSharedView);
+    }
   }, [editor, isSharedView]);
 
   const saveLayoutSettings = async (
@@ -235,11 +266,11 @@ export function DocumentEditor() {
     nextOrientation: OrientationOption,
     nextMarginOption: MarginOption
   ) => {
-    if (!id) return;
+    if (!docId) return;
     const now = new Date().toISOString();
     try {
       await saveDocumentOffline(
-        id,
+        docId,
         {
           pageSize: nextPageSize,
           orientation: nextOrientation,
@@ -270,40 +301,54 @@ export function DocumentEditor() {
     void saveLayoutSettings(pageSize, orientation, next);
   };
 
-  const saveDocument = async (content?: string, editTimestamp?: string, titleOverride?: string, contentJsonOverride?: any) => {
-    if (!id || isSharedView) return;
+  const saveDocument = async (
+    content?: string,
+    editTimestamp?: string,
+    titleOverride?: string,
+    contentJsonOverride?: any,
+    forceSave = false
+  ) => {
+    if (!docId || isSharedView) return;
 
-    let htmlString = typeof content === 'string'
+    // Guard 1: Never save if user hasn't made an edit and it's not a forced save
+    if (!dirtyRef.current && !forceSave) return;
+
+    const htmlString = typeof content === 'string'
       ? content
       : (latestContentRef.current || (editor && !editor.isDestroyed ? editor.getHTML() : '') || '');
 
-    // Critical safety guard: during document initialization, Tiptap briefly
-    // contains an empty document. A title save/pagehide/autosave must never
-    // turn that transient state into the canonical Firebase body.
-    if (!dirtyRef.current && !htmlString.trim() && loadedContentRef.current.trim()) {
-      htmlString = loadedContentRef.current;
-    }
     const contentJson = contentJsonOverride ?? (editor && !editor.isDestroyed ? editor.getJSON() : undefined);
-    const title = titleOverride ?? latestTitleRef.current ?? 'Untitled Document';
+
+    // Guard 2: If content is effectively empty and dirtyRef is false, block save
+    if (isContentEffectivelyEmpty(htmlString, contentJson) && !dirtyRef.current && !forceSave) {
+      return;
+    }
+
+    const title = titleOverride !== undefined ? titleOverride : latestTitleRef.current;
     const actualEditTime = editTimestamp || latestEditTimestampRef.current || lastEditedTime || new Date().toISOString();
     const saveNow = new Date().toISOString();
     const sequence = ++saveSequenceRef.current;
 
-    // Serialize writes so title edits and content autosaves cannot race each other.
+    // Serialize writes so autosaves and manual saves cannot race each other
     saveChainRef.current = saveChainRef.current
       .catch(() => undefined)
       .then(async () => {
         setSaveStatus('saving');
 
+        const payload: Record<string, any> = {
+          content: htmlString,
+          ...(contentJson ? { contentJson } : {}),
+          updatedAt: saveNow,
+          lastEditedAt: actualEditTime,
+          allowEmpty: dirtyRef.current || forceSave,
+        };
+        if (titleOverride !== undefined) {
+          payload.title = title;
+        }
+
         await saveDocumentOffline(
-          id,
-          {
-            title,
-            content: htmlString,
-            ...(contentJson ? { contentJson } : {}),
-            updatedAt: saveNow,
-            lastEditedAt: actualEditTime,
-          },
+          docId,
+          payload,
           profile || undefined
         );
 
@@ -320,9 +365,53 @@ export function DocumentEditor() {
     return saveChainRef.current;
   };
 
-  // Keep the latest editor state available for all save paths.
+  const handleTitleChange = (newTitle: string) => {
+    setDocMeta((prev: any) => prev ? { ...prev, title: newTitle } : prev);
+    latestTitleRef.current = newTitle;
+    const now = new Date().toISOString();
+    setLastEditedTime(now);
+
+    if (titleTimeoutRef.current) clearTimeout(titleTimeoutRef.current);
+    titleTimeoutRef.current = setTimeout(async () => {
+      if (!docId || isSharedView) return;
+      const finalTitle = newTitle.trim() || 'Untitled Document';
+      try {
+        setSaveStatus('saving');
+        await saveDocumentOffline(
+          docId,
+          {
+            title: finalTitle,
+            lastEditedAt: now,
+            updatedAt: new Date().toISOString(),
+            allowUntitled: true,
+          },
+          profile || undefined
+        );
+        setLastSavedTime(new Date().toISOString());
+        setSaveStatus('saved');
+      } catch (err) {
+        console.error('Failed to save document title:', err);
+        setSaveStatus('error');
+      }
+    }, 400);
+  };
+
+  const handleManualSave = async () => {
+    if (!editor || !docId || isSharedView) return;
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    const now = new Date().toISOString();
+    latestEditTimestampRef.current = now;
+    setLastEditedTime(now);
+    dirtyRef.current = true;
+    await saveDocument(editor.getHTML(), now, undefined, editor.getJSON(), true);
+  };
+
+  // Keep the latest editor state available for all save paths and consumer modals
   useEffect(() => {
-    if (!editor || editor.isDestroyed || !(editor as any).view?.dom) return;
+    if (!editor || editor.isDestroyed) return;
     const syncEditorSnapshot = () => {
       try {
         const html = editor.getHTML();
@@ -335,19 +424,22 @@ export function DocumentEditor() {
     };
     syncEditorSnapshot();
     editor.on('transaction', syncEditorSnapshot);
-    return () => editor.off('transaction', syncEditorSnapshot);
+    return () => {
+      editor.off('transaction', syncEditorSnapshot);
+    };
   }, [editor]);
 
-  // Flush a pending debounce when the page is hidden/navigated away from.
+  // Flush a pending debounce when the page is hidden or navigated away from
   useEffect(() => {
     const flushPendingSave = () => {
-      if (isSharedView || !id || !editor || editor.isDestroyed) return;
-      latestContentRef.current = editor.getHTML();
+      if (isSharedView || !docId || !editor || editor.isDestroyed) return;
+      if (!dirtyRef.current) return;
+
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
-      void saveDocument(latestContentRef.current, new Date().toISOString(), latestTitleRef.current, editor.getJSON());
+      void saveDocument(editor.getHTML(), new Date().toISOString(), undefined, editor.getJSON(), true);
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') flushPendingSave();
@@ -358,7 +450,8 @@ export function DocumentEditor() {
       window.removeEventListener('pagehide', flushPendingSave);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [editor, id, isSharedView]);
+  }, [editor, docId, isSharedView]);
+
   // Online / Offline & Sync Event Listeners
   useEffect(() => {
     const handleOnline = () => {
@@ -397,28 +490,26 @@ export function DocumentEditor() {
         detail: {
           mode,
           context: 'document',
-          documentId: id,
+          documentId: docId,
           documentTitle: docMeta?.title || 'Untitled Document',
         },
       })
     );
   };
 
-  // Publish the active document to the global Shawn assistant so questions
-  // such as "what does this document say about..." can be grounded in the
-  // current document via Shawn's get_document_content tool.
+  // Publish the active document to Shawn assistant for context grounding
   useEffect(() => {
-    if (!docMeta?.id) return;
+    if (!docId) return;
     window.dispatchEvent(new CustomEvent('shawn:document_context', {
-      detail: { documentId: docMeta.id, title: docMeta.title || 'Current document' }
+      detail: { documentId: docId, title: docMeta?.title || 'Current document' }
     }));
-  }, [docMeta?.id, docMeta?.title]);
+  }, [docId, docMeta?.title]);
 
   // Listen for real-time Shawn AI document modification events
   useEffect(() => {
     const handleLiveDocEdit = (e: any) => {
       const { action, text, html, title, documentId } = e.detail || {};
-      if (documentId && documentId !== id) return;
+      if (documentId && documentId !== docId) return;
       if (!editor || editor.isDestroyed || !editor.commands) return;
 
       const now = new Date().toISOString();
@@ -426,27 +517,28 @@ export function DocumentEditor() {
 
       if (action === 'insert_text' && text) {
         editor.commands.insertContent(text);
-        setShawnActivityFlash(`Shawn inserted text`);
+        setShawnActivityFlash('Shawn inserted text');
       } else if (action === 'append_content' && (html || text)) {
         const contentToAppend = html || `<p>${text}</p>`;
         editor.commands.insertContentAt(editor.state.doc.content.size, contentToAppend);
-        setShawnActivityFlash(`Shawn appended content`);
+        setShawnActivityFlash('Shawn appended content');
       } else if (action === 'replace_all' && (html || text)) {
         const contentToSet = html || `<p>${text}</p>`;
         editor.commands.setContent(contentToSet);
-        setShawnActivityFlash(`Shawn updated document content`);
+        setShawnActivityFlash('Shawn updated document content');
       } else if (action === 'format_heading' && text) {
         editor.commands.setHeading({ level: 1 });
         editor.commands.insertContent(text);
-        setShawnActivityFlash(`Shawn formatted heading`);
+        setShawnActivityFlash('Shawn formatted heading');
       }
 
       if (title && docMeta) {
         setDocMeta({ ...docMeta, title });
       }
 
+      dirtyRef.current = true;
       const updatedHtml = editor.getHTML();
-      saveDocument(updatedHtml, now);
+      void saveDocument(updatedHtml, now, undefined, editor.getJSON(), true);
 
       setTimeout(() => {
         setShawnActivityFlash(null);
@@ -457,77 +549,11 @@ export function DocumentEditor() {
     return () => {
       window.removeEventListener('shawn:live_document_edit', handleLiveDocEdit);
     };
-  }, [editor, id, profile, docMeta]);
+  }, [editor, docId, docMeta]);
 
+  // Recalculate page count whenever layout settings change
   useEffect(() => {
-    let isMounted = true;
-    const fetchDoc = async () => {
-      if (!id) return;
-      try {
-        const data = await getDocumentWithOfflineFallback(id);
-        
-        if (!isMounted) return;
-
-        if (data) {
-          setDocMeta(data);
-          const storedContent = typeof data.content === 'string' ? data.content : '';
-          const storedJson = data.contentJson;
-          loadedContentRef.current = storedContent;
-          latestContentRef.current = storedContent;
-          dirtyRef.current = false;
-          if (data.pageSize) setPageSize(data.pageSize as PaperSizeOption);
-          if (data.orientation) setOrientation(data.orientation as OrientationOption);
-          if (data.marginOption) setMarginOption(data.marginOption as MarginOption);
-          setLastEditedTime(data.lastEditedAt || data.updatedAt || data.createdAt || null);
-          setLastSavedTime(data.lastSavedAt || data.updatedAt || data.createdAt || null);
-
-          if ((data.contentJson || data.content) && editor && !editor.isDestroyed && editor.commands) {
-            try {
-              if (data.contentJson) {
-                editor.commands.setContent(data.contentJson, { emitUpdate: false });
-              } else {
-                setEditorDocumentContent(editor, data.content, 'stored-document');
-              }
-            } catch (e) {
-              console.error('Could not render stored document content:', e);
-            }
-          }
-        } else {
-          navigate('/documents');
-        }
-      } catch (error) {
-        console.error('Error fetching document:', error);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchDoc();
-    return () => {
-      isMounted = false;
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [id, editor, navigate]);
-
-  // Sync content if editor initializes after docMeta is loaded
-  useEffect(() => {
-    if (!editor || (!docMeta?.contentJson && !docMeta?.content) || editor.isDestroyed || !editor.commands) return;
-    
-    if (editor.isEmpty) {
-      try {
-        if (docMeta.contentJson) editor.commands.setContent(docMeta.contentJson, { emitUpdate: false });
-      else setEditorDocumentContent(editor, docMeta.content, 'stored-document-sync');
-      } catch (e) {
-        console.error('Could not sync stored document content:', e);
-      }
-    }
-  }, [editor, docMeta?.content]);
-
-  // Recalculate page count whenever layout settings (size, orientation, margins) change
-  useEffect(() => {
-    if (!editor || editor.isDestroyed || !(editor as any).view?.dom) return;
+    if (!editor || editor.isDestroyed) return;
     const htmlContent = editor.getHTML();
     if (!htmlContent) return;
     const updatedCount = calculateExactPageCount(htmlContent, pageSize, orientation, marginOption);
@@ -547,7 +573,8 @@ export function DocumentEditor() {
       }
       const now = new Date().toISOString();
       setLastEditedTime(now);
-      saveDocument(contentHtml, now);
+      dirtyRef.current = true;
+      void saveDocument(contentHtml, now, versionTitle || undefined, editor.getJSON(), true);
       if (versionTitle && docMeta) {
         setDocMeta({ ...docMeta, title: versionTitle });
       }
@@ -555,14 +582,6 @@ export function DocumentEditor() {
       console.error('Error applying restored version', err);
     }
   };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full bg-slate-950">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col h-full bg-slate-950 overflow-hidden font-sans">
@@ -584,19 +603,10 @@ export function DocumentEditor() {
             <div className="min-w-0 flex-1">
               <input 
                 type="text" 
-                value={docMeta?.title || 'Untitled Document'}
-                onChange={(e) => {
-                  const newT = e.target.value;
-                  setDocMeta(prev => prev ? { ...prev, title: newT } : prev);
-                  latestTitleRef.current = newT;
-                  const now = new Date().toISOString();
-                  setLastEditedTime(now);
-                  latestEditTimestampRef.current = now;
-                  // Title changes use the same serialized save path as content changes.
-                  void saveDocument(undefined, now, newT);
-                }}
+                value={docMeta?.title || ''}
+                onChange={(e) => handleTitleChange(e.target.value)}
                 className="bg-transparent text-slate-100 font-bold focus:outline-none focus:border-b border-accent px-1 truncate w-full max-w-[125px] xs:max-w-[170px] sm:max-w-[240px] md:max-w-sm text-xs sm:text-sm md:text-base"
-                placeholder="Document Title"
+                placeholder="Untitled Document"
               />
 
               {/* Exact Timestamps & Connectivity Indicator */}
@@ -627,8 +637,8 @@ export function DocumentEditor() {
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <button
             onClick={async () => {
-              if (!id) return;
-              const path = `/documents/${id}?shared=1`;
+              if (!docId) return;
+              const path = `/documents/${docId}?shared=1`;
               try { await copyShareUrl(path); } catch {}
               shareHubMindItem(path, docMeta?.title || 'Document');
             }}
@@ -657,25 +667,17 @@ export function DocumentEditor() {
             </button>
           ) : null}
 
-          {!isSharedView && <button
-            onClick={async () => {
-              if (!editor) return;
-              if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-                timeoutRef.current = null;
-              }
-              latestContentRef.current = editor.getHTML();
-              const now = new Date().toISOString();
-              latestEditTimestampRef.current = now;
-              setLastEditedTime(now);
-              await saveDocument(latestContentRef.current, now, latestTitleRef.current, editor.getJSON());
-            }}
-            disabled={!editor || isSharedView}
-            className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-slate-950 text-xs font-bold transition-colors disabled:opacity-60 flex items-center gap-1.5"
-            title="Save document now"
-          >
-            <Save className="w-3.5 h-3.5" /><span className="hidden sm:inline">{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Retry Save' : 'Save'}</span>
-          </button>}
+          {!isSharedView && (
+            <button
+              onClick={handleManualSave}
+              disabled={!editor || isSharedView}
+              className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-slate-950 text-xs font-bold transition-colors disabled:opacity-60 flex items-center gap-1.5 cursor-pointer"
+              title="Save document now"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Retry Save' : 'Save'}</span>
+            </button>
+          )}
 
           {/* Version History Button */}
           <button
@@ -687,7 +689,7 @@ export function DocumentEditor() {
             <span className="hidden lg:inline">History</span>
           </button>
 
-          {/* Ask Shawn to Edit Pill Button (Unified Assistant Button) */}
+          {/* Ask Shawn to Edit Pill Button */}
           <button
             onClick={() => handleOpenShawnAI('chat')}
             className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-[#00b4a7] hover:bg-[#00c5b7] active:scale-95 text-slate-950 transition-all font-bold text-xs shadow-md shadow-teal-500/20 cursor-pointer shrink-0"
@@ -922,11 +924,11 @@ export function DocumentEditor() {
       )}
 
       {/* Document Version History & Restore Modal */}
-      {id && editor && (
+      {docId && editor && (
         <VersionHistoryModal
           isOpen={isVersionHistoryOpen}
           onClose={() => setIsVersionHistoryOpen(false)}
-          documentId={id}
+          documentId={docId}
           documentTitle={docMeta?.title || 'Untitled Document'}
           currentContentHtml={editorHtml}
           onRestoreVersion={handleRestoreVersion}
@@ -935,16 +937,80 @@ export function DocumentEditor() {
       )}
 
       {/* Shawn AI Co-Writer Live Dock */}
-      {id && editor && (
+      {docId && editor && (
         <ShawnDocCoWriter
           editor={editor}
           docTitle={docMeta?.title || 'Untitled Document'}
-          docId={id}
-          onSaveDocument={(content) => saveDocument(content, new Date().toISOString())}
+          docId={docId}
+          onSaveDocument={(content) => saveDocument(content, new Date().toISOString(), undefined, undefined, true)}
           isOpen={isCoWriterOpen}
           onToggleOpen={() => setIsCoWriterOpen(!isCoWriterOpen)}
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Top-Level DocumentEditor Entry Point.
+ * Correctly fetches document data from the database and handles asynchronous
+ * document loading BEFORE rendering the TipTap editor instance.
+ */
+export function DocumentEditor() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [docData, setDocData] = useState<any>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoading(true);
+
+    if (!id) {
+      navigate('/documents');
+      return;
+    }
+
+    const fetchDoc = async () => {
+      try {
+        const data = await getDocumentWithOfflineFallback(id);
+        if (!isMounted) return;
+
+        if (data) {
+          setDocData(data);
+          setLoading(false);
+        } else {
+          navigate('/documents');
+        }
+      } catch (error) {
+        console.error('Error fetching document:', error);
+        if (isMounted) {
+          navigate('/documents');
+        }
+      }
+    };
+
+    fetchDoc();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id, navigate]);
+
+  if (loading || !docData || !id) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-slate-950 text-slate-400 gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+        <p className="text-xs sm:text-sm font-medium text-slate-400 select-none">Loading document...</p>
+      </div>
+    );
+  }
+
+  return (
+    <DocumentEditorWorkspace
+      key={docData.id || id}
+      initialDoc={docData}
+      docId={id}
+    />
   );
 }

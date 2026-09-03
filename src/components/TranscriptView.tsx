@@ -395,13 +395,22 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({
 
             {/* Live Streaming Shawn Speech */}
             {liveShawnTranscript && (
-              <div className="flex gap-2.5 text-sm items-start animate-pulse">
-                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border border-teal-500/40 bg-gradient-to-tr from-teal-600 to-emerald-400 text-slate-950 shadow-md">
+              <div className="flex gap-2.5 text-sm items-start animate-in fade-in duration-150">
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border border-teal-500/40 bg-gradient-to-tr from-teal-600 to-emerald-400 text-slate-950 shadow-md shadow-teal-500/20">
                   <LogoIcon className="w-4 h-4" />
                 </div>
-                <div className="max-w-[82%] rounded-2xl px-4 py-2.5 bg-teal-950/40 border border-teal-500/30 text-teal-200 space-y-1">
-                  <div className="text-[10px] font-mono text-teal-400">Shawn Speaking...</div>
-                  <div className="text-xs leading-relaxed italic">{liveShawnTranscript}</div>
+                <div className="max-w-[88%] sm:max-w-[82%] rounded-2xl px-4 py-3 bg-slate-900/90 border border-teal-500/40 text-slate-100 shadow-lg shadow-teal-950/30 space-y-1.5">
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-teal-400">
+                    <span className="flex h-2 w-2 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
+                    </span>
+                    <span className="tracking-wide uppercase font-semibold">Shawn Speaking</span>
+                  </div>
+                  <div className="text-sm leading-relaxed text-slate-200">
+                    {liveShawnTranscript}
+                    <span className="inline-block w-1.5 h-4 ml-1 align-middle bg-teal-400 animate-pulse rounded-full" />
+                  </div>
                 </div>
               </div>
             )}

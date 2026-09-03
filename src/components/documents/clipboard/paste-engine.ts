@@ -24,7 +24,7 @@ export const HubMindPasteEngine = Extension.create({
             // 1. Detect clipboard contents & source signatures
             const detection = detectClipboardFormat(event);
 
-            if (process.env.NODE_ENV !== 'production') {
+            if (import.meta.env.DEV) {
               console.groupCollapsed('📋 [Hub-Mind Paste Engine] Processing Clipboard Event');
               console.log('Source:', detection.source);
               console.log('Available Types:', detection.types);
