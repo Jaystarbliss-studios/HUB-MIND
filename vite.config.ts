@@ -7,7 +7,7 @@ import { defineConfig } from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [
-      react(), 
+      react(),
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
@@ -23,7 +23,6 @@ export default defineConfig(() => {
           clientsClaim: true,
           maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,
           runtimeCaching: [
-            
             {
               urlPattern: /\/api\/tasks/i,
               handler: 'NetworkOnly',
@@ -31,9 +30,7 @@ export default defineConfig(() => {
               options: {
                 backgroundSync: {
                   name: 'task-sync-queue',
-                  options: {
-                    maxRetentionTime: 24 * 60 // 24 hours
-                  }
+                  options: { maxRetentionTime: 24 * 60 }
                 }
               }
             },
@@ -44,9 +41,7 @@ export default defineConfig(() => {
               options: {
                 backgroundSync: {
                   name: 'document-sync-queue',
-                  options: {
-                    maxRetentionTime: 24 * 60 // 24 hours
-                  }
+                  options: { maxRetentionTime: 24 * 60 }
                 }
               }
             },
@@ -59,9 +54,7 @@ export default defineConfig(() => {
                   maxEntries: 10,
                   maxAgeSeconds: 60 * 60 * 24 * 365
                 },
-                cacheableResponse: {
-                  statuses: [0, 200]
-                }
+                cacheableResponse: { statuses: [0, 200] }
               }
             },
             {
@@ -73,9 +66,7 @@ export default defineConfig(() => {
                   maxEntries: 10,
                   maxAgeSeconds: 60 * 60 * 24 * 365
                 },
-                cacheableResponse: {
-                  statuses: [0, 200]
-                }
+                cacheableResponse: { statuses: [0, 200] }
               }
             }
           ]
@@ -90,12 +81,10 @@ export default defineConfig(() => {
           orientation: 'portrait',
           scope: '/',
           start_url: '/',
-          
           icons: [
             { src: '/icon-72x72.png', sizes: '72x72', type: 'image/png' },
             { src: '/icon-96x96.png', sizes: '96x96', type: 'image/png' },
             { src: '/icon-128x128.png', sizes: '128x128', type: 'image/png' },
-            { src: '/icon-144x144.png', sizes: '144x144', type: 'image/png' },
             { src: '/icon-152x152.png', sizes: '152x152', type: 'image/png' },
             { src: '/icon-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
             { src: '/maskable-icon-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
@@ -123,20 +112,17 @@ export default defineConfig(() => {
       })
     ],
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, '.'),
-      },
+      alias: { '@': path.resolve(__dirname, '.') },
     },
     build: {
       outDir: 'dist',
-      emptyOutDir: false,
+      // Never retain chunks from previous builds. Keeping stale bundles in dist
+      // can make PWA deployments appear to randomly mix old/new application code.
+      emptyOutDir: true,
       chunkSizeWarningLimit: 3500,
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: false,
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };
