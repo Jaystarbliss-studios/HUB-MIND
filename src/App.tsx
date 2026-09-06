@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Component, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { LoadingProvider } from './lib/loadingContext';
@@ -6,9 +6,8 @@ import { Layout } from './components/Layout';
 import { PWAPrompt } from './components/PWAPrompt';
 import { Shawn } from './components/Shawn';
 import { ShawnTaskStatus } from './components/ShawnTaskStatus';
-import { Loader2 } from 'lucide-react';
+import { Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
 
-// Lazy loaded pages
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Inbox = lazy(() => import('./pages/Inbox').then(m => ({ default: m.Inbox })));
@@ -34,12 +33,56 @@ const LoadingScreen = () => (
   </div>
 );
 
+class AppErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[HubMind] Unhandled application error:', error, info);
+  }
+
+  handleReload = () => window.location.reload();
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center p-6">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-7 shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h1 className="font-bold text-white">Hub-Mind recovered from an error</h1>
+                <p className="text-xs text-slate-500">Your saved cloud data has not been intentionally changed.</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-400 mb-5">This screen caught an unexpected UI failure instead of leaving you with a blank page. Reload and try the action again.</p>
+            <button onClick={this.handleReload} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent text-slate-950 font-bold text-sm">
+              <RefreshCw className="w-4 h-4" /> Reload Hub-Mind
+            </button>
+            {this.state.error?.message && (
+              <details className="mt-5 text-xs text-slate-600">
+                <summary className="cursor-pointer">Technical details</summary>
+                <pre className="mt-2 whitespace-pre-wrap break-words">{this.state.error.message}</pre>
+              </details>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) {
   const { user, profile, loading } = useAuth();
 
   if (loading) return <LoadingScreen />;
-
-  if (!user || !profile) return <Navigate to="/login" />;
+  if (!user || !profile) return <Navigate to="/login" replace />;
 
   if (profile.status === 'inactive') {
     return (
@@ -61,50 +104,42 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
 
 export default function App() {
   return (
-    <AuthProvider>
-      <LoadingProvider>
-        <BrowserRouter>
-          <PWAPrompt />
-          <Shawn />
-          <ShawnTaskStatus />
-          <Suspense fallback={<LoadingScreen />}>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/share/:type/:id" element={<ProtectedRoute><SharedRecord /></ProtectedRoute>} />
-              
-              <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-                <Route index element={<Dashboard />} />
-                
-                <Route path="inbox" element={<Inbox />} />
-                
-                <Route path="tasks" element={<Tasks />} />
-                <Route path="tasks/:id" element={<TaskDetail />} />
-                
-                <Route path="projects" element={<Projects />} />
-                <Route path="projects/:id" element={<ProjectDetail />} />
-
-                <Route path="knowledge" element={<Knowledge />} />
-
-                <Route path="follow-ups" element={<FollowUps />} />
-
-                <Route path="clients" element={<Clients />} />
-                <Route path="clients/:id" element={<ClientDetail />} />
-
-                <Route path="meetings/:id" element={<MeetingDetail />} />
-                
-                <Route path="calendar" element={<Calendar />} />
-
-                <Route path="documents" element={<Documents />} />
-                <Route path="documents/:id" element={<DocumentEditor />} />
-
-                <Route path="notifications" element={<Notifications />} />
-
-                <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
-              </Route>
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-      </LoadingProvider>
-    </AuthProvider>
+    <AppErrorBoundary>
+      <AuthProvider>
+        <LoadingProvider>
+          <BrowserRouter>
+            <PWAPrompt />
+            <Shawn />
+            <ShawnTaskStatus />
+            <Suspense fallback={<LoadingScreen />}>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/share/:type/:id" element={<ProtectedRoute><SharedRecord /></ProtectedRoute>} />
+                <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="inbox" element={<Inbox />} />
+                  <Route path="tasks" element={<Tasks />} />
+                  <Route path="tasks/:id" element={<TaskDetail />} />
+                  <Route path="projects" element={<Projects />} />
+                  <Route path="projects/:id" element={<ProjectDetail />} />
+                  <Route path="knowledge" element={<Knowledge />} />
+                  <Route path="follow-ups" element={<FollowUps />} />
+                  <Route path="clients" element={<Clients />} />
+                  <Route path="clients/:id" element={<ClientDetail />} />
+                  <Route path="meetings/:id" element={<MeetingDetail />} />
+                  <Route path="calendar" element={<Calendar />} />
+                  <Route path="documents" element={<Documents />} />
+                  <Route path="documents/:id" element={<DocumentEditor />} />
+                  <Route path="notifications" element={<Notifications />} />
+                  <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </LoadingProvider>
+      </AuthProvider>
+    </AppErrorBoundary>
   );
 }
