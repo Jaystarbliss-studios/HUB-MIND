@@ -5,12 +5,8 @@ service cloud.firestore {
     function userDoc(uid) { return get(/databases/$(database)/documents/users/$(uid)).data; }
     function hasUserDoc(uid) { return signedIn() && exists(/databases/$(database)/documents/users/$(uid)); }
     function roleIs(role) { return signedIn() && hasUserDoc(request.auth.uid) && userDoc(request.auth.uid).role == role; }
-    function isAdmin() {
-      return signedIn() && (request.auth.token.email == 'johnrufai242@gmail.com' || roleIs('admin'));
-    }
-    function isWorkspaceUser() {
-      return signedIn() && hasUserDoc(request.auth.uid) && userDoc(request.auth.uid).status != 'inactive';
-    }
+    function isAdmin() { return signedIn() && (request.auth.token.email == 'johnrufai242@gmail.com' || roleIs('admin')); }
+    function isWorkspaceUser() { return signedIn() && hasUserDoc(request.auth.uid) && userDoc(request.auth.uid).status != 'inactive'; }
     function isAssistantOrAdmin() { return isAdmin() || (isWorkspaceUser() && roleIs('assistant')); }
     function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
     function canManageDocument(documentId) {
@@ -23,19 +19,14 @@ service cloud.firestore {
     match /{document=**} { allow read, write: if false; }
 
     match /users/{userId} {
-      // The workspace needs the directory for assignee/attendee selectors.
-      // Keep sensitive/private subcollections separately protected below.
       allow read: if isWorkspaceUser();
       allow create: if isAdmin() || (isSelf(userId) && request.resource.data.role == 'staff' && request.resource.data.status == 'active');
       allow update: if isAssistantOrAdmin() || (isSelf(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName', 'photoUrl', 'name']));
       allow delete: if isAdmin();
 
-      match /conversations/{conversationId} {
-        allow read, write: if isSelf(userId) || isAssistantOrAdmin();
-      }
-      match /private/{document=**} {
-        allow read, write: if isSelf(userId) || isAdmin();
-      }
+      match /conversations/{conversationId} { allow read, write: if isSelf(userId) || isAssistantOrAdmin(); }
+      match /private/{document=**} { allow read, write: if isSelf(userId) || isAdmin(); }
+      match /dailyReports/{reportId} { allow read, write: if isSelf(userId) || isAssistantOrAdmin(); }
     }
 
     match /conversations/{conversationId} { allow read, write: if isAssistantOrAdmin(); }
@@ -88,6 +79,10 @@ service cloud.firestore {
       allow read: if isWorkspaceUser();
       allow create: if isAssistantOrAdmin() || (isWorkspaceUser() && request.resource.data.createdBy == request.auth.uid);
       allow update, delete: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
+    }
+    match /payments/{paymentId} {
+      allow read: if isWorkspaceUser();
+      allow create, update, delete: if isAssistantOrAdmin();
     }
     match /notifications/{notificationId} {
       allow read: if isWorkspaceUser() && resource.data.userId == request.auth.uid;
