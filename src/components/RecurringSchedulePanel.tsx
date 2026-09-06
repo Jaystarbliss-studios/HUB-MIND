@@ -3,9 +3,9 @@ import { addDoc, collection, deleteDoc, doc, onSnapshot } from 'firebase/firesto
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { RecurringMeetingTemplate } from '../types';
-import { CalendarClock, Plus, Trash2, X } from 'lucide-react';
+import { CalendarClock, Plus, Trash2, X, CheckCircle2, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
-import { recurringMeetingSummary } from '../lib/recurringMeetings';
+import { materializeRecurringMeetings, recurringMeetingSummary } from '../lib/recurringMeetings';
 
 const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const fullDays = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -25,12 +25,21 @@ export function RecurringSchedulePanel() {
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     if (!profile) return;
     return onSnapshot(collection(db, 'recurringMeetingTemplates'), snap => {
-      setItems(snap.docs.map(d => ({id:d.id, ...d.data()} as RecurringMeetingTemplate)).filter(x => x.ownerId === profile.id));
-    }, e => console.warn('Recurring schedule:', e));
+      setItems(
+        snap.docs
+          .map(d => ({ id: d.id, ...d.data() } as RecurringMeetingTemplate))
+          .filter(x => x.ownerId === profile.id)
+      );
+    }, e => {
+      console.error('Recurring schedule subscription failed:', e);
+      setError('Unable to load recurring events. Please check your connection.');
+    });
   }, [profile]);
 
   const reset = () => {
@@ -41,21 +50,60 @@ export function RecurringSchedulePanel() {
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile || !title.trim() || (frequency === 'weekly' && selectedDays.length === 0)) return;
+    setError('');
+    setSuccess('');
+    if (!profile || !title.trim()) {
+      setError('Please enter an event title.');
+      return;
+    }
+    if (frequency === 'weekly' && selectedDays.length === 0) {
+      setError('Select at least one day for a weekly event.');
+      return;
+    }
+    if (endDate && endDate < startDate) {
+      setError('The end date cannot be before the start date.');
+      return;
+    }
+    if (endTime && endTime <= startTime) {
+      setError('The end time must be later than the start time.');
+      return;
+    }
+
     setSaving(true);
     try {
-      await addDoc(collection(db, 'recurringMeetingTemplates'), {
-        title: title.trim(), type, frequency,
+      const templateRef = await addDoc(collection(db, 'recurringMeetingTemplates'), {
+        title: title.trim(),
+        type,
+        frequency,
         daysOfWeek: frequency === 'weekly' ? selectedDays : [],
-        dayOfMonth: frequency === 'monthly' ? Number(startDate.slice(8,10)) : undefined,
-        startTime, endTime, startDate, endDate: endDate || null,
-        location: location.trim() || null, description: description.trim() || null,
-        ownerId: profile.id, attendees: [], active: true,
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+        dayOfMonth: frequency === 'monthly' ? Number(startDate.slice(8, 10)) : null,
+        startTime,
+        endTime: endTime || null,
+        startDate,
+        endDate: endDate || null,
+        location: location.trim() || null,
+        description: description.trim() || null,
+        ownerId: profile.id,
+        attendees: [],
+        active: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       });
-      reset(); setOpen(false);
-    } catch (e) { console.error('Create recurring schedule failed:', e); }
-    finally { setSaving(false); }
+
+      // Create the upcoming concrete calendar occurrences immediately so the
+      // event is visible without waiting for another page load/day cycle.
+      await materializeRecurringMeetings(90);
+
+      reset();
+      setOpen(false);
+      setSuccess('Recurring event added to your schedule.');
+      void templateRef;
+    } catch (e) {
+      console.error('Create recurring schedule failed:', e);
+      setError(e instanceof Error ? e.message : 'Could not save the recurring event. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const toggleDay = (day: number) => setSelectedDays(v => v.includes(day) ? v.filter(x => x !== day) : [...v, day].sort());
@@ -66,17 +114,23 @@ export function RecurringSchedulePanel() {
         <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400"><CalendarClock className="w-5 h-5"/></div>
         <div><h2 className="font-bold text-white text-sm">Recurring Schedule</h2><p className="text-xs text-slate-500">Classes, meetings and appointments that repeat automatically.</p></div>
       </div>
-      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded-xl bg-teal-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5"><Plus className="w-4 h-4"/> Add recurring event</button>
+      <button onClick={()=>{setError('');setSuccess('');setOpen(true)}} className="px-3 py-2 rounded-xl bg-teal-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5"><Plus className="w-4 h-4"/> Add recurring event</button>
     </div>
+
+    {success && <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"><CheckCircle2 className="w-4 h-4 shrink-0"/>{success}</div>}
+    {error && !open && <div className="mt-3 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300"><AlertCircle className="w-4 h-4 shrink-0"/>{error}</div>}
+
     {items.length > 0 && <div className="mt-4 grid md:grid-cols-2 gap-2">
       {items.map(x=><div key={x.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex justify-between gap-3">
         <div className="min-w-0"><p className="text-sm font-semibold text-slate-200 truncate">{x.title}</p><p className="text-xs text-cyan-400 mt-0.5">{recurringMeetingSummary(x)} · {x.startTime}{x.endTime ? `–${x.endTime}` : ''}</p><p className="text-[11px] text-slate-500 mt-1 capitalize">{x.type.replace('_',' ')}{x.location ? ` · ${x.location}` : ''}</p></div>
-        <button onClick={async()=>{if(confirm('Stop this recurring event? Existing occurrences remain.')) await deleteDoc(doc(db,'recurringMeetingTemplates',x.id));}} className="p-2 text-slate-500 hover:text-red-400 shrink-0"><Trash2 className="w-4 h-4"/></button>
+        <button onClick={async()=>{if(confirm('Stop this recurring event? Existing occurrences remain.')) { try { await deleteDoc(doc(db,'recurringMeetingTemplates',x.id)); } catch(e) { console.error(e); setError('Could not stop this recurring event.'); } }}} className="p-2 text-slate-500 hover:text-red-400 shrink-0"><Trash2 className="w-4 h-4"/></button>
       </div>)}
     </div>}
+
     {open && <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <form onSubmit={create} className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between"><div><h3 className="text-lg font-bold text-white">Add recurring event</h3><p className="text-xs text-slate-500">Set it once; Hub-Mind keeps your calendar populated.</p></div><button type="button" onClick={()=>{reset();setOpen(false)}} className="text-slate-500 hover:text-white"><X/></button></div>
+        <div className="flex items-center justify-between"><div><h3 className="text-lg font-bold text-white">Add recurring event</h3><p className="text-xs text-slate-500">Set it once; Hub-Mind keeps your calendar populated.</p></div><button type="button" onClick={()=>{reset();setOpen(false);setError('')}} className="text-slate-500 hover:text-white"><X/></button></div>
+        {error && <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5"/>{error}</div>}
         <input required value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. JDI Music Class" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white"/>
         <div className="grid grid-cols-2 gap-3">
           <select value={type} onChange={e=>setType(e.target.value as any)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white"><option value="class">Class</option><option value="meeting">Meeting</option><option value="appointment">Appointment</option><option value="school_event">School event</option><option value="other">Other</option></select>
