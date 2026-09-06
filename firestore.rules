@@ -47,7 +47,6 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // A user can read their own profile. Admins/assistants can manage the team.
       allow read: if isSelf(userId) || isAssistantOrAdmin();
       allow create: if isSelf(userId) || isAdmin();
       allow update: if isSelf(userId) || isAssistantOrAdmin();
@@ -62,7 +61,6 @@ service cloud.firestore {
       }
     }
 
-    // Legacy/root conversation fallback. Keep it restricted.
     match /conversations/{conversationId} {
       allow read, write: if isAssistantOrAdmin();
     }
@@ -147,9 +145,6 @@ service cloud.firestore {
         || (isWorkspaceUser() && resource.data.userId == request.auth.uid);
     }
 
-
-    // Read-only deep-link snapshots. These are created only by workspace operators and
-    // contain a deliberate copy of the item intended for sharing, not editable records.
     match /sharedRecords/{shareId} {
       allow read: if isWorkspaceUser();
       allow create: if isAssistantOrAdmin();
@@ -168,13 +163,30 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // Recurring schedules are managed by the assistant/admin workspace roles.
+    // These rules were previously missing, causing the UI's Add recurring event
+    // action to fail with PERMISSION_DENIED while the component hid the error.
+    match /recurringMeetingTemplates/{templateId} {
+      allow read: if isAssistantOrAdmin();
+      allow create: if isAssistantOrAdmin()
+        && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isAssistantOrAdmin()
+        && resource.data.ownerId == request.auth.uid;
+      allow delete: if isAssistantOrAdmin()
+        && resource.data.ownerId == request.auth.uid;
+    }
+
     match /recurringTaskTemplates/{templateId} {
       allow read: if isAssistantOrAdmin();
-      allow create, update, delete: if isAssistantOrAdmin();
+      allow create: if isAssistantOrAdmin()
+        && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isAssistantOrAdmin()
+        && resource.data.ownerId == request.auth.uid;
+      allow delete: if isAssistantOrAdmin()
+        && resource.data.ownerId == request.auth.uid;
     }
 
     match /memories/{memoryId} {
-      // Memories are private unless deliberately managed by an admin/assistant.
       allow read: if isAssistantOrAdmin()
         || (isWorkspaceUser() && resource.data.userId == request.auth.uid);
       allow create: if isAssistantOrAdmin()
