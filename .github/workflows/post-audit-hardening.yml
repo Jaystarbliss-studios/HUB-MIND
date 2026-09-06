@@ -1,0 +1,70 @@
+name: Post-audit hardening
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: ${{ !startsWith(github.event.head_commit.message, '[hardening-bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply integrity patches
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          # Documents: Firebase is authoritative after a successful cloud
+          # snapshot. Never merge arbitrary local records missing from that
+          # snapshot back into the list; that resurrects deleted documents.
+          p = Path('src/pages/Documents.tsx')
+          s = p.read_text(encoding='utf-8')
+          pattern = re.compile(
+              r"\n\s*// Also merge in any local drafts not yet present in the Firestore collection\n"
+              r"\s*const cloudIds = new Set\(docsData\.map\(d => d\.id\)\);\n"
+              r"\s*Object\.entries\(localMap\)\.forEach\(\(\[id, localDoc\]\) => \{.*?\n\s*\}\);\n",
+              re.S,
+          )
+          s, n = pattern.subn('\n', s, count=1)
+          if n:
+              p.write_text(s, encoding='utf-8')
+
+          # Dashboard: reports must contain real newlines, not the two-character
+          # sequence backslash+n, before they are shown or sent to WhatsApp.
+          p = Path('src/pages/Dashboard.tsx')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("lines.join('\\\\n')", "lines.join('\\n')")
+          s = s.replace("].join('\\\\n')", "].join('\\n')")
+          p.write_text(s, encoding='utf-8')
+
+          # Offline document cache: an empty cache must remain genuinely empty;
+          # never manufacture demo documents as a fallback.
+          p = Path('src/lib/offlineSync.ts')
+          s = p.read_text(encoding='utf-8')
+          old = """  const defaults = getDefaultDocs();
+  try {
+    localStorage.setItem(OFFLINE_DOCS_KEY, JSON.stringify(defaults));
+  } catch {}
+  return defaults;"""
+          s = s.replace(old, "  return {};", 1)
+          p.write_text(s, encoding='utf-8')
+
+      - name: Commit hardening changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No hardening changes required."
+            exit 0
+          fi
+          git add src/pages/Documents.tsx src/pages/Dashboard.tsx src/lib/offlineSync.ts
+          git commit -m "[hardening-bot] prevent stale cache resurrection and fix report newlines"
+          git push origin HEAD:main
