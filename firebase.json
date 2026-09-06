@@ -1,5 +1,9 @@
 {
-  "firestore": {
-    "rules": "firestore.rules"
-  }
+  "$schema": "https://raw.githubusercontent.com/firebase/firebase-tools/master/schema/firebase-config.json",
+  "firestore": [
+    {
+      "database": "hubmind",
+      "rules": "firestore.rules"
+    }
+  ]
 }
