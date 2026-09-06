@@ -41,6 +41,14 @@ service cloud.firestore {
       return signedIn() && field == request.auth.uid;
     }
 
+    function canManageDocument(documentId) {
+      return isAssistantOrAdmin()
+        || (isWorkspaceUser() && (
+          get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId == request.auth.uid ||
+          get(/databases/$(database)/documents/documents/$(documentId)).data.createdBy == request.auth.uid
+        ));
+    }
+
     // Secure by default.
     match /{document=**} {
       allow read, write: if false;
@@ -48,8 +56,20 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isSelf(userId) || isAssistantOrAdmin();
-      allow create: if isSelf(userId) || isAdmin();
-      allow update: if isSelf(userId) || isAssistantOrAdmin();
+      // A user may bootstrap only a normal staff profile. Privileged roles are
+      // assigned by the server-side security identity/admin path, never by the client.
+      allow create: if isAdmin() || (
+        isSelf(userId) &&
+        request.resource.data.role == 'staff' &&
+        request.resource.data.status == 'active'
+      );
+      // Self-service profile edits are deliberately limited to harmless fields.
+      allow update: if isAssistantOrAdmin() || (
+        isSelf(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'preferredName', 'photoUrl', 'name'
+        ])
+      );
       allow delete: if isAdmin();
 
       match /conversations/{conversationId} {
@@ -79,13 +99,16 @@ service cloud.firestore {
     }
 
     match /documents/{documentId} {
-      allow read: if signedIn();
-      allow create, update: if signedIn();
-      allow delete: if isAssistantOrAdmin()
-        || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
+      allow read: if isWorkspaceUser();
+      allow create: if isAssistantOrAdmin()
+        || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid && request.resource.data.createdBy == request.auth.uid);
+      allow update: if canManageDocument(documentId);
+      allow delete: if canManageDocument(documentId);
 
       match /versions/{versionId} {
-        allow read, write: if signedIn();
+        allow read: if isWorkspaceUser();
+        allow create: if canManageDocument(documentId);
+        allow update, delete: if canManageDocument(documentId);
       }
     }
 
@@ -163,9 +186,6 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // Recurring schedules are managed by the assistant/admin workspace roles.
-    // These rules were previously missing, causing the UI's Add recurring event
-    // action to fail with PERMISSION_DENIED while the component hid the error.
     match /recurringMeetingTemplates/{templateId} {
       allow read: if isAssistantOrAdmin();
       allow create: if isAssistantOrAdmin()
