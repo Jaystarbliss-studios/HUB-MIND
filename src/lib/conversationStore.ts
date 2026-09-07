@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, collection, getDocs, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDocs, setDoc, collection, query, orderBy, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { ChatMessage, StoredConversation } from '../types';
 
@@ -10,32 +10,23 @@ export function getActiveBranchMessages(
 ): ChatMessage[] {
   if (!messages || messages.length === 0) return [];
 
-  // If no parentMessageId exists across messages (flat legacy list), return as is
   const hasTreeLinks = messages.some((m) => m.parentMessageId !== undefined);
-  if (!hasTreeLinks) {
-    return messages;
-  }
+  if (!hasTreeLinks) return messages;
 
   const msgMap = new Map<string, ChatMessage>();
   messages.forEach((m) => msgMap.set(m.id, m));
 
-  // Determine target leaf
   let currentId: string | null = activeLeafId || null;
-  if (!currentId || !msgMap.has(currentId)) {
-    // Pick the most recent message as leaf
-    currentId = messages[messages.length - 1]?.id || null;
-  }
+  if (!currentId || !msgMap.has(currentId)) currentId = messages[messages.length - 1]?.id || null;
 
   const path: ChatMessage[] = [];
   const visited = new Set<string>();
-
   while (currentId && msgMap.has(currentId) && !visited.has(currentId)) {
     visited.add(currentId);
     const msg = msgMap.get(currentId)!;
     path.unshift(msg);
     currentId = msg.parentMessageId || null;
   }
-
   return path;
 }
 
@@ -44,31 +35,21 @@ export function getSiblingsInfo(
   messageId: string
 ): { siblings: ChatMessage[]; currentIndex: number; total: number } {
   const currentMsg = allMessages.find((m) => m.id === messageId);
-  if (!currentMsg) {
-    return { siblings: [], currentIndex: 0, total: 1 };
-  }
+  if (!currentMsg) return { siblings: [], currentIndex: 0, total: 1 };
 
   const parentId = currentMsg.parentMessageId || null;
   const siblings = allMessages.filter((m) => (m.parentMessageId || null) === parentId && m.sender === currentMsg.sender);
-
   const currentIndex = siblings.findIndex((m) => m.id === messageId);
-  return {
-    siblings,
-    currentIndex: currentIndex >= 0 ? currentIndex : 0,
-    total: Math.max(siblings.length, 1),
-  };
+  return { siblings, currentIndex: currentIndex >= 0 ? currentIndex : 0, total: Math.max(siblings.length, 1) };
 }
 
 export async function saveConversationToFirestore(
   userId: string,
   conversation: StoredConversation
 ): Promise<void> {
-  // Always update local fallback
   try {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}${userId}_${conversation.id}`, JSON.stringify(conversation));
-  } catch (e) {
-    // Ignore storage quota limits
-  }
+  } catch {}
 
   if (!userId) return;
 
@@ -80,61 +61,62 @@ export async function saveConversationToFirestore(
       updatedAt: new Date().toISOString(),
     }, { merge: true });
   } catch (err) {
-    console.warn('Error saving conversation to Firestore, stored locally:', err);
+    console.warn('Error saving conversation to Firestore, retained local pending copy:', err);
   }
 }
 
 export async function loadUserConversations(userId: string): Promise<StoredConversation[]> {
-  const conversations: StoredConversation[] = [];
+  if (!userId) return [];
 
-  // Try Firestore first
-  if (userId) {
-    try {
-      const convCollection = collection(db, 'users', userId, 'conversations');
-      const q = query(convCollection, orderBy('updatedAt', 'desc'));
-      const snapshot = await getDocs(q);
-      snapshot.forEach((docSnap) => {
-        conversations.push(docSnap.data() as StoredConversation);
-      });
-    } catch (err) {
-      console.warn('Could not load Firestore conversations, checking local fallback:', err);
-    }
-  }
-
-  // Fallback / merge with local storage
   try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(`${LOCAL_STORAGE_KEY_PREFIX}${userId}_`)) {
-        const item = localStorage.getItem(key);
-        if (item) {
-          const parsed = JSON.parse(item) as StoredConversation;
-          if (!conversations.some((c) => c.id === parsed.id)) {
-            conversations.push(parsed);
-          }
-        }
-      }
-    }
-  } catch (e) {
-    // ignore
-  }
+    const convCollection = collection(db, 'users', userId, 'conversations');
+    const q = query(convCollection, orderBy('updatedAt', 'desc'));
+    const snapshot = await getDocs(q);
+    const conversations = snapshot.docs.map((docSnap) => docSnap.data() as StoredConversation);
 
-  // Sort by updatedAt desc
-  conversations.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  return conversations;
+    // Reconcile the local cache to the cloud list. A conversation removed from
+    // Firestore must not be resurrected by a stale browser copy on refresh.
+    const cloudIds = new Set(conversations.map(c => c.id));
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith(`${LOCAL_STORAGE_KEY_PREFIX}${userId}_`)) continue;
+        const conversationId = key.slice(`${LOCAL_STORAGE_KEY_PREFIX}${userId}_`.length);
+        if (conversationId && cloudIds.has(conversationId)) continue;
+        // Do not resurrect a cloud-deleted conversation while online.
+        localStorage.removeItem(key);
+      }
+    } catch {}
+
+    return conversations.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  } catch (err) {
+    console.warn('Could not load Firestore conversations:', err);
+
+    // Local fallback is allowed only when the browser is genuinely offline.
+    if (typeof navigator === 'undefined' || navigator.onLine) return [];
+
+    const conversations: StoredConversation[] = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith(`${LOCAL_STORAGE_KEY_PREFIX}${userId}_`)) continue;
+        const item = localStorage.getItem(key);
+        if (item) conversations.push(JSON.parse(item) as StoredConversation);
+      }
+    } catch {}
+
+    return conversations.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
 }
 
 export async function deleteUserConversation(userId: string, conversationId: string): Promise<void> {
-  try {
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY_PREFIX}${userId}_${conversationId}`);
-  } catch (e) {}
+  try { localStorage.removeItem(`${LOCAL_STORAGE_KEY_PREFIX}${userId}_${conversationId}`); } catch {}
 
-  if (userId) {
-    try {
-      const convRef = doc(db, 'users', userId, 'conversations', conversationId);
-      await deleteDoc(convRef);
-    } catch (err) {
-      console.warn('Error deleting conversation from Firestore:', err);
-    }
+  if (!userId) return;
+  try {
+    await deleteDoc(doc(db, 'users', userId, 'conversations', conversationId));
+  } catch (err) {
+    console.warn('Error deleting conversation from Firestore:', err);
+    throw err;
   }
 }
