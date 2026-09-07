@@ -1,4 +1,4 @@
-import { doc, updateDoc, getDoc, deleteDoc, collection, addDoc, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { doc, updateDoc, getDocFromServer, getDocs, deleteDoc, collection, addDoc, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 export interface OfflineDocRecord {
@@ -48,7 +48,6 @@ export function isContentEffectivelyEmpty(content: any, contentJson?: any): bool
     }
     return false;
   }
-
   if (typeof content === 'string') {
     const trimmed = content.trim();
     if (!trimmed) return true;
@@ -63,19 +62,13 @@ export function extractDocumentBody(data: any): { html: string; json: any | null
   if (!data) return { html: '', json: null };
   let json: any = null;
   let html = '';
-
   if (data.contentJson && typeof data.contentJson === 'object' && data.contentJson.type === 'doc') json = data.contentJson;
-
   if (data.content) {
-    if (typeof data.content === 'object' && data.content.type === 'doc') {
-      json = json || data.content;
-    } else if (typeof data.content === 'string') {
+    if (typeof data.content === 'object' && data.content.type === 'doc') json = json || data.content;
+    else if (typeof data.content === 'string') {
       const trimmed = data.content.trim();
       if (trimmed.startsWith('{') && trimmed.includes('"type":"doc"')) {
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (parsed?.type === 'doc') json = json || parsed;
-        } catch {}
+        try { const parsed = JSON.parse(trimmed); if (parsed?.type === 'doc') json = json || parsed; } catch {}
       }
       html = trimmed;
     }
@@ -83,11 +76,6 @@ export function extractDocumentBody(data: any): { html: string; json: any | null
   return { html, json };
 }
 
-/**
- * There are deliberately no built-in/default business documents.
- * An empty local cache means an empty local cache; it is never populated with
- * demo records and is never treated as evidence that a cloud collection is empty.
- */
 export function getDefaultDocs(): Record<string, OfflineDocRecord> { return {}; }
 
 export function getLocalDocsMap(): Record<string, OfflineDocRecord> {
@@ -136,21 +124,15 @@ function saveLocalVersion(version: DocumentVersion) {
   } catch (e) { console.warn('[HubMind] Failed to save local document version:', e); }
 }
 
-export async function saveDocumentOffline(
-  docId: string,
-  data: Partial<OfflineDocRecord>,
-  userProfile?: { name?: string; preferredName?: string; email?: string }
-): Promise<OfflineDocRecord> {
+export async function saveDocumentOffline(docId: string, data: Partial<OfflineDocRecord>, userProfile?: { name?: string; preferredName?: string; email?: string }): Promise<OfflineDocRecord> {
   const now = new Date().toISOString();
   const docsMap = getLocalDocsMap();
   const existing = docsMap[docId];
-
   let safeTitle = existing?.title || 'Untitled Document';
   if (data.title !== undefined) {
     const trimmed = data.title.trim();
     if (trimmed && (trimmed !== 'Untitled Document' || data.allowUntitled || !existing?.title || existing.title === 'Untitled Document')) safeTitle = trimmed;
   }
-
   let safeContent = existing?.content || '';
   let safeContentJson = existing?.contentJson;
   if (data.content !== undefined) {
@@ -176,7 +158,6 @@ export async function saveDocumentOffline(
     lastModifiedBy: userProfile?.preferredName || userProfile?.name || 'User',
     synced: false,
   };
-
   docsMap[docId] = updatedRecord;
   setLocalDocsMap(docsMap);
 
@@ -203,11 +184,7 @@ export async function saveDocumentOffline(
 
   if (navigator.onLine) {
     try {
-      const updatePayload: Record<string, any> = {
-        updatedAt: updatedRecord.updatedAt,
-        lastSavedAt: now,
-        lastModifiedBy: updatedRecord.lastModifiedBy,
-      };
+      const updatePayload: Record<string, any> = { updatedAt: updatedRecord.updatedAt, lastSavedAt: now, lastModifiedBy: updatedRecord.lastModifiedBy };
       if (data.title !== undefined) updatePayload.title = safeTitle;
       if (data.content !== undefined) {
         updatePayload.content = safeContent;
@@ -217,7 +194,6 @@ export async function saveDocumentOffline(
       if (data.pageSize !== undefined) updatePayload.pageSize = data.pageSize;
       if (data.orientation !== undefined) updatePayload.orientation = data.orientation;
       if (data.marginOption !== undefined) updatePayload.marginOption = data.marginOption;
-
       await updateDoc(doc(db, 'documents', docId), updatePayload);
       updatedRecord.synced = true;
       docsMap[docId] = updatedRecord;
@@ -243,14 +219,22 @@ export async function deleteDocumentOffline(docId: string): Promise<void> {
 
   await deleteDoc(doc(db, 'documents', docId));
 
+  // Firestore persistence can resolve writes locally while a device is disconnected
+  // even when navigator.onLine is true. Verify against the server before telling the
+  // user the deletion is permanent.
+  let verify;
+  try {
+    verify = await getDocFromServer(doc(db, 'documents', docId));
+  } catch (error) {
+    throw new Error('The delete was queued locally, but Firebase could not confirm it from the server. Please try again while online.');
+  }
+  if (verify.exists()) throw new Error('Firebase still has this document. It was not permanently deleted.');
+
   const docsMap = getLocalDocsMap();
   delete docsMap[docId];
   setLocalDocsMap(docsMap);
   setSyncQueue(getSyncQueue().filter(id => id !== docId));
   try { localStorage.removeItem(`${LOCAL_VERSIONS_KEY}_${docId}`); } catch {}
-
-  const verify = await getDoc(doc(db, 'documents', docId));
-  if (verify.exists()) throw new Error('Firebase did not confirm document deletion.');
 }
 
 export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: number; checked: number }> {
@@ -258,12 +242,10 @@ export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: num
   const docsSnap = await getDocs(collection(db, 'documents'));
   const localDocs = getLocalDocsMap();
   let repaired = 0;
-
   for (const docSnap of docsSnap.docs) {
     const data = docSnap.data() as any;
     const { html, json } = extractDocumentBody(data);
     if (!isContentEffectivelyEmpty(html, json)) continue;
-
     let recovery: any = null;
     try {
       const versionsSnap = await getDocs(query(collection(db, 'documents', docSnap.id, 'versions'), orderBy('createdAt', 'desc'), limit(100)));
@@ -272,27 +254,18 @@ export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: num
     if (!recovery) recovery = getLocalVersions(docSnap.id).find(v => !isContentEffectivelyEmpty(v.content, v.contentJson));
     if (!recovery && localDocs[docSnap.id] && !isContentEffectivelyEmpty(localDocs[docSnap.id].content, localDocs[docSnap.id].contentJson)) recovery = localDocs[docSnap.id];
     if (!recovery) continue;
-
     const restoredContent = typeof recovery.content === 'string' ? recovery.content : '';
     const restoredJson = recovery.contentJson || (typeof recovery.content === 'object' ? recovery.content : null);
     const restoredTitle = (!data.title || data.title === 'Untitled Document') && recovery.title && recovery.title !== 'Untitled Document' ? recovery.title : (data.title || 'Untitled Document');
-
     try {
       const update: Record<string, any> = { content: restoredContent, lastRecoveredAt: new Date().toISOString() };
       if (restoredJson) update.contentJson = restoredJson;
       if (restoredTitle !== data.title) update.title = restoredTitle;
       await updateDoc(doc(db, 'documents', docSnap.id), update);
-      localDocs[docSnap.id] = {
-        ...(localDocs[docSnap.id] || { id: docSnap.id, updatedAt: data.updatedAt || new Date().toISOString(), lastSavedAt: data.lastSavedAt || new Date().toISOString(), synced: true }),
-        title: restoredTitle,
-        content: restoredContent,
-        ...(restoredJson ? { contentJson: restoredJson } : {}),
-        synced: true,
-      } as OfflineDocRecord;
+      localDocs[docSnap.id] = { ...(localDocs[docSnap.id] || { id: docSnap.id, updatedAt: data.updatedAt || new Date().toISOString(), lastSavedAt: data.lastSavedAt || new Date().toISOString(), synced: true }), title: restoredTitle, content: restoredContent, ...(restoredJson ? { contentJson: restoredJson } : {}), synced: true } as OfflineDocRecord;
       repaired++;
     } catch (err) { console.error('[HubMind recovery] Failed to repair document:', docSnap.id, err); }
   }
-
   setLocalDocsMap(localDocs);
   return { repaired, checked: docsSnap.size };
 }
@@ -300,12 +273,11 @@ export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: num
 export async function getDocumentWithOfflineFallback(docId: string): Promise<any> {
   const localDocs = getLocalDocsMap();
   const cached = localDocs[docId];
-
   if (navigator.onLine) {
     try {
       const docRef = doc(db, 'documents', docId);
       const snap = await Promise.race([
-        getDoc(docRef),
+        getDocFromServer(docRef),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore fetch timeout')), 3500))
       ]);
       if (snap.exists()) {
@@ -316,7 +288,6 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
         let recoveredJson = cloudJson;
         let recoveredTitle = cloudData.title || cached?.title || 'Untitled Document';
         let recovered = false;
-
         if (isContentEffectivelyEmpty(recoveredHtml, recoveredJson)) {
           try {
             const versionSnap = await getDocs(query(collection(db, 'documents', docId, 'versions'), orderBy('createdAt', 'desc'), limit(50)));
@@ -344,13 +315,11 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
             recovered = true;
           }
         }
-
         if (cached && !cached.synced && new Date(cached.updatedAt).getTime() > new Date(cloudData.updatedAt || 0).getTime()) {
           const localEmpty = isContentEffectivelyEmpty(localHtml, localJson);
           const cloudEmpty = isContentEffectivelyEmpty(recoveredHtml, recoveredJson);
           if (!localEmpty || cloudEmpty) return { ...cloudData, ...cached, isOfflineLocal: true };
         }
-
         if (recovered && !isContentEffectivelyEmpty(recoveredHtml, recoveredJson)) {
           try {
             const update: Record<string, any> = { content: recoveredHtml, lastRecoveredAt: new Date().toISOString() };
@@ -362,7 +331,6 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
             cloudData.title = recoveredTitle;
           } catch (err) { console.warn('[HubMind] Displayed recovered content but could not repair Firebase:', err); }
         }
-
         const syncedRecord: OfflineDocRecord = {
           id: docId,
           title: recoveredTitle,
@@ -383,7 +351,6 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
       }
     } catch (err) { console.warn('[HubMind] Firestore document fetch failed:', err); }
   }
-
   return cached ? { ...cached, isOfflineLocal: true } : null;
 }
 
@@ -391,17 +358,14 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
   if (!navigator.onLine) return { syncedCount: 0, errors: 0 };
   const queue = getSyncQueue();
   if (!queue.length) return { syncedCount: 0, errors: 0 };
-
   const docsMap = getLocalDocsMap();
   const remaining: string[] = [];
   let syncedCount = 0;
   let errors = 0;
-
   for (const docId of queue) {
     const record = docsMap[docId];
     if (!record) continue;
     if (isContentEffectivelyEmpty(record.content, record.contentJson) && !record.allowEmpty) continue;
-
     try {
       await updateDoc(doc(db, 'documents', docId), {
         title: record.title,
@@ -424,7 +388,6 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
       errors++;
     }
   }
-
   setLocalDocsMap(docsMap);
   setSyncQueue(remaining);
   window.dispatchEvent(new CustomEvent('hubmind:sync-status', { detail: { status: 'synced', syncedCount, queueCount: remaining.length } }));
@@ -434,7 +397,6 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
 export async function fetchDocumentVersionHistory(docId: string): Promise<DocumentVersion[]> {
   const versionMap = new Map<string, DocumentVersion>();
   getLocalVersions(docId).forEach(v => versionMap.set(v.id, v));
-
   if (navigator.onLine) {
     try {
       const snap = await getDocs(query(collection(db, 'documents', docId, 'versions'), orderBy('createdAt', 'desc'), limit(40)));
@@ -444,18 +406,10 @@ export async function fetchDocumentVersionHistory(docId: string): Promise<Docume
       });
     } catch (err) { console.warn('[HubMind] Could not query document versions:', err); }
   }
-
   return Array.from(versionMap.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-export async function createNamedCheckpoint(
-  docId: string,
-  checkpointName: string,
-  title: string,
-  content: string,
-  authorName: string,
-  authorEmail?: string
-): Promise<DocumentVersion> {
+export async function createNamedCheckpoint(docId: string, checkpointName: string, title: string, content: string, authorName: string, authorEmail?: string): Promise<DocumentVersion> {
   const now = new Date().toISOString();
   const wordCount = content.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
   const version: DocumentVersion = {
@@ -471,7 +425,6 @@ export async function createNamedCheckpoint(
     isCheckpoint: true,
     checkpointName,
   };
-
   saveLocalVersion(version);
   if (navigator.onLine) {
     try { await addDoc(collection(db, 'documents', docId, 'versions'), version); }
@@ -481,9 +434,7 @@ export async function createNamedCheckpoint(
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    void processOfflineSyncQueue();
-  });
+  window.addEventListener('online', () => { void processOfflineSyncQueue(); });
   window.addEventListener('offline', () => {
     window.dispatchEvent(new CustomEvent('hubmind:sync-status', { detail: { status: 'offline', queueCount: getSyncQueue().length } }));
   });
