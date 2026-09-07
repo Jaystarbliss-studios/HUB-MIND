@@ -9,13 +9,11 @@ export function getActiveBranchMessages(
   activeLeafId?: string | null
 ): ChatMessage[] {
   if (!messages || messages.length === 0) return [];
-
   const hasTreeLinks = messages.some((m) => m.parentMessageId !== undefined);
   if (!hasTreeLinks) return messages;
 
   const msgMap = new Map<string, ChatMessage>();
   messages.forEach((m) => msgMap.set(m.id, m));
-
   let currentId: string | null = activeLeafId || null;
   if (!currentId || !msgMap.has(currentId)) currentId = messages[messages.length - 1]?.id || null;
 
@@ -36,7 +34,6 @@ export function getSiblingsInfo(
 ): { siblings: ChatMessage[]; currentIndex: number; total: number } {
   const currentMsg = allMessages.find((m) => m.id === messageId);
   if (!currentMsg) return { siblings: [], currentIndex: 0, total: 1 };
-
   const parentId = currentMsg.parentMessageId || null;
   const siblings = allMessages.filter((m) => (m.parentMessageId || null) === parentId && m.sender === currentMsg.sender);
   const currentIndex = siblings.findIndex((m) => m.id === messageId);
@@ -52,16 +49,11 @@ export async function saveConversationToFirestore(
   } catch {}
 
   if (!userId) return;
-
   try {
     const convRef = doc(db, 'users', userId, 'conversations', conversation.id);
-    await setDoc(convRef, {
-      ...conversation,
-      userId,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    await setDoc(convRef, { ...conversation, userId, updatedAt: new Date().toISOString() }, { merge: true });
   } catch (err) {
-    console.warn('Error saving conversation to Firestore, retained local pending copy:', err);
+    console.warn('Error saving conversation to Firestore; local copy retained:', err);
   }
 }
 
@@ -72,27 +64,13 @@ export async function loadUserConversations(userId: string): Promise<StoredConve
     const convCollection = collection(db, 'users', userId, 'conversations');
     const q = query(convCollection, orderBy('updatedAt', 'desc'));
     const snapshot = await getDocs(q);
-    const conversations = snapshot.docs.map((docSnap) => docSnap.data() as StoredConversation);
-
-    // Reconcile the local cache to the cloud list. A conversation removed from
-    // Firestore must not be resurrected by a stale browser copy on refresh.
-    const cloudIds = new Set(conversations.map(c => c.id));
-    try {
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const key = localStorage.key(i);
-        if (!key || !key.startsWith(`${LOCAL_STORAGE_KEY_PREFIX}${userId}_`)) continue;
-        const conversationId = key.slice(`${LOCAL_STORAGE_KEY_PREFIX}${userId}_`.length);
-        if (conversationId && cloudIds.has(conversationId)) continue;
-        // Do not resurrect a cloud-deleted conversation while online.
-        localStorage.removeItem(key);
-      }
-    } catch {}
-
-    return conversations.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    // Online UI is cloud-authoritative. Local storage is intentionally not merged
+    // here because doing so resurrects conversations deleted from Firestore.
+    return snapshot.docs
+      .map((docSnap) => docSnap.data() as StoredConversation)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   } catch (err) {
     console.warn('Could not load Firestore conversations:', err);
-
-    // Local fallback is allowed only when the browser is genuinely offline.
     if (typeof navigator === 'undefined' || navigator.onLine) return [];
 
     const conversations: StoredConversation[] = [];
@@ -104,14 +82,12 @@ export async function loadUserConversations(userId: string): Promise<StoredConve
         if (item) conversations.push(JSON.parse(item) as StoredConversation);
       }
     } catch {}
-
     return conversations.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }
 }
 
 export async function deleteUserConversation(userId: string, conversationId: string): Promise<void> {
   try { localStorage.removeItem(`${LOCAL_STORAGE_KEY_PREFIX}${userId}_${conversationId}`); } catch {}
-
   if (!userId) return;
   try {
     await deleteDoc(doc(db, 'users', userId, 'conversations', conversationId));
