@@ -1,6 +1,6 @@
 import { collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { RecurringMeetingTemplate } from '../types';
+import { RecurringMeetingTemplate, User } from '../types';
 import { addDays, format, startOfDay } from 'date-fns';
 
 const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -11,13 +11,21 @@ export function getRecurringMeetingDateKey(templateId: string, date: Date) {
 
 /**
  * Materialize recurring templates into concrete calendar meetings.
- * This is intentionally idempotent: the deterministic meeting id means
- * running it repeatedly updates the same occurrence instead of duplicating it.
+ * The query is permission-aware: staff users only read their own templates,
+ * while admins/assistants can materialize the whole workspace schedule.
+ * Deterministic occurrence IDs make this operation idempotent.
  */
-export async function materializeRecurringMeetings(daysAhead = 90) {
-  const templates = await getDocs(
-    query(collection(db, 'recurringMeetingTemplates'), where('active', '==', true))
-  );
+export async function materializeRecurringMeetings(daysAhead = 90, profile?: Pick<User, 'id' | 'role'>) {
+  const isPrivileged = profile?.role === 'admin' || profile?.role === 'assistant';
+  const templatesQuery = isPrivileged || !profile
+    ? query(collection(db, 'recurringMeetingTemplates'), where('active', '==', true))
+    : query(
+        collection(db, 'recurringMeetingTemplates'),
+        where('active', '==', true),
+        where('ownerId', '==', profile.id)
+      );
+
+  const templates = await getDocs(templatesQuery);
   const now = new Date();
   const start = startOfDay(now);
 
@@ -38,7 +46,6 @@ export async function materializeRecurringMeetings(daysAhead = 90) {
       const monthlyMatches = template.frequency === 'monthly'
         && date.getDate() === template.dayOfMonth;
 
-      // Exactly one recurrence rule must match this occurrence.
       if (!dailyMatches && !weeklyMatches && !monthlyMatches) continue;
 
       const [hours, minutes] = template.startTime.split(':').map(Number);
@@ -64,7 +71,7 @@ export async function materializeRecurringMeetings(daysAhead = 90) {
         recurringInstance: true,
         location: template.location || null,
         meetingLink: template.meetingLink || null,
-        createdAt: template.createdAt
+        createdAt: template.createdAt,
       }, { merge: true });
     }
   }
