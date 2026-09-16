@@ -30,15 +30,16 @@ export function RecurringSchedulePanel() {
 
   useEffect(() => {
     if (!profile) return;
-    return onSnapshot(collection(db, 'recurringMeetingTemplates'), snap => {
-      setItems(
-        snap.docs
-          .map(d => ({ id: d.id, ...d.data() } as RecurringMeetingTemplate))
-          .filter(x => x.ownerId === profile.id)
-      );
+    const templatesQuery = collection(db, 'recurringMeetingTemplates');
+    return onSnapshot(templatesQuery, snap => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as RecurringMeetingTemplate));
+      const visible = profile.role === 'admin' || profile.role === 'assistant'
+        ? all
+        : all.filter(x => x.ownerId === profile.id);
+      setItems(visible.filter(x => x.active !== false));
     }, e => {
       console.error('Recurring schedule subscription failed:', e);
-      setError('Unable to load recurring events. Please check your connection.');
+      setError('Unable to load recurring events. Please check your permissions or connection.');
     });
   }, [profile]);
 
@@ -71,7 +72,7 @@ export function RecurringSchedulePanel() {
 
     setSaving(true);
     try {
-      const templateRef = await addDoc(collection(db, 'recurringMeetingTemplates'), {
+      await addDoc(collection(db, 'recurringMeetingTemplates'), {
         title: title.trim(),
         type,
         frequency,
@@ -87,20 +88,20 @@ export function RecurringSchedulePanel() {
         attendees: [],
         active: true,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       });
 
-      // Create the upcoming concrete calendar occurrences immediately so the
-      // event is visible without waiting for another page load/day cycle.
-      await materializeRecurringMeetings(90);
+      await materializeRecurringMeetings(90, profile);
 
       reset();
       setOpen(false);
       setSuccess('Recurring event added to your schedule.');
-      void templateRef;
     } catch (e) {
       console.error('Create recurring schedule failed:', e);
-      setError(e instanceof Error ? e.message : 'Could not save the recurring event. Please try again.');
+      const code = (e as any)?.code;
+      setError(code === 'permission-denied'
+        ? 'Firebase denied this recurring-event write. Your account is authenticated, but its workspace permission is not being accepted. Refresh once and try again.'
+        : e instanceof Error ? e.message : 'Could not save the recurring event. Please try again.');
     } finally {
       setSaving(false);
     }
