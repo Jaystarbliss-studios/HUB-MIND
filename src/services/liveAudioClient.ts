@@ -1,9 +1,6 @@
-/**
- * Live Audio Client for Gemini Multimodal Live API
- * Provides low-latency 16kHz PCM streaming capture and 24kHz gapless playback
- */
-
-import { API_BASE_URL } from '../lib/apiBase';
+import { GoogleGenAI } from '@google/genai';
+import { auth } from '../firebaseConfig';
+import { SHAWN_TOOLS_DECLARATIONS } from '../lib/shawnTools';
 
 export interface LiveAudioCallbacks {
   onStatusChange: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
@@ -16,8 +13,23 @@ export interface LiveAudioCallbacks {
   onFunctionCall?: (functionCall: any) => void;
 }
 
+type LiveSession = {
+  sendRealtimeInput: (input: any) => void;
+  sendToolResponse: (response: any) => void;
+  close: () => void;
+};
+
+/**
+ * Production Live client.
+ *
+ * The old implementation depended on /api/live-ws, but the production site is
+ * deployed as Netlify Functions and therefore does not run the long-lived Node
+ * WebSocket server from server.ts. Shawn now obtains a short-lived Gemini Live
+ * token from the authenticated Netlify function and connects directly to Gemini.
+ * This removes the dead WebSocket proxy from the production voice path.
+ */
 export class LiveAudioClient {
-  private ws: WebSocket | null = null;
+  private session: LiveSession | null = null;
   private inputAudioCtx: AudioContext | null = null;
   private outputAudioCtx: AudioContext | null = null;
   private inputAnalyser: AnalyserNode | null = null;
@@ -27,29 +39,35 @@ export class LiveAudioClient {
   private mediaStream: MediaStream | null = null;
   private scriptProcessor: ScriptProcessorNode | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
-  
-  private nextStartTime: number = 0;
+  private nextStartTime = 0;
   private activeSources: AudioBufferSourceNode[] = [];
   private callbacks: LiveAudioCallbacks;
-  
-  private isMuted: boolean = false;
-  private isPushToTalkActive: boolean = false;
-  private pushToTalkMode: boolean = false;
+  private isMuted = false;
+  private isPushToTalkActive = false;
+  private pushToTalkMode = false;
   private levelIntervalId: number | null = null;
-  private pingIntervalId: number | null = null;
+  private connected = false;
 
   constructor(callbacks: LiveAudioCallbacks) {
     this.callbacks = callbacks;
   }
 
   public async resumeAudioContext(): Promise<void> {
-    if (this.outputAudioCtx && this.outputAudioCtx.state === 'suspended') {
-      await this.outputAudioCtx.resume();
-      console.log('AudioContext resumed via user gesture');
-    }
-    if (this.inputAudioCtx && this.inputAudioCtx.state === 'suspended') {
-      await this.inputAudioCtx.resume();
-    }
+    if (this.outputAudioCtx?.state === 'suspended') await this.outputAudioCtx.resume();
+    if (this.inputAudioCtx?.state === 'suspended') await this.inputAudioCtx.resume();
+  }
+
+  private async getEphemeralToken(): Promise<string> {
+    const user = auth.currentUser;
+    if (!user) throw new Error('You must be signed in to use Shawn Live.');
+    const idToken = await user.getIdToken(true);
+    const response = await fetch('/api/live-token', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.token) throw new Error(data.error || `Live token request failed (${response.status}).`);
+    return data.token;
   }
 
   public async connect(documentContext?: { documentId: string; title: string }): Promise<void> {
@@ -57,429 +75,250 @@ export class LiveAudioClient {
     this.callbacks.onShawnStateChange('thinking');
 
     try {
-      // 1. Setup AudioContexts
+      await this.disconnect(false);
+
+      const token = await this.getEphemeralToken();
+      const ai = new GoogleGenAI({ apiKey: token });
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtxClass) throw new Error('This browser does not support Web Audio.');
+
       this.inputAudioCtx = new AudioCtxClass({ sampleRate: 16000 });
       this.outputAudioCtx = new AudioCtxClass({ sampleRate: 24000 });
+      await this.inputAudioCtx.resume();
+      await this.outputAudioCtx.resume();
 
-      // Resume AudioContexts if suspended
-      if (this.inputAudioCtx.state === 'suspended') {
-        await this.inputAudioCtx.resume();
-      }
-      if (this.outputAudioCtx.state === 'suspended') {
-        await this.outputAudioCtx.resume();
-      }
-
-      // Output chain
       this.outputGainNode = this.outputAudioCtx.createGain();
-      this.outputGainNode.gain.value = 1.0;
+      this.outputGainNode.gain.value = 1;
       this.outputAnalyser = this.outputAudioCtx.createAnalyser();
       this.outputAnalyser.fftSize = 128;
       this.outputGainNode.connect(this.outputAnalyser);
       this.outputAnalyser.connect(this.outputAudioCtx.destination);
 
-      // 2. Setup Mic Stream
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          sampleRate: 16000,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      if (!this.inputAudioCtx) return; // aborted by disconnect
-
-      if (!this.inputAudioCtx) throw new Error('inputAudioCtx is null after getUserMedia');
       this.sourceNode = this.inputAudioCtx.createMediaStreamSource(this.mediaStream);
       this.inputGainNode = this.inputAudioCtx.createGain();
-      this.inputGainNode.gain.value = 1.0;
-
+      this.inputGainNode.gain.value = 1;
       this.inputAnalyser = this.inputAudioCtx.createAnalyser();
       this.inputAnalyser.fftSize = 128;
-
-      // 4096 buffer size at 16000Hz gives ~256ms chunk duration
       this.scriptProcessor = this.inputAudioCtx.createScriptProcessor(4096, 1, 1);
-
       this.sourceNode.connect(this.inputGainNode);
       this.inputGainNode.connect(this.inputAnalyser);
       this.inputAnalyser.connect(this.scriptProcessor);
       this.scriptProcessor.connect(this.inputAudioCtx.destination);
 
-      // 3. Connect WebSocket to backend Live proxy
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const configuredWsBase = API_BASE_URL
-        ? API_BASE_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
-        : `${protocol}//${window.location.host}`;
-      const contextQuery = documentContext?.documentId
-        ? `?documentId=${encodeURIComponent(documentContext.documentId)}&documentTitle=${encodeURIComponent(documentContext.title || 'Current document')}`
-        : '';
-      const wsUrl = `${configuredWsBase}/api/live-ws${contextQuery}`;
+      const systemInstruction = [
+        'You are Shawn, the embedded AI operations assistant inside Hub-Mind.',
+        'You are competent, warm, concise, slightly cheeky and British in tone.',
+        'You have real tools. Never claim an action succeeded until the tool response confirms it.',
+        'Use tools whenever the user asks you to read, create, update, navigate, schedule or manage Hub-Mind data.',
+        documentContext ? `The user is currently working in document "${documentContext.title}" with ID ${documentContext.documentId}. Use the document tools for document-specific requests.` : '',
+      ].filter(Boolean).join('\n');
 
-      this.ws = new WebSocket(wsUrl);
-      this.ws.binaryType = 'arraybuffer';
-
-      this.ws.onopen = () => {
-        console.log('Connected to Shawn Live WebSocket');
-        // Start ping heartbeat every 12 seconds to keep WebSocket alive through reverse proxy
-        if (this.pingIntervalId) clearInterval(this.pingIntervalId);
-        this.pingIntervalId = window.setInterval(() => {
-          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            try {
-              this.ws.send(JSON.stringify({ type: 'ping' }));
-            } catch (e) {}
-          }
-        }, 12000);
-      };
-
-      this.ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          if (data.type === 'pong') {
-            // Heartbeat response from server, connection is healthy
-            return;
-          }
-
-          if (data.type === 'ready') {
+      const session = await ai.live.connect({
+        model: 'gemini-3.8-live',
+        config: {
+          responseModalities: ['AUDIO'] as any,
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          sessionResumption: {},
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          tools: [{ functionDeclarations: SHAWN_TOOLS_DECLARATIONS as any }],
+        } as any,
+        callbacks: {
+          onopen: () => {
+            this.connected = true;
             this.callbacks.onStatusChange('connected');
-            this.callbacks.onShawnStateChange('listening');
-          } else if (data.type === 'audio' && data.audio) {
-            this.callbacks.onShawnStateChange('speaking');
-            console.log('Received audio chunk from server, length:', data.audio.length);
-            this.playAudioChunk(data.audio);
-          } else if (data.type === 'input_transcription') {
-            this.callbacks.onUserTranscript(data.text);
-          } else if (data.type === 'output_transcription') {
-            this.callbacks.onShawnTranscript(data.text);
-          } else if (data.type === 'turn_complete') {
-            this.callbacks.onTurnComplete();
-            if (this.activeSources.length === 0) {
-              this.callbacks.onShawnStateChange('listening');
-            }
-          } else if (data.type === 'interrupted') {
-            this.handleInterruption();
-          } else if (data.type === 'tool_call' || data.type === 'function_call') {
-            const fcs = data.functionCalls || (data.functionCall ? [data.functionCall] : []);
-            for (const fc of fcs) {
-              if (this.callbacks.onFunctionCall) this.callbacks.onFunctionCall(fc);
-            }
-          } else if (data.type === 'error') {
-            if (this.callbacks.onError) this.callbacks.onError(data.message || 'Live session error');
+            this.callbacks.onShawnStateChange(this.isMuted ? 'muted' : 'listening');
+          },
+          onmessage: (message: any) => this.handleLiveMessage(message),
+          onerror: (event: any) => {
+            console.error('Shawn Live API error:', event);
+            this.callbacks.onError?.(event?.message || 'Shawn Live lost its connection to Gemini.');
             this.callbacks.onStatusChange('error');
-          }
-        } catch (err) {
-          console.error('Error handling WebSocket message:', err);
-        }
-      };
+          },
+          onclose: (event: any) => {
+            this.connected = false;
+            this.callbacks.onStatusChange('disconnected');
+            this.callbacks.onShawnStateChange('idle');
+            if (event?.reason) console.warn('Shawn Live closed:', event.reason);
+          },
+        },
+      });
 
-      this.ws.onerror = (err) => {
-        console.warn('Shawn Live WebSocket error:', err);
-        if (this.callbacks.onError) this.callbacks.onError('Shawn could not reach the live AI service. Check the deployment/API connection and try again.');
-        this.callbacks.onStatusChange('error');
-        // Do not silently switch to a second microphone/recognition engine.
-        // On Android this used to create competing mic sessions.
-      };
-
-      this.ws.onclose = () => {
-          console.log('WebSocket closed');
-          if (this.pingIntervalId) {
-            clearInterval(this.pingIntervalId);
-            this.pingIntervalId = null;
-          }
-          this.callbacks.onStatusChange('disconnected');
-          this.callbacks.onShawnStateChange('idle');
-      };
-
-      // 4. Capture Mic Audio & Stream PCM 16kHz
-      this.scriptProcessor.onaudioprocess = (e) => {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
-        // Push to talk check
-        if (this.pushToTalkMode && !this.isPushToTalkActive) {
-          return;
-        }
-
-        if (this.isMuted) {
-          return;
-        }
-
-        const inputData = e.inputBuffer.getChannelData(0);
-        const pcmBuffer = this.floatTo16BitPCM(inputData);
-        const base64 = this.base64EncodeArrayBuffer(pcmBuffer);
-
-        this.ws.send(
-          JSON.stringify({
-            type: 'audio',
-            audio: base64,
-          })
-        );
-      };
-
-      // Start Level Monitor for Visualizers
+      this.session = session as unknown as LiveSession;
       this.startLevelMonitor();
 
+      if (this.scriptProcessor) {
+        this.scriptProcessor.onaudioprocess = (event) => {
+          if (!this.session || !this.connected || this.isMuted || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
+          const pcmBuffer = this.floatTo16BitPCM(event.inputBuffer.getChannelData(0));
+          this.session.sendRealtimeInput({
+            audio: { data: this.base64EncodeArrayBuffer(pcmBuffer), mimeType: 'audio/pcm;rate=16000' },
+          });
+        };
+      }
     } catch (error: any) {
-      console.error('Failed to start Live Audio Client:', error);
-      if (this.callbacks.onError) this.callbacks.onError(error.message || 'Failed to initialize audio or mic');
+      console.error('Failed to start Shawn Live:', error);
+      this.callbacks.onError?.(error?.message || 'Failed to start Shawn Live.');
       this.callbacks.onStatusChange('error');
-      this.disconnect();
+      await this.disconnect(false);
+    }
+  }
+
+  private handleLiveMessage(message: any) {
+    try {
+      if (message?.toolCall?.functionCalls?.length) {
+        for (const fc of message.toolCall.functionCalls) this.callbacks.onFunctionCall?.(fc);
+      }
+
+      const serverContent = message?.serverContent;
+      if (serverContent?.inputTranscription?.text) this.callbacks.onUserTranscript(serverContent.inputTranscription.text);
+      if (serverContent?.outputTranscription?.text) this.callbacks.onShawnTranscript(serverContent.outputTranscription.text);
+
+      const parts = serverContent?.modelTurn?.parts || [];
+      for (const part of parts) {
+        if (part?.inlineData?.data) {
+          this.callbacks.onShawnStateChange('speaking');
+          this.playAudioChunk(part.inlineData.data);
+        }
+      }
+
+      if (serverContent?.interrupted) this.handleInterruption();
+      if (serverContent?.turnComplete) {
+        this.callbacks.onTurnComplete();
+        if (this.activeSources.length === 0) this.callbacks.onShawnStateChange(this.isMuted ? 'muted' : 'listening');
+      }
+    } catch (error) {
+      console.error('Error handling Shawn Live message:', error);
     }
   }
 
   private startLevelMonitor() {
     if (this.levelIntervalId) clearInterval(this.levelIntervalId);
-
-    const inputDataArray = new Uint8Array(64);
-    const outputDataArray = new Uint8Array(64);
-
+    const input = new Uint8Array(64);
+    const output = new Uint8Array(64);
     this.levelIntervalId = window.setInterval(() => {
       let inputLevel = 0;
       let outputLevel = 0;
-
       if (this.inputAnalyser && !this.isMuted && (!this.pushToTalkMode || this.isPushToTalkActive)) {
-        this.inputAnalyser.getByteFrequencyData(inputDataArray);
-        let sum = 0;
-        for (let i = 0; i < inputDataArray.length; i++) {
-          sum += inputDataArray[i];
-        }
-        inputLevel = sum / (inputDataArray.length * 255);
+        this.inputAnalyser.getByteFrequencyData(input);
+        inputLevel = input.reduce((a, b) => a + b, 0) / (input.length * 255);
       }
-
       if (this.outputAnalyser) {
-        this.outputAnalyser.getByteFrequencyData(outputDataArray);
-        let sum = 0;
-        for (let i = 0; i < outputDataArray.length; i++) {
-          sum += outputDataArray[i];
-        }
-        outputLevel = sum / (outputDataArray.length * 255);
-
-        // If Shawn is speaking, keep state active
-        if (outputLevel > 0.05 && this.activeSources.length > 0) {
-          this.callbacks.onShawnStateChange('speaking');
-        } else if (this.activeSources.length === 0 && !this.isMuted) {
-          if (inputLevel > 0.08) {
-            this.callbacks.onShawnStateChange('listening');
-          }
-        }
+        this.outputAnalyser.getByteFrequencyData(output);
+        outputLevel = output.reduce((a, b) => a + b, 0) / (output.length * 255);
       }
-
-      if (this.callbacks.onAudioLevel) this.callbacks.onAudioLevel(inputLevel, outputLevel);
+      this.callbacks.onAudioLevel?.(inputLevel, outputLevel);
     }, 40);
   }
 
-  private playAudioChunk(base64Audio: string): void {
-    if (!this.outputAudioCtx || !this.outputGainNode) { console.warn('Cannot play audio: outputAudioCtx or outputGainNode missing'); return; }
-    if (this.outputAudioCtx.state === 'suspended') {
-      this.outputAudioCtx.resume().catch(() => {});
-    }
-
+  private playAudioChunk(base64Audio: string) {
+    if (!this.outputAudioCtx || !this.outputGainNode) return;
     try {
-      const binaryString = atob(base64Audio);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+      const binary = atob(base64Audio);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const samples = Math.floor(bytes.byteLength / 2);
+      if (!samples) return;
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const floats = new Float32Array(samples);
+      for (let i = 0; i < samples; i++) {
+        const sample = view.getInt16(i * 2, true);
+        floats[i] = sample < 0 ? sample / 32768 : sample / 32767;
       }
-
-      // Safe PCM 16-bit little-endian decoding that never throws RangeError on odd byte lengths
-      const numSamples = Math.floor(bytes.byteLength / 2);
-      if (numSamples === 0) return;
-      const dataView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      const float32Array = new Float32Array(numSamples);
-
-      for (let i = 0; i < numSamples; i++) {
-        const sample = dataView.getInt16(i * 2, true);
-        float32Array[i] = sample < 0 ? sample / 32768 : sample / 32767;
-      }
-
-      const audioBuffer = this.outputAudioCtx.createBuffer(1, float32Array.length, 24000);
-      audioBuffer.getChannelData(0).set(float32Array);
-
-      const sourceNode = this.outputAudioCtx.createBufferSource();
-      sourceNode.buffer = audioBuffer;
-      sourceNode.connect(this.outputGainNode);
-
-      const currentTime = this.outputAudioCtx.currentTime;
-      // Add slight jitter buffer (40ms) if scheduling first chunk or fallen behind
-      if (this.nextStartTime < currentTime) {
-        this.nextStartTime = currentTime + 0.04;
-      }
-
-      sourceNode.start(this.nextStartTime);
-      this.nextStartTime += audioBuffer.duration;
-      this.activeSources.push(sourceNode);
-
-      sourceNode.onended = () => {
-        const index = this.activeSources.indexOf(sourceNode);
-        if (index !== -1) {
-          this.activeSources.splice(index, 1);
-        }
-        if (this.activeSources.length === 0) {
-          this.callbacks.onShawnStateChange(this.isMuted ? 'muted' : 'listening');
-        }
+      const buffer = this.outputAudioCtx.createBuffer(1, samples, 24000);
+      buffer.getChannelData(0).set(floats);
+      const source = this.outputAudioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(this.outputGainNode);
+      const now = this.outputAudioCtx.currentTime;
+      if (this.nextStartTime < now) this.nextStartTime = now + 0.03;
+      source.start(this.nextStartTime);
+      this.nextStartTime += buffer.duration;
+      this.activeSources.push(source);
+      source.onended = () => {
+        this.activeSources = this.activeSources.filter(s => s !== source);
+        if (!this.activeSources.length) this.callbacks.onShawnStateChange(this.isMuted ? 'muted' : 'listening');
       };
-    } catch (e) {
-      console.error('Error decoding/playing audio chunk:', e);
+    } catch (error) {
+      console.error('Failed to play Shawn audio:', error);
     }
   }
 
-  public handleInterruption(): void {
+  public handleInterruption() {
     this.callbacks.onShawnStateChange('interrupted');
-    for (const src of this.activeSources) {
-      try {
-        src.stop();
-        src.disconnect();
-      } catch (e) {
-        // ignore
-      }
+    for (const source of this.activeSources) {
+      try { source.stop(); source.disconnect(); } catch {}
     }
     this.activeSources = [];
     this.nextStartTime = 0;
-    setTimeout(() => {
-      if (this.activeSources.length === 0) {
-        this.callbacks.onShawnStateChange(this.isMuted ? 'muted' : 'listening');
-      }
-    }, 400);
+    window.setTimeout(() => this.callbacks.onShawnStateChange(this.isMuted ? 'muted' : 'listening'), 250);
   }
 
-  public sendText(text: string): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.callbacks.onShawnStateChange('thinking');
-      this.ws.send(JSON.stringify({ type: 'text', text }));
-    }
+  public sendText(text: string) {
+    if (!this.session || !this.connected) return;
+    this.callbacks.onShawnStateChange('thinking');
+    this.session.sendRealtimeInput({ text });
   }
 
-  public sendImageFrame(base64Jpeg: string): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'video', image: base64Jpeg }));
-    }
+  public sendImageFrame(base64Jpeg: string) {
+    if (!this.session || !this.connected) return;
+    this.session.sendRealtimeInput({ video: { data: base64Jpeg, mimeType: 'image/jpeg' } });
   }
 
-  public setMuted(muted: boolean): void {
+  public setMuted(muted: boolean) {
     this.isMuted = muted;
-    if (this.mediaStream) {
-      this.mediaStream.getAudioTracks().forEach((track) => {
-        track.enabled = !muted;
-      });
-    }
-    if (muted) {
-      this.callbacks.onShawnStateChange('muted');
-    } else {
-      this.callbacks.onShawnStateChange(this.activeSources.length > 0 ? 'speaking' : 'listening');
-    }
+    this.mediaStream?.getAudioTracks().forEach(track => { track.enabled = !muted; });
+    this.callbacks.onShawnStateChange(muted ? 'muted' : (this.activeSources.length ? 'speaking' : 'listening'));
   }
 
-  
-  public setPushToTalk(enabled: boolean): void {
+  public setPushToTalk(enabled: boolean) {
     this.pushToTalkMode = enabled;
-    if (enabled && !this.isPushToTalkActive) {
-      if (this.mediaStream) {
-        this.mediaStream.getAudioTracks().forEach((track) => {
-          track.enabled = false;
-        });
-      }
-    } else if (!enabled && !this.isMuted) {
-      if (this.mediaStream) {
-        this.mediaStream.getAudioTracks().forEach((track) => {
-          track.enabled = true;
-        });
-      }
-    }
+    if (!enabled && !this.isMuted) this.mediaStream?.getAudioTracks().forEach(track => { track.enabled = true; });
+    if (enabled && !this.isPushToTalkActive) this.mediaStream?.getAudioTracks().forEach(track => { track.enabled = false; });
   }
 
-  
   public sendFunctionResponse(functionResponse: any) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
-        type: 'function_response',
-        functionResponse
-      }));
-    }
+    if (!this.session || !this.connected) return;
+    this.session.sendToolResponse({ functionResponses: [functionResponse] });
   }
 
-  public setPushToTalkActive(active: boolean): void {
+  public setPushToTalkActive(active: boolean) {
     this.isPushToTalkActive = active;
-    if (this.mediaStream && !this.isMuted) {
-      this.mediaStream.getAudioTracks().forEach((track) => {
-        track.enabled = active;
-      });
-    }
+    if (this.mediaStream && !this.isMuted) this.mediaStream.getAudioTracks().forEach(track => { track.enabled = !this.pushToTalkMode || active; });
   }
 
-  public setMicGain(value: number): void {
-    if (this.inputGainNode) {
-      this.inputGainNode.gain.value = value;
-    }
+  public setMicGain(value: number) {
+    if (this.inputGainNode) this.inputGainNode.gain.value = value;
   }
 
-  public setOutputVolume(value: number): void {
-    if (this.outputGainNode) {
-      this.outputGainNode.gain.value = value;
-    }
+  public setOutputVolume(value: number) {
+    if (this.outputGainNode) this.outputGainNode.gain.value = value;
   }
 
-  public disconnect(): void {
-    if ('speechSynthesis' in window) {
-      try { window.speechSynthesis.cancel(); } catch (e) {}
-    }
-
-    if (this.pingIntervalId) {
-      clearInterval(this.pingIntervalId);
-      this.pingIntervalId = null;
-    }
-
-    if (this.levelIntervalId) {
-      clearInterval(this.levelIntervalId);
-      this.levelIntervalId = null;
-    }
-
-    for (const src of this.activeSources) {
-      try {
-        src.stop();
-        src.disconnect();
-      } catch (e) {
-        // ignore
-      }
-    }
+  public async disconnect(notify = true) {
+    this.connected = false;
+    if (this.levelIntervalId) { clearInterval(this.levelIntervalId); this.levelIntervalId = null; }
+    for (const source of this.activeSources) { try { source.stop(); source.disconnect(); } catch {} }
     this.activeSources = [];
-
-    if (this.scriptProcessor) {
-      this.scriptProcessor.disconnect();
-      this.scriptProcessor = null;
-    }
-    if (this.sourceNode) {
-      this.sourceNode.disconnect();
-      this.sourceNode = null;
-    }
-    if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach((t) => t.stop());
-      this.mediaStream = null;
-    }
-    if (this.inputAudioCtx) {
-      this.inputAudioCtx.close();
-      this.inputAudioCtx = null;
-    }
-    if (this.outputAudioCtx) {
-      this.outputAudioCtx.close();
-      this.outputAudioCtx = null;
-    }
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-
-    this.callbacks.onStatusChange('disconnected');
-    this.callbacks.onShawnStateChange('idle');
+    this.nextStartTime = 0;
+    if (this.scriptProcessor) { this.scriptProcessor.disconnect(); this.scriptProcessor.onaudioprocess = null; this.scriptProcessor = null; }
+    this.sourceNode?.disconnect(); this.sourceNode = null;
+    this.mediaStream?.getTracks().forEach(track => track.stop()); this.mediaStream = null;
+    if (this.inputAudioCtx) { try { await this.inputAudioCtx.close(); } catch {} this.inputAudioCtx = null; }
+    if (this.outputAudioCtx) { try { await this.outputAudioCtx.close(); } catch {} this.outputAudioCtx = null; }
+    if (this.session) { try { this.session.close(); } catch {} this.session = null; }
+    if (notify) { this.callbacks.onStatusChange('disconnected'); this.callbacks.onShawnStateChange('idle'); }
   }
 
-  // Utilities
   private floatTo16BitPCM(float32Array: Float32Array): ArrayBuffer {
     const buffer = new ArrayBuffer(float32Array.length * 2);
     const view = new DataView(buffer);
     for (let i = 0; i < float32Array.length; i++) {
       const s = Math.max(-1, Math.min(1, float32Array[i]));
-      view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true); // Little-endian
+      view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
     }
     return buffer;
   }
@@ -487,10 +326,7 @@ export class LiveAudioClient {
   private base64EncodeArrayBuffer(buffer: ArrayBuffer): string {
     let binary = '';
     const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return window.btoa(binary);
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
   }
 }
