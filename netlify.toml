@@ -8,6 +8,10 @@
   to = "/.netlify/functions/chat"
   status = 200
 
+[[redirects]]
+  from = "/api/live-token"
+  to = "/.netlify/functions/live-token"
+  status = 200
 
 # Service-worker and app-shell files must always be revalidated so installed
 # PWAs can discover new deployments instead of serving an old worker indefinitely.
