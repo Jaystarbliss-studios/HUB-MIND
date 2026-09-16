@@ -3,10 +3,7 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store',
-    },
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 
 async function verifyFirebaseUser(idToken: string) {
@@ -18,8 +15,8 @@ async function verifyFirebaseUser(idToken: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ idToken }),
   });
-
   if (!response.ok) throw new Error('Your Hub-Mind session is no longer valid. Please sign in again.');
+
   const data = await response.json() as any;
   const user = data?.users?.[0];
   if (!user || user.disabled) throw new Error('Your Hub-Mind account is unavailable.');
@@ -38,26 +35,17 @@ export default async (req: Request) => {
     const geminiKey = process.env.GEMINI_API_KEY;
     if (!geminiKey) return json({ error: 'GEMINI_API_KEY is not configured on the deployment.' }, 503);
 
+    // The token is one-use and short-lived. We deliberately leave the Live
+    // session configuration to the authenticated browser so Shawn can supply
+    // its current tools, user context and active-document context at connect time.
     const now = Date.now();
     const tokenResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/auth_tokens', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': geminiKey,
-      },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
       body: JSON.stringify({
         uses: 1,
         expireTime: new Date(now + 30 * 60 * 1000).toISOString(),
         newSessionExpireTime: new Date(now + 60 * 1000).toISOString(),
-        liveConnectConstraints: {
-          model: 'gemini-3.8-live',
-          config: {
-            responseModalities: ['AUDIO'],
-            inputAudioTranscription: {},
-            outputAudioTranscription: {},
-            sessionResumption: {},
-          },
-        },
       }),
     });
 
