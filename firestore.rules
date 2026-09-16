@@ -105,14 +105,21 @@ service cloud.firestore {
       allow create: if isWorkspaceUser();
       allow update, delete: if isAdmin();
     }
+
+    // Recurring schedules are workspace-owned records. Every active workspace
+    // user may create their own schedule; admins/assistants may manage theirs,
+    // while ordinary staff can only query records they own. This keeps queries
+    // compatible with Firestore's rule-evaluation model instead of relying on
+    // client-side filtering after an unrestricted collection query.
     match /recurringMeetingTemplates/{templateId} {
-      allow read: if isAssistantOrAdmin();
-      allow create: if isAssistantOrAdmin() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAssistantOrAdmin() && resource.data.ownerId == request.auth.uid;
-      allow delete: if isAssistantOrAdmin() && resource.data.ownerId == request.auth.uid;
+      allow get: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
+      allow list: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
+      allow create: if isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == request.auth.uid);
+      allow delete: if isAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
     }
     match /recurringTaskTemplates/{templateId} {
-      allow read: if isAssistantOrAdmin();
+      allow read: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
       allow create: if isAssistantOrAdmin() && request.resource.data.ownerId == request.auth.uid;
       allow update: if isAssistantOrAdmin() && resource.data.ownerId == request.auth.uid;
       allow delete: if isAssistantOrAdmin() && resource.data.ownerId == request.auth.uid;
