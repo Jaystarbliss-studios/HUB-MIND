@@ -37,6 +37,30 @@ export interface DocumentVersion {
 const OFFLINE_DOCS_KEY = 'hubmind_offline_documents_v1';
 const SYNC_QUEUE_KEY = 'hubmind_offline_sync_queue_v1';
 const LOCAL_VERSIONS_KEY = 'hubmind_local_versions_v1';
+const DELETED_DOCS_KEY = 'hubmind_deleted_documents_v1';
+
+function getDeletedDocumentIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_DOCS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter(Boolean) : []);
+  } catch { return new Set(); }
+}
+
+function setDeletedDocumentIds(ids: Set<string>) {
+  try { localStorage.setItem(DELETED_DOCS_KEY, JSON.stringify(Array.from(ids))); }
+  catch (e) { console.warn('[HubMind] Failed to persist deleted document tombstones:', e); }
+}
+
+function markDocumentDeleted(docId: string) {
+  const ids = getDeletedDocumentIds();
+  ids.add(docId);
+  setDeletedDocumentIds(ids);
+}
+
+export function isDocumentDeleted(docId: string): boolean {
+  return getDeletedDocumentIds().has(docId);
+}
 
 export function isContentEffectivelyEmpty(content: any, contentJson?: any): boolean {
   const jsonToCheck = contentJson || (typeof content === 'object' && content !== null ? content : null);
@@ -125,6 +149,9 @@ function saveLocalVersion(version: DocumentVersion) {
 }
 
 export async function saveDocumentOffline(docId: string, data: Partial<OfflineDocRecord>, userProfile?: { name?: string; preferredName?: string; email?: string }): Promise<OfflineDocRecord> {
+  if (!docId) throw new Error('Document ID is required');
+  if (isDocumentDeleted(docId)) throw new Error('This document has been deleted and can no longer be saved.');
+
   const now = new Date().toISOString();
   const docsMap = getLocalDocsMap();
   const existing = docsMap[docId];
@@ -217,24 +244,25 @@ export async function deleteDocumentOffline(docId: string): Promise<void> {
   if (!docId) throw new Error('Document ID is required');
   if (!navigator.onLine) throw new Error('You must be online to permanently delete a document.');
 
-  await deleteDoc(doc(db, 'documents', docId));
-
-  // Firestore persistence can resolve writes locally while a device is disconnected
-  // even when navigator.onLine is true. Verify against the server before telling the
-  // user the deletion is permanent.
-  let verify;
+  // Tombstone FIRST. Any autosave, title-save, or background sync that races
+  // this operation now fails closed instead of writing stale local state back.
+  markDocumentDeleted(docId);
   try {
-    verify = await getDocFromServer(doc(db, 'documents', docId));
+    await deleteDoc(doc(db, 'documents', docId));
+    const verify = await getDocFromServer(doc(db, 'documents', docId));
+    if (verify.exists()) throw new Error('Firebase still has this document. It was not permanently deleted.');
   } catch (error) {
-    throw new Error('The delete was queued locally, but Firebase could not confirm it from the server. Please try again while online.');
+    // Keep the tombstone on uncertainty: a delete may have reached the server
+    // even when a subsequent verification request failed.
+    throw error instanceof Error ? error : new Error('Document deletion could not be confirmed.');
   }
-  if (verify.exists()) throw new Error('Firebase still has this document. It was not permanently deleted.');
 
   const docsMap = getLocalDocsMap();
   delete docsMap[docId];
   setLocalDocsMap(docsMap);
   setSyncQueue(getSyncQueue().filter(id => id !== docId));
   try { localStorage.removeItem(`${LOCAL_VERSIONS_KEY}_${docId}`); } catch {}
+  window.dispatchEvent(new CustomEvent('hubmind:document-deleted', { detail: { docId } }));
 }
 
 export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: number; checked: number }> {
@@ -243,6 +271,7 @@ export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: num
   const localDocs = getLocalDocsMap();
   let repaired = 0;
   for (const docSnap of docsSnap.docs) {
+    if (isDocumentDeleted(docSnap.id)) continue;
     const data = docSnap.data() as any;
     const { html, json } = extractDocumentBody(data);
     if (!isContentEffectivelyEmpty(html, json)) continue;
@@ -271,6 +300,7 @@ export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: num
 }
 
 export async function getDocumentWithOfflineFallback(docId: string): Promise<any> {
+  if (isDocumentDeleted(docId)) return null;
   const localDocs = getLocalDocsMap();
   const cached = localDocs[docId];
   if (navigator.onLine) {
@@ -280,76 +310,93 @@ export async function getDocumentWithOfflineFallback(docId: string): Promise<any
         getDocFromServer(docRef),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore fetch timeout')), 3500))
       ]);
-      if (snap.exists()) {
-        const cloudData = snap.data();
-        const { html: cloudHtml, json: cloudJson } = extractDocumentBody(cloudData);
-        const { html: localHtml, json: localJson } = extractDocumentBody(cached);
-        let recoveredHtml = cloudHtml;
-        let recoveredJson = cloudJson;
-        let recoveredTitle = cloudData.title || cached?.title || 'Untitled Document';
-        let recovered = false;
-        if (isContentEffectivelyEmpty(recoveredHtml, recoveredJson)) {
-          try {
-            const versionSnap = await getDocs(query(collection(db, 'documents', docId, 'versions'), orderBy('createdAt', 'desc'), limit(50)));
-            const version = versionSnap.docs.map(v => v.data() as any).find(v => !isContentEffectivelyEmpty(v.content, v.contentJson));
-            if (version) {
-              recoveredHtml = typeof version.content === 'string' ? version.content : '';
-              recoveredJson = version.contentJson || (typeof version.content === 'object' ? version.content : null);
-              if ((!recoveredTitle || recoveredTitle === 'Untitled Document') && version.title && version.title !== 'Untitled Document') recoveredTitle = version.title;
-              recovered = true;
-            }
-          } catch (err) { console.warn('[HubMind] Version recovery failed:', err); }
-          if (isContentEffectivelyEmpty(recoveredHtml, recoveredJson)) {
-            const localVersion = getLocalVersions(docId).find(v => !isContentEffectivelyEmpty(v.content, v.contentJson));
-            if (localVersion) {
-              recoveredHtml = typeof localVersion.content === 'string' ? localVersion.content : '';
-              recoveredJson = localVersion.contentJson || (typeof localVersion.content === 'object' ? localVersion.content : null);
-              if ((!recoveredTitle || recoveredTitle === 'Untitled Document') && localVersion.title && localVersion.title !== 'Untitled Document') recoveredTitle = localVersion.title;
-              recovered = true;
-            }
+      if (!snap.exists()) {
+        // A confirmed server-side absence is authoritative. Purge every local
+        // representation so an old offline copy can never resurrect the doc.
+        markDocumentDeleted(docId);
+        delete localDocs[docId];
+        setLocalDocsMap(localDocs);
+        setSyncQueue(getSyncQueue().filter(id => id !== docId));
+        try { localStorage.removeItem(`${LOCAL_VERSIONS_KEY}_${docId}`); } catch {}
+        return null;
+      }
+
+      const cloudData = snap.data();
+      const { html: cloudHtml, json: cloudJson } = extractDocumentBody(cloudData);
+      const { html: localHtml, json: localJson } = extractDocumentBody(cached);
+      let recoveredHtml = cloudHtml;
+      let recoveredJson = cloudJson;
+      let recoveredTitle = cloudData.title || cached?.title || 'Untitled Document';
+      let recovered = false;
+
+      if (isContentEffectivelyEmpty(recoveredHtml, recoveredJson)) {
+        try {
+          const versionSnap = await getDocs(query(collection(db, 'documents', docId, 'versions'), orderBy('createdAt', 'desc'), limit(50)));
+          const version = versionSnap.docs.map(v => v.data() as any).find(v => !isContentEffectivelyEmpty(v.content, v.contentJson));
+          if (version) {
+            recoveredHtml = typeof version.content === 'string' ? version.content : '';
+            recoveredJson = version.contentJson || (typeof version.content === 'object' ? version.content : null);
+            if ((!recoveredTitle || recoveredTitle === 'Untitled Document') && version.title && version.title !== 'Untitled Document') recoveredTitle = version.title;
+            recovered = true;
           }
-          if (isContentEffectivelyEmpty(recoveredHtml, recoveredJson) && !isContentEffectivelyEmpty(localHtml, localJson)) {
-            recoveredHtml = localHtml;
-            recoveredJson = localJson;
-            if ((!recoveredTitle || recoveredTitle === 'Untitled Document') && cached?.title) recoveredTitle = cached.title;
+        } catch (err) { console.warn('[HubMind] Version recovery failed:', err); }
+        if (isContentEffectivelyEmpty(recoveredHtml, recoveredJson)) {
+          const localVersion = getLocalVersions(docId).find(v => !isContentEffectivelyEmpty(v.content, v.contentJson));
+          if (localVersion) {
+            recoveredHtml = typeof localVersion.content === 'string' ? localVersion.content : '';
+            recoveredJson = localVersion.contentJson || (typeof localVersion.content === 'object' ? localVersion.content : null);
+            if ((!recoveredTitle || recoveredTitle === 'Untitled Document') && localVersion.title && localVersion.title !== 'Untitled Document') recoveredTitle = localVersion.title;
             recovered = true;
           }
         }
-        if (cached && !cached.synced && new Date(cached.updatedAt).getTime() > new Date(cloudData.updatedAt || 0).getTime()) {
-          const localEmpty = isContentEffectivelyEmpty(localHtml, localJson);
-          const cloudEmpty = isContentEffectivelyEmpty(recoveredHtml, recoveredJson);
-          if (!localEmpty || cloudEmpty) return { ...cloudData, ...cached, isOfflineLocal: true };
+        if (isContentEffectivelyEmpty(recoveredHtml, recoveredJson) && !isContentEffectivelyEmpty(localHtml, localJson)) {
+          recoveredHtml = localHtml;
+          recoveredJson = localJson;
+          if ((!recoveredTitle || recoveredTitle === 'Untitled Document') && cached?.title) recoveredTitle = cached.title;
+          recovered = true;
         }
-        if (recovered && !isContentEffectivelyEmpty(recoveredHtml, recoveredJson)) {
-          try {
-            const update: Record<string, any> = { content: recoveredHtml, lastRecoveredAt: new Date().toISOString() };
-            if (recoveredJson) update.contentJson = recoveredJson;
-            if (recoveredTitle !== cloudData.title) update.title = recoveredTitle;
-            await updateDoc(docRef, update);
-            cloudData.content = recoveredHtml;
-            cloudData.contentJson = recoveredJson;
-            cloudData.title = recoveredTitle;
-          } catch (err) { console.warn('[HubMind] Displayed recovered content but could not repair Firebase:', err); }
-        }
-        const syncedRecord: OfflineDocRecord = {
-          id: docId,
-          title: recoveredTitle,
-          content: recoveredHtml,
-          contentJson: recoveredJson,
-          updatedAt: cloudData.updatedAt || cached?.updatedAt || new Date().toISOString(),
-          lastSavedAt: cloudData.lastSavedAt || cloudData.updatedAt || new Date().toISOString(),
-          lastEditedAt: cloudData.lastEditedAt || cloudData.updatedAt,
-          lastModifiedBy: cloudData.lastModifiedBy || 'User',
-          pageSize: cloudData.pageSize,
-          orientation: cloudData.orientation,
-          marginOption: cloudData.marginOption,
-          synced: true,
-        };
-        localDocs[docId] = syncedRecord;
-        setLocalDocsMap(localDocs);
-        return { ...cloudData, content: recoveredHtml, contentJson: recoveredJson, title: syncedRecord.title };
       }
-    } catch (err) { console.warn('[HubMind] Firestore document fetch failed:', err); }
+
+      if (cached && !cached.synced && new Date(cached.updatedAt).getTime() > new Date(cloudData.updatedAt || 0).getTime()) {
+        const localEmpty = isContentEffectivelyEmpty(localHtml, localJson);
+        const cloudEmpty = isContentEffectivelyEmpty(recoveredHtml, recoveredJson);
+        if (!localEmpty || cloudEmpty) return { ...cloudData, ...cached, isOfflineLocal: true };
+      }
+      if (recovered && !isContentEffectivelyEmpty(recoveredHtml, recoveredJson)) {
+        try {
+          const update: Record<string, any> = { content: recoveredHtml, lastRecoveredAt: new Date().toISOString() };
+          if (recoveredJson) update.contentJson = recoveredJson;
+          if (recoveredTitle !== cloudData.title) update.title = recoveredTitle;
+          await updateDoc(docRef, update);
+          cloudData.content = recoveredHtml;
+          cloudData.contentJson = recoveredJson;
+          cloudData.title = recoveredTitle;
+        } catch (err) { console.warn('[HubMind] Displayed recovered content but could not repair Firebase:', err); }
+      }
+
+      const syncedRecord: OfflineDocRecord = {
+        id: docId,
+        title: recoveredTitle,
+        content: recoveredHtml,
+        contentJson: recoveredJson,
+        updatedAt: cloudData.updatedAt || cached?.updatedAt || new Date().toISOString(),
+        lastSavedAt: cloudData.lastSavedAt || cloudData.updatedAt || new Date().toISOString(),
+        lastEditedAt: cloudData.lastEditedAt || cloudData.updatedAt,
+        lastModifiedBy: cloudData.lastModifiedBy || 'User',
+        pageSize: cloudData.pageSize,
+        orientation: cloudData.orientation,
+        marginOption: cloudData.marginOption,
+        synced: true,
+      };
+      localDocs[docId] = syncedRecord;
+      setLocalDocsMap(localDocs);
+      return { ...cloudData, content: recoveredHtml, contentJson: recoveredJson, title: syncedRecord.title };
+    } catch (err) {
+      // Do NOT fall back to a cached document while online. A stale cache is
+      // exactly what caused deleted documents to appear to come back.
+      console.warn('[HubMind] Firestore document fetch failed; refusing stale-cache resurrection:', err);
+      throw err;
+    }
   }
   return cached ? { ...cached, isOfflineLocal: true } : null;
 }
@@ -362,7 +409,12 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
   const remaining: string[] = [];
   let syncedCount = 0;
   let errors = 0;
+
   for (const docId of queue) {
+    if (isDocumentDeleted(docId)) {
+      delete docsMap[docId];
+      continue;
+    }
     const record = docsMap[docId];
     if (!record) continue;
     if (isContentEffectivelyEmpty(record.content, record.contentJson) && !record.allowEmpty) continue;
@@ -396,6 +448,7 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
 
 export async function fetchDocumentVersionHistory(docId: string): Promise<DocumentVersion[]> {
   const versionMap = new Map<string, DocumentVersion>();
+  if (isDocumentDeleted(docId)) return [];
   getLocalVersions(docId).forEach(v => versionMap.set(v.id, v));
   if (navigator.onLine) {
     try {
@@ -410,6 +463,7 @@ export async function fetchDocumentVersionHistory(docId: string): Promise<Docume
 }
 
 export async function createNamedCheckpoint(docId: string, checkpointName: string, title: string, content: string, authorName: string, authorEmail?: string): Promise<DocumentVersion> {
+  if (isDocumentDeleted(docId)) throw new Error('This document has been deleted and cannot receive checkpoints.');
   const now = new Date().toISOString();
   const wordCount = content.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
   const version: DocumentVersion = {
