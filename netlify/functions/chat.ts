@@ -1,8 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
 
-// Keep the primary agent on currently-supported models. Older preview IDs were
-// the reason a "fallback" could look like Shawn was alive while every model
-// call was actually failing.
 const models = [
   'gemini-3.8-flash',
   'gemini-3.7-flash',
@@ -33,11 +30,14 @@ export default async (req: Request) => {
     const body = await req.json();
     const key = process.env.GEMINI_API_KEY;
     if (!key) {
+      const detail = 'GEMINI_API_KEY is missing from the Netlify environment.';
       return responseJson({
+        text: `Shawn is offline because the AI provider is not configured. ${detail}`,
         error: 'Shawn is not configured on this deployment.',
         code: 'AI_PROVIDER_NOT_CONFIGURED',
-        detail: 'GEMINI_API_KEY is missing from the Netlify environment.',
-      }, 503);
+        detail,
+        serviceError: true,
+      });
     }
 
     const ai = new GoogleGenAI({ apiKey: key });
@@ -87,19 +87,24 @@ export default async (req: Request) => {
       }
     }
 
-    const message = lastError?.message || 'All configured AI models failed.';
+    const detail = lastError?.message || 'All configured AI models failed.';
     return responseJson({
+      text: `I could not reach any of my AI models just now. ${detail}`,
       error: 'Shawn could not reach a working AI model.',
       code: 'AI_ALL_MODELS_FAILED',
-      detail: message,
+      detail,
       attemptedModels,
-    }, 502);
+      serviceError: true,
+    });
   } catch (error: any) {
     console.error('Shawn Netlify function error:', error);
+    const detail = error?.message || 'Unknown server error';
     return responseJson({
+      text: `Shawn hit a server error before I could answer. ${detail}`,
       error: 'Shawn request failed before a response could be generated.',
       code: 'AI_REQUEST_FAILED',
-      detail: error?.message || 'Unknown server error',
-    }, 500);
+      detail,
+      serviceError: true,
+    });
   }
 };
