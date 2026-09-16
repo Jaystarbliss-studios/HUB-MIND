@@ -1,12 +1,27 @@
-import { collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
+import { db, auth } from '../firebaseConfig';
 import { RecurringMeetingTemplate, User } from '../types';
 import { addDays, format, startOfDay } from 'date-fns';
 
 const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const ADMIN_EMAIL = 'johnrufai242@gmail.com';
 
 export function getRecurringMeetingDateKey(templateId: string, date: Date) {
   return `recurring-meeting-${templateId}-${format(date, 'yyyy-MM-dd')}`;
+}
+
+async function resolveCurrentRole(profile?: Pick<User, 'id' | 'role'>): Promise<Pick<User, 'id' | 'role'> | undefined> {
+  if (profile) return profile;
+  const current = auth.currentUser;
+  if (!current) return undefined;
+  if ((current.email || '').toLowerCase() === ADMIN_EMAIL) return { id: current.uid, role: 'admin' };
+  try {
+    const snap = await getDoc(doc(db, 'users', current.uid));
+    const role = snap.exists() ? String(snap.data().role || 'staff') : 'staff';
+    return { id: current.uid, role: role as User['role'] };
+  } catch {
+    return { id: current.uid, role: 'staff' };
+  }
 }
 
 /**
@@ -16,13 +31,16 @@ export function getRecurringMeetingDateKey(templateId: string, date: Date) {
  * Deterministic occurrence IDs make this operation idempotent.
  */
 export async function materializeRecurringMeetings(daysAhead = 90, profile?: Pick<User, 'id' | 'role'>) {
-  const isPrivileged = profile?.role === 'admin' || profile?.role === 'assistant';
-  const templatesQuery = isPrivileged || !profile
+  const effectiveProfile = await resolveCurrentRole(profile);
+  if (!effectiveProfile) return;
+
+  const isPrivileged = effectiveProfile.role === 'admin' || effectiveProfile.role === 'assistant';
+  const templatesQuery = isPrivileged
     ? query(collection(db, 'recurringMeetingTemplates'), where('active', '==', true))
     : query(
         collection(db, 'recurringMeetingTemplates'),
         where('active', '==', true),
-        where('ownerId', '==', profile.id)
+        where('ownerId', '==', effectiveProfile.id)
       );
 
   const templates = await getDocs(templatesQuery);
