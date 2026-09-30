@@ -1,133 +1,39 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function userDoc(uid) { return get(/databases/$(database)/documents/users/$(uid)).data; }
-    function hasUserDoc(uid) { return signedIn() && exists(/databases/$(database)/documents/users/$(uid)); }
-    function roleIs(role) { return signedIn() && hasUserDoc(request.auth.uid) && userDoc(request.auth.uid).role == role; }
-    function isAdmin() { return signedIn() && (request.auth.token.email == 'johnrufai242@gmail.com' || roleIs('admin')); }
-    function isWorkspaceUser() { return signedIn() && hasUserDoc(request.auth.uid) && userDoc(request.auth.uid).status != 'inactive'; }
-    function isAssistantOrAdmin() { return isAdmin() || (isWorkspaceUser() && roleIs('assistant')); }
-    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
-    function canManageDocument(documentId) {
-      return isAssistantOrAdmin() || (isWorkspaceUser() && (
-        get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId == request.auth.uid ||
-        get(/databases/$(database)/documents/documents/$(documentId)).data.createdBy == request.auth.uid
-      ));
-    }
-
-    match /{document=**} { allow read, write: if false; }
-
-    match /users/{userId} {
-      allow read: if isWorkspaceUser();
-      allow create: if isAdmin() || (isSelf(userId) && request.resource.data.role == 'staff' && request.resource.data.status == 'active');
-      allow update: if isAssistantOrAdmin() || (isSelf(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName', 'photoUrl', 'name']));
-      allow delete: if isAdmin();
-
-      match /conversations/{conversationId} { allow read, write: if isSelf(userId) || isAssistantOrAdmin(); }
-      match /private/{document=**} { allow read, write: if isSelf(userId) || isAdmin(); }
-      match /dailyReports/{reportId} { allow read, write: if isSelf(userId) || isAssistantOrAdmin(); }
-    }
-
-    match /conversations/{conversationId} { allow read, write: if isAssistantOrAdmin(); }
-
-    match /tasks/{taskId} {
-      allow read: if isWorkspaceUser();
-      allow create: if isAssistantOrAdmin() || (isWorkspaceUser() && request.resource.data.createdBy == request.auth.uid);
-      allow update: if isAssistantOrAdmin() || (isWorkspaceUser() && (resource.data.assignedTo == request.auth.uid || resource.data.createdBy == request.auth.uid));
-      allow delete: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
-    }
-
-    match /documents/{documentId} {
-      allow read: if isWorkspaceUser();
-      allow create: if isAssistantOrAdmin() || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid && request.resource.data.createdBy == request.auth.uid);
-      allow update: if canManageDocument(documentId);
-      allow delete: if canManageDocument(documentId);
-      match /versions/{versionId} {
-        allow read: if isWorkspaceUser();
-        allow create: if canManageDocument(documentId);
-        allow update, delete: if canManageDocument(documentId);
-      }
-    }
-
-    match /projects/{projectId} {
-      allow read: if isWorkspaceUser();
-      allow create: if isAssistantOrAdmin() || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
-      allow update, delete: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
-    }
-    match /clients/{clientId} {
-      allow read: if isWorkspaceUser();
-      allow create: if isAssistantOrAdmin() || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
-      allow update, delete: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
-    }
-    match /meetings/{meetingId} {
-      allow read: if isWorkspaceUser();
-      allow create: if isAssistantOrAdmin() || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
-      allow update, delete: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
-    }
-    match /inbox/{inboxId} {
-      allow read: if isWorkspaceUser();
-      allow create: if isWorkspaceUser() && request.resource.data.createdBy == request.auth.uid;
-      allow update, delete: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
-    }
-    match /followUps/{followUpId} {
-      allow read: if isWorkspaceUser();
-      allow create: if isAssistantOrAdmin() || (isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid);
-      allow update, delete: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
-    }
-    match /knowledge/{knowledgeId} {
-      allow read: if isWorkspaceUser();
-      allow create: if isAssistantOrAdmin() || (isWorkspaceUser() && request.resource.data.createdBy == request.auth.uid);
-      allow update, delete: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.createdBy == request.auth.uid);
-    }
-    match /payments/{paymentId} {
-      allow read: if isWorkspaceUser();
-      allow create, update, delete: if isAssistantOrAdmin();
-    }
-    match /notifications/{notificationId} {
-      allow read: if isWorkspaceUser() && resource.data.userId == request.auth.uid;
-      allow create: if isAssistantOrAdmin() || (isWorkspaceUser() && request.resource.data.userId == request.auth.uid);
-      allow update: if isWorkspaceUser() && resource.data.userId == request.auth.uid;
-      allow delete: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.userId == request.auth.uid);
-    }
-    match /sharedRecords/{shareId} {
-      allow read: if isWorkspaceUser();
-      allow create: if isAssistantOrAdmin();
-      allow update, delete: if isAssistantOrAdmin();
-    }
-    match /activityLogs/{activityId} {
-      allow read: if isAssistantOrAdmin();
-      allow create: if isWorkspaceUser() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-    match /activity/{activityId} {
-      allow read: if isAssistantOrAdmin();
-      allow create: if isWorkspaceUser();
-      allow update, delete: if isAdmin();
-    }
-
-    // Recurring schedules are workspace-owned records. Every active workspace
-    // user may create their own schedule; admins/assistants may manage theirs,
-    // while ordinary staff can only query records they own. This keeps queries
-    // compatible with Firestore's rule-evaluation model instead of relying on
-    // client-side filtering after an unrestricted collection query.
-    match /recurringMeetingTemplates/{templateId} {
-      allow get: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
-      allow list: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
-      allow create: if isWorkspaceUser() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == request.auth.uid);
-      allow delete: if isAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
-    }
-    match /recurringTaskTemplates/{templateId} {
-      allow read: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.ownerId == request.auth.uid);
-      allow create: if isAssistantOrAdmin() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAssistantOrAdmin() && resource.data.ownerId == request.auth.uid;
-      allow delete: if isAssistantOrAdmin() && resource.data.ownerId == request.auth.uid;
-    }
-    match /memories/{memoryId} {
-      allow read: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.userId == request.auth.uid);
-      allow create: if isAssistantOrAdmin() || (isWorkspaceUser() && request.resource.data.userId == request.auth.uid);
-      allow update, delete: if isAssistantOrAdmin() || (isWorkspaceUser() && resource.data.userId == request.auth.uid);
-    }
+rules_version='2';
+service cloud.firestore{
+ match /databases/{database}/documents{
+  function signedIn(){return request.auth!=null;}
+  function hasUser(){return signedIn()&&exists(/databases/$(database)/documents/users/$(request.auth.uid));}
+  function me(){return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;}
+  function member(){return hasUser()&&me().status=='active';}
+  function admin(){return member()&&me().role=='admin';}
+  function self(uid){return signedIn()&&request.auth.uid==uid;}
+  function readable(){return member()&&(resource.data.ownerId==request.auth.uid||resource.data.visibility=='workspace'||(resource.data.visibility=='shared'&&resource.data.sharedWith[request.auth.uid] in ['read','write']));}
+  function writable(){return member()&&(resource.data.ownerId==request.auth.uid||(resource.data.visibility=='shared'&&resource.data.sharedWith[request.auth.uid]=='write'));}
+  function newOwner(){return member()&&request.resource.data.ownerId==request.auth.uid;}
+  function createdByMe(){return member()&&request.resource.data.createdBy==request.auth.uid;}
+  match /{document=**}{allow read,write:if false;}
+  match /users/{userId}{
+   allow get:if self(userId)||admin(); allow list:if admin();
+   allow create:if signedIn()&&request.resource.data.role=='staff'&&request.resource.data.status=='active'&&request.resource.data.invitationId!=null&&exists(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId))&&get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.status=='invited'&&get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.email==request.auth.token.email&&get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.username==request.resource.data.username;
+   allow update:if admin()||(self(userId)&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName','photoUrl','name','phone','lastSeenAt'])); allow delete:if admin();
+   match /conversations/{id}{allow read,write:if self(userId)||admin();} match /private/{document=**}{allow read,write:if self(userId)||admin();} match /dailyReports/{id}{allow read,write:if self(userId)||admin();}
   }
+  match /invitations/{id}{allow get:if admin()||(signedIn()&&resource.data.email==request.auth.token.email);allow list:if admin();allow create:if admin()&&request.resource.data.role=='staff'&&request.resource.data.status=='invited'&&request.resource.data.invitedBy==request.auth.uid;allow update,delete:if admin();}
+  match /connections/{id}{allow get:if member()&&(resource.data.requesterId==request.auth.uid||resource.data.recipientId==request.auth.uid);allow list:if admin()||member();allow create:if member()&&(request.resource.data.requesterId==request.auth.uid||request.resource.data.recipientId==request.auth.uid);allow update,delete:if member()&&(resource.data.requesterId==request.auth.uid||resource.data.recipientId==request.auth.uid);}
+  match /shares/{id}{allow get:if member()&&(resource.data.ownerId==request.auth.uid||resource.data.recipientUserId==request.auth.uid);allow list:if admin()||member();allow create:if admin()||(member()&&request.resource.data.ownerId==request.auth.uid);allow update,delete:if admin()||(member()&&resource.data.ownerId==request.auth.uid);}
+  match /notifications/{id}{allow get,list:if member()&&resource.data.userId==request.auth.uid;allow create:if admin()||(member()&&request.resource.data.userId==request.auth.uid);allow update,delete:if member()&&resource.data.userId==request.auth.uid;}
+  match /activityLogs/{id}{allow get,list:if admin()||(member()&&resource.data.userId==request.auth.uid);allow create:if member()&&request.resource.data.userId==request.auth.uid;allow update,delete:if admin();}
+  match /tasks/{id}{allow get:if readable();allow list:if admin();allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
+  match /documents/{id}{allow get:if readable();allow list:if admin();allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
+  match /projects/{id}{allow get:if readable();allow list:if admin();allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
+  match /clients/{id}{allow get:if readable();allow list:if admin();allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
+  match /meetings/{id}{allow get:if readable();allow list:if admin();allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
+  match /followUps/{id}{allow get:if readable();allow list:if admin();allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
+  match /knowledge/{id}{allow get:if readable();allow list:if admin();allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
+  match /documents/{documentId}/versions/{versionId}{allow get,list:if member()&&(admin()||get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId==request.auth.uid||get(/databases/$(database)/documents/documents/$(documentId)).data.sharedWith[request.auth.uid] in ['read','write']);allow create:if member()&&get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId==request.auth.uid;allow update,delete:if admin()||get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId==request.auth.uid;}
+  match /recurringMeetingTemplates/{id}{allow get,list:if admin()||(member()&&resource.data.ownerId==request.auth.uid);allow create:if newOwner();allow update,delete:if admin()||(member()&&resource.data.ownerId==request.auth.uid);}
+  match /recurringTaskTemplates/{id}{allow get,list:if admin()||(member()&&resource.data.ownerId==request.auth.uid);allow create:if newOwner();allow update,delete:if admin()||(member()&&resource.data.ownerId==request.auth.uid);}
+  match /conversations/{id}{allow get,list:if member()&&resource.data.userId==request.auth.uid;allow create,update,delete:if member()&&request.resource.data.userId==request.auth.uid;}
+  match /memories/{id}{allow get,list:if member()&&resource.data.userId==request.auth.uid;allow create:if member()&&request.resource.data.userId==request.auth.uid;allow update,delete:if member()&&resource.data.userId==request.auth.uid;}
+ }
 }
