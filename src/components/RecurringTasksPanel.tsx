@@ -3,7 +3,7 @@ import { collection, addDoc, deleteDoc, doc, onSnapshot } from 'firebase/firesto
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { RecurringTaskTemplate } from '../types';
-import { Repeat2, Plus, Trash2, X } from 'lucide-react';
+import { Repeat2, Plus, Trash2, X, CheckCircle2, AlertCircle } from 'lucide-react';
 
 const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
@@ -18,6 +18,8 @@ export function RecurringTasksPanel() {
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [priority, setPriority] = useState<'low'|'medium'|'high'|'urgent'>('medium');
   const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!profile) return;
@@ -25,35 +27,39 @@ export function RecurringTasksPanel() {
       const next = snap.docs.map(d => ({ id: d.id, ...d.data() } as RecurringTaskTemplate))
         .filter(x => !x.ownerId || x.ownerId === profile.id);
       setItems(next);
-    }, e => console.warn('Recurring tasks subscription:', e));
+    }, e => {
+      console.error('Recurring tasks subscription:', e);
+      setError((e as any)?.code === 'permission-denied' ? 'Your account cannot manage recurring tasks.' : 'Could not load recurring tasks.');
+    });
   }, [profile]);
+
+  const reset = () => { setTitle(''); setDescription(''); setFrequency('weekly'); setDayOfWeek(1); setDayOfMonth(1); setPriority('medium'); };
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile || !title.trim()) return;
-    setSaving(true);
+    setSaving(true); setError(''); setMessage('');
     try {
       await addDoc(collection(db, 'recurringTaskTemplates'), {
-        title: title.trim(),
-        description: description.trim(),
-        priority,
-        assignedTo: profile.id,
-        frequency,
+        title: title.trim(), description: description.trim(), priority,
+        assignedTo: profile.id, frequency,
         ...(frequency === 'weekly' ? { dayOfWeek } : {}),
         ...(frequency === 'monthly' ? { dayOfMonth } : {}),
-        ownerId: profile.id,
-        active: true,
-        createdAt: new Date().toISOString()
+        ownerId: profile.id, active: true,
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       });
-      setTitle(''); setDescription(''); setFrequency('weekly'); setDayOfWeek(1); setDayOfMonth(1); setPriority('medium'); setOpen(false);
-    } catch (e) { console.error('Could not create recurring task:', e); }
-    finally { setSaving(false); }
+      reset(); setOpen(false); setMessage('Recurring task saved. It will be generated automatically when due.');
+    } catch (e) {
+      console.error('Could not create recurring task:', e);
+      const code = (e as any)?.code;
+      setError(code === 'permission-denied' ? 'Firebase denied this recurring-task write for the current account.' : e instanceof Error ? e.message : 'Could not save the recurring task.');
+    } finally { setSaving(false); }
   };
 
   const remove = async (id: string) => {
-    if (window.confirm('Stop this recurring task? Existing tasks will remain.')) {
-      await deleteDoc(doc(db, 'recurringTaskTemplates', id));
-    }
+    if (!window.confirm('Stop this recurring task? Existing tasks will remain.')) return;
+    try { await deleteDoc(doc(db, 'recurringTaskTemplates', id)); setMessage('Recurring task stopped. Existing tasks remain.'); }
+    catch (e) { console.error(e); setError('Could not stop this recurring task.'); }
   };
 
   const label = (x: RecurringTaskTemplate) => x.frequency === 'daily'
@@ -63,32 +69,10 @@ export function RecurringTasksPanel() {
       : `Every month on the ${x.dayOfMonth ?? 1}${(x.dayOfMonth ?? 1)===1?'st':(x.dayOfMonth ?? 1)===2?'nd':(x.dayOfMonth ?? 1)===3?'rd':'th'}`;
 
   return <section className="mb-5 bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-xl bg-accent/10 text-accent"><Repeat2 className="w-5 h-5" /></div>
-        <div><h2 className="text-sm font-bold text-white">Recurring Tasks</h2><p className="text-xs text-slate-500">Set it once. Hub-Mind adds it when it is due.</p></div>
-      </div>
-      <button onClick={() => setOpen(true)} className="h-9 px-3 rounded-lg bg-accent text-slate-950 font-bold text-xs flex items-center gap-1.5"><Plus className="w-4 h-4"/> Add recurring</button>
-    </div>
-    {items.length > 0 && <div className="mt-4 grid gap-2 md:grid-cols-2">
-      {items.map(x => <div key={x.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800">
-        <div className="min-w-0"><p className="text-sm font-medium text-slate-200 truncate">{x.title}</p><p className="text-xs text-slate-500">{label(x)} · {x.priority}</p></div>
-        <button onClick={() => remove(x.id)} className="p-2 text-slate-500 hover:text-red-400" title="Stop recurring"><Trash2 className="w-4 h-4"/></button>
-      </div>)}
-    </div>}
-    {open && <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <form onSubmit={create} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-4">
-        <div className="flex justify-between items-center"><h3 className="text-lg font-bold text-white">Add recurring task</h3><button type="button" onClick={() => setOpen(false)} className="text-slate-500"><X/></button></div>
-        <input required value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Follow up with school clients" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white"/>
-        <textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="Optional description" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white min-h-20"/>
-        <div className="grid grid-cols-2 gap-3">
-          <select value={frequency} onChange={e=>setFrequency(e.target.value as any)} className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white"><option value="daily">Every day</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>
-          <select value={priority} onChange={e=>setPriority(e.target.value as any)} className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
-        </div>
-        {frequency==='weekly' && <select value={dayOfWeek} onChange={e=>setDayOfWeek(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white">{days.map((d,i)=><option key={d} value={i}>{d}</option>)}</select>}
-        {frequency==='monthly' && <input type="number" min="1" max="31" value={dayOfMonth} onChange={e=>setDayOfMonth(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white"/>}
-        <button disabled={saving} className="w-full bg-accent text-slate-950 font-bold rounded-lg py-2.5 text-sm">{saving?'Saving…':'Save recurring task'}</button>
-      </form>
-    </div>}
+    <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="p-2 rounded-xl bg-accent/10 text-accent"><Repeat2 className="w-5 h-5" /></div><div><h2 className="text-sm font-bold text-white">Recurring Tasks</h2><p className="text-xs text-slate-500">Set it once. Hub-Mind adds it when it is due.</p></div></div><button onClick={()=>{setError('');setMessage('');setOpen(true)}} className="h-9 px-3 rounded-lg bg-accent text-slate-950 font-bold text-xs flex items-center gap-1.5"><Plus className="w-4 h-4"/> Add recurring</button></div>
+    {message && <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"><CheckCircle2 className="w-4 h-4"/>{message}</div>}
+    {error && !open && <div className="mt-3 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300"><AlertCircle className="w-4 h-4"/>{error}</div>}
+    {items.length > 0 && <div className="mt-4 grid gap-2 md:grid-cols-2">{items.map(x => <div key={x.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800"><div className="min-w-0"><p className="text-sm font-medium text-slate-200 truncate">{x.title}</p><p className="text-xs text-slate-500">{label(x)} · {x.priority}</p></div><button onClick={() => remove(x.id)} className="p-2 text-slate-500 hover:text-red-400" title="Stop recurring"><Trash2 className="w-4 h-4"/></button></div>)}</div>}
+    {open && <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"><form onSubmit={create} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-4"><div className="flex justify-between items-center"><h3 className="text-lg font-bold text-white">Add recurring task</h3><button type="button" onClick={()=>{reset();setOpen(false);setError('')}} className="text-slate-500"><X/></button></div>{error && <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300"><AlertCircle className="w-4 h-4"/>{error}</div>}<input required value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Follow up with school clients" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white"/><textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="Optional description" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white min-h-20"/><div className="grid grid-cols-2 gap-3"><select value={frequency} onChange={e=>setFrequency(e.target.value as any)} className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white"><option value="daily">Every day</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select><select value={priority} onChange={e=>setPriority(e.target.value as any)} className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>{frequency==='weekly' && <select value={dayOfWeek} onChange={e=>setDayOfWeek(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white">{days.map((d,i)=><option key={d} value={i}>{d}</option>)}</select>}{frequency==='monthly' && <input type="number" min="1" max="31" value={dayOfMonth} onChange={e=>setDayOfMonth(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white"/>}<button disabled={saving} className="w-full bg-accent text-slate-950 font-bold rounded-lg py-2.5 text-sm">{saving?'Saving…':'Save recurring task'}</button></form></div>}
   </section>;
 }
