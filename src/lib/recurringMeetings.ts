@@ -34,7 +34,7 @@ export async function materializeRecurringMeetings(daysAhead = 90, profile?: Pic
   const effectiveProfile = await resolveCurrentRole(profile);
   if (!effectiveProfile) return;
 
-  const isPrivileged = effectiveProfile.role === 'admin' || effectiveProfile.role === 'assistant';
+  const isPrivileged = effectiveProfile.role === 'admin';
   const templatesQuery = isPrivileged
     ? query(collection(db, 'recurringMeetingTemplates'), where('active', '==', true))
     : query(

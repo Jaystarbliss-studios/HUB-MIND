@@ -2,29 +2,85 @@ export type PaperSizeOption = 'a4' | 'letter' | 'legal';
 export type OrientationOption = 'portrait' | 'landscape';
 export type MarginOption = 'normal' | 'narrow' | 'moderate' | 'wide' | 'custom';
 
-export type Role = 'admin' | 'assistant' | 'teacher' | 'staff';
-export type UserStatus = 'active' | 'training' | 'inactive';
-export type ClientType = 'school' | 'parent' | 'partner';
-export type ClientStatus = 'active' | 'lead' | 'inactive';
-export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
-export type TaskStatus = 'pending' | 'in_progress' | 'under_review' | 'completed' | 'archived';
+export type Role = 'admin' | 'staff';
+export type UserStatus = 'active' | 'suspended';
 
 export interface User {
-  id: string;
-  name: string;
-  preferredName?: string;
+  id: string; // Firebase Auth UID
   email: string;
+  username: string; // Unique lowercase handle without @ (e.g. "john")
+  displayName: string;
+  name?: string; // Optional alias for displayName
+  preferredName?: string;
   role: Role;
   status: UserStatus;
   phone?: string;
-  trainingStartDate?: string;
-  confirmedDate?: string;
-  createdAt: string;
   photoUrl?: string;
+  createdAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  defaultVisibility?: ResourceVisibility;
 }
 
+export type InvitationStatus = 'invited' | 'accepted' | 'revoked' | 'expired';
+
+export interface UserInvitation {
+  id: string;
+  email: string;
+  username: string;
+  displayName: string;
+  phone?: string;
+  role: 'staff';
+  status: InvitationStatus;
+  invitedBy: string; // Admin UID or email
+  createdAt: string;
+  expiresAt?: string;
+  acceptedAt?: string;
+  acceptedByUid?: string;
+  token?: string;
+}
+
+export type ConnectionStatus = 'pending' | 'accepted' | 'declined' | 'blocked';
+
+export interface UserConnection {
+  id: string;
+  requesterId: string;
+  requesterUsername: string;
+  requesterDisplayName: string;
+  requesterPhotoUrl?: string;
+  recipientId: string;
+  recipientUsername: string;
+  recipientDisplayName: string;
+  recipientPhotoUrl?: string;
+  status: ConnectionStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ResourceType = 'document' | 'task' | 'meeting' | 'project' | 'client' | 'followup';
+export type ResourceVisibility = 'private' | 'workspace' | 'shared';
+export type SharePermission = 'read' | 'write';
+export type ShareStatus = 'active' | 'revoked';
+
+export interface ResourceShare {
+  id: string;
+  resourceType: ResourceType;
+  resourceId: string;
+  resourceTitle?: string;
+  ownerId: string;
+  recipientUserId: string;
+  recipientUsername: string;
+  permission: SharePermission;
+  status: ShareStatus;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt?: string;
+}
+
+export type ClientType = 'school' | 'parent' | 'partner' | 'business';
+export type ClientStatus = 'active' | 'lead' | 'inactive';
+
 export interface Client {
-  projectId?: string;
   id: string;
   name: string;
   type: ClientType;
@@ -32,65 +88,118 @@ export interface Client {
   email?: string;
   address?: string;
   status: ClientStatus;
-  ownerId?: string; // userId
-  createdAt: string;
+  projectId?: string;
+  ownerId: string;
+  createdBy?: string;
+  visibility?: ResourceVisibility;
+  sharedWith?: string[];
+  permissions?: Record<string, SharePermission>;
   photoUrl?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
+export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
+export type TaskStatus =
+  | 'draft'
+  | 'assigned'
+  | 'accepted'
+  | 'in_progress'
+  | 'submitted'
+  | 'under_review'
+  | 'completed'
+  | 'rejected'
+  | 'archived';
+
 export interface Task {
-  projectId?: string;
   id: string;
   title: string;
   description: string;
   priority: TaskPriority;
   status: TaskStatus;
-  assignedTo: string; // userId
+  assignedTo?: string; // userId
+  assignedToUsername?: string; // @username
   createdBy: string; // userId
+  ownerId: string; // userId
+  projectId?: string;
   clientId?: string;
-  deadline?: string; // timestamp or ISO string
+  deadline?: string; // ISO string
+  rejectionReason?: string;
+  visibility?: ResourceVisibility;
+  sharedWith?: string[];
+  permissions?: Record<string, SharePermission>;
   checklist: { item: string; done: boolean }[];
-  comments: { userId: string; text: string; timestamp: string }[];
+  comments: { userId: string; username?: string; text: string; timestamp: string }[];
   images?: string[];
   createdAt: string;
   updatedAt: string;
 }
 
 export type MeetingStatus = 'scheduled' | 'in_session' | 'completed' | 'canceled' | 'rescheduled';
+
 export interface Meeting {
   id: string;
   title?: string;
   status?: MeetingStatus;
   projectId?: string;
-  decisions?: string[];
-  openQuestions?: string[];
   clientId?: string;
-  ownerId?: string; // userId
-  attendees: string[]; // names or userIds
-  date: string; // timestamp or ISO string
+  taskId?: string;
+  documentId?: string;
+  ownerId: string;
+  visibility?: ResourceVisibility;
+  sharedWith?: string[];
+  permissions?: Record<string, SharePermission>;
+  attendees: string[]; // userIds or emails/names
+  date: string; // ISO string or timestamp
+  endDate?: string;
+  location?: string;
+  meetingLink?: string;
   notesRaw: string;
   aiSummary?: string;
+  decisions?: string[];
+  openQuestions?: string[];
   actionPoints: { text: string; assignedTo: string; deadline: string }[];
   generatedDocs: { type: string; fileRef: string; createdAt: string }[];
+  externalProvider?: 'google';
+  externalEventId?: string;
   createdAt: string;
+  updatedAt?: string;
+}
+
+export interface DocumentVersion {
+  id: string;
+  documentId: string;
+  versionNumber: number;
+  title: string;
+  content: string;
+  savedBy: string; // userId
+  savedByUsername?: string;
+  savedAt: string;
+  changeSummary?: string;
 }
 
 export interface DocumentInfo {
-  projectId?: string;
   id: string;
   title: string;
   category: string;
   templateId?: string;
-  type?: 'internal' | 'external'; // contract | report | invoice | exam | certificate | other
+  type?: 'internal' | 'external';
+  projectId?: string;
   clientId?: string;
-  ownerId?: string; // userId
-  fileRef?: string; // Drive link
-  version?: number;
+  ownerId: string; // userId
   createdBy?: string;
+  updatedBy?: string;
+  visibility?: ResourceVisibility;
+  sharedWith?: string[];
+  permissions?: Record<string, SharePermission>;
+  fileRef?: string;
+  version?: number;
   createdAt: string;
   updatedAt?: string;
-  lastEditedAt?: string; // Exact ISO timestamp with seconds
-  lastSavedAt?: string;  // Exact ISO timestamp with seconds
-  lastModifiedBy?: string; // e.g. User name or "Shawn AI"
+  lastEditedAt?: string;
+  lastSavedAt?: string;
+  lastModifiedBy?: string;
   content?: string;
   pageSize?: PaperSizeOption;
   orientation?: OrientationOption;
@@ -100,9 +209,13 @@ export interface DocumentInfo {
 export interface Notification {
   id: string;
   userId: string;
-  type: string; // deadline | payment | birthday | meeting | task_completed
+  type: string; // task_assigned | task_accepted | task_rejected | document_shared | connection_request | connection_accepted | meeting_reminder | general
+  title?: string;
   message: string;
+  resourceType?: ResourceType;
+  resourceId?: string;
   read: boolean;
+  actionUrl?: string;
   createdAt: string;
 }
 
@@ -129,6 +242,9 @@ export interface FollowUp {
   relatedProjectId?: string;
   reason?: string;
   ownerId: string;
+  visibility?: ResourceVisibility;
+  sharedWith?: string[];
+  permissions?: Record<string, SharePermission>;
   dueAt: string;
   status: FollowUpStatus;
   priority: TaskPriority;
@@ -144,11 +260,11 @@ export interface RecurringMeetingTemplate {
   title: string;
   type: 'class' | 'meeting' | 'appointment' | 'school_event' | 'other';
   description?: string;
-  daysOfWeek: number[];
+  daysOfWeek: number[]; // 0 = Sunday, 1 = Monday, etc.
   frequency: 'daily' | 'weekly' | 'monthly';
-  startTime: string;
-  endTime?: string;
-  startDate: string;
+  startTime: string; // "16:00"
+  endTime?: string; // "17:00"
+  startDate: string; // "2026-09-01"
   endDate?: string;
   dayOfMonth?: number;
   location?: string;
@@ -157,6 +273,7 @@ export interface RecurringMeetingTemplate {
   projectId?: string;
   attendees?: string[];
   ownerId: string;
+  visibility?: ResourceVisibility;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -168,13 +285,15 @@ export interface RecurringTaskTemplate {
   description: string;
   priority: TaskPriority;
   assignedTo: string;
+  assignedToUsername?: string;
   frequency: 'daily' | 'weekly' | 'monthly';
+  daysOfWeek?: number[];
   dayOfWeek?: number; // 0-6 for weekly
   dayOfMonth?: number; // 1-31 for monthly
   lastGeneratedDate?: string;
   active: boolean;
   createdAt: string;
-  ownerId?: string;
+  ownerId: string;
 }
 
 export interface Project {
@@ -183,6 +302,11 @@ export interface Project {
   description: string;
   status: 'active' | 'completed' | 'on_hold';
   ownerId: string;
+  createdBy?: string;
+  visibility?: ResourceVisibility;
+  sharedWith?: string[];
+  permissions?: Record<string, SharePermission>;
+  collaboratorIds?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -194,6 +318,9 @@ export interface Knowledge {
   category: 'sop' | 'template' | 'faq' | 'lesson';
   tags: string[];
   createdBy: string;
+  ownerId?: string;
+  visibility?: ResourceVisibility;
+  sharedWith?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -201,18 +328,23 @@ export interface Knowledge {
 export interface ActivityLog {
   id: string;
   entityId: string;
-  entityType: 'task' | 'meeting' | 'client' | 'document' | 'project' | 'knowledge';
+  entityType: 'task' | 'meeting' | 'client' | 'document' | 'project' | 'knowledge' | 'user' | 'share';
   action: string;
   userId: string;
+  username?: string;
+  userDisplayName?: string;
   details: string;
   createdAt: string;
 }
-export type LiveConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
+export type LiveConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 export type ShawnState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted' | 'muted';
 
 export interface MessageActionPayload {
-  type: 'delete_document' | 'share_document' | 'set_preferred_name';
+  type: 'delete_document' | 'delete_task' | 'delete_project' | 'share_resource' | 'share_document' | 'set_preferred_name';
+  resourceType?: ResourceType;
+  resourceId?: string;
+  resourceTitle?: string;
   documentId?: string;
   documentTitle?: string;
   confirmed?: boolean;

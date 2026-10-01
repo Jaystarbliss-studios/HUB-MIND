@@ -7,7 +7,10 @@ import { collection, addDoc, query, where, onSnapshot, getDocs, updateDoc, doc }
 import { useAuth } from '../lib/auth';
 import { usePushNotifications } from '../lib/usePushNotifications';
 import { SyncStatusIndicator } from './SyncStatusIndicator';
-import { GlobalSearchModal } from './GlobalSearchModal';
+import { CommandPalette } from './CommandPalette';
+import { DesktopSidebar } from './DesktopSidebar';
+import { UserProfileModal } from './UserProfileModal';
+import { enqueueOfflineAction } from '../lib/offlineQueue';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -20,10 +23,11 @@ const navItems = [
   { to: '/inbox', label: 'Inbox', icon: Inbox },
   { to: '/tasks', label: 'Tasks', icon: CheckSquare },
   { to: '/projects', label: 'Projects', icon: Briefcase },
-  { to: '/clients', label: 'Clients', icon: Users },
-  { to: '/calendar', label: 'Calendar', icon: Calendar },
   { to: '/documents', label: 'Documents', icon: Folder },
-  { to: '/knowledge', label: 'Knowledge', icon: Book },
+  { to: '/calendar', label: 'Calendar', icon: Calendar },
+  { to: '/people', label: 'People', icon: Users },
+  { to: '/clients', label: 'Clients', icon: Book },
+  { to: '/knowledge', label: 'Knowledge', icon: Brain },
   { to: '/follow-ups', label: 'Follow-ups', icon: Clock3 },
 ];
 
@@ -32,6 +36,7 @@ export function Layout() {
   const { profile } = useAuth();
   const [showCapture, setShowCapture] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [captureText, setCaptureText] = useState('');
   const [savingCapture, setSavingCapture] = useState(false);
   const [unprocessedCount, setUnprocessedCount] = useState(0);
@@ -51,7 +56,7 @@ export function Layout() {
   }, []);
 
   useEffect(() => {
-    if (!profile || recurringChecked.current || !['admin', 'assistant'].includes(profile.role)) return;
+    if (!profile || recurringChecked.current || profile.role !== 'admin') return;
     recurringChecked.current = true;
 
     // Lightweight operational maintenance: generate due recurring tasks once
@@ -107,7 +112,7 @@ export function Layout() {
 
   useEffect(() => {
     if (!profile) return;
-    const q = profile.role === 'admin' || profile.role === 'assistant'
+    const q = profile.role === 'admin'
       ? query(
           collection(db, 'inbox'),
           where('status', '==', 'unprocessed')
@@ -157,19 +162,27 @@ export function Layout() {
     e.preventDefault();
     if (!captureText.trim() || !profile) return;
     setSavingCapture(true);
+    const itemData = {
+      text: captureText.trim(),
+      createdBy: profile.id,
+      createdAt: new Date().toISOString(),
+      status: 'unprocessed',
+      convertedTo: null,
+    };
+
     try {
-      await addDoc(collection(db, 'inbox'), {
-        text: captureText,
-        createdBy: profile.id,
-        createdAt: new Date().toISOString(),
-        status: 'unprocessed',
-        convertedTo: null
-      });
+      if (navigator.onLine) {
+        await addDoc(collection(db, 'inbox'), itemData);
+      } else {
+        enqueueOfflineAction('inbox:capture', itemData);
+      }
       setCaptureText('');
       setShowCapture(false);
     } catch (err) {
-      console.error(err);
-      
+      console.warn('[Layout] Direct inbox add failed, queuing offline:', err);
+      enqueueOfflineAction('inbox:capture', itemData);
+      setCaptureText('');
+      setShowCapture(false);
     } finally {
       setSavingCapture(false);
     }
@@ -177,78 +190,14 @@ export function Layout() {
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden print:h-auto print:overflow-visible print:bg-white">
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 border-r border-slate-800 bg-slate-900 shrink-0 print:hidden">
-        <div className="p-6 flex items-center gap-3">
-          <Brain className="w-8 h-8 text-accent" />
-          <h1 className="text-xl font-semibold tracking-tight text-white">Hub-Mind</h1>
-        </div>
-        
-        <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => cn(
-                "flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
-                isActive 
-                  ? "bg-slate-800 text-accent font-semibold shadow-xs" 
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-850 active:scale-[0.99]"
-              )}
-            >
-              <div className="relative">
-                <item.icon className="w-5 h-5" />
-                {item.to === '/inbox' && unprocessedCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-accent rounded-full border-2 border-slate-900"></span>
-                )}
-              </div>
-              {item.label}
-              {item.to === '/inbox' && unprocessedCount > 0 && (
-                <span className="ml-auto text-xs font-bold text-accent bg-accent/10 px-2 py-0.5 rounded-full">{unprocessedCount}</span>
-              )}
-            </NavLink>
-          ))}
-          {profile?.role === 'admin' && (
-            <NavLink
-              to="/admin"
-              className={({ isActive }) => cn(
-                "flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
-                isActive 
-                  ? "bg-slate-800 text-accent font-semibold shadow-xs" 
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-850 active:scale-[0.99]"
-              )}
-            >
-              <Settings className="w-5 h-5" />
-              Users (Admin)
-            </NavLink>
-          )}
-        </nav>
-
-        <div className="p-4 mt-auto border-t border-slate-800">
-          <div className="flex items-center gap-3 mb-4">
-            {profile?.photoUrl ? (
-              <img src={profile.photoUrl} alt="" className="w-10 h-10 rounded-full object-cover border border-slate-600" />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden border border-slate-600">
-                <div className="w-full h-full bg-gradient-to-br from-accent to-slate-900 flex items-center justify-center font-semibold text-white">
-                  {profile?.name?.charAt(0) || '?'}
-                </div>
-              </div>
-            )}
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-semibold truncate text-white">{profile?.name || 'Loading...'}</span>
-              <span className="text-xs text-slate-500 truncate capitalize">{profile?.role || '---'}</span>
-            </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            Sign Out
-          </button>
-        </div>
-      </aside>
+      {/* Desktop Fluid Hover Expansion Sidebar */}
+      <DesktopSidebar
+        navItems={navItems}
+        profile={profile}
+        unprocessedCount={unprocessedCount}
+        onLogout={handleLogout}
+        onOpenProfile={() => setShowProfileModal(true)}
+      />
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative print:h-auto print:overflow-visible">
@@ -257,7 +206,7 @@ export function Layout() {
           <div className="flex items-center gap-3 w-72">
             <button
               onClick={() => setShowSearchModal(true)}
-              className="flex items-center justify-between w-full px-3 py-1.5 bg-slate-900/80 hover:bg-slate-850 border border-slate-800 text-slate-400 hover:text-slate-200 rounded-lg text-xs transition-colors"
+              className="flex items-center justify-between w-full px-3 py-1.5 bg-slate-900/80 hover:bg-slate-850 border border-slate-800 text-slate-400 hover:text-slate-200 rounded-lg text-xs transition-colors cursor-pointer"
             >
               <span className="flex items-center gap-2">
                 <Search className="w-3.5 h-3.5 text-slate-400" />
@@ -269,26 +218,47 @@ export function Layout() {
             </button>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3.5">
             <SyncStatusIndicator />
 
             {permission === 'default' && (
               <button 
                 onClick={requestPermission}
-                className="text-xs font-bold text-accent border border-accent/30 bg-accent/10 px-2 py-1 rounded hover:bg-accent/20 transition-colors hidden sm:block"
+                className="text-xs font-bold text-accent border border-accent/30 bg-accent/10 px-2 py-1 rounded hover:bg-accent/20 transition-colors hidden sm:block cursor-pointer"
               >
                 Enable Push
               </button>
             )}
-            <NavLink to="/notifications" className="relative cursor-pointer group">
+            <NavLink to="/notifications" className="relative cursor-pointer group p-1">
               <Bell className="w-5 h-5 text-slate-400 group-hover:text-slate-200 transition-colors" />
               {unreadNotifCount > 0 && (
-                <span className="absolute top-0 right-0 w-2 h-2 bg-accent rounded-full border-2 border-slate-950"></span>
+                <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-accent rounded-full border-2 border-slate-950"></span>
               )}
             </NavLink>
+
+            {/* Profile Quick Trigger in Desktop Header */}
+            {profile && (
+              <button
+                onClick={() => setShowProfileModal(true)}
+                className="flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 transition-colors text-left group cursor-pointer"
+                title="Edit profile & username handle"
+              >
+                {profile.photoUrl ? (
+                  <img src={profile.photoUrl} alt="" className="w-6 h-6 rounded-lg object-cover border border-slate-700" />
+                ) : (
+                  <div className="w-6 h-6 rounded-lg bg-slate-800 flex items-center justify-center text-[10px] font-bold text-teal-300 border border-slate-700">
+                    {profile.displayName?.charAt(0) || profile.username?.charAt(0)?.toUpperCase() || '?'}
+                  </div>
+                )}
+                <span className="text-xs font-mono text-teal-400 group-hover:text-teal-300">
+                  @{profile.username || 'user'}
+                </span>
+              </button>
+            )}
+
             <button 
               onClick={() => setShowCapture(true)}
-              className="bg-accent hover:bg-accent-hover text-slate-950 text-xs font-bold py-2 px-3.5 rounded-lg transition-colors flex items-center gap-1.5"
+              className="bg-accent hover:bg-accent-hover text-slate-950 text-xs font-bold py-2 px-3.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm shadow-accent/10"
             >
               <Plus className="w-3.5 h-3.5" /> Quick Capture
             </button>
@@ -320,19 +290,25 @@ export function Layout() {
                 Push
               </button>
             )}
-            <NavLink to="/notifications" className="relative group">
+            <NavLink to="/notifications" className="relative group p-1">
               <Bell className="w-5 h-5 text-slate-400 group-hover:text-slate-200 transition-colors" />
               {unreadNotifCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-accent rounded-full border-2 border-slate-950"></span>
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-accent rounded-full border-2 border-slate-950"></span>
               )}
             </NavLink>
-            {profile?.photoUrl ? (
-              <img src={profile.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover border border-slate-700" />
-            ) : (
-              <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-xs font-medium text-white border border-slate-600">
-                {profile?.name?.charAt(0) || '?'}
-              </div>
-            )}
+            <button
+              onClick={() => setShowProfileModal(true)}
+              title="Edit Profile & Handle"
+              className="cursor-pointer focus:outline-none"
+            >
+              {profile?.photoUrl ? (
+                <img src={profile.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover border border-slate-700 hover:border-teal-400 transition-colors" />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-xs font-medium text-white border border-slate-600 hover:border-teal-400 transition-colors">
+                  {profile?.name?.charAt(0) || profile?.username?.charAt(0)?.toUpperCase() || '?'}
+                </div>
+              )}
+            </button>
           </div>
         </header>
 
@@ -406,10 +382,17 @@ export function Layout() {
         </div>
       )}
 
-      {/* Global Workspace Search Modal (Ctrl+K) */}
-      <GlobalSearchModal
+      {/* Global Command Palette (Cmd+K) */}
+      <CommandPalette
         isOpen={showSearchModal}
         onClose={() => setShowSearchModal(false)}
+        onOpenQuickCapture={() => setShowCapture(true)}
+      />
+
+      {/* User Profile & Account Settings Modal */}
+      <UserProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
       />
     </div>
   );

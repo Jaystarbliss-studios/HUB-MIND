@@ -1,419 +1,620 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, getDocs, collection } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { Task } from '../types';
-import { Loader2, ArrowLeft, Trash2, CheckCircle2, Clock, Calendar as CalendarIcon, Tag, AlignLeft, User, Edit, MessageSquare, Send } from 'lucide-react';
-import { safeParseISO, safeFormat } from "../lib/dateUtils";
-import { format, parseISO } from 'date-fns';
-import { useUsers } from '../lib/useUsers';
-import { VoiceDictation } from '../components/VoiceDictation';
-import { Share2 } from 'lucide-react';
-import { shareHubMindItem, copyShareUrl } from '../lib/shareLinks';
+import { Task, TaskPriority, TaskStatus, User } from '../types';
+import { 
+  Loader2, 
+  ArrowLeft, 
+  Trash2, 
+  CheckCircle2, 
+  Clock, 
+  Calendar as CalendarIcon, 
+  Tag, 
+  AlignLeft, 
+  User as UserIcon, 
+  Edit, 
+  MessageSquare, 
+  Send, 
+  Share2, 
+  Folder, 
+  Check, 
+  X, 
+  AlertCircle,
+  Shield,
+  AtSign
+} from 'lucide-react';
+import { 
+  acceptTask, 
+  rejectTask, 
+  updateTask, 
+  deleteTask 
+} from '../services/taskService';
+import { ShareResourceModal } from '../components/ShareResourceModal';
+import { subscribeToUsers } from '../services/userService';
 
 export function TaskDetail() {
   const { id } = useParams();
-  const isSharedView = new URLSearchParams(window.location.search).get('shared') === '1';
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { users } = useUsers();
+
   const [task, setTask] = useState<Task | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+
+  // Reject modal
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+
+  // Comment input
+  const [commentText, setCommentText] = useState('');
+
+  // Edit fields
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
-  const [editPriority, setEditPriority] = useState<any>('medium');
+  const [editPriority, setEditPriority] = useState<TaskPriority>('medium');
+  const [editStatus, setEditStatus] = useState<TaskStatus>('in_progress');
   const [editDeadline, setEditDeadline] = useState('');
   const [editAssignedTo, setEditAssignedTo] = useState('');
   const [editProjectId, setEditProjectId] = useState('');
   const [editClientId, setEditClientId] = useState('');
-  const [projectsList, setProjectsList] = useState<{id: string, name: string}[]>([]);
-  const [clientsList, setClientsList] = useState<{id: string, name: string}[]>([]);
+  const [projectsList, setProjectsList] = useState<{ id: string; name: string }[]>([]);
+  const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    const unsubUsers = subscribeToUsers(setUsers);
+    const fetchSelects = async () => {
+      try {
+        const [pSnap, cSnap] = await Promise.all([
+          getDocs(collection(db, 'projects')),
+          getDocs(collection(db, 'clients')),
+        ]);
+        setProjectsList(pSnap.docs.map(d => ({ id: d.id, name: d.data().name })));
+        setClientsList(cSnap.docs.map(d => ({ id: d.id, name: d.data().name })));
+      } catch (e) {}
+    };
+    fetchSelects();
+    return () => unsubUsers();
+  }, []);
 
   useEffect(() => {
     if (!id) return;
-    const fetchTask = async () => {
-      setLoading(true);
-      try {
-        const docRef = doc(db, 'tasks', id);
-        const docSnap = await getDoc(docRef);
-        const { getDocs, collection } = await import('firebase/firestore');
-        const pSnap = await getDocs(collection(db, 'projects'));
-        const cSnap = await getDocs(collection(db, 'clients'));
-        setProjectsList(pSnap.docs.map(d => ({id: d.id, name: d.data().name})));
-        setClientsList(cSnap.docs.map(d => ({id: d.id, name: d.data().name})));
-        if (docSnap.exists()) {
-          const t = { id: docSnap.id, ...docSnap.data() } as Task;
-          setTask(t);
-          setEditTitle(t.title);
-          setEditDesc(t.description || '');
-          setEditPriority(t.priority);
-          setEditDeadline(t.deadline ? t.deadline.substring(0, 10) : '');
-          setEditAssignedTo(t.assignedTo || '');
-          setEditProjectId(t.projectId || '');
-          setEditClientId(t.clientId || '');
-        } else {
-          console.error("Task not found");
-        }
-      } catch (error) {
-        console.error("Error fetching task:", error);
-      } finally {
-        setLoading(false);
+    setLoading(true);
+    const docRef = doc(db, 'tasks', id);
+    const unsub = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const t = { id: docSnap.id, ...docSnap.data() } as Task;
+        setTask(t);
+        setEditTitle(t.title);
+        setEditDesc(t.description || '');
+        setEditPriority(t.priority);
+        setEditStatus(t.status);
+        setEditDeadline(t.deadline ? t.deadline.substring(0, 10) : '');
+        setEditAssignedTo(t.assignedTo || '');
+        setEditProjectId(t.projectId || '');
+        setEditClientId(t.clientId || '');
+      } else {
+        setTask(null);
       }
-    };
-    fetchTask();
+      setLoading(false);
+    });
+
+    return () => unsub();
   }, [id]);
 
-  
-  const handleUpdateDetails = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id || !task) return;
-    setIsUpdating(true);
-    try {
-      const updates: any = {
-        title: editTitle,
-        description: editDesc,
-        priority: editPriority,
-        assignedTo: editAssignedTo,
-        projectId: editProjectId || null,
-        clientId: editClientId || null,
-        updatedAt: new Date().toISOString()
-      };
-      if (editDeadline) {
-        updates.deadline = new Date(editDeadline).toISOString();
-      } else {
-        updates.deadline = null;
-      }
-      await updateDoc(doc(db, 'tasks', id), updates);
-      setTask({ ...task, ...updates });
-      setIsEditing(false);
-    } catch (error) {
-      console.error("Error updating task:", error);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-  
-  const handleDelete = async () => {
-    
-    if (!id) return; setIsDeleting(true);
-    try {
-      await deleteDoc(doc(db, 'tasks', id));
-      navigate('/tasks');
-    } catch (error) {
-      console.error("Error deleting task:", error);
-      
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!id || !task) return;
-    setIsUpdating(true);
-    try {
-      const newStatus = e.target.value as any;
-      await updateDoc(doc(db, 'tasks', id), {
-        status: newStatus,
-        updatedAt: new Date().toISOString()
-      });
-      setTask({ ...task, status: newStatus });
-    } catch (error) {
-      console.error("Error updating task status:", error);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
   if (loading) {
-    return <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
-  }
-
-  if (!task) {
     return (
-      <div className="p-8 text-center">
-        <h2 className="text-xl text-slate-200 font-bold mb-4">Task not found</h2>
-        <button onClick={() => navigate('/tasks')} className="text-accent hover:underline">Go back</button>
+      <div className="p-12 flex justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-400" />
       </div>
     );
   }
 
+  if (!task) {
+    return (
+      <div className="p-12 text-center space-y-4 max-w-md mx-auto">
+        <AlertCircle className="w-12 h-12 text-slate-600 mx-auto" />
+        <h2 className="text-xl font-bold text-slate-100">Task Not Found</h2>
+        <p className="text-slate-400 text-xs">This task no longer exists or you do not have permission to view it.</p>
+        <Link to="/tasks" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-semibold hover:bg-slate-700">
+          <ArrowLeft className="w-4 h-4" /> Back to Tasks
+        </Link>
+      </div>
+    );
+  }
+
+  const isAssignedToMe = task.assignedTo === profile?.id;
+  const isCreator = task.createdBy === profile?.id || task.ownerId === profile?.id;
+  const canManage = profile?.role === 'admin' || isCreator || isAssignedToMe;
+
+  const handleAccept = async () => {
+    if (!profile) return;
+    try {
+      await acceptTask(task.id, profile);
+    } catch (err: any) {
+      alert(`Error accepting task: ${err.message}`);
+    }
+  };
+
+  const handleReject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile) return;
+    try {
+      await rejectTask(task.id, rejectReason, profile);
+      setShowRejectModal(false);
+      setRejectReason('');
+    } catch (err: any) {
+      alert(`Error declining task: ${err.message}`);
+    }
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile) return;
+    setIsUpdating(true);
+    try {
+      let assignedUser = users.find(u => u.id === editAssignedTo);
+      await updateTask(
+        task.id,
+        {
+          title: editTitle.trim(),
+          description: editDesc.trim(),
+          priority: editPriority,
+          status: editStatus,
+          assignedTo: editAssignedTo || profile.id,
+          assignedToUsername: assignedUser?.username || profile.username,
+          projectId: editProjectId || undefined,
+          clientId: editClientId || undefined,
+          deadline: editDeadline ? new Date(editDeadline).toISOString() : undefined,
+        },
+        profile
+      );
+      setIsEditing(false);
+    } catch (err: any) {
+      alert(`Update error: ${err.message}`);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile || !commentText.trim()) return;
+
+    const newComment = {
+      userId: profile.id,
+      username: profile.username,
+      text: commentText.trim(),
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      const comments = [...(task.comments || []), newComment];
+      await updateTask(task.id, { comments }, profile);
+      setCommentText('');
+    } catch (err: any) {
+      alert(`Error posting comment: ${err.message}`);
+    }
+  };
+
+  const handleToggleChecklist = async (index: number) => {
+    if (!profile) return;
+    const checklist = [...(task.checklist || [])];
+    checklist[index].done = !checklist[index].done;
+    await updateTask(task.id, { checklist }, profile);
+  };
+
+  const handleDelete = async () => {
+    if (!profile || !confirm(`Delete task "${task.title}"?`)) return;
+    setIsDeleting(true);
+    try {
+      await deleteTask(task.id, profile);
+      navigate('/tasks', { replace: true });
+    } catch (err: any) {
+      alert(`Delete error: ${err.message}`);
+      setIsDeleting(false);
+    }
+  };
+
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6 flex flex-col h-full min-h-0 pb-20 md:pb-0">
-      <div className="flex items-center justify-between mb-4">
-        <button onClick={() => navigate('/tasks')} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </button>
-        <div className="flex items-center gap-2 sm:gap-3">
-          
+    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
+      {/* Top Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <Link to="/tasks" className="inline-flex items-center text-xs font-semibold text-slate-400 hover:text-slate-200 mb-2 transition-colors">
+            <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back to Tasks
+          </Link>
+          <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2.5">
+            {task.title}
+          </h1>
+        </div>
+
+        <div className="flex items-center gap-2">
           <button
-            onClick={async () => {
-              const path = `/tasks/${task.id}?shared=1`;
-              try { await copyShareUrl(path); } catch {}
-              shareHubMindItem(path, task.title);
-            }}
-            className="flex items-center gap-2 px-3 py-2 bg-accent/10 text-accent hover:bg-accent/20 border border-accent/20 rounded-lg font-semibold transition-colors text-sm"
-            title="Share this task"
+            onClick={() => setShowShareModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 hover:text-white text-xs font-medium cursor-pointer"
           >
-            <Share2 className="w-4 h-4" />
-            <span className="hidden sm:inline">Share</span>
+            <Share2 className="w-4 h-4 text-teal-400" />
+            Share
           </button>
 
-          <select
-            value={task.status}
-            onChange={handleStatusChange}
-            disabled={isUpdating}
-            className={`px-4 py-2 rounded-lg font-semibold transition-colors text-sm border focus:outline-none focus:ring-2 focus:ring-accent ${
-              task.status === 'completed'
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                : task.status === 'under_review'
-                ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                : task.status === 'in_progress'
-                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                : 'bg-slate-800 text-slate-300 border-slate-700'
-            }`}
-          >
-            <option value="pending">Pending</option>
-            <option value="in_progress">In Progress</option>
-            <option value="under_review">Under Review</option>
-            {(profile?.role === 'admin' || profile?.role === 'assistant') && (
-              <>
-                <option value="completed">Completed</option>
-                <option value="archived">Archived</option>
-              </>
-            )}
-          </select>
-
-          
-          
-          {!isSharedView && !isEditing && (
-            <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-semibold transition-colors text-sm border border-slate-700">
-              <Edit className="w-4 h-4" />
-              Edit
+          {canManage && (
+            <button
+              onClick={() => setIsEditing(!isEditing)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 hover:text-white text-xs font-medium cursor-pointer"
+            >
+              <Edit className="w-4 h-4 text-teal-400" />
+              {isEditing ? 'Cancel Edit' : 'Edit Task'}
             </button>
           )}
-  
-          {!isSharedView && (
-            <button 
+
+          {(profile?.role === 'admin' || isCreator) && (
+            <button
               onClick={handleDelete}
               disabled={isDeleting}
-              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 rounded-lg font-semibold transition-colors text-sm"
+              className="p-2 rounded-xl bg-rose-950/30 border border-rose-800/50 text-rose-400 hover:bg-rose-900/50 transition-colors cursor-pointer"
+              title="Delete Task"
             >
               {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              Delete
             </button>
           )}
         </div>
       </div>
 
-      
-      {!isSharedView && isEditing ? (
-        <form onSubmit={handleUpdateDetails} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-          <h2 className="text-xl font-bold text-white mb-4">Edit Task Details</h2>
-          <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Title</label>
-            <input type="text" required value={editTitle} onChange={e => setEditTitle(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent" />
+      {/* Assignment Acceptance Banner */}
+      {isAssignedToMe && task.status === 'assigned' && (
+        <div className="p-4 bg-teal-950/40 border border-teal-800 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-teal-500/5">
+          <div className="space-y-0.5">
+            <h3 className="text-sm font-bold text-teal-300 flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-teal-400" />
+              New Task Assigned to You
+            </h3>
+            <p className="text-xs text-slate-300">
+              Please review and accept this task to start work, or decline with a reason.
+            </p>
           </div>
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-slate-400">Description</label>
-              <VoiceDictation
-                onTranscript={(text) => setEditDesc((prev) => (prev ? `${prev} ${text}` : text))}
-                size="sm"
-              />
-            </div>
-            <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={4} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1">Priority</label>
-              <select value={editPriority} onChange={e => setEditPriority(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent">
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1">Deadline</label>
-              <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent [color-scheme:dark]" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1">Assigned To</label>
-              <select value={editAssignedTo} onChange={e => setEditAssignedTo(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent">
-                <option value="">Unassigned</option>
-                {Object.values(users).map((u: any) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1">Related Project</label>
-              <select value={editProjectId} onChange={e => setEditProjectId(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent">
-                <option value="">None</option>
-                {projectsList.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1">Related Client</label>
-              <select value={editClientId} onChange={e => setEditClientId(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-accent">
-                <option value="">None</option>
-                {clientsList.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-  
-          <div className="flex justify-end gap-2 mt-6">
-            <button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 text-slate-400 hover:text-white font-semibold">Cancel</button>
-            <button type="submit" disabled={isUpdating} className="flex items-center gap-2 bg-accent hover:bg-accent-hover text-slate-950 px-4 py-2 rounded-lg font-bold transition-colors">
-              {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Changes'}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleAccept}
+              className="flex items-center gap-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-semibold px-4 py-2 rounded-xl text-xs transition-all shadow-md shadow-teal-500/10 cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              Accept Task
+            </button>
+            <button
+              onClick={() => setShowRejectModal(true)}
+              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3.5 py-2 rounded-xl text-xs transition-all border border-slate-700 cursor-pointer"
+            >
+              <X className="w-4 h-4 text-rose-400" />
+              Decline
             </button>
           </div>
-        </form>
-      ) : (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm p-6 space-y-6">
-  
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className={`text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${
-              task.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' :
-              task.status === 'under_review' ? 'bg-purple-500/10 text-purple-400' :
-              task.status === 'in_progress' ? 'bg-blue-500/10 text-blue-400' :
-              'bg-slate-800 text-slate-400'
-            }`}>
-              {task.status.replace('_', ' ')}
-            </span>
-            <span className={`text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${
-              task.priority === 'urgent' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
-              task.priority === 'high' ? 'bg-accent/10 text-accent border border-accent/20' :
-              'bg-slate-800 text-slate-400'
-            }`}>
-              {task.priority} Priority
-            </span>
+        </div>
+      )}
+
+      {/* Rejection notice if declined */}
+      {task.status === 'rejected' && (
+        <div className="p-4 bg-rose-950/40 border border-rose-800/70 rounded-2xl flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div className="space-y-1 text-xs">
+            <span className="font-bold text-rose-300 block">Task Declined by Assignee</span>
+            <span className="text-slate-300">Reason: "{task.rejectionReason || 'No reason specified.'}"</span>
           </div>
-          
-          <h1 className="text-3xl font-bold text-white tracking-tight">{task.title}</h1>
+        </div>
+      )}
+
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Left 2 Cols */}
+        <div className="md:col-span-2 space-y-6">
+          {isEditing ? (
+            <form onSubmit={handleSaveEdit} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-lg">
+              <h2 className="text-sm font-bold text-slate-200">Edit Task Details</h2>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Title</label>
+                <input
+                  type="text"
+                  required
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Description</label>
+                <textarea
+                  rows={4}
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Priority</label>
+                  <select
+                    value={editPriority}
+                    onChange={(e) => setEditPriority(e.target.value as TaskPriority)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  >
+                    <option value="urgent">Urgent</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Lifecycle Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as TaskStatus)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="assigned">Assigned</option>
+                    <option value="accepted">Accepted</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="under_review">Under Review</option>
+                    <option value="completed">Completed</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Assignee (@username)</label>
+                  <select
+                    value={editAssignedTo}
+                    onChange={(e) => setEditAssignedTo(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  >
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>@{u.username} ({u.displayName})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Deadline Date</label>
+                  <input
+                    type="date"
+                    value={editDeadline}
+                    onChange={(e) => setEditDeadline(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Linked Project</label>
+                  <select
+                    value={editProjectId}
+                    onChange={(e) => setEditProjectId(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  >
+                    <option value="">None</option>
+                    {projectsList.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Linked Client</label>
+                  <select
+                    value={editClientId}
+                    onChange={(e) => setEditClientId(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  >
+                    <option value="">None</option>
+                    {clientsList.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdating}
+                  className="px-5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-teal-500/10"
+                >
+                  {isUpdating ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-lg">
+              <div>
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Description</h3>
+                <p className="text-slate-200 text-sm whitespace-pre-wrap leading-relaxed">
+                  {task.description || 'No detailed description provided for this task.'}
+                </p>
+              </div>
+
+              {/* Checklist */}
+              {task.checklist && task.checklist.length > 0 && (
+                <div className="space-y-3 pt-4 border-t border-slate-800">
+                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Checklist Items</h3>
+                  <div className="space-y-2">
+                    {task.checklist.map((item, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleToggleChecklist(idx)}
+                        className="w-full p-2.5 bg-slate-950/60 border border-slate-800/80 rounded-xl flex items-center gap-3 text-xs text-left hover:border-slate-700 transition-all cursor-pointer"
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                          item.done ? 'bg-teal-500 border-teal-500 text-slate-950' : 'border-slate-600'
+                        }`}>
+                          {item.done && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+                        <span className={item.done ? 'line-through text-slate-500' : 'text-slate-200'}>
+                          {item.item}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Comments Section */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-lg">
+            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-teal-400" />
+              Task Discussion ({task.comments?.length || 0})
+            </h3>
+
+            <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+              {(task.comments || []).map((c, i) => (
+                <div key={i} className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-teal-400 font-semibold">@{c.username || 'user'}</span>
+                    <span className="text-[11px] text-slate-500">{new Date(c.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                  <p className="text-slate-200">{c.text}</p>
+                </div>
+              ))}
+              {(!task.comments || task.comments.length === 0) && (
+                <p className="text-xs text-slate-500 text-center py-4">No comments yet. Start the conversation below.</p>
+              )}
+            </div>
+
+            <form onSubmit={handleAddComment} className="flex gap-2 pt-2 border-t border-slate-800">
+              <input
+                type="text"
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Add a comment or update..."
+                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-500"
+              />
+              <button
+                type="submit"
+                disabled={!commentText.trim()}
+                className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-semibold px-4 py-2 rounded-xl text-xs transition-all shadow-md shadow-teal-500/10 disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Post
+              </button>
+            </form>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 border-y border-slate-800">
-          <div className="flex items-center gap-3">
-            <CalendarIcon className="w-5 h-5 text-slate-500" />
-            <div>
-              <p className="text-xs text-slate-500 font-medium">Deadline</p>
-              <p className="text-sm text-slate-200">
-                {task.deadline ? safeFormat(task.deadline, 'MMMM d, yyyy') : 'No deadline'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <User className="w-5 h-5 text-slate-500" />
-            <div>
-              <p className="text-xs text-slate-500 font-medium">Assigned To</p>
-              <div className="text-sm text-slate-200 flex items-center gap-2 mt-0.5">
-                {task.assignedTo && users[task.assignedTo] ? (
-                  <span className="flex items-center gap-1.5">
-                    {users[task.assignedTo].photoUrl ? (
-                      <img src={users[task.assignedTo].photoUrl} alt="" className="w-5 h-5 rounded-full object-cover" />
-                    ) : (
-                      <span className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-white font-bold">
-                        {users[task.assignedTo].name.charAt(0)}
-                      </span>
-                    )}
-                    {users[task.assignedTo].name}
-                  </span>
-                ) : (
-                  <span className="text-slate-400">Unassigned</span>
-                )}
+        {/* Right Sidebar Meta */}
+        <div className="space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-lg">
+            <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Properties</h3>
+            
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between py-1.5 border-b border-slate-800/60">
+                <span className="text-slate-400">Status</span>
+                <span className="font-mono font-semibold text-teal-400 capitalize px-2 py-0.5 rounded bg-teal-950/60 border border-teal-800/60 text-[11px]">
+                  {task.status.replace('_', ' ')}
+                </span>
+              </div>
+
+              <div className="flex justify-between py-1.5 border-b border-slate-800/60">
+                <span className="text-slate-400">Priority</span>
+                <span className="capitalize font-semibold text-slate-200">{task.priority}</span>
+              </div>
+
+              <div className="flex justify-between py-1.5 border-b border-slate-800/60">
+                <span className="text-slate-400">Assigned To</span>
+                <span className="font-mono text-teal-400">@{task.assignedToUsername || 'unassigned'}</span>
+              </div>
+
+              {task.deadline && (
+                <div className="flex justify-between py-1.5 border-b border-slate-800/60">
+                  <span className="text-slate-400">Deadline</span>
+                  <span className="text-slate-200">{new Date(task.deadline).toLocaleDateString()}</span>
+                </div>
+              )}
+
+              {task.projectId && (
+                <div className="flex justify-between py-1.5 border-b border-slate-800/60">
+                  <span className="text-slate-400">Project</span>
+                  <Link to={`/projects/${task.projectId}`} className="text-teal-400 hover:underline flex items-center gap-1">
+                    <Folder className="w-3 h-3" />
+                    View Project
+                  </Link>
+                </div>
+              )}
+
+              <div className="flex justify-between py-1.5 border-b border-slate-800/60">
+                <span className="text-slate-400">Created</span>
+                <span className="text-slate-400">{new Date(task.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
           </div>
         </div>
-
-        <div>
-          <div className="flex items-center gap-2 text-slate-200 font-semibold mb-3">
-            <AlignLeft className="w-5 h-5 text-slate-500" />
-            <h3>Description</h3>
-          </div>
-          <div className="text-slate-300 text-sm whitespace-pre-wrap bg-slate-950/50 p-4 rounded-xl border border-slate-800/50 min-h-[100px]">
-            {task.description || <span className="text-slate-500 italic">No description provided.</span>}
-          </div>
-        </div>
-
-        {task.checklist && task.checklist.length > 0 && (
-          <div>
-            <h3 className="text-slate-200 font-semibold mb-3">Checklist</h3>
-            <div className="space-y-2">
-              {task.checklist.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-3 p-3 bg-slate-950/50 border border-slate-800/50 rounded-lg">
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border ${item.done ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'border-slate-600 bg-slate-800 text-transparent'}`}>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  </div>
-                  <span className={`text-sm ${item.done ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
-                    {(item as any).title || (item as any).item || ''}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Task Notes & Voice Dictation Section */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-slate-200 font-semibold text-sm">
-              <MessageSquare className="w-4 h-4 text-teal-400" />
-              <span>Task Progress Notes & Comments</span>
-            </div>
-            <VoiceDictation
-              onTranscript={async (voiceNote) => {
-                if (!id || !task || !profile) return;
-                const newComment = {
-                  userId: profile.id,
-                  text: voiceNote,
-                  timestamp: new Date().toISOString()
-                };
-                const updatedComments = [...(task.comments || []), newComment];
-                try {
-                  await updateDoc(doc(db, 'tasks', id), { comments: updatedComments });
-                  setTask({ ...task, comments: updatedComments });
-                } catch (e) {
-                  console.warn('Failed to add voice comment', e);
-                }
-              }}
-              placeholder="Speak note to add..."
-              size="sm"
-            />
-          </div>
-
-          <div className="space-y-2">
-            {task.comments && task.comments.length > 0 ? (
-              task.comments.map((c, i) => (
-                <div key={i} className="p-3 bg-slate-950/70 border border-slate-800/80 rounded-lg text-xs space-y-1">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span className="font-semibold text-slate-300">{users[c.userId]?.name || 'User'}</span>
-                    <span>{safeFormat(c.timestamp, 'MMM d, h:mm a')}</span>
-                  </div>
-                  <p className="text-slate-200 text-sm">{c.text}</p>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-slate-500 italic">No notes recorded yet. Use the Dictate button above to capture voice notes.</p>
-            )}
-          </div>
-        </div>
       </div>
+
+      {/* Reject Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+              <X className="w-5 h-5 text-rose-400" />
+              Decline Task Assignment
+            </h2>
+            <p className="text-xs text-slate-400">
+              Please state why you are unable to take on this task. The task creator will be notified.
+            </p>
+            <form onSubmit={handleReject} className="space-y-4">
+              <textarea
+                required
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Reason (e.g. at capacity, wrong department, need more info)..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-500"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRejectModal(false)}
+                  className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!rejectReason.trim()}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-md"
+                >
+                  Confirm Decline
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
+
+      {/* Share Modal */}
+      <ShareResourceModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        resourceType="task"
+        resourceId={task.id}
+        resourceTitle={task.title}
+      />
     </div>
   );
 }

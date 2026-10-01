@@ -1,56 +1,75 @@
 import React, { useState, useEffect } from 'react';
-import { Wifi, WifiOff, RefreshCw, CheckCircle2, Cloud, AlertCircle } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, CheckCircle2, Cloud, AlertCircle, Database } from 'lucide-react';
+import { flushOfflineQueue, getOfflineActionQueue } from '../lib/offlineQueue';
 
 export const SyncStatusIndicator: React.FC = () => {
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSynced, setLastSynced] = useState<Date>(new Date());
-  const [pendingCount, setPendingCount] = useState<number>(0);
+  const [pendingCount, setPendingCount] = useState<number>(() => getOfflineActionQueue().length);
   const [showDetails, setShowDetails] = useState<boolean>(false);
 
   useEffect(() => {
+    // Initial check
+    setPendingCount(getOfflineActionQueue().length);
+
     const handleOnline = () => {
       setIsOnline(true);
-      triggerSync();
+      void triggerSync();
     };
 
     const handleOffline = () => {
       setIsOnline(false);
-      setPendingCount((prev) => prev + 1);
+      setPendingCount(getOfflineActionQueue().length);
+    };
+
+    const handleQueueChanged = (e: any) => {
+      if (e.detail?.count !== undefined) {
+        setPendingCount(e.detail.count);
+      } else {
+        setPendingCount(getOfflineActionQueue().length);
+      }
+    };
+
+    const handleSyncStatus = (e: any) => {
+      if (e.detail?.status === 'syncing') {
+        setIsSyncing(true);
+      } else if (e.detail?.status === 'synced') {
+        setIsSyncing(false);
+        setLastSynced(new Date());
+        setPendingCount(getOfflineActionQueue().length);
+      } else {
+        setIsSyncing(false);
+        setPendingCount(getOfflineActionQueue().length);
+      }
     };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
-    // Periodic sync check
-    const interval = setInterval(() => {
-      if (navigator.onLine) {
-        setLastSynced(new Date());
-      }
-    }, 60000);
+    window.addEventListener('hubmind:offline-queue-changed', handleQueueChanged);
+    window.addEventListener('hubmind:sync-status', handleSyncStatus);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      clearInterval(interval);
+      window.removeEventListener('hubmind:offline-queue-changed', handleQueueChanged);
+      window.removeEventListener('hubmind:sync-status', handleSyncStatus);
     };
   }, []);
 
   const triggerSync = async () => {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine || isSyncing) return;
     setIsSyncing(true);
     try {
-      // If service worker supports sync registration
       if ('serviceWorker' in navigator && 'SyncManager' in window) {
         const registration = await navigator.serviceWorker.ready;
-        await (registration as any).sync?.register('sync-workspace-queue');
+        await (registration as any).sync?.register?.('sync-workspace-queue');
       }
-      // Simulate quick flush of client queue
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      setPendingCount(0);
+      const res = await flushOfflineQueue();
+      setPendingCount(res.remaining);
       setLastSynced(new Date());
     } catch (e) {
-      console.warn('Sync trigger result:', e);
+      console.warn('[SyncStatusIndicator] Sync trigger result:', e);
     } finally {
       setIsSyncing(false);
     }
@@ -67,9 +86,11 @@ export const SyncStatusIndicator: React.FC = () => {
             ? 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
             : isSyncing
             ? 'bg-blue-500/10 text-blue-300 border-blue-500/30'
+            : pendingCount > 0
+            ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/20'
             : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
         }`}
-        title="Network & Background Sync Status"
+        title="Network & Background Sync Status (Click for details)"
       >
         {!isOnline ? (
           <>
@@ -79,7 +100,12 @@ export const SyncStatusIndicator: React.FC = () => {
         ) : isSyncing ? (
           <>
             <RefreshCw className="w-3 h-3 text-blue-400 animate-spin" />
-            <span>Syncing...</span>
+            <span>Syncing ({pendingCount})...</span>
+          </>
+        ) : pendingCount > 0 ? (
+          <>
+            <Database className="w-3 h-3 text-cyan-400" />
+            <span>{pendingCount} Queued</span>
           </>
         ) : (
           <>
@@ -97,41 +123,43 @@ export const SyncStatusIndicator: React.FC = () => {
           />
           <div className="absolute right-0 mt-2 w-64 p-3 bg-slate-900 border border-slate-800 rounded-xl shadow-xl z-50 text-xs space-y-2.5 animate-in fade-in slide-in-from-top-1">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <span className="font-semibold text-slate-200">Sync Engine Status</span>
+              <span className="font-semibold text-slate-200">Local Storage Sync Queue</span>
               <span
                 className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
                   isOnline ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
                 }`}
               >
-                {isOnline ? 'Connected' : 'Offline'}
+                {isOnline ? 'Connected' : 'Offline Mode'}
               </span>
             </div>
 
             <div className="space-y-1.5 text-slate-400">
               <div className="flex justify-between">
                 <span>Network state:</span>
-                <span className="text-slate-200">{isOnline ? 'Online (Broadband)' : 'Disconnected'}</span>
+                <span className="text-slate-200">{isOnline ? 'Online' : 'Disconnected'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Service worker queue:</span>
+                <span className={pendingCount > 0 ? 'text-cyan-400 font-semibold' : 'text-slate-200'}>
+                  {pendingCount} pending {pendingCount === 1 ? 'action' : 'actions'}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Last full sync:</span>
                 <span className="text-slate-200">{formattedTime}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Pending mutations:</span>
-                <span className="text-slate-200">{pendingCount} in queue</span>
-              </div>
             </div>
 
             <button
               onClick={() => {
-                triggerSync();
+                void triggerSync();
                 setShowDetails(false);
               }}
               disabled={!isOnline || isSyncing}
               className="w-full mt-2 flex items-center justify-center gap-1.5 py-1.5 bg-slate-800 hover:bg-slate-750 disabled:opacity-50 text-slate-200 rounded-lg font-medium transition-colors"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>Force Resync Now</span>
+              <span>{isSyncing ? 'Syncing Queue...' : 'Force Sync to Firestore'}</span>
             </button>
           </div>
         </>

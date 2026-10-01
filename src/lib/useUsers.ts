@@ -21,7 +21,7 @@ export function useUsers() {
     if (profile?.id) {
       initial[profile.id] = {
         id: profile.id,
-        name: profile.preferredName || profile.name || 'User',
+        name: profile.preferredName || profile.displayName || profile.name || `@${profile.username}` || 'User',
         email: profile.email,
         photoUrl: profile.photoUrl,
         role: profile.role,
@@ -38,7 +38,7 @@ export function useUsers() {
         ...prev,
         [profile.id]: {
           id: profile.id,
-          name: profile.preferredName || profile.name || 'User',
+          name: profile.preferredName || profile.displayName || profile.name || `@${profile.username}` || 'User',
           email: profile.email,
           photoUrl: profile.photoUrl,
           role: profile.role,
@@ -52,7 +52,7 @@ export function useUsers() {
         const data = doc.data();
         userMap[doc.id] = {
           id: doc.id,
-          name: data.preferredName || data.name || doc.id,
+          name: data.preferredName || data.displayName || data.name || `@${data.username}` || doc.id,
           email: data.email || '',
           photoUrl: data.photoUrl,
           role: data.role,
@@ -63,7 +63,7 @@ export function useUsers() {
       if (profile?.id && !userMap[profile.id]) {
         userMap[profile.id] = {
           id: profile.id,
-          name: profile.preferredName || profile.name || 'User',
+          name: profile.preferredName || profile.displayName || profile.name || `@${profile.username}` || 'User',
           email: profile.email,
           photoUrl: profile.photoUrl,
           role: profile.role,
@@ -80,7 +80,7 @@ export function useUsers() {
           ...prev,
           [profile.id]: {
             id: profile.id,
-            name: profile.preferredName || profile.name || 'User',
+            name: profile.preferredName || profile.displayName || profile.name || `@${profile.username}` || 'User',
             email: profile.email,
             photoUrl: profile.photoUrl,
             role: profile.role,
@@ -93,7 +93,7 @@ export function useUsers() {
     return () => {
       unsubscribe();
     };
-  }, [profile?.id, profile?.name, profile?.preferredName, profile?.email, profile?.photoUrl, profile?.role]);
+  }, [profile?.id, profile?.displayName, profile?.name, profile?.preferredName, profile?.email, profile?.photoUrl, profile?.role, profile?.username]);
 
   return { users, loading };
 }

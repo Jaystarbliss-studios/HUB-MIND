@@ -36,7 +36,7 @@ export function FollowUps() {
     setLoading(true);
 
     const base = collection(db, 'followUps');
-    const q = profile.role === 'admin' || profile.role === 'assistant'
+    const q = profile.role === 'admin'
       ? query(base, orderBy('dueAt', 'asc'))
       : query(base, where('ownerId', '==', profile.id));
 

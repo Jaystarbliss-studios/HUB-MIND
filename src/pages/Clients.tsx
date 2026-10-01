@@ -119,7 +119,7 @@ export function Clients() {
           <p className="text-xs sm:text-sm text-slate-400">Manage partners, schools, and parent relationships</p>
         </div>
         
-        {(profile?.role === 'admin' || profile?.role === 'assistant') && (
+        {profile && (
           <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <Dialog.Trigger asChild>
               <button className="h-10 px-4 py-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold rounded-lg text-sm transition-all duration-150 flex items-center justify-center gap-2 shadow-xs active:scale-[0.98] w-full sm:w-auto shrink-0">

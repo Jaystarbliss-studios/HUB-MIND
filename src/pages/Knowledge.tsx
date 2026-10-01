@@ -47,7 +47,7 @@ export function Knowledge() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
-      await logActivity(docRef.id, 'knowledge', 'added knowledge article', newTitle, profile?.name || 'User');
+      await logActivity(docRef.id, 'knowledge', 'added knowledge article', newTitle, profile?.displayName || profile?.name || 'User');
       setNewTitle('');
       setNewContent('');
       setShowCreate(false);
@@ -62,7 +62,7 @@ export function Knowledge() {
     setArticleToDelete(null);
     try {
       await deleteDoc(doc(db, 'knowledge', id));
-      await logActivity(id, 'knowledge', 'deleted knowledge article', title, profile?.name || 'User');
+      await logActivity(id, 'knowledge', 'deleted knowledge article', title, profile?.displayName || profile?.name || 'User');
       setItems(items.filter(item => item.id !== id));
     } catch (error) {
       console.error("Error deleting knowledge", error);

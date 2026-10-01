@@ -64,7 +64,7 @@ export function Calendar() {
     // Populate upcoming occurrences from the recurring schedule templates.
     materializeRecurringMeetings(90).catch(err => console.warn('Recurring meetings:', err));
 
-    const tasksQuery = profile.role === 'admin' || profile.role === 'assistant'
+    const tasksQuery = profile.role === 'admin'
       ? query(collection(db, 'tasks'))
       : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
       
@@ -132,8 +132,10 @@ export function Calendar() {
           title,
           description: '',
           priority,
-          status: 'pending',
+          status: 'in_progress',
           assignedTo: profile.id,
+          assignedToUsername: profile.username,
+          ownerId: profile.id,
           clientId: clientId || undefined,
           projectId: projectId || undefined,
           createdBy: profile.id,
@@ -345,7 +347,7 @@ export function Calendar() {
       </div>
 
       {/* Recurring Schedule */}
-      {(profile?.role === 'admin' || profile?.role === 'assistant') && <RecurringSchedulePanel />}
+      {profile?.role === 'admin' && <RecurringSchedulePanel />}
 
       {/* Main Calendar Card */}
       {viewMode === 'month' ? (

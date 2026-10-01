@@ -19,6 +19,7 @@ const ClientDetail = lazy(() => import('./pages/ClientDetail').then(m => ({ defa
 const Documents = lazy(() => import('./pages/Documents').then(m => ({ default: m.Documents })));
 const DocumentEditor = lazy(() => import('./pages/DocumentEditor').then(m => ({ default: m.DocumentEditor })));
 const Calendar = lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
+const People = lazy(() => import('./pages/People').then(m => ({ default: m.People })));
 const AdminUsers = lazy(() => import('./pages/AdminUsers').then(m => ({ default: m.AdminUsers })));
 const Notifications = lazy(() => import('./pages/Notifications').then(m => ({ default: m.Notifications })));
 const Projects = lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
@@ -29,24 +30,33 @@ const SharedRecord = lazy(() => import('./pages/SharedRecord').then(m => ({ defa
 
 const LoadingScreen = () => (
   <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-slate-400">
-    <Loader2 className="w-8 h-8 animate-spin text-accent" />
+    <Loader2 className="w-8 h-8 animate-spin text-teal-400" />
   </div>
 );
 
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) { return { error }; }
-  componentDidCatch(error: Error, info: React.ErrorInfo) { console.error('[HubMind] Unhandled application error:', error, info); }
+  componentDidCatch(error: Error, info: React.ErrorInfo) { console.error('[HubMind] Unhandled error:', error, info); }
   handleReload = () => window.location.reload();
   render() {
     if (this.state.error) {
       return (
         <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center p-6">
           <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-7 shadow-xl">
-            <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center"><AlertTriangle className="w-5 h-5 text-amber-400" /></div><div><h1 className="font-bold text-white">Hub-Mind recovered from an error</h1><p className="text-xs text-slate-500">Your saved cloud data has not been intentionally changed.</p></div></div>
-            <p className="text-sm text-slate-400 mb-5">This screen caught an unexpected UI failure instead of leaving you with a blank page. Reload and try the action again.</p>
-            <button onClick={this.handleReload} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent text-slate-950 font-bold text-sm"><RefreshCw className="w-4 h-4" /> Reload Hub-Mind</button>
-            {this.state.error?.message && <details className="mt-5 text-xs text-slate-600"><summary className="cursor-pointer">Technical details</summary><pre className="mt-2 whitespace-pre-wrap break-words">{this.state.error.message}</pre></details>}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h1 className="font-bold text-white">Hub-Mind recovered from an error</h1>
+                <p className="text-xs text-slate-500">Your cloud data is secure.</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-400 mb-5">Reload to continue.</p>
+            <button onClick={this.handleReload} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-teal-500 text-slate-950 font-bold text-sm">
+              <RefreshCw className="w-4 h-4" /> Reload Hub-Mind
+            </button>
           </div>
         </div>
       );
@@ -55,14 +65,28 @@ class AppErrorBoundary extends Component<{ children: React.ReactNode }, { error:
   }
 }
 
-function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) {
+function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
   const { user, profile, loading } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user || !profile) return <Navigate to="/login" replace />;
-  if (profile.status === 'inactive') {
-    return <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center p-6"><div className="max-w-md text-center bg-slate-900 border border-slate-800 rounded-2xl p-8"><h1 className="text-xl font-bold text-white mb-2">Account inactive</h1><p className="text-sm text-slate-400">Your Hub-Mind account is currently inactive. Please contact an administrator to restore access.</p></div></div>;
+  if (profile.status === 'suspended') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center p-6">
+        <div className="max-w-md text-center bg-slate-900 border border-slate-800 rounded-2xl p-8 space-y-3">
+          <h1 className="text-xl font-bold text-white">Account Suspended</h1>
+          <p className="text-sm text-slate-400">Your Hub-Mind account has been suspended. Please contact your workspace administrator.</p>
+        </div>
+      </div>
+    );
   }
-  if (allowedRoles && !allowedRoles.includes(profile.role)) return <div className="p-8 text-center text-red-400">Access Denied</div>;
+  if (allowedRoles && !allowedRoles.includes(profile.role)) {
+    return (
+      <div className="p-8 text-center text-rose-400 space-y-2">
+        <h2 className="text-lg font-bold">Access Denied</h2>
+        <p className="text-xs text-slate-400">You do not have administrative authority for this area.</p>
+      </div>
+    );
+  }
   return <>{children}</>;
 }
 
@@ -80,6 +104,11 @@ export default function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/share-target" element={<Navigate to="/inbox?shared=true" replace />} />
                 <Route path="/share/:type/:id" element={<ProtectedRoute><SharedRecord /></ProtectedRoute>} />
+                
+                {/* Direct resource shortcuts */}
+                <Route path="/d/documents/:id" element={<ProtectedRoute><Navigate to="/documents/:id" replace /></ProtectedRoute>} />
+                <Route path="/hub/documents/:id" element={<ProtectedRoute><Navigate to="/documents/:id" replace /></ProtectedRoute>} />
+
                 <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                   <Route index element={<Dashboard />} />
                   <Route path="inbox" element={<Inbox />} />
@@ -93,6 +122,7 @@ export default function App() {
                   <Route path="clients/:id" element={<ClientDetail />} />
                   <Route path="meetings/:id" element={<MeetingDetail />} />
                   <Route path="calendar" element={<Calendar />} />
+                  <Route path="people" element={<People />} />
                   <Route path="documents" element={<Documents />} />
                   <Route path="documents/:id" element={<DocumentEditor />} />
                   <Route path="notifications" element={<Notifications />} />

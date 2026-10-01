@@ -156,6 +156,37 @@
         "createdAt": { "type": "string", "maxLength": 50 }
       },
       "required": ["userId", "message", "read", "createdAt"]
+    },
+    "Connection": {
+      "title": "Connection",
+      "description": "User connection and colleague friendship requests",
+      "type": "object",
+      "properties": {
+        "requesterId": { "type": "string", "maxLength": 128 },
+        "requesterUsername": { "type": "string", "maxLength": 100 },
+        "requesterDisplayName": { "type": "string", "maxLength": 150 },
+        "requesterPhotoUrl": { "type": "string", "maxLength": 1000 },
+        "recipientId": { "type": "string", "maxLength": 128 },
+        "recipientUsername": { "type": "string", "maxLength": 100 },
+        "recipientDisplayName": { "type": "string", "maxLength": 150 },
+        "recipientPhotoUrl": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined", "blocked"] },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["requesterId", "recipientId", "status", "createdAt", "updatedAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Client payment transaction",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "completed", "failed", "cancelled"] },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["clientId", "amount", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -163,9 +194,21 @@
       "schema": "User",
       "description": "User account profiles"
     },
+    "/users/{userId}/private/{docId}": {
+      "schema": "User",
+      "description": "User private preferences, settings, and quick notes"
+    },
     "/users/{userId}/conversations/{conversationId}": {
       "schema": "Conversation",
       "description": "User's persistent conversation history with Shawn"
+    },
+    "/connections/{connectionId}": {
+      "schema": "Connection",
+      "description": "User colleague connections and requests"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Payments and transactions"
     },
     "/tasks/{taskId}": {
       "schema": "Task",

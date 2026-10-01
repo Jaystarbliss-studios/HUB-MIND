@@ -132,11 +132,12 @@ export function Dashboard() {
   const [greeting, setGreeting] = useState('Welcome!');
 
   useEffect(() => {
-    if (profile?.name) {
-      const firstName = profile.name.split(' ')[0];
+    const displayName = profile?.displayName || profile?.preferredName || profile?.name;
+    if (displayName) {
+      const firstName = displayName.split(' ')[0];
       setGreeting(getGreeting(firstName));
     }
-  }, [profile?.name]);
+  }, [profile?.displayName, profile?.preferredName, profile?.name]);
 
   useEffect(() => {
     if (!profile) return;
@@ -146,7 +147,7 @@ export function Dashboard() {
 
     try {
       // 1. Real-time Tasks Listener
-      const tasksQuery = profile.role === 'admin' || profile.role === 'assistant' 
+      const tasksQuery = profile.role === 'admin' 
          ? query(collection(db, 'tasks'))
          : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
 
@@ -219,7 +220,7 @@ export function Dashboard() {
       unsubscribers.push(unsubClients);
 
       // 5. Real-time Inbox Listener
-      const inboxQuery = profile.role === 'admin' || profile.role === 'assistant'
+      const inboxQuery = profile.role === 'admin'
          ? query(collection(db, 'inbox'), where('status', '==', 'unprocessed'))
          : query(collection(db, 'inbox'), where('status', '==', 'unprocessed'), where('createdBy', '==', profile.id));
       const unsubInbox = onSnapshot(inboxQuery, (inboxSnap) => {
@@ -228,7 +229,7 @@ export function Dashboard() {
       unsubscribers.push(unsubInbox);
 
       // 6. Real-time Follow-Ups Listener
-      const followUpsQuery = profile.role === 'admin' || profile.role === 'assistant'
+      const followUpsQuery = profile.role === 'admin'
         ? query(collection(db, 'followUps'))
         : query(collection(db, 'followUps'), where('ownerId', '==', profile.id));
       const unsubFollowUps = onSnapshot(followUpsQuery, (followUpsSnap) => {
@@ -289,7 +290,7 @@ export function Dashboard() {
     try {
       const today = new Date();
       const [tasksSnap, meetingsSnap] = await Promise.all([
-        getDocs(query(collection(db, 'tasks'), profile.role === 'admin' || profile.role === 'assistant' ? undefined : where('assignedTo', '==', profile.id) as any)),
+        getDocs(query(collection(db, 'tasks'), profile.role === 'admin' ? undefined : where('assignedTo', '==', profile.id) as any)),
         getDocs(collection(db, 'meetings'))
       ]);
       const tasks = tasksSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
@@ -319,7 +320,7 @@ export function Dashboard() {
     try {
       const dateKey = format(new Date(), 'yyyy-MM-dd');
       await setDoc(doc(db, 'users', profile.id, 'dailyReports', dateKey), {
-        date: dateKey, authorId: profile.id, authorName: profile.name,
+        date: dateKey, authorId: profile.id, authorName: profile.displayName || profile.name || `@${profile.username}`,
         report: reportText.trim(), updatedAt: new Date().toISOString(),
         snapshot: { urgentTasksCount, todayMeetingsCount, inboxItemsCount, followUpsDueCount, followUpsWaitingCount, paymentsAwaitingCount }
       }, { merge: true });
@@ -327,8 +328,6 @@ export function Dashboard() {
     } catch (e) { console.error('Failed to save daily report:', e); }
     finally { setReportSaving(false); }
   };
-
-  
 
   const generateDailyReport = async () => {
     if (!profile) return;
@@ -339,7 +338,7 @@ export function Dashboard() {
       const tomorrow = new Date(today);
       tomorrow.setDate(today.getDate() + 1);
 
-      const tasksQuery = profile.role === 'admin' || profile.role === 'assistant'
+      const tasksQuery = profile.role === 'admin'
         ? query(collection(db, 'tasks'))
         : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
       const [tasksSnap, followUpsSnap] = await Promise.all([

@@ -58,13 +58,13 @@ export function PWAPrompt() {
     let timer: number | undefined;
 
     const checkForUpdate = async () => {
-      if (!('serviceWorker' in navigator)) return;
+      if (!('serviceWorker' in navigator) || import.meta.env.DEV) return;
       try {
         const registration = await navigator.serviceWorker.ready;
         if (cancelled) return;
         await registration.update();
       } catch (error) {
-        console.debug('Hub-Mind update check failed:', error);
+        console.debug('Hub-Mind update check note:', error);
       }
     };
 

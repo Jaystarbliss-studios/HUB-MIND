@@ -66,7 +66,7 @@ export function Tasks() {
         setLocalTasks(data);
         
         // If staff, filter to their assigned/created tasks or unassigned workspace tasks
-        if (profile.role === 'staff' || profile.role === 'teacher') {
+        if (profile.role === 'staff') {
           data = data.filter(t => !t.assignedTo || t.assignedTo === profile.id || t.createdBy === profile.id);
         }
         
@@ -74,7 +74,7 @@ export function Tasks() {
       } else {
         const local = getLocalTasks();
         let filtered = local;
-        if (profile.role === 'staff' || profile.role === 'teacher') {
+        if (profile.role === 'staff') {
           filtered = local.filter(t => !t.assignedTo || t.assignedTo === profile.id || t.createdBy === profile.id);
         }
         setTasks(filtered);
@@ -85,7 +85,7 @@ export function Tasks() {
       console.warn("Error subscribing to tasks, utilizing local storage fallback:", error);
       const local = getLocalTasks();
       let filtered = local;
-      if (profile.role === 'staff' || profile.role === 'teacher') {
+      if (profile.role === 'staff') {
         filtered = local.filter(t => !t.assignedTo || t.assignedTo === profile.id || t.createdBy === profile.id);
       }
       setTasks(filtered);
@@ -104,14 +104,17 @@ export function Tasks() {
     e.preventDefault();
     if (!newTaskTitle.trim() || !profile) return;
     setIsSubmitting(true);
+    const assignedUser = newTaskAssignee ? users[newTaskAssignee] : null;
     const newTask: Task = {
       id: `task-${Date.now()}`,
       title: newTaskTitle,
       description: newTaskDesc,
       priority: newTaskPriority as any,
-      status: 'pending',
+      status: newTaskAssignee && newTaskAssignee !== profile.id ? 'assigned' : 'in_progress',
       assignedTo: newTaskAssignee || profile.id,
+      assignedToUsername: assignedUser ? (assignedUser.name.startsWith('@') ? assignedUser.name.slice(1) : assignedUser.name) : profile.username,
       createdBy: profile.id,
+      ownerId: profile.id,
       clientId: newTaskClient || undefined,
       projectId: newTaskProject || undefined,
       deadline: newTaskDeadline ? new Date(newTaskDeadline).toISOString() : undefined,

@@ -13,8 +13,7 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         injectRegister: 'auto',
         devOptions: {
-          enabled: true,
-          type: 'module'
+          enabled: false
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],

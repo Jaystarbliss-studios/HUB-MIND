@@ -188,7 +188,7 @@ export function Documents() {
         updatedAt: now,
         lastSavedAt: now,
         lastEditedAt: now,
-        lastModifiedBy: profile.preferredName || profile.name || 'User',
+        lastModifiedBy: profile.preferredName || profile.displayName || profile.name || `@${profile.username}`,
         synced: true,
       };
       setLocalDocsMap(localDocs);
@@ -218,10 +218,10 @@ export function Documents() {
 
       cloudDocs = sortDocuments(cloudDocs);
 
-      if (profile.role === 'staff' || profile.role === 'teacher') {
+      if (profile.role === 'staff') {
         cloudDocs = cloudDocs.filter(d =>
           !d.ownerId || d.ownerId === profile.id || d.createdBy === profile.id ||
-          d.type === 'internal' || d.category === 'sop' || d.category === 'contracts'
+          d.visibility === 'workspace' || (d.visibility === 'shared' && d.sharedWith?.includes(profile.id))
         );
       }
 
@@ -379,7 +379,7 @@ export function Documents() {
   };
 
   useEffect(() => {
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'assistant')) return;
+    if (!profile || profile.role !== 'admin') return;
     let cancelled = false;
     const timer = setTimeout(() => {
       void repairBlankDocumentsFromHistory()
@@ -408,7 +408,7 @@ export function Documents() {
           <p className="text-xs sm:text-sm text-slate-400">Company files, templates, and official records</p>
         </div>
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full sm:w-auto">
-          {(profile?.role === 'admin' || profile?.role === 'assistant') && (
+          {profile && (
             <>
               <button onClick={() => setShowTemplates(true)} className="flex-1 sm:flex-none h-10 px-4 py-2 bg-accent hover:bg-accent-hover text-slate-950 font-bold rounded-lg text-sm transition-all duration-150 flex items-center justify-center gap-2 shadow-xs active:scale-[0.98] shrink-0">
                 <FileText className="w-4 h-4" /><span>Create Document</span>
@@ -477,7 +477,7 @@ export function Documents() {
             ) : (
               filteredDocs.map(doc => {
                 const client = clients.find(c => c.id === doc.clientId);
-                const canManage = profile?.role === 'admin' || profile?.role === 'assistant' || doc.ownerId === profile?.id;
+                const canManage = profile?.role === 'admin' || doc.ownerId === profile?.id || doc.createdBy === profile?.id;
                 return (
                   <div key={doc.id} className="group relative p-3 sm:p-4 hover:bg-slate-800/30 transition-colors" onContextMenu={(e) => { e.preventDefault(); setOpenPropertiesId(doc.id); }}>
                     <div className="flex items-center gap-3 min-w-0">

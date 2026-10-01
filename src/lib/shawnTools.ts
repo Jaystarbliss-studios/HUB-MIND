@@ -364,7 +364,7 @@ export async function executeShawnTool(
       case 'list_follow_ups': {
         const base = collection(db, 'followUps');
         const conditions: any[] = [];
-        if (currentUser?.role !== 'admin' && currentUser?.role !== 'assistant') {
+        if (currentUser?.role !== 'admin') {
           conditions.push(where('ownerId', '==', currentUser?.id));
         }
         if (args.status) conditions.push(where('status', '==', args.status));
@@ -842,7 +842,7 @@ export async function executeShawnTool(
         const tasksSnap = await getDocs(query(collection(db, 'tasks'), where('status', '!=', 'completed'), limit(20)));
         const docsSnap = await getDocs(query(collection(db, 'documents'), limit(5)));
         const followUpBase = collection(db, 'followUps');
-        const followUpQuery = currentUser?.role === 'admin' || currentUser?.role === 'assistant'
+        const followUpQuery = currentUser?.role === 'admin'
           ? query(followUpBase, limit(20))
           : query(followUpBase, where('ownerId', '==', currentUser?.id), limit(20));
         const followUpsSnap = await getDocs(followUpQuery);

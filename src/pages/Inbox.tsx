@@ -35,7 +35,7 @@ export function Inbox() {
     };
     fetchClients();
     if (!profile) return;
-    const q = profile.role === 'admin' || profile.role === 'assistant'
+    const q = profile.role === 'admin'
       ? query(
           collection(db, 'inbox'),
           where('status', '==', viewMode)

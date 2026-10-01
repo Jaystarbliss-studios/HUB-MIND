@@ -33,7 +33,7 @@ export function RecurringSchedulePanel() {
     const templatesQuery = collection(db, 'recurringMeetingTemplates');
     return onSnapshot(templatesQuery, snap => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as RecurringMeetingTemplate));
-      const visible = profile.role === 'admin' || profile.role === 'assistant'
+      const visible = profile.role === 'admin'
         ? all
         : all.filter(x => x.ownerId === profile.id);
       setItems(visible.filter(x => x.active !== false));
