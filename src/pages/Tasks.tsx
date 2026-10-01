@@ -6,7 +6,7 @@ import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestor
 import { db } from '../firebaseConfig';
 import { Task } from '../types';
 import { getLocalTasks, setLocalTasks, upsertLocalTask } from '../lib/localWorkspaceStore';
-import { Loader2, Plus, Filter, Search, Repeat2 } from 'lucide-react';
+import { Loader2, Plus, Filter, Search, Repeat2, Share2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
@@ -16,6 +16,7 @@ import { format, parseISO } from 'date-fns';
 import { useUsers } from '../lib/useUsers';
 import { processRecurringTasks } from '../lib/recurringTasks';
 import { RecurringTasksPanel } from '../components/RecurringTasksPanel';
+import { ShareResourceModal } from '../components/ShareResourceModal';
 
 export function Tasks() {
   const { user, profile } = useAuth();
@@ -26,6 +27,7 @@ export function Tasks() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sharingTask, setSharingTask] = useState<Task | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState('medium');
@@ -318,16 +320,35 @@ export function Tasks() {
                       <span className="hidden sm:inline">{task.checklist?.filter(c => c.done).length || 0}/{task.checklist?.length || 0} checks</span>
                     </div>
                   </div>
-                  <div className="w-full sm:w-auto flex justify-end mt-3 sm:mt-0 pt-3 sm:pt-0 border-t border-slate-800 sm:border-0">
-<Link to={`/tasks/${task.id}`} className="text-sm font-bold text-slate-950 bg-accent hover:bg-accent-hover px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
-                    View
-                  </Link>
-</div>
+                  <div className="w-full sm:w-auto flex items-center justify-end gap-2 mt-3 sm:mt-0 pt-3 sm:pt-0 border-t border-slate-800 sm:border-0">
+                    <button
+                      type="button"
+                      onClick={() => setSharingTask(task)}
+                      className="text-xs font-semibold text-teal-400 hover:text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                      title="Share task with connected friends"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Share</span>
+                    </button>
+                    <Link to={`/tasks/${task.id}`} className="text-sm font-bold text-slate-950 bg-accent hover:bg-accent-hover px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
+                      View
+                    </Link>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
+      )}
+
+      {sharingTask && (
+        <ShareResourceModal
+          isOpen={!!sharingTask}
+          onClose={() => setSharingTask(null)}
+          resourceType="task"
+          resourceId={sharingTask.id}
+          resourceTitle={sharingTask.title}
+        />
       )}
     </div>
   );

@@ -5,10 +5,11 @@ import { useAuth } from '../lib/auth';
 import { Project, Task, Client } from '../types';
 import { getLocalProjects, setLocalProjects, upsertLocalProject, deleteLocalProject } from '../lib/localWorkspaceStore';
 import { createProject, deleteProject } from '../services/projectService';
-import { Loader2, Plus, Folder, Search, LayoutGrid, CalendarRange, Trash2, AlertCircle, Check } from 'lucide-react';
+import { Loader2, Plus, Folder, Search, LayoutGrid, CalendarRange, Trash2, AlertCircle, Check, Share2 } from 'lucide-react';
 import { safeFormat } from "../lib/dateUtils";
 import { Link } from 'react-router-dom';
 import { ProjectTimelineView } from '../components/ProjectTimelineView';
+import { ShareResourceModal } from '../components/ShareResourceModal';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -29,6 +30,7 @@ export function Projects() {
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState<Project | null>(null);
+  const [sharingProject, setSharingProject] = useState<Project | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
@@ -263,9 +265,20 @@ export function Projects() {
                 
                 <div className="pt-4 border-t border-slate-800 flex justify-between items-center mt-auto text-xs">
                   <span className="text-slate-500">{safeFormat(project.createdAt, 'MMM d, yyyy')}</span>
-                  <Link to={`/projects/${project.id}`} className="font-bold text-accent hover:underline flex items-center gap-1">
-                    Open Workspace →
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSharingProject(project)}
+                      className="text-teal-400 hover:text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Share project with friends"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Share</span>
+                    </button>
+                    <Link to={`/projects/${project.id}`} className="font-bold text-accent hover:underline flex items-center gap-1">
+                      Open Workspace →
+                    </Link>
+                  </div>
                 </div>
               </div>
             );
@@ -316,6 +329,16 @@ export function Projects() {
             </div>
           </div>
         </div>
+      )}
+
+      {sharingProject && (
+        <ShareResourceModal
+          isOpen={!!sharingProject}
+          onClose={() => setSharingProject(null)}
+          resourceType="project"
+          resourceId={sharingProject.id}
+          resourceTitle={sharingProject.name}
+        />
       )}
     </div>
   );

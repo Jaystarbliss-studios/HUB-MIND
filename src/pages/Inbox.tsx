@@ -6,9 +6,10 @@ import { useAuth } from '../lib/auth';
 import { useLocation } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { InboxItem } from '../types';
-import { Loader2, Archive, CheckSquare, Users, Calendar, Book, X } from 'lucide-react';
+import { Loader2, Archive, CheckSquare, Users, Calendar, Book, X, Share2, Send } from 'lucide-react';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
+import { ShareResourceModal } from '../components/ShareResourceModal';
 
 export function Inbox() {
   const { profile } = useAuth();
@@ -18,6 +19,7 @@ export function Inbox() {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [sharingItem, setSharingItem] = useState<InboxItem | null>(null);
 
   const [activeItem, setActiveItem] = useState<InboxItem | null>(null);
   const [actionType, setActionType] = useState<'task' | 'meeting' | null>(null);
@@ -340,6 +342,16 @@ export function Inbox() {
                     <span className="hidden sm:inline">To Knowledge</span>
                   </button>
                   <button
+                    type="button"
+                    onClick={() => setSharingItem(item)}
+                    disabled={processingId === item.id}
+                    className="flex items-center gap-2 bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 font-semibold px-3 py-2 rounded-lg border border-teal-500/30 transition-colors text-sm flex-1 md:flex-none justify-center cursor-pointer"
+                    title="Send this note to a connected friend"
+                  >
+                    <Share2 className="w-4 h-4 text-teal-400" />
+                    <span>Send to Friend</span>
+                  </button>
+                  <button
                     onClick={() => handleArchive(item)}
                     disabled={processingId === item.id}
                     className="flex items-center gap-2 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 font-semibold px-3 py-2 rounded-lg transition-colors text-sm md:ml-auto justify-center w-full md:w-auto"
@@ -352,6 +364,16 @@ export function Inbox() {
             </div>
           ))}
         </div>
+      )}
+
+      {sharingItem && (
+        <ShareResourceModal
+          isOpen={!!sharingItem}
+          onClose={() => setSharingItem(null)}
+          resourceType="document"
+          resourceId={sharingItem.id}
+          resourceTitle={sharingItem.text.slice(0, 60) || 'Quick Note'}
+        />
       )}
     </div>
   );

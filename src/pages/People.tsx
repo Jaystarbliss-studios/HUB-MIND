@@ -22,9 +22,12 @@ import {
   RefreshCw,
   Mail,
   ShieldCheck,
-  Edit3
+  Edit3,
+  Send,
+  Share2
 } from 'lucide-react';
 import { UserProfileModal } from '../components/UserProfileModal';
+import { SendDirectInfoModal } from '../components/SendDirectInfoModal';
 
 export function People() {
   const { profile } = useAuth();
@@ -35,6 +38,7 @@ export function People() {
   const [loadingAction, setLoadingAction] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [sendToUser, setSendToUser] = useState<User | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'connections' | 'requests' | 'directory'>('connections');
 
@@ -257,21 +261,52 @@ export function People() {
                     const peerName = isRecipient ? (conn.requesterDisplayName || 'Colleague') : (conn.recipientDisplayName || 'Colleague');
                     const peerUsername = isRecipient ? conn.requesterUsername : conn.recipientUsername;
 
+                    const peerId = isRecipient ? conn.requesterId : conn.recipientId;
+                    const peerPhoto = isRecipient ? conn.requesterPhotoUrl : conn.recipientPhotoUrl;
+
                     return (
-                      <div key={conn.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between hover:border-slate-700 transition-all">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-teal-500/10 text-teal-400 font-bold flex items-center justify-center border border-teal-500/20 text-sm">
-                            {getInitials(peerName, peerUsername)}
+                      <div key={conn.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between gap-3 hover:border-slate-700 transition-all shadow-md">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-teal-500/10 text-teal-400 font-bold flex items-center justify-center border border-teal-500/20 text-sm overflow-hidden shrink-0">
+                              {peerPhoto ? (
+                                <img src={peerPhoto} alt={peerName} className="w-full h-full object-cover" />
+                              ) : (
+                                getInitials(peerName, peerUsername)
+                              )}
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold text-slate-100">{peerName}</div>
+                              <div className="text-xs text-teal-400 font-mono">@{peerUsername || 'user'}</div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-sm font-semibold text-slate-100">{peerName}</div>
-                            <div className="text-xs text-teal-400 font-mono">@{peerUsername || 'user'}</div>
-                          </div>
+                          <span className="px-2 py-0.5 rounded-lg bg-teal-950/60 border border-teal-800/60 text-teal-400 text-[10px] flex items-center gap-1 font-medium">
+                            <UserCheck className="w-3 h-3" />
+                            Connected
+                          </span>
                         </div>
-                        <span className="px-2.5 py-1 rounded-lg bg-teal-950/60 border border-teal-800/60 text-teal-400 text-[11px] flex items-center gap-1 font-medium">
-                          <UserCheck className="w-3 h-3" />
-                          Connected
-                        </span>
+
+                        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSendToUser({
+                                id: peerId,
+                                username: peerUsername,
+                                displayName: peerName,
+                                photoUrl: peerPhoto,
+                                email: '',
+                                role: 'staff',
+                                status: 'active',
+                                createdAt: '',
+                              });
+                            }}
+                            className="flex items-center gap-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-semibold px-3 py-1.5 rounded-xl transition-all shadow-sm cursor-pointer w-full justify-center"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            Send Information / Share
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -438,6 +473,13 @@ export function People() {
       <UserProfileModal
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
+      />
+
+      {/* Direct Information Sender Modal */}
+      <SendDirectInfoModal
+        isOpen={!!sendToUser}
+        onClose={() => setSendToUser(null)}
+        targetUser={sendToUser}
       />
     </div>
   );

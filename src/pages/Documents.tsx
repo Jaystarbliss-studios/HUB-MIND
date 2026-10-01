@@ -4,11 +4,12 @@ import { useAuth } from '../lib/auth';
 import { collection, getDocs, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { DocumentInfo, Client } from '../types';
-import { Loader2, FileText, Search, MoreVertical } from 'lucide-react';
+import { Loader2, FileText, Search, MoreVertical, Share2 } from 'lucide-react';
 import { DriveUpload } from '../components/DriveUpload';
 import { formatShortTimestampWithSeconds } from "../lib/dateUtils";
 import { useUsers } from '../lib/useUsers';
 import { TemplateSelector } from '../components/documents/TemplateSelector';
+import { ShareResourceModal } from '../components/ShareResourceModal';
 import { sanitizeClipboardHtml } from '../components/documents/clipboard/clipboard-sanitizer';
 import { normalizeClipboardHtml } from '../components/documents/clipboard/clipboard-normalizer';
 import { deleteDocumentOffline, repairBlankDocumentsFromHistory, getLocalDocsMap, setLocalDocsMap } from '../lib/offlineSync';
@@ -75,6 +76,7 @@ export function Documents() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [docToDelete, setDocToDelete] = useState<string | null>(null);
   const [openPropertiesId, setOpenPropertiesId] = useState<string | null>(null);
+  const [sharingDoc, setSharingDoc] = useState<DocumentInfo | null>(null);
 
   const handleUpdateTitle = async (id: string) => {
     if (!editTitle.trim()) return;
@@ -503,8 +505,12 @@ export function Documents() {
                           <div><span className="text-slate-500 block">Owner</span><span className="text-slate-200 truncate">{doc.ownerId && users[doc.ownerId] ? users[doc.ownerId].name : 'Workspace'}</span></div>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <button onClick={() => { setOpenPropertiesId(null); openDocument(doc); }} className="px-3 py-2 rounded-lg bg-accent text-slate-950 text-xs font-bold">Open</button>
-                          {canManage && <><button onClick={() => { setOpenPropertiesId(null); setEditingDocId(doc.id); setEditTitle(doc.title); }} className="px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-xs">Rename</button><button onClick={() => handleDuplicateDoc(doc)} className="px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-xs">Duplicate</button><button onClick={() => { setOpenPropertiesId(null); confirmDelete(doc.id); }} className="px-3 py-2 rounded-lg bg-rose-950/40 text-rose-300 text-xs">Delete</button></>}
+                          <button onClick={() => { setOpenPropertiesId(null); openDocument(doc); }} className="px-3 py-2 rounded-lg bg-accent text-slate-950 text-xs font-bold cursor-pointer">Open</button>
+                          <button onClick={() => { setOpenPropertiesId(null); setSharingDoc(doc); }} className="px-3 py-2 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 text-xs font-semibold flex items-center gap-1.5 cursor-pointer border border-teal-500/30">
+                            <Share2 className="w-3.5 h-3.5" />
+                            Share with Friends
+                          </button>
+                          {canManage && <><button onClick={() => { setOpenPropertiesId(null); setEditingDocId(doc.id); setEditTitle(doc.title); }} className="px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-xs cursor-pointer">Rename</button><button onClick={() => handleDuplicateDoc(doc)} className="px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-xs cursor-pointer">Duplicate</button><button onClick={() => { setOpenPropertiesId(null); confirmDelete(doc.id); }} className="px-3 py-2 rounded-lg bg-rose-950/40 text-rose-300 text-xs cursor-pointer">Delete</button></>}
                         </div>
                       </div>
                     )}
@@ -541,6 +547,15 @@ export function Documents() {
             </div>
           </div>
         </div>
+      )}
+      {sharingDoc && (
+        <ShareResourceModal
+          isOpen={!!sharingDoc}
+          onClose={() => setSharingDoc(null)}
+          resourceType="document"
+          resourceId={sharingDoc.id}
+          resourceTitle={sharingDoc.title || 'Untitled Document'}
+        />
       )}
     </div>
   );

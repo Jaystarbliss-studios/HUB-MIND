@@ -100,6 +100,7 @@ export function ShareResourceModal({
         resourceId,
         resourceTitle,
         ownerId: profile.id,
+        ownerName: profile.displayName || profile.name || `@${profile.username}`,
         recipientUsernameOrId: targetUsername.trim(),
         permission,
       });
