@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 
 const rules=fs.readFileSync(new URL('../../firestore.rules',import.meta.url),'utf8');
-const env=await initializeTestEnvironment({projectId:'hubmind-rules-test',firestore:{rules}});
+const env=await initializeTestEnvironment({projectId:'hubmind-rules-test',firestore:{rules,databaseId:'ai-studio-hubmind-4cac2024-c6eb-4208-80cf-928714dfd430'}});
 
 async function seed() {
   await env.withSecurityRulesDisabled(async context=>{
