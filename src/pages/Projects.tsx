@@ -18,7 +18,7 @@ export function Projects() {
     if (!profile) return; setLoading(true); const unsubs: (() => void)[] = [];
     const listenResource = (collectionName: string, setter: (items: any[]) => void) => {
       const lists: any[][] = [];
-      const queries = profile.role === 'admin' ? [collection(db, collectionName)] : [query(collection(db, collectionName), where('ownerId', '==', profile.id)), query(collection(db, collectionName), where('visibility', '==', 'workspace'))];
+      const queries = profile.role === 'admin' ? [collection(db, collectionName)] : [query(collection(db, collectionName), where('ownerId', '==', profile.id)), query(collection(db, collectionName), where('visibility', '==', 'workspace')), query(collection(db, collectionName), where(`sharedWith.${profile.id}`, 'in', ['read', 'write']))];
       queries.forEach((q: any, index) => { unsubs.push(onSnapshot(q, snap => { lists[index] = snap.docs.map((d: any) => ({ id: d.id, ...d.data() })); setter(mergeSnapshots(...lists)); setLoading(false); }, () => setLoading(false))); });
     };
     listenResource('projects', items => { const value = items as Project[]; setProjects(value); setLocalProjects(value); });
