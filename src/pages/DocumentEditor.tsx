@@ -28,7 +28,6 @@ import { ImportExportMenu } from '../components/documents/ImportExportMenu';
 import { PaginatedPageContainer } from '../components/documents/PaginatedPageContainer';
 import { FullPagePreviewModal } from '../components/documents/FullPagePreviewModal';
 import { VersionHistoryModal } from '../components/documents/VersionHistoryModal';
-import { ShawnDocCoWriter } from '../components/documents/ShawnDocCoWriter';
 import { 
   saveDocumentOffline, 
   getDocumentWithOfflineFallback, 
@@ -164,7 +163,7 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState<boolean>(false);
   const [isCoWriterOpen, setIsCoWriterOpen] = useState<boolean>(false);
-  const [shawnActivityFlash, setShawnActivityFlash] = useState<string | null>(null);
+  const [jessActivityFlash, setShawnActivityFlash] = useState<string | null>(null);
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
 
   // Pagination Helper Status & Dynamic Height Metrics
@@ -652,7 +651,7 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
   }, []);
 
   // Open Unified Shawn Assistant
-  const handleOpenShawnAI = (mode: 'chat' | 'voice' = 'chat') => {
+  const handleOpenJessAI = (mode: 'chat' | 'voice' = 'chat') => {
     window.dispatchEvent(
       new CustomEvent('shawn:open', {
         detail: {
@@ -872,7 +871,7 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
 
           {/* Ask Shawn to Edit Pill Button */}
           <button
-            onClick={() => handleOpenShawnAI('chat')}
+            onClick={() => handleOpenJessAI('chat')}
             className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-[#00b4a7] hover:bg-[#00c5b7] active:scale-95 text-slate-950 transition-all font-bold text-xs shadow-md shadow-teal-500/20 cursor-pointer shrink-0"
             title="Ask Shawn to Edit"
           >
@@ -915,23 +914,6 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
           />
         </div>
       </div>
-
-      {/* Shawn Live Activity Flash Banner */}
-      {shawnActivityFlash && (
-        <div className="bg-linear-to-r from-teal-950/90 via-slate-900 to-cyan-950/90 border-b border-teal-500/40 px-4 py-1.5 flex items-center justify-between text-xs text-teal-200 shrink-0 select-none animate-in fade-in slide-in-from-top duration-300">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-accent animate-spin" />
-            <span className="font-medium">{shawnActivityFlash}</span>
-          </div>
-          <button 
-            onClick={() => setShawnActivityFlash(null)} 
-            className="text-slate-400 hover:text-white text-xs px-1 cursor-pointer"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
       {/* Modern Office Ribbon Navigation Bar */}
       {editor && (
         <DocumentRibbon
@@ -1149,7 +1131,7 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
 
       {/* Shawn AI Co-Writer Live Dock */}
       {docId && editor && (
-        <ShawnDocCoWriter
+        <JessDocumentBridge
           editor={editor}
           docTitle={docMeta?.title || 'Untitled Document'}
           docId={docId}
