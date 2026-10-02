@@ -19,6 +19,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Jess integration verification
+        run: npm run verify:jess
       - name: TypeScript validation
         run: npm run lint
       - name: Production build
