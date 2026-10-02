@@ -12,11 +12,12 @@ service cloud.firestore {
     function newOwner(){ return member() && request.resource.data.ownerId == request.auth.uid; }
     function createdByMe(){ return member() && request.resource.data.createdBy == request.auth.uid; }
     function visibleList(){ return member() && (resource.data.ownerId == request.auth.uid || resource.data.visibility == 'workspace' || (resource.data.visibility == 'shared' && resource.data.sharedWith[request.auth.uid] in ['read','write'])); }
+    function validAcceptedInvitation(invitationId){ return signedIn() && exists(/databases/$(database)/documents/invitations/$(invitationId)) && get(/databases/$(database)/documents/invitations/$(invitationId)).data.status == 'accepted' && get(/databases/$(database)/documents/invitations/$(invitationId)).data.acceptedUid == request.auth.uid && get(/databases/$(database)/documents/invitations/$(invitationId)).data.email == request.auth.token.email; }
 
     match /{document=**} { allow read, write: if false; }
     match /users/{userId} {
       allow get: if self(userId) || admin(); allow list: if admin();
-      allow create: if signedIn() && request.resource.data.role == 'staff' && request.resource.data.status == 'active' && request.resource.data.invitationId != null && exists(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)) && get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.status == 'invited' && get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.email == request.auth.token.email && get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.username == request.resource.data.username;
+      allow create: if validAcceptedInvitation(request.resource.data.invitationId) && request.resource.data.id == request.auth.uid && request.resource.data.role == 'staff' && request.resource.data.status == 'active' && request.resource.data.email == request.auth.token.email;
       allow update: if admin() || (self(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName','photoUrl','name','phone','lastSeenAt'])); allow delete: if admin();
       match /conversations/{id} { allow read, write: if self(userId) || admin(); }
       match /private/{document=**} { allow read, write: if self(userId) || admin(); }
@@ -27,7 +28,6 @@ service cloud.firestore {
     match /shares/{id} { allow get: if member() && (resource.data.ownerId == request.auth.uid || resource.data.recipientUserId == request.auth.uid); allow list: if admin() || member(); allow create: if admin() || (member() && request.resource.data.ownerId == request.auth.uid); allow update, delete: if admin() || (member() && resource.data.ownerId == request.auth.uid); }
     match /notifications/{id} { allow get, list: if member() && resource.data.userId == request.auth.uid; allow create: if admin() || (member() && request.resource.data.userId == request.auth.uid); allow update, delete: if member() && resource.data.userId == request.auth.uid; }
     match /activityLogs/{id} { allow get, list: if admin() || (member() && resource.data.userId == request.auth.uid); allow create: if member() && request.resource.data.userId == request.auth.uid; allow update, delete: if admin(); }
-
     match /tasks/{id} { allow get: if readable(); allow list: if admin() || visibleList() || (member() && resource.data.assignedTo == request.auth.uid); allow create: if newOwner() || createdByMe(); allow update, delete: if writable(); }
     match /documents/{id} { allow get: if readable(); allow list: if admin() || visibleList(); allow create: if newOwner() || createdByMe(); allow update, delete: if writable(); }
     match /projects/{id} { allow get: if readable(); allow list: if admin() || visibleList(); allow create: if newOwner() || createdByMe(); allow update, delete: if writable(); }
