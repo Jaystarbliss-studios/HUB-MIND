@@ -293,6 +293,7 @@ export function People() {
                               setSendToUser({
                                 id: peerId,
                                 username: peerUsername,
+                                name: peerName || peerUsername || 'Workspace User',
                                 displayName: peerName,
                                 photoUrl: peerPhoto,
                                 email: '',

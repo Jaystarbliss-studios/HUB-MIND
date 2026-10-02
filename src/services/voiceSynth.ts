@@ -1,5 +1,5 @@
 /**
- * Universal Voice Synthesizer & Audio Player for Shawn
+ * Universal Voice Synthesizer & Audio Player for Jess
  * Guarantees zero-failure, instant voice output across all browsers (Chrome, Edge, Safari, Firefox)
  * Handles Web Speech API, Base64 PCM / WAV / MP3 playback, and browser audio unlock policies.
  */
@@ -194,7 +194,7 @@ class VoiceSynthesizer {
   }
 
   /**
-   * Speaks text using high-quality SpeechSynthesis with British/youthful Shawn personality
+   * Speaks text using high-quality SpeechSynthesis with British/youthful Jess personality
    */
   public speakText(
     text: string,

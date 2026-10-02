@@ -37,6 +37,7 @@ import {
 } from '../lib/offlineSync';
 import { useAuth } from '../lib/auth';
 import { registerJessDocumentEditor, unregisterJessDocumentEditor } from '../lib/jessDocumentBridge';
+import { JessDocumentBridge } from '../components/JessDocumentBridge';
 import { formatExactTimestamp, formatTimeWithSeconds } from '../lib/dateUtils';
 import { 
   ArrowLeft, Loader2, Save, Sun, Moon, 
@@ -163,6 +164,7 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
   const [showPageBreaks, setShowPageBreaks] = useState<boolean>(true);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState<boolean>(false);
+  const [isCoWriterOpen, setIsCoWriterOpen] = useState<boolean>(false);
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
 
   // Pagination Helper Status & Dynamic Height Metrics

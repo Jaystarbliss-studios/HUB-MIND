@@ -16,7 +16,16 @@ async function applyVisibleEdit(edit: PendingJessDocumentEdit) {
   return true;
 }
 
-export function JessDocumentBridge() {
+export interface JessDocumentBridgeProps {
+  editor?: any;
+  docTitle?: string;
+  docId?: string;
+  onSaveDocument?: (content: any) => Promise<void> | void;
+  isOpen?: boolean;
+  onToggleOpen?: () => void;
+}
+
+export function JessDocumentBridge(props?: JessDocumentBridgeProps) {
   const location = useLocation();
   useEffect(() => {
     const documentId = getDocumentId(location.pathname); if (!documentId) return; let cancelled = false;

@@ -15,10 +15,18 @@ import {
   Globe, 
   Users,
   Camera,
-  RefreshCw
+  RefreshCw,
+  Calendar as CalendarIcon,
+  Link2,
+  Unlink
 } from 'lucide-react';
 import { isUsernameAvailable, normalizeUsername, extractHandleFromEmail } from '../services/userService';
 import { ResourceVisibility } from '../types';
+import { 
+  connectGoogleCalendarOnce, 
+  disconnectGoogleCalendar, 
+  getGoogleCalendarConnectionInfo 
+} from '../lib/googleCalendar';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -376,6 +384,54 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
                   Instantly accessible to all Hub-Mind staff.
                 </div>
               </button>
+            </div>
+          </div>
+
+          {/* Google Calendar One-Time Connection */}
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="w-4 h-4 text-teal-400" />
+                <span className="text-xs font-bold text-slate-200">Google Calendar One-Time Sync</span>
+              </div>
+              {getGoogleCalendarConnectionInfo().connected ? (
+                <span className="text-[10px] bg-teal-950 border border-teal-800 text-teal-300 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                  <Check className="w-3 h-3" /> Connected
+                </span>
+              ) : (
+                <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">
+                  Not Connected
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Connect once to allow Jess and Hub-Mind to synchronize meetings, tasks, and recurring schedules directly to your Google Calendar.
+            </p>
+            <div className="pt-1 flex items-center justify-end">
+              {getGoogleCalendarConnectionInfo().connected ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await disconnectGoogleCalendar();
+                    setSaveSuccess(true);
+                  }}
+                  className="text-xs text-rose-400 hover:text-rose-300 font-semibold flex items-center gap-1 cursor-pointer"
+                >
+                  <Unlink className="w-3 h-3" /> Disconnect Google Calendar
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await connectGoogleCalendarOnce();
+                    if (res.success) setSaveSuccess(true);
+                    else setSaveError(res.message);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-teal-500/30 text-teal-300 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Link2 className="w-3.5 h-3.5 text-teal-400" /> Connect Google Calendar Once
+                </button>
+              )}
             </div>
           </div>
 

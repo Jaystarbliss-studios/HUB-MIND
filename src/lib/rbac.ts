@@ -6,5 +6,11 @@ export function canPerformAction(role:Role|string|undefined|null,action:AppActio
 export function isAdmin(role:Role|string|undefined|null){return role?.toLowerCase()==='admin';}
 export function isStaff(role:Role|string|undefined|null){return role?.toLowerCase()==='staff';}
 export function canAccessRoute(role:Role|string|undefined|null,path:string){if(path.startsWith('/admin')||path.startsWith('/users'))return isAdmin(role);return !!role;}
-export function canReadResource(ownerId:string|undefined,uid:string,visibility:Visibility='private',sharedWith:Record<string,ResourcePermission>={}){return ownerId===uid||visibility==='workspace'||(visibility==='shared'&&!!sharedWith[uid]);}
-export function canWriteResource(ownerId:string|undefined,uid:string,visibility:Visibility='private',sharedWith:Record<string,ResourcePermission>={}){return ownerId===uid||(visibility==='shared'&&sharedWith[uid]==='write');}
+export function isSharedWith(sharedWith: Record<string, ResourcePermission> | string[] | undefined | null, uid: string): boolean {
+  if (!sharedWith) return false;
+  if (Array.isArray(sharedWith)) return sharedWith.includes(uid);
+  if (typeof sharedWith === 'object') return uid in sharedWith && Boolean((sharedWith as Record<string, ResourcePermission>)[uid]);
+  return false;
+}
+export function canReadResource(ownerId:string|undefined,uid:string,visibility:Visibility='private',sharedWith:Record<string,ResourcePermission>|string[]={}){return ownerId===uid||visibility==='workspace'||(visibility==='shared'&&isSharedWith(sharedWith, uid));}
+export function canWriteResource(ownerId:string|undefined,uid:string,visibility:Visibility='private',sharedWith:Record<string,ResourcePermission>|string[]={}){if(ownerId===uid)return true;if(visibility!=='shared'||!sharedWith)return false;if(Array.isArray(sharedWith))return sharedWith.includes(uid);return (sharedWith as Record<string,ResourcePermission>)[uid]==='write';}

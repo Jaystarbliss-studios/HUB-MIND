@@ -20,6 +20,7 @@ import {
   ResourceVisibility 
 } from '../types';
 import { logActivity } from './activityService';
+import { isSharedWith } from '../lib/rbac';
 
 export async function createMeeting(params: {
   title: string;
@@ -149,7 +150,7 @@ export function subscribeToMeetings(
       meetings = meetings.filter(m => {
         if (m.ownerId === currentUser.id) return true;
         if (m.visibility === 'workspace') return true;
-        if (m.visibility === 'shared' && m.sharedWith?.includes(currentUser.id)) return true;
+        if (m.visibility === 'shared' && isSharedWith(m.sharedWith, currentUser.id)) return true;
         return false;
       });
     }

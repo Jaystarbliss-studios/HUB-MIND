@@ -8,11 +8,17 @@ import { Link } from 'react-router-dom';
 import { 
   Loader2, ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, 
   CheckSquare, X, Clock, MapPin, Tag, ListFilter, CalendarDays, CheckCircle2,
-  AlertCircle
+  AlertCircle, Globe, Link2, Unlink, Sparkles
 } from 'lucide-react';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { materializeRecurringMeetings } from "../lib/recurringMeetings";
 import { RecurringSchedulePanel } from "../components/RecurringSchedulePanel";
+import { 
+  connectGoogleCalendarOnce, 
+  disconnectGoogleCalendar, 
+  isGoogleCalendarConnected, 
+  getGoogleCalendarConnectionInfo 
+} from "../lib/googleCalendar";
 import { 
   format, addMonths, subMonths, startOfMonth, endOfMonth, 
   eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, isToday
@@ -43,6 +49,41 @@ export function Calendar() {
   const [projectsList, setProjectsList] = useState<{id: string, name: string}[]>([]);
   const [clients, setClients] = useState<{id: string, name: string}[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Google Calendar one-time connection states
+  const [gcalInfo, setGcalInfo] = useState(() => getGoogleCalendarConnectionInfo());
+  const [gcalConnecting, setGcalConnecting] = useState(false);
+  const [gcalMessage, setGcalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    setGcalInfo(getGoogleCalendarConnectionInfo());
+  }, []);
+
+  const handleConnectGcal = async () => {
+    setGcalConnecting(true);
+    setGcalMessage(null);
+    try {
+      const res = await connectGoogleCalendarOnce();
+      if (res.success) {
+        setGcalInfo(getGoogleCalendarConnectionInfo());
+        setGcalMessage({ type: 'success', text: res.message });
+      } else {
+        setGcalMessage({ type: 'error', text: res.message });
+      }
+    } catch (err: any) {
+      setGcalMessage({ type: 'error', text: err?.message || 'Failed to connect Google Calendar.' });
+    } finally {
+      setGcalConnecting(false);
+    }
+  };
+
+  const handleDisconnectGcal = async () => {
+    if (confirm('Disconnect Google Calendar from Hub-Mind?')) {
+      await disconnectGoogleCalendar();
+      setGcalInfo({ connected: false, email: null, expiresAt: 0 });
+      setGcalMessage({ type: 'success', text: 'Google Calendar disconnected.' });
+    }
+  };
 
   useEffect(() => {
     if (!profile) return;
@@ -343,11 +384,53 @@ export function Calendar() {
               Agenda
             </button>
           </div>
+
+          {/* Google Calendar One-Time Sync Trigger */}
+          {gcalInfo.connected ? (
+            <div className="flex items-center gap-2 bg-teal-950/40 border border-teal-800/60 rounded-xl px-3 py-1.5 text-xs text-teal-300">
+              <Globe className="w-3.5 h-3.5 text-teal-400" />
+              <span className="hidden sm:inline font-mono text-[11px] truncate max-w-[150px]">{gcalInfo.email || 'Google Cal Connected'}</span>
+              <button
+                type="button"
+                onClick={handleDisconnectGcal}
+                title="Disconnect Google Calendar"
+                className="text-slate-400 hover:text-rose-400 ml-1 p-0.5"
+              >
+                <Unlink className="w-3 h-3" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleConnectGcal}
+              disabled={gcalConnecting}
+              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-700 hover:border-teal-500/60 text-slate-200 hover:text-teal-300 text-xs font-semibold px-3 py-1.5 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+            >
+              {gcalConnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-400" /> : <Link2 className="w-3.5 h-3.5 text-teal-400" />}
+              <span>{gcalConnecting ? 'Connecting...' : 'Connect Google Cal'}</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Recurring Schedule */}
-      {profile?.role === 'admin' && <RecurringSchedulePanel />}
+      {gcalMessage && (
+        <div className={`p-3 rounded-xl text-xs flex items-center justify-between gap-2.5 border animate-in fade-in duration-150 ${
+          gcalMessage.type === 'success' 
+            ? 'bg-teal-950/50 border-teal-800 text-teal-300' 
+            : 'bg-rose-950/50 border-rose-800 text-rose-300'
+        }`}>
+          <div className="flex items-center gap-2">
+            {gcalMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-teal-400 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />}
+            <span>{gcalMessage.text}</span>
+          </div>
+          <button onClick={() => setGcalMessage(null)} className="p-1 text-slate-400 hover:text-slate-200">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Recurring Schedule Panel - Visible to all users so they can manage their classes and routines */}
+      <RecurringSchedulePanel />
 
       {/* Main Calendar Card */}
       {viewMode === 'month' ? (

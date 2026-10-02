@@ -14,6 +14,7 @@ import {
 import { db } from '../firebaseConfig';
 import { Task, TaskPriority, TaskStatus, User, ResourceVisibility } from '../types';
 import { logActivity } from './activityService';
+import { isSharedWith } from '../lib/rbac';
 import { createNotification } from './notificationService';
 import { getUserByUsername, getUserProfile } from './userService';
 import { enqueueOfflineAction } from '../lib/offlineQueue';
@@ -273,7 +274,7 @@ export function subscribeToTasks(
       tasks = tasks.filter(task => {
         if (task.ownerId === currentUser.id || task.createdBy === currentUser.id || task.assignedTo === currentUser.id) return true;
         if (task.visibility === 'workspace') return true;
-        if (task.visibility === 'shared' && task.sharedWith?.includes(currentUser.id)) return true;
+        if (task.visibility === 'shared' && isSharedWith(task.sharedWith, currentUser.id)) return true;
         return false;
       });
     }

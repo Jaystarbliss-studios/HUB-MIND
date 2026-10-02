@@ -293,7 +293,9 @@ export async function repairBlankDocumentsFromHistory(): Promise<{ repaired: num
       await updateDoc(doc(db, 'documents', docSnap.id), update);
       localDocs[docSnap.id] = { ...(localDocs[docSnap.id] || { id: docSnap.id, updatedAt: data.updatedAt || new Date().toISOString(), lastSavedAt: data.lastSavedAt || new Date().toISOString(), synced: true }), title: restoredTitle, content: restoredContent, ...(restoredJson ? { contentJson: restoredJson } : {}), synced: true } as OfflineDocRecord;
       repaired++;
-    } catch (err) { console.error('[HubMind recovery] Failed to repair document:', docSnap.id, err); }
+    } catch (err: any) {
+      console.warn('[HubMind recovery] Document skipped or write restricted:', docSnap.id, err?.message || err);
+    }
   }
   setLocalDocsMap(localDocs);
   return { repaired, checked: docsSnap.size };

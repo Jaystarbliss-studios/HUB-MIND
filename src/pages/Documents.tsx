@@ -1,10 +1,11 @@
 import { useNavigate } from 'react-router-dom';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../lib/auth';
 import { collection, getDocs, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { DocumentInfo, Client } from '../types';
-import { Loader2, FileText, Search, MoreVertical, Share2 } from 'lucide-react';
+import { isSharedWith } from '../lib/rbac';
+import { Loader2, FileText, Search, MoreVertical, Share2, ArrowUpDown } from 'lucide-react';
 import { DriveUpload } from '../components/DriveUpload';
 import { formatShortTimestampWithSeconds } from "../lib/dateUtils";
 import { useUsers } from '../lib/useUsers';
@@ -65,6 +66,7 @@ export function Documents() {
   const [dataError, setDataError] = useState<string | null>(null);
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | '2weeks' | '1month' | 'older1month' | 'az' | 'za'>('newest');
   const [isUploading, setIsUploading] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const { users } = useUsers();
@@ -223,7 +225,7 @@ export function Documents() {
       if (profile.role === 'staff') {
         cloudDocs = cloudDocs.filter(d =>
           !d.ownerId || d.ownerId === profile.id || d.createdBy === profile.id ||
-          d.visibility === 'workspace' || (d.visibility === 'shared' && d.sharedWith?.includes(profile.id))
+          d.visibility === 'workspace' || (d.visibility === 'shared' && isSharedWith(d.sharedWith, profile.id))
         );
       }
 
@@ -400,7 +402,41 @@ export function Documents() {
     };
   }, [profile?.id, profile?.role]);
 
-  const filteredDocs = docsList.filter(d => (d.title || '').toLowerCase().includes(search.toLowerCase()));
+  const filteredDocs = useMemo(() => {
+    const now = Date.now();
+    const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
+    const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+
+    let list = docsList.filter(d => (d.title || '').toLowerCase().includes(search.toLowerCase()));
+
+    // Apply time-range filtering if selected
+    if (sortBy === '2weeks') {
+      list = list.filter(d => {
+        const time = new Date(d.lastEditedAt || d.lastSavedAt || d.updatedAt || d.createdAt || 0).getTime();
+        return now - time <= twoWeeksMs;
+      });
+    } else if (sortBy === '1month') {
+      list = list.filter(d => {
+        const time = new Date(d.lastEditedAt || d.lastSavedAt || d.updatedAt || d.createdAt || 0).getTime();
+        return now - time <= oneMonthMs;
+      });
+    } else if (sortBy === 'older1month') {
+      list = list.filter(d => {
+        const time = new Date(d.lastEditedAt || d.lastSavedAt || d.updatedAt || d.createdAt || 0).getTime();
+        return now - time > oneMonthMs;
+      });
+    }
+
+    // Apply sort order
+    return [...list].sort((a, b) => {
+      const aTime = new Date(a.lastEditedAt || a.lastSavedAt || a.updatedAt || a.createdAt || 0).getTime();
+      const bTime = new Date(b.lastEditedAt || b.lastSavedAt || b.updatedAt || b.createdAt || 0).getTime();
+      if (sortBy === 'oldest') return aTime - bTime;
+      if (sortBy === 'az') return (a.title || '').localeCompare(b.title || '');
+      if (sortBy === 'za') return (b.title || '').localeCompare(a.title || '');
+      return bTime - aTime; // 'newest', '2weeks', '1month', 'older1month'
+    });
+  }, [docsList, search, sortBy]);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 flex flex-col h-full min-h-0 pb-20 md:pb-0">
@@ -463,9 +499,39 @@ export function Documents() {
         </div>
       )}
 
-      <div className="relative shrink-0">
-        <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-        <input type="text" placeholder="Search documents by title..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full h-10 bg-slate-900 border border-slate-800 rounded-lg pl-10 pr-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-colors" />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input type="text" placeholder="Search documents by title..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full h-10 bg-slate-900 border border-slate-800 rounded-lg pl-10 pr-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-colors" />
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="relative flex items-center">
+            <ArrowUpDown className="w-4 h-4 absolute left-3 text-slate-400 pointer-events-none" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="h-10 pl-9 pr-8 bg-slate-900 border border-slate-800 rounded-lg text-xs font-semibold text-slate-200 hover:text-white focus:outline-none focus:border-accent transition-colors cursor-pointer appearance-none"
+              aria-label="Sort and filter documents"
+            >
+              <option value="newest">Newest / Latest</option>
+              <option value="oldest">Oldest first</option>
+              <option value="2weeks">Within last 2 weeks</option>
+              <option value="1month">Within last month</option>
+              <option value="older1month">Older than 1 month</option>
+              <option value="az">Alphabetical (A - Z)</option>
+              <option value="za">Alphabetical (Z - A)</option>
+            </select>
+          </div>
+          {sortBy !== 'newest' && (
+            <button
+              onClick={() => setSortBy('newest')}
+              className="h-10 px-3 text-xs text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800 rounded-lg transition-colors cursor-pointer"
+              title="Reset sort"
+            >
+              Reset
+            </button>
+          )}
+        </div>
       </div>
 
       {showTemplates && <TemplateSelector onSelect={handleCreateDocument} onClose={() => setShowTemplates(false)} />}

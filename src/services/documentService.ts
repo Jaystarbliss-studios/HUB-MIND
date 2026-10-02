@@ -14,6 +14,7 @@ import {
 import { db } from '../firebaseConfig';
 import { DocumentInfo, DocumentVersion, ResourceVisibility, User } from '../types';
 import { logActivity } from './activityService';
+import { isSharedWith } from '../lib/rbac';
 
 export async function createDocument(params: {
   title: string;
@@ -215,7 +216,7 @@ export function subscribeToDocuments(
       docs = docs.filter(doc => {
         if (doc.ownerId === currentUser.id || doc.createdBy === currentUser.id) return true;
         if (doc.visibility === 'workspace') return true;
-        if (doc.visibility === 'shared' && doc.sharedWith?.includes(currentUser.id)) return true;
+        if (doc.visibility === 'shared' && isSharedWith(doc.sharedWith, currentUser.id)) return true;
         return false;
       });
     }

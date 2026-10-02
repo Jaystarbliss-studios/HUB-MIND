@@ -1,3 +1,163 @@
-import React,{createContext,useContext,useEffect,useState}from'react';import{onAuthStateChanged,User as FirebaseUser,signOut}from'firebase/auth';import{doc,getDoc,onSnapshot,setDoc}from'firebase/firestore';import{auth,db}from'../firebaseConfig';import{User}from'../types';import{acceptInvitation}from'./invitations';
-interface AuthContextType{user:FirebaseUser|null;profile:User|null;loading:boolean;authorizationError:string|null;updatePreferredName:(preferredName:string)=>Promise<void>;logout:()=>Promise<void>};const AuthContext=createContext<AuthContextType>({user:null,profile:null,loading:true,authorizationError:null,updatePreferredName:async()=>{},logout:async()=>{}});
-export function AuthProvider({children}:{children:React.ReactNode}){const[user,setUser]=useState<FirebaseUser|null>(null),[profile,setProfile]=useState<User|null>(null),[loading,setLoading]=useState(true),[authorizationError,setAuthorizationError]=useState<string|null>(null);useEffect(()=>{let stopProfile:(()=>void)|null=null;let disposed=false;const stopAuth=onAuthStateChanged(auth,async firebaseUser=>{stopProfile?.();stopProfile=null;setUser(firebaseUser);setProfile(null);setAuthorizationError(null);if(!firebaseUser){setLoading(false);return}setLoading(true);const profileRef=doc(db,'users',firebaseUser.uid),existing=await getDoc(profileRef);if(existing.exists()){const data=existing.data();if(data.status==='inactive'||data.status==='suspended'){setAuthorizationError('Your Hub-Mind account is currently inactive. Please contact an administrator.');setLoading(false);return}setProfile({...data,id:firebaseUser.uid,email:firebaseUser.email||data.email,photoUrl:firebaseUser.photoURL||data.photoUrl}as User);setLoading(false);stopProfile=onSnapshot(profileRef,snap=>{if(!disposed&&snap.exists())setProfile({...snap.data(),id:firebaseUser.uid,email:firebaseUser.email||snap.data().email,photoUrl:firebaseUser.photoURL||snap.data().photoUrl}as User)});return}const inviteId=new URLSearchParams(window.location.search).get('invite');if(!inviteId){setAuthorizationError('This Google account has not been authorized for Hub-Mind. Ask an administrator for an invitation.');setLoading(false);return}try{const invitation=await acceptInvitation(inviteId,firebaseUser.uid,(firebaseUser.email||'').toLowerCase());const now=new Date().toISOString();const newProfile:User={id:firebaseUser.uid,username:invitation.username,name:invitation.displayName,email:firebaseUser.email||invitation.email,role:'staff',status:'active',phone:invitation.phone,photoUrl:firebaseUser.photoURL||undefined,createdAt:now,approvedAt:now,approvedBy:invitation.invitedBy,invitationId:inviteId};await setDoc(profileRef,newProfile);setProfile(newProfile);setLoading(false);window.history.replaceState({},'',window.location.pathname)}catch(error:any){setAuthorizationError(error?.message||'Unable to validate your Hub-Mind invitation.');setLoading(false)}});return()=>{disposed=true;stopProfile?.();stopAuth()}},[]);const updatePreferredName=async(preferredName:string)=>{const clean=preferredName.trim();if(!profile||!clean)return;await setDoc(doc(db,'users',profile.id),{preferredName:clean},{merge:true});setProfile(p=>p?{...p,preferredName:clean}:null)};const logout=async()=>{await signOut(auth);setUser(null);setProfile(null);setAuthorizationError(null)};return <AuthContext.Provider value={{user,profile,loading,authorizationError,updatePreferredName,logout}}>{children}</AuthContext.Provider>}export const useAuth=()=>useContext(AuthContext);
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
+import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { auth, db } from '../firebaseConfig';
+import { User } from '../types';
+import { acceptInvitation } from './invitations';
+
+interface AuthContextType {
+  user: FirebaseUser | null;
+  profile: User | null;
+  loading: boolean;
+  authorizationError: string | null;
+  updatePreferredName: (preferredName: string) => Promise<void>;
+  updateProfileData: (data: Partial<User>) => Promise<void>;
+  logout: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  profile: null,
+  loading: true,
+  authorizationError: null,
+  updatePreferredName: async () => {},
+  updateProfileData: async () => {},
+  logout: async () => {},
+});
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [profile, setProfile] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [authorizationError, setAuthorizationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stopProfile: (() => void) | null = null;
+    let disposed = false;
+
+    const stopAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      stopProfile?.();
+      stopProfile = null;
+      setUser(firebaseUser);
+      setProfile(null);
+      setAuthorizationError(null);
+
+      if (!firebaseUser) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      const profileRef = doc(db, 'users', firebaseUser.uid);
+      const existing = await getDoc(profileRef);
+
+      if (existing.exists()) {
+        const data = existing.data();
+        if (data.status === 'inactive' || data.status === 'suspended') {
+          setAuthorizationError('Your Hub-Mind account is currently inactive. Please contact an administrator.');
+          setLoading(false);
+          return;
+        }
+
+        setProfile({
+          ...data,
+          id: firebaseUser.uid,
+          email: firebaseUser.email || data.email,
+          photoUrl: firebaseUser.photoURL || data.photoUrl,
+        } as User);
+        setLoading(false);
+
+        stopProfile = onSnapshot(profileRef, (snap) => {
+          if (!disposed && snap.exists()) {
+            setProfile({
+              ...snap.data(),
+              id: firebaseUser.uid,
+              email: firebaseUser.email || snap.data().email,
+              photoUrl: firebaseUser.photoURL || snap.data().photoUrl,
+            } as User);
+          }
+        });
+        return;
+      }
+
+      const inviteId = new URLSearchParams(window.location.search).get('invite');
+      if (!inviteId) {
+        setAuthorizationError('This Google account has not been authorized for Hub-Mind. Ask an administrator for an invitation.');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const invitation = await acceptInvitation(inviteId, firebaseUser.uid, (firebaseUser.email || '').toLowerCase());
+        const now = new Date().toISOString();
+        const newProfile: User = {
+          id: firebaseUser.uid,
+          username: invitation.username,
+          name: invitation.displayName,
+          displayName: invitation.displayName,
+          email: firebaseUser.email || invitation.email,
+          role: 'staff',
+          status: 'active',
+          phone: invitation.phone,
+          photoUrl: firebaseUser.photoURL || undefined,
+          createdAt: now,
+          approvedAt: now,
+          approvedBy: invitation.invitedBy,
+          invitationId: inviteId,
+        };
+
+        await setDoc(profileRef, newProfile);
+        setProfile(newProfile);
+        setLoading(false);
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch (error: any) {
+        setAuthorizationError(error?.message || 'Unable to validate your Hub-Mind invitation.');
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      disposed = true;
+      stopProfile?.();
+      stopAuth();
+    };
+  }, []);
+
+  const updatePreferredName = async (preferredName: string) => {
+    const clean = preferredName.trim();
+    if (!profile || !clean) return;
+    await setDoc(doc(db, 'users', profile.id), { preferredName: clean }, { merge: true });
+    setProfile((p) => (p ? { ...p, preferredName: clean } : null));
+  };
+
+  const updateProfileData = async (data: Partial<User>) => {
+    if (!profile) return;
+    await setDoc(doc(db, 'users', profile.id), data, { merge: true });
+    setProfile((p) => (p ? ({ ...p, ...data } as User) : null));
+  };
+
+  const logout = async () => {
+    await signOut(auth);
+    setUser(null);
+    setProfile(null);
+    setAuthorizationError(null);
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        loading,
+        authorizationError,
+        updatePreferredName,
+        updateProfileData,
+        logout,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export const useAuth = () => useContext(AuthContext);

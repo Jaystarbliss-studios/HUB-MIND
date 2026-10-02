@@ -8,8 +8,9 @@ import { Task, Meeting, Client, DocumentInfo, InboxItem, ActivityLog } from '../
 import { getLocalTasks, getLocalProjects, getLocalMeetings, getLocalClients } from '../lib/localWorkspaceStore';
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { isToday, isBefore, startOfDay, parseISO, format, startOfWeek, endOfWeek } from 'date-fns';
-import { CheckCircle2, Clock, Calendar as CalendarIcon, FileText, Loader2, Bell, Users, Inbox, Activity, Check, Clock3 } from 'lucide-react';
+import { CheckCircle2, Clock, Calendar as CalendarIcon, FileText, Loader2, Bell, Users, Inbox, Activity, Check, Clock3, Sparkles } from 'lucide-react';
 import { setDoc, doc, getDoc, addDoc } from 'firebase/firestore';
+import { getLocalDocsMap, setLocalDocsMap } from '../lib/offlineSync';
 import { Link } from 'react-router-dom';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -316,17 +317,69 @@ export function Dashboard() {
 
   const saveDailyReport = async () => {
     if (!profile || !reportText.trim()) return;
-    setReportSaving(true); setReportSaved(false);
+    setReportSaving(true);
+    setReportSaved(false);
     try {
-      const dateKey = format(new Date(), 'yyyy-MM-dd');
+      const now = new Date();
+      const dateKey = format(now, 'yyyy-MM-dd');
+      const formattedDate = format(now, 'dd MMMM yyyy');
+      const nowIso = now.toISOString();
+
+      // 1. Save to private dailyReports
       await setDoc(doc(db, 'users', profile.id, 'dailyReports', dateKey), {
-        date: dateKey, authorId: profile.id, authorName: profile.displayName || profile.name || `@${profile.username}`,
-        report: reportText.trim(), updatedAt: new Date().toISOString(),
+        date: dateKey,
+        authorId: profile.id,
+        authorName: profile.displayName || profile.preferredName || profile.name || `@${profile.username}`,
+        report: reportText.trim(),
+        updatedAt: nowIso,
         snapshot: { urgentTasksCount, todayMeetingsCount, inboxItemsCount, followUpsDueCount, followUpsWaitingCount, paymentsAwaitingCount }
       }, { merge: true });
+
+      // 2. Also save as a document in Documents workspace
+      const htmlContent = reportText
+        .split('\n')
+        .map(line => {
+          if (!line.trim()) return '<br/>';
+          if (line.startsWith('•')) return `<li>${line.substring(1).trim()}</li>`;
+          if (line.endsWith(':') || line.includes('DAILY REPORT')) return `<h3><strong>${line}</strong></h3>`;
+          return `<p>${line}</p>`;
+        })
+        .join('');
+
+      const docPayload = {
+        title: `Daily Report — ${formattedDate}`,
+        content: htmlContent,
+        category: 'report',
+        ownerId: profile.id,
+        createdBy: profile.id,
+        visibility: 'workspace',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        lastEditedAt: nowIso,
+        lastSavedAt: nowIso,
+        version: 1,
+        type: 'internal',
+      };
+
+      const docRef = await addDoc(collection(db, 'documents'), docPayload);
+      const localDocs = getLocalDocsMap();
+      localDocs[docRef.id] = {
+        id: docRef.id,
+        title: docPayload.title,
+        content: htmlContent,
+        updatedAt: nowIso,
+        lastSavedAt: nowIso,
+        lastEditedAt: nowIso,
+        synced: true,
+      };
+      setLocalDocsMap(localDocs);
+
       setReportSaved(true);
-    } catch (e) { console.error('Failed to save daily report:', e); }
-    finally { setReportSaving(false); }
+    } catch (e) {
+      console.error('Failed to save daily report:', e);
+    } finally {
+      setReportSaving(false);
+    }
   };
 
   const generateDailyReport = async () => {
@@ -341,24 +394,30 @@ export function Dashboard() {
       const tasksQuery = profile.role === 'admin'
         ? query(collection(db, 'tasks'))
         : query(collection(db, 'tasks'), where('assignedTo', '==', profile.id));
-      const [tasksSnap, followUpsSnap] = await Promise.all([
+      const [tasksSnap, followUpsSnap, meetingsSnap] = await Promise.all([
         getDocs(tasksQuery),
-        getDocs(collection(db, 'followUps'))
+        getDocs(collection(db, 'followUps')),
+        getDocs(collection(db, 'meetings')),
       ]);
 
       const tasks = tasksSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
       const followUps = followUpsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      const meetings = meetingsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
 
       const isSameDay = (value: any, date: Date) => {
         if (!value) return false;
         try { return format(safeParseISO(value), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'); } catch { return false; }
       };
+
       const completedToday = tasks.filter(t =>
         t.status === 'completed' &&
         (isSameDay(t.completedAt, today) || isSameDay(t.updatedAt, today) || isSameDay(t.completedDate, today))
       );
       const dueToday = tasks.filter(t =>
         t.status !== 'completed' && t.status !== 'archived' && isSameDay(t.deadline, today)
+      );
+      const overdueTasks = tasks.filter(t =>
+        t.status !== 'completed' && t.status !== 'archived' && t.deadline && isBefore(safeParseISO(t.deadline), startOfDay(today))
       );
       const tomorrowTasks = tasks.filter(t =>
         t.status !== 'completed' && t.status !== 'archived' && isSameDay(t.deadline, tomorrow)
@@ -371,34 +430,46 @@ export function Dashboard() {
         ...tasks.filter(t => t.status !== 'completed' && t.needsDecision === true),
         ...followUps.filter(f => !['resolved', 'cancelled'].includes(f.status) && (f.needsDecision === true || f.decisionRequired === true))
       ];
+      const todayMeetings = meetings.filter(m => m.date && isToday(safeParseISO(m.date)));
 
       const section = (title: string, items: any[], empty: string, formatter: (x:any) => string) => [
         title,
         ...(items.length ? items.map(formatter) : [empty])
       ];
 
+      const authorName = profile.preferredName || profile.displayName || profile.name || 'Jaystarbliss';
       const lines = [
-        `JAYSTARBLISS DAILY REPORT — ${format(today, 'dd MMMM yyyy')}`,
+        `DAILY OPERATIONAL REPORT — ${format(today, 'dd MMMM yyyy')}`,
+        `Prepared for ${authorName}`,
         '',
-        ...section('COMPLETED TODAY:', completedToday, '• Nothing marked completed today', t => `• ${t.title || 'Completed task'}`),
+        ...section('1. WHAT WAS COMPLETED TODAY:', completedToday, '• No items flagged as completed today.', t => `• ${t.title || 'Completed task'}`),
         '',
-        ...section('STILL DUE:', dueToday, '• No outstanding tasks due today', t => `• ${t.title || 'Untitled task'}${t.priority ? ` [${t.priority}]` : ''}`),
+        ...section('2. WHAT IS PENDING & DUE:', [...dueToday, ...overdueTasks], '• All due tasks for today are clear.', t => `• ${t.title || 'Pending task'}${t.priority ? ` [${t.priority.toUpperCase()}]` : ''}`),
         '',
-        ...section('FOLLOW-UPS:', waitingFollowUps, '• No active follow-ups requiring attention today', f => `• ${f.title || f.subject || 'Follow-up'}${f.status === 'waiting' ? ' — waiting for response' : ''}`),
+        ...section('3. FOLLOW-UPS & CLIENTS AWAITING:', waitingFollowUps, '• No follow-ups currently waiting.', f => `• ${f.title || f.subject || 'Follow-up item'}${f.status === 'waiting' ? ' (waiting on response)' : ''}`),
         '',
-        ...section('NEEDS YOUR DECISION:', decisionItems, '• Nothing currently flagged for your decision', x => `• ${x.title || x.subject || 'Item requiring decision'}`),
+        ...section('4. WHAT NEEDS YOUR DECISION:', decisionItems, '• Nothing currently requiring your decision.', x => `• ${x.title || x.subject || 'Decision item'}`),
         '',
-        ...section('TOMORROW:', tomorrowTasks, '• No tasks scheduled for tomorrow', t => `• ${t.title || 'Untitled task'}`),
+        ...section('5. TOMORROW & UPCOMING:', tomorrowTasks, '• No tasks scheduled for tomorrow.', t => `• ${t.title || 'Upcoming task'}`),
         '',
-        '— Prepared from Hub-Mind'
+        '6. EXECUTIVE SUMMARY:',
+        `• ${completedToday.length} task(s) completed today, ${dueToday.length + overdueTasks.length} pending, ${todayMeetings.length} meeting(s) held. Operations healthy.`,
+        '',
+        '— Generated by Hub-Mind'
       ];
-      setReportText(lines.join('\\n'));
+      setReportText(lines.join('\n'));
     } catch (e) {
       console.error('Failed to generate daily report:', e);
     } finally {
       setReportGenerating(false);
     }
   };
+
+  useEffect(() => {
+    if (profile && !reportText) {
+      void generateDailyReport();
+    }
+  }, [profile]);
 
   const buildDailyReportMessage = () => {
     const dateLabel = format(new Date(), 'dd MMMM yyyy');
@@ -692,92 +763,66 @@ export function Dashboard() {
         </section>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div><h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">This Week</h3><p className="text-sm text-slate-400 mt-1">Your operating picture for the current week.</p></div>
-            <Link to="/calendar" className="text-xs font-bold text-accent">Open calendar →</Link>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {[['Tasks due', weekTasksCount], ['Meetings', meetingsThisWeekCount], ['Follow-ups due', followUpsDueCount], ['Waiting', followUpsWaitingCount]].map(([label,value]) => (
-              <div key={label as string} className="rounded-xl border border-slate-800 bg-slate-950/50 p-4"><div className="text-2xl font-bold text-white">{value}</div><div className="text-xs text-slate-500 mt-1">{label}</div></div>
-            ))}
-          </div>
-        </section>
-        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">End-of-Day Report</h3>
-          <p className="text-sm text-slate-400 mb-4">Record what was completed, what is pending, and what needs your decision.</p>
-          <textarea value={reportText} onChange={e=>{setReportText(e.target.value);setReportSaved(false)}} placeholder="Completed…\nPending…\nNeeds your decision…\nTomorrow…" className="w-full min-h-[120px] rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200 outline-none focus:border-accent resize-y" />
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
-            <span className="text-xs text-slate-500">Saved privately to your daily reports.</span>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={saveDailyReport} disabled={reportSaving || !reportText.trim()} className="px-4 py-2 rounded-lg bg-accent text-slate-950 text-sm font-bold disabled:opacity-50">
-                {reportSaving ? 'Saving…' : reportSaved ? 'Saved ✓' : 'Save report'}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
+        <section className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">End-of-Day Report</h3>
+              <button
+                onClick={generateDailyReport}
+                disabled={reportGenerating}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/10 border border-accent/20 text-accent text-xs font-bold hover:bg-accent/20 disabled:opacity-50 cursor-pointer"
+                title="AI pre-fill from workspace data"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {reportGenerating ? 'Analyzing Workspace…' : 'AI Pre-fill'}
               </button>
-              <button onClick={sendReportToWhatsApp} disabled={whatsappSending || !reportText.trim()} className="px-4 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-sm font-bold hover:bg-emerald-500/20 disabled:opacity-50">
+            </div>
+            <p className="text-sm text-slate-400 mb-4">Record what was completed, what is pending, and what needs decision. Saved as a workspace document.</p>
+            <textarea
+              value={reportText}
+              onChange={e => { setReportText(e.target.value); setReportSaved(false); }}
+              placeholder="Completed…&#10;Pending…&#10;Needs your decision…&#10;Tomorrow…"
+              className="w-full min-h-[160px] rounded-xl border border-slate-800 bg-slate-950 p-3.5 text-xs sm:text-sm text-slate-200 outline-none focus:border-accent resize-y font-mono leading-relaxed"
+            />
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-3 border-t border-slate-800/80">
+            <span className="text-xs text-slate-500">Auto-saved to your daily reports & workspace documents.</span>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={saveDailyReport} disabled={reportSaving || !reportText.trim()} className="px-4 py-2 rounded-lg bg-accent text-slate-950 text-xs sm:text-sm font-bold disabled:opacity-50 cursor-pointer shadow-xs active:scale-98">
+                {reportSaving ? 'Saving…' : reportSaved ? 'Saved as Document ✓' : 'Save Report'}
+              </button>
+              <button onClick={sendReportToWhatsApp} disabled={whatsappSending || !reportText.trim()} className="px-4 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs sm:text-sm font-bold hover:bg-emerald-500/20 disabled:opacity-50 cursor-pointer">
                 {whatsappSending ? 'Opening WhatsApp…' : 'Send via WhatsApp'}
               </button>
             </div>
           </div>
         </section>
-      </div>
 
-      {/* Third row: Scratchpad & Recent Activity */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-        <div className="md:col-span-8">
-          <section>
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Activity className="w-4 h-4" /> Recent Activity
-            </h3>
-            
-            {recentActivity.length === 0 ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-500 text-sm">
-                No recent activity recorded.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {recentActivity.map(log => (
-                  <div key={log.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-slate-300">
-                        <span className="font-medium text-white">{log.userId}</span> {log.action} <span className="font-medium text-white">{log.details}</span>
-                      </p>
-                      <p className="text-xs text-slate-500 capitalize">{log.entityType}</p>
-                    </div>
-                    <span className="text-xs text-slate-500 shrink-0">
-                      {safeFormat(log.createdAt, 'MMM d, h:mm a')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-
-        <div className="md:col-span-4">
-          <section className="h-full flex flex-col min-h-[300px]">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <FileText className="w-4 h-4" /> Personal Scratchpad
-            </h3>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col p-5 relative overflow-hidden flex-1"> 
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Jot down quick thoughts here..."
-                className="flex-1 w-full bg-transparent text-sm text-slate-300 leading-relaxed resize-none focus:outline-none"
-              />
-              <div className="mt-4 pt-4 border-t border-slate-800 flex justify-between items-center shrink-0">
-                 <button 
-                   onClick={handleSaveNotes}
-                  disabled={savingNotes}
-                  className="text-xs text-slate-500 hover:text-accent flex items-center gap-1 transition-colors"
-                 >
-                   {savingNotes ? 'Saving...' : saveSuccess ? <><Check className="w-4 h-4 text-emerald-500" /> Saved!</> : <><span className="text-lg leading-none mb-0.5">+</span> Save note</>}
-                 </button>
-              </div>
+        <section className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col p-6 min-h-[300px]">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-accent" /> Personal Scratchpad
+          </h3>
+          <p className="text-xs text-slate-400 mb-3">Quick thoughts, temporary notes, and immediate reminders.</p>
+          <div className="bg-slate-950 border border-slate-800/80 rounded-xl flex flex-col p-4 relative overflow-hidden flex-1"> 
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Jot down quick thoughts here..."
+              className="flex-1 w-full bg-transparent text-sm text-slate-300 leading-relaxed resize-none focus:outline-none min-h-[140px]"
+            />
+            <div className="mt-3 pt-3 border-t border-slate-800/70 flex justify-between items-center shrink-0">
+               <button 
+                 onClick={handleSaveNotes}
+                disabled={savingNotes}
+                className="text-xs font-semibold text-slate-400 hover:text-accent flex items-center gap-1.5 transition-colors cursor-pointer"
+               >
+                 {savingNotes ? 'Saving...' : saveSuccess ? <><Check className="w-4 h-4 text-emerald-400" /> Saved!</> : <><span className="text-base leading-none mb-0.5">+</span> Save note</>}
+               </button>
+               <span className="text-[11px] text-slate-500">Private to your account</span>
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
       </div>
 
     </div>

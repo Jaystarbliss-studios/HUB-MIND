@@ -32,8 +32,8 @@ export default async (req: Request) => {
     if (!key) {
       const detail = 'GEMINI_API_KEY is missing from the Netlify environment.';
       return responseJson({
-        text: `Shawn is offline because the AI provider is not configured. ${detail}`,
-        error: 'Shawn is not configured on this deployment.',
+        text: `Jess is offline because the AI provider is not configured. ${detail}`,
+        error: 'Jess is not configured on this deployment.',
         code: 'AI_PROVIDER_NOT_CONFIGURED',
         detail,
         serviceError: true,
@@ -83,25 +83,25 @@ export default async (req: Request) => {
         });
       } catch (e: any) {
         lastError = e;
-        console.warn(`Shawn model ${model} failed:`, e?.message || e);
+        console.warn(`Jess model ${model} failed:`, e?.message || e);
       }
     }
 
     const detail = lastError?.message || 'All configured AI models failed.';
     return responseJson({
       text: `I could not reach any of my AI models just now. ${detail}`,
-      error: 'Shawn could not reach a working AI model.',
+      error: 'Jess could not reach a working AI model.',
       code: 'AI_ALL_MODELS_FAILED',
       detail,
       attemptedModels,
       serviceError: true,
     });
   } catch (error: any) {
-    console.error('Shawn Netlify function error:', error);
+    console.error('Jess Netlify function error:', error);
     const detail = error?.message || 'Unknown server error';
     return responseJson({
-      text: `Shawn hit a server error before I could answer. ${detail}`,
-      error: 'Shawn request failed before a response could be generated.',
+      text: `Jess hit a server error before I could answer. ${detail}`,
+      error: 'Jess request failed before a response could be generated.',
       code: 'AI_REQUEST_FAILED',
       detail,
       serviceError: true,

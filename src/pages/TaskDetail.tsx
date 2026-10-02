@@ -303,7 +303,7 @@ export function TaskDetail() {
           <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
           <div className="space-y-1 text-xs">
             <span className="font-bold text-rose-300 block">Task Declined by Assignee</span>
-            <span className="text-slate-300">Reason: "{task.rejectionReason || 'No reason specified.'}"</span>
+            <span className="text-slate-300">Reason: "{task.rejectedReason || task.rejectionReason || 'No reason specified.'}"</span>
           </div>
         </div>
       )}

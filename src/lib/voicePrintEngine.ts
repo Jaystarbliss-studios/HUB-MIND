@@ -1,13 +1,13 @@
 /**
- * Shawn VoicePrint Engine
+ * Jess VoicePrint Engine
  * 
  * Extracts spectral audio features (energy distribution across vocal formant bands,
  * spectral centroid, and harmonic ratios) to build an enrolled voiceprint centroid
  * for the authenticated user.
  * 
  * Training rules:
- * - < 200 samples: "Learning Mode" (Shawn responds to all voice commands while collecting samples)
- * - 200+ samples: "Voice Isolation Active" (Shawn matches against the user's centroid and rejects background/other voices)
+ * - < 200 samples: "Learning Mode" (Jess responds to all voice commands while collecting samples)
+ * - 200+ samples: "Voice Isolation Active" (Jess matches against the user's centroid and rejects background/other voices)
  */
 
 export interface VoicePrintProfile {
@@ -48,7 +48,7 @@ class VoicePrintEngine {
     }
 
     try {
-      const saved = localStorage.getItem(`shawn_voiceprint_${userId}`);
+      const saved = localStorage.getItem(`jess_voiceprint_${userId}`);
       if (saved) {
         const parsed = JSON.parse(saved);
         const profile: VoicePrintProfile = {
@@ -183,7 +183,7 @@ class VoicePrintEngine {
 
     // Save to localStorage
     try {
-      localStorage.setItem(`shawn_voiceprint_${userId}`, JSON.stringify(updatedProfile));
+      localStorage.setItem(`jess_voiceprint_${userId}`, JSON.stringify(updatedProfile));
     } catch (e) {
       console.warn('Failed to save voice profile', e);
     }
@@ -254,7 +254,7 @@ class VoicePrintEngine {
     const empty = this.getEmptyProfile(userId);
     this.cache.set(userId, empty);
     try {
-      localStorage.removeItem(`shawn_voiceprint_${userId}`);
+      localStorage.removeItem(`jess_voiceprint_${userId}`);
     } catch (e) {}
   }
 }

@@ -14,6 +14,7 @@ import {
 import { db } from '../firebaseConfig';
 import { Client, User, ResourceVisibility } from '../types';
 import { logActivity } from './activityService';
+import { isSharedWith } from '../lib/rbac';
 
 export async function createClient(params: {
   name: string;
@@ -107,7 +108,7 @@ export function subscribeToClients(
       clients = clients.filter(c => {
         if (c.ownerId === currentUser.id || c.createdBy === currentUser.id) return true;
         if (c.visibility === 'workspace') return true;
-        if (c.visibility === 'shared' && c.sharedWith?.includes(currentUser.id)) return true;
+        if (c.visibility === 'shared' && isSharedWith(c.sharedWith, currentUser.id)) return true;
         return false;
       });
     }

@@ -19,8 +19,54 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  app.get("/api/config", (req, res) => {
-    res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || "" });
+  app.post(["/api/live-token", "/live-token"], async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+      const geminiKey = process.env.GEMINI_API_KEY;
+
+      if (!geminiKey) {
+        return res.status(503).json({ error: "GEMINI_API_KEY is not configured on the server." });
+      }
+
+      const now = Date.now();
+      try {
+        const tokenResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/auth_tokens", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": geminiKey,
+          },
+          body: JSON.stringify({
+            uses: 1,
+            expireTime: new Date(now + 30 * 60 * 1000).toISOString(),
+            newSessionExpireTime: new Date(now + 60 * 1000).toISOString(),
+            liveConnectConstraints: {
+              model: "models/gemini-3.8-live",
+              config: { responseModalities: ["AUDIO"], sessionResumption: {} },
+            },
+          }),
+        });
+
+        const tokenData = (await tokenResponse.json()) as any;
+        if (tokenResponse.ok && tokenData?.name) {
+          return res.json({
+            token: tokenData.name,
+            expiresAt: tokenData.expireTime || null,
+          });
+        }
+      } catch (tokenErr) {
+        console.warn("Live ephemeral token minting failed, using direct key fallback:", tokenErr);
+      }
+
+      return res.json({
+        token: geminiKey,
+        expiresAt: new Date(now + 30 * 60 * 1000).toISOString(),
+      });
+    } catch (error: any) {
+      console.error("Jess live-token error:", error);
+      return res.status(500).json({ error: error?.message || "Could not initialize Jess Live token." });
+    }
   });
 
   let memories = [];
@@ -657,13 +703,82 @@ async function startServer() {
           name: "list_clients",
           description: "List active Hub-Mind clients.",
           parameters: { type: "OBJECT", properties: {} }
-        }      ],
+        },
+        {
+          name: "create_recurring_schedule",
+          description: "Create a repeating schedule (e.g. music classes, weekly team meetings, daily routines) in Hub-Mind that generates recurring calendar instances automatically.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              title: { type: "STRING" },
+              type: { type: "STRING", enum: ["class", "meeting", "appointment", "school_event", "other"] },
+              frequency: { type: "STRING", enum: ["weekly", "daily", "monthly"] },
+              daysOfWeek: { type: "ARRAY", items: { type: "NUMBER" } },
+              startTime: { type: "STRING" },
+              endTime: { type: "STRING" },
+              startDate: { type: "STRING" },
+              endDate: { type: "STRING" },
+              location: { type: "STRING" },
+              description: { type: "STRING" },
+              syncToGoogleCalendar: { type: "BOOLEAN" }
+            },
+            required: ["title", "frequency", "startTime"]
+          }
+        },
+        {
+          name: "list_recurring_schedules",
+          description: "List recurring schedule templates in Hub-Mind.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "delete_recurring_schedule",
+          description: "Delete a recurring schedule template from Hub-Mind.",
+          parameters: { type: "OBJECT", properties: { templateId: { type: "STRING" } }, required: ["templateId"] }
+        },
+        {
+          name: "create_meeting",
+          description: "Schedule a single meeting on the Hub-Mind calendar.",
+          parameters: { type: "OBJECT", properties: { title: { type: "STRING" }, date: { type: "STRING" }, location: { type: "STRING" }, notes: { type: "STRING" } }, required: ["title", "date"] }
+        },
+        {
+          name: "update_meeting",
+          description: "Update a scheduled meeting on the calendar.",
+          parameters: { type: "OBJECT", properties: { meetingId: { type: "STRING" }, title: { type: "STRING" }, date: { type: "STRING" }, location: { type: "STRING" }, status: { type: "STRING" } }, required: ["meetingId"] }
+        },
+        {
+          name: "delete_meeting",
+          description: "Delete a meeting from the calendar.",
+          parameters: { type: "OBJECT", properties: { meetingId: { type: "STRING" } }, required: ["meetingId"] }
+        },
+        {
+          name: "connect_google_calendar",
+          description: "Connect the user's account to Google Calendar with one-time persistent authorization.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "end_session",
+          description: "Put the AI assistant to sleep and end the live voice session when the user says 'end this session', 'go to sleep', 'sleep', or 'deactivate'.",
+          parameters: { type: "OBJECT", properties: { reason: { type: "STRING" } } }
+        }
+      ],
     },
   ];
 
-  const JESS_PROMPT_INSTRUCTION = `You are Jess, the embedded AI assistant inside Hub-Mind. You are not a
+  const JESS_PROMPT_INSTRUCTION = `You are an intelligent, capable AI operations assistant inside Hub-Mind. You are not a
 chatbot bolted onto the app — you have real, live access to its data via
 function calls, and you are expected to use it.
+
+## PERSONA INITIALIZATION & IDENTITY RULE
+- When greeting the user or opening a conversation, greet them professionally and neutrally by their name (e.g. "Hello [Name], how may I assist you today?").
+- Do NOT proactively introduce yourself by name or say "I am Jess" or "My name is Jess" in standard greetings or conversational replies unless the user explicitly asks for your name, who you are, or your identity.
+- Only state your name ("Jess") when the user specifically asks "What's your name?", "Who are you?", or similar questions.
+
+## SESSION DEACTIVATION & SLEEP COMMAND
+- When the user says "end this session", "go to sleep", "sleep", "deactivate", "stop session", or asks to conclude, politely bid them goodbye (e.g. "Ending session now. Have a wonderful day!") and immediately call the \`end_session\` tool to put the assistant into sleep mode.
+
+## RECURRING SCHEDULES & CALENDAR
+- When the user asks to add or schedule recurring events (like classes, weekly team meetings, lessons, daily standups, appointments), use \`create_recurring_schedule\` with the title, frequency, daysOfWeek, and times.
+- For single meetings or deadlines, use \`create_meeting\` or \`create_calendar_event\`.
 
 ## HARD RULE: GROUND EVERYTHING IN TOOL CALLS
 Never state that a task, document, event, or piece of data exists, was
@@ -675,61 +790,16 @@ conversation. If a tool call fails or returns an error, tell the user
 plainly that it failed; never narrate success you haven't actually received
 back from a function result.
 
-## SESSION START
-At the start of every session, you are given: the logged-in user's name,
-role, and a workspace snapshot (open task count, today's events, documents
-pending review). Use this to open naturally ("Morning! Three things
-overdue and nothing on the calendar till 2") rather than a generic greeting.
-
-## PERSONALITY
-- You sound like a sharp, quick-witted young boy — playful, cheeky, a bit
-  mischievous — but genuinely intelligent and competent underneath it. Think
-  "brilliant kid who's somehow also the most reliable person in the room."
-- Default to a light British voice and phrasing in Voice Mode (contractions,
-  "right then," "brilliant," "no worries," dry humor) — but never let the
-  personality get in the way of accuracy or task completion. Playful tone,
-  serious follow-through.
-- You are warm and a little irreverent with people you know well, but you
-  read the room: if someone is stressed, behind on deadlines, or the
-  conversation is serious (finance, a client issue, an overdue task), dial
-  the playfulness down and be direct and helpful first.
-- Never be sarcastic at the user's expense, never mock mistakes, and never
-  let personality slow down a task — if someone needs something done fast,
-  do it fast and joke afterward, not during.
+## ASYNCHRONOUS BACKGROUND PROCESSING & CONCURRENT CONVERSATION
+- When given long-running, multi-step tasks (such as document drafting, workspace audits, or batch operations), initiate them using background queue tools like start_background_operation so they process asynchronously.
+- Stay fully conversational and responsive while tasks process in the background.
+- When the user asks about the status of any task (e.g., "Have you done that?", "What is the progress?"), check get_background_tasks_status or review your queue context, and report the exact percentage (e.g. 50% complete, 75% complete, 100% complete) and current stage.
 
 ## IDENTITY & ADDRESSING USERS
-- Always address the person by the name/username tied to their currently
-  logged-in Hub-Mind account. Never assume a name.
-- If a user's preferred name/username hasn't been set yet, ask for it once
-  in their first session ("Right then — what should I call you?") and store
-  it against their account so every future session uses it automatically.
-- You know the logged-in user's role (Admin, Assistant, or Staff) from the
-  session context you're given, and you tailor what you offer to do based on
-  that role (see PERMISSIONS below). Never mention role-based restrictions
-  as a limitation of "you" — frame it as how the platform is set up.
-
-## TOOLS AVAILABLE TO YOU
-- navigate_app — move the user to a different screen
-- list_tasks / create_task / update_task
-- list_documents / get_document_content / create_document / update_document
-- open_document / edit_document_live / background_edit_document
-- create_follow_up / list_follow_ups / list_projects / list_clients
-- get_user_profile / request_share_document
-- request_document_delete — NEVER call the underlying delete directly; this
-  always surfaces a confirmation prompt to the user first, and you only
-  proceed after they explicitly confirm in that turn
-- list_projects / list_clients
-- list_calendar_events / create_calendar_event
-- search_workspace — use this for any vague or broad question about
-  "what's going on with X"
-- set_preferred_name
-
-## PERMISSIONS
-Admin and Assistant roles: full visibility across all tasks, documents,
-projects, clients. Staff roles: their own items plus anything shared. If a
-Staff user's request needs data outside their access, say so plainly rather
-than pretending it isn't there — the tool calls will return only what
-they're permitted to see, so trust what comes back.
+- Always address the person by the name/preferred name tied to their currently
+  logged-in Hub-Mind account. Never assume an incorrect name.
+- If a user's preferred name hasn't been set yet, you can ask for it and store it using set_preferred_name.
+- You have full operational authorization matching the user's role (Admin, Assistant, or Staff).
 
 ## CONFIRMATION-GATED ACTIONS
 Deleting a document, and sharing a private document/task, both require
@@ -781,12 +851,12 @@ call returns.`;
 
       try {
         liveSession = await ai.live.connect({
-          model: "gemini-3.1-flash-live-preview",
+          model: "gemini-3.8-live",
           config: {
             responseModalities: [Modality.AUDIO],
             inputAudioTranscription: {},
             outputAudioTranscription: {},
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } },
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
             tools: LIVE_TOOLS as any,
             systemInstruction: {
               parts: [{
@@ -977,12 +1047,12 @@ call returns.`;
                 // Synthesize TTS audio and stream
                 try {
                   const ttsRes = await chatAi.models.generateContent({
-                    model: "gemini-3.1-flash-tts-preview",
+                    model: "gemini-3.8-flash-lite-tts",
                     contents: [{ parts: [{ text: replyText }] }],
                     config: {
                       responseModalities: ["AUDIO"] as any,
                       speechConfig: {
-                        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } },
+                        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
                       },
                     },
                   });

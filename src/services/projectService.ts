@@ -14,6 +14,7 @@ import {
 import { db } from '../firebaseConfig';
 import { Project, User, ResourceVisibility } from '../types';
 import { logActivity } from './activityService';
+import { isSharedWith } from '../lib/rbac';
 import { deleteLocalProject, upsertLocalProject } from '../lib/localWorkspaceStore';
 import { enqueueOfflineAction } from '../lib/offlineQueue';
 
@@ -155,7 +156,7 @@ export function subscribeToProjects(
       projects = projects.filter(p => {
         if (p.ownerId === currentUser.id || p.createdBy === currentUser.id) return true;
         if (p.visibility === 'workspace') return true;
-        if (p.visibility === 'shared' && p.sharedWith?.includes(currentUser.id)) return true;
+        if (p.visibility === 'shared' && isSharedWith(p.sharedWith, currentUser.id)) return true;
         return false;
       });
     }

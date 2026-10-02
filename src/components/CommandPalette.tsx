@@ -261,16 +261,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
     },
     {
-      id: 'act-talk-shawn',
-      title: 'Talk to Shawn AI Assistant',
+      id: 'act-talk-jess',
+      title: 'Talk to Jess AI Assistant',
       subtitle: 'Open voice & multimodal AI copilot to manage workspace',
       category: 'action',
       icon: Mic,
       iconColor: 'text-indigo-400',
-      badge: 'Shawn AI',
+      badge: 'Jess AI',
       action: () => {
         onClose();
-        window.dispatchEvent(new CustomEvent('hubmind:open-shawn'));
+        window.dispatchEvent(new CustomEvent('hubmind:open-jess'));
       },
     },
     {

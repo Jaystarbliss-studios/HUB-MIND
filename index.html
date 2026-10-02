@@ -124,8 +124,7 @@
     <meta property="twitter:image" content="https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=1200&auto=format&fit=crop" />
   </head>
   <body>
-    
-    <div id="root">
+    <div id="pwa-splash">
       <style>
         #pwa-splash {
           position: fixed;
@@ -136,7 +135,7 @@
           align-items: center;
           justify-content: center;
           z-index: 99999;
-          transition: opacity 0.5s ease-out;
+          transition: opacity 0.3s ease-out;
         }
         .pwa-logo {
           width: 80px;
@@ -161,33 +160,33 @@
           font-size: 14px;
         }
       </style>
-      <div id="pwa-splash">
-        <svg class="pwa-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/>
-          <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>
-          <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/>
-          <path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/>
-          <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/>
-          <path d="M3.477 10.896a4 4 0 0 1 .585-.396"/>
-          <path d="M19.938 10.5a4 4 0 0 1 .585.396"/>
-          <path d="M6 18a4 4 0 0 1-1.967-.516"/>
-          <path d="M19.967 17.484A4 4 0 0 1 18 18"/>
-        </svg>
-        <h1 class="pwa-title">Hub-Mind</h1>
-        <p class="pwa-subtitle">Loading Workspace...</p>
-      </div>
+      <svg class="pwa-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/>
+        <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>
+        <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/>
+        <path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/>
+        <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/>
+        <path d="M3.477 10.896a4 4 0 0 1 .585-.396"/>
+        <path d="M19.938 10.5a4 4 0 0 1 .585.396"/>
+        <path d="M6 18a4 4 0 0 1-1.967-.516"/>
+        <path d="M19.967 17.484A4 4 0 0 1 18 18"/>
+      </svg>
+      <h1 class="pwa-title">Hub-Mind</h1>
+      <p class="pwa-subtitle">Loading Workspace...</p>
       <script>
-        // Failsafe auto-dismiss splash screen after max 1.5s
+        // Dismiss splash screen quickly
         setTimeout(function() {
           var el = document.getElementById('pwa-splash');
           if (el) {
-            el.style.transition = 'opacity 0.3s ease';
             el.style.opacity = '0';
-            setTimeout(function() { if (el && el.parentNode) el.parentNode.removeChild(el); }, 350);
+            el.style.pointerEvents = 'none';
+            setTimeout(function() { if (el && el.parentNode) el.parentNode.removeChild(el); }, 300);
           }
-        }, 1500);
+        }, 300);
       </script>
     </div>
+
+    <div id="root"></div>
 
     <script type="module" src="/src/main.tsx"></script>
   </body>

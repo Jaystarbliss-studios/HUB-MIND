@@ -19,6 +19,7 @@ const ClientDetail = lazy(() => import('./pages/ClientDetail').then(m => ({ defa
 const Documents = lazy(() => import('./pages/Documents').then(m => ({ default: m.Documents })));
 const DocumentEditor = lazy(() => import('./pages/DocumentEditor').then(m => ({ default: m.DocumentEditor })));
 const Calendar = lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
+const People = lazy(() => import('./pages/People').then(m => ({ default: m.People })));
 const AdminUsers = lazy(() => import('./pages/AdminUsers').then(m => ({ default: m.AdminUsers })));
 const Notifications = lazy(() => import('./pages/Notifications').then(m => ({ default: m.Notifications })));
 const Projects = lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
@@ -49,13 +50,56 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
   return <>{children}</>;
 }
 
+function AuthenticatedAssistantWidgets() {
+  const { user, profile } = useAuth();
+  if (!user || !profile || profile.status !== 'active') return null;
+  return (
+    <>
+      <JessDocumentBridge />
+      <JessFloatingAssistant />
+    </>
+  );
+}
+
 export default function App() {
-  return <AppErrorBoundary><AuthProvider><LoadingProvider><BrowserRouter><PWAPrompt /><Suspense fallback={<LoadingScreen />}><Routes>
-    <Route path="/login" element={<Login />} />
-    <Route path="/share-target" element={<Navigate to="/inbox?shared=true" replace />} />
-    <Route path="/share/:type/:id" element={<ProtectedRoute><SharedRecord /></ProtectedRoute>} />
-    <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-      <Route index element={<Dashboard />} /><Route path="inbox" element={<Inbox />} /><Route path="tasks" element={<Tasks />} /><Route path="tasks/:id" element={<TaskDetail />} /><Route path="projects" element={<Projects />} /><Route path="projects/:id" element={<ProjectDetail />} /><Route path="knowledge" element={<Knowledge />} /><Route path="follow-ups" element={<FollowUps />} /><Route path="clients" element={<Clients />} /><Route path="clients/:id" element={<ClientDetail />} /><Route path="meetings/:id" element={<MeetingDetail />} /><Route path="calendar" element={<Calendar />} /><Route path="documents" element={<Documents />} /><Route path="documents/:id" element={<DocumentEditor />} /><Route path="notifications" element={<Notifications />} /><Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} /><Route path="*" element={<Navigate to="/" replace />} />
-    </Route><Route path="*" element={<Navigate to="/" replace />} />
-  </Routes></Suspense><ProtectedRoute><JessDocumentBridge /><JessFloatingAssistant /></ProtectedRoute></BrowserRouter></LoadingProvider></AuthProvider></AppErrorBoundary>;
+  return (
+    <AppErrorBoundary>
+      <AuthProvider>
+        <LoadingProvider>
+          <BrowserRouter>
+            <PWAPrompt />
+            <Suspense fallback={<LoadingScreen />}>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/share-target" element={<Navigate to="/inbox?shared=true" replace />} />
+                <Route path="/share/:type/:id" element={<ProtectedRoute><SharedRecord /></ProtectedRoute>} />
+                <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="inbox" element={<Inbox />} />
+                  <Route path="tasks" element={<Tasks />} />
+                  <Route path="tasks/:id" element={<TaskDetail />} />
+                  <Route path="projects" element={<Projects />} />
+                  <Route path="projects/:id" element={<ProjectDetail />} />
+                  <Route path="knowledge" element={<Knowledge />} />
+                  <Route path="follow-ups" element={<FollowUps />} />
+                  <Route path="clients" element={<Clients />} />
+                  <Route path="clients/:id" element={<ClientDetail />} />
+                  <Route path="meetings/:id" element={<MeetingDetail />} />
+                  <Route path="calendar" element={<Calendar />} />
+                  <Route path="people" element={<People />} />
+                  <Route path="documents" element={<Documents />} />
+                  <Route path="documents/:id" element={<DocumentEditor />} />
+                  <Route path="notifications" element={<Notifications />} />
+                  <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+            <AuthenticatedAssistantWidgets />
+          </BrowserRouter>
+        </LoadingProvider>
+      </AuthProvider>
+    </AppErrorBoundary>
+  );
 }

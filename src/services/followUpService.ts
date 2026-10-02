@@ -14,6 +14,7 @@ import {
 import { db } from '../firebaseConfig';
 import { FollowUp, User, ResourceVisibility } from '../types';
 import { logActivity } from './activityService';
+import { isSharedWith } from '../lib/rbac';
 
 export async function createFollowUp(params: {
   title: string;
@@ -110,7 +111,7 @@ export function subscribeToFollowUps(
       list = list.filter(fu => {
         if (fu.ownerId === currentUser.id) return true;
         if (fu.visibility === 'workspace') return true;
-        if (fu.visibility === 'shared' && fu.sharedWith?.includes(currentUser.id)) return true;
+        if (fu.visibility === 'shared' && isSharedWith(fu.sharedWith, currentUser.id)) return true;
         return false;
       });
     }
