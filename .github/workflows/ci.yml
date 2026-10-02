@@ -22,6 +22,8 @@ jobs:
       - name: Jess integration verification
         run: npm run verify:jess
       - name: TypeScript validation
-        run: npm run lint
+        run: npm run typecheck
+      - name: Unit and contract tests
+        run: npm run test:unit
       - name: Production build
         run: npm run build
