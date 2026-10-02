@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 
 const root = process.cwd();
 const activeFiles = [
-  'src/App.tsx', 'src/types.ts', 'src/lib/jessTools.ts', 'src/components/JessFloatingAssistant.tsx',
-  'src/components/JessOrbVisualizer.tsx', 'src/components/JessDocumentBridge.tsx', 'src/services/liveAudioClient.ts',
+  'src/App.tsx', 'src/types.ts', 'src/lib/jessTools.ts', 'src/lib/jessDocumentBridge.ts',
+  'src/components/JessFloatingAssistant.tsx', 'src/components/JessOrbVisualizer.tsx', 'src/components/JessDocumentBridge.tsx', 'src/services/liveAudioClient.ts',
 ];
 const forbidden = /Shawn|shawn|WakeWord|wake-word|wake word/;
 const failures = [];
