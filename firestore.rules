@@ -23,7 +23,13 @@ service cloud.firestore {
       match /private/{document=**} { allow read, write: if self(userId) || admin(); }
       match /dailyReports/{id} { allow read, write: if self(userId) || admin(); }
     }
-    match /invitations/{id} { allow get: if admin() || (signedIn() && resource.data.email == request.auth.token.email); allow list: if admin(); allow create: if admin() && request.resource.data.role == 'staff' && request.resource.data.status == 'invited' && request.resource.data.invitedBy == request.auth.uid; allow update, delete: if admin(); }
+    match /invitations/{id} {
+      allow get: if admin() || (signedIn() && resource.data.email == request.auth.token.email);
+      allow list: if admin();
+      allow create: if admin() && request.resource.data.role == 'staff' && request.resource.data.status == 'invited' && request.resource.data.invitedBy == request.auth.uid;
+      allow update: if admin() || (signedIn() && resource.data.status == 'invited' && resource.data.email == request.auth.token.email && request.resource.data.status == 'accepted' && request.resource.data.acceptedUid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','acceptedAt','acceptedUid']));
+      allow delete: if admin();
+    }
     match /connections/{id} { allow get: if member() && (resource.data.requesterId == request.auth.uid || resource.data.recipientId == request.auth.uid); allow list: if admin() || member(); allow create: if member() && (request.resource.data.requesterId == request.auth.uid || request.resource.data.recipientId == request.auth.uid); allow update, delete: if member() && (resource.data.requesterId == request.auth.uid || resource.data.recipientId == request.auth.uid); }
     match /shares/{id} { allow get: if member() && (resource.data.ownerId == request.auth.uid || resource.data.recipientUserId == request.auth.uid); allow list: if admin() || member(); allow create: if admin() || (member() && request.resource.data.ownerId == request.auth.uid); allow update, delete: if admin() || (member() && resource.data.ownerId == request.auth.uid); }
     match /notifications/{id} { allow get, list: if member() && resource.data.userId == request.auth.uid; allow create: if admin() || (member() && request.resource.data.userId == request.auth.uid); allow update, delete: if member() && resource.data.userId == request.auth.uid; }
