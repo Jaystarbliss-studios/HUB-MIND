@@ -1,34 +1,44 @@
 rules_version='2';
-service cloud.firestore{
- match /databases/{database}/documents{
-  function signedIn(){return request.auth!=null;}
-  function hasUser(){return signedIn()&&exists(/databases/$(database)/documents/users/$(request.auth.uid));}
-  function me(){return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;}
-  function member(){return hasUser()&&me().status=='active';}
-  function admin(){return member()&&me().role=='admin';}
-  function self(uid){return signedIn()&&request.auth.uid==uid;}
-  function readable(){return member()&&(resource.data.ownerId==request.auth.uid||resource.data.visibility=='workspace'||(resource.data.visibility=='shared'&&resource.data.sharedWith[request.auth.uid] in ['read','write']));}
-  function writable(){return member()&&(resource.data.ownerId==request.auth.uid||(resource.data.visibility=='shared'&&resource.data.sharedWith[request.auth.uid]=='write'));}
-  function newOwner(){return member()&&request.resource.data.ownerId==request.auth.uid;}
-  function createdByMe(){return member()&&request.resource.data.createdBy==request.auth.uid;}
-  match /{document=**}{allow read,write:if false;}
-  match /users/{userId}{allow get:if self(userId)||admin();allow list:if admin();allow create:if signedIn()&&request.resource.data.role=='staff'&&request.resource.data.status=='active'&&request.resource.data.invitationId!=null&&exists(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId))&&get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.status=='invited'&&get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.email==request.auth.token.email&&get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.username==request.resource.data.username;allow update:if admin()||(self(userId)&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName','photoUrl','name','phone','lastSeenAt']));allow delete:if admin();match /conversations/{id}{allow read,write:if self(userId)||admin();}match /private/{document=**}{allow read,write:if self(userId)||admin();}match /dailyReports/{id}{allow read,write:if self(userId)||admin();}}
-  match /invitations/{id}{allow get:if admin()||(signedIn()&&resource.data.email==request.auth.token.email);allow list:if admin();allow create:if admin()&&request.resource.data.role=='staff'&&request.resource.data.status=='invited'&&request.resource.data.invitedBy==request.auth.uid;allow update,delete:if admin();}
-  match /connections/{id}{allow get:if member()&&(resource.data.requesterId==request.auth.uid||resource.data.recipientId==request.auth.uid);allow list:if admin()||member();allow create:if member()&&(request.resource.data.requesterId==request.auth.uid||request.resource.data.recipientId==request.auth.uid);allow update,delete:if member()&&(resource.data.requesterId==request.auth.uid||resource.data.recipientId==request.auth.uid);}
-  match /shares/{id}{allow get:if member()&&(resource.data.ownerId==request.auth.uid||resource.data.recipientUserId==request.auth.uid);allow list:if admin()||member();allow create:if admin()||(member()&&request.resource.data.ownerId==request.auth.uid);allow update,delete:if admin()||(member()&&resource.data.ownerId==request.auth.uid);}
-  match /notifications/{id}{allow get,list:if member()&&resource.data.userId==request.auth.uid;allow create:if admin()||(member()&&request.resource.data.userId==request.auth.uid);allow update,delete:if member()&&resource.data.userId==request.auth.uid;}
-  match /activityLogs/{id}{allow get,list:if admin()||(member()&&resource.data.userId==request.auth.uid);allow create:if member()&&request.resource.data.userId==request.auth.uid;allow update,delete:if admin();}
-  match /tasks/{id}{allow get:if readable();allow list:if admin()||(member()&&(resource.data.ownerId==request.auth.uid||resource.data.assignedTo==request.auth.uid||resource.data.visibility=='workspace'));allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
-  match /documents/{id}{allow get:if readable();allow list:if admin()||(member()&&resource.data.ownerId==request.auth.uid);allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
-  match /projects/{id}{allow get:if readable();allow list:if admin()||(member()&&resource.data.ownerId==request.auth.uid);allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
-  match /clients/{id}{allow get:if readable();allow list:if admin()||(member()&&resource.data.ownerId==request.auth.uid);allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
-  match /meetings/{id}{allow get:if readable();allow list:if admin()||(member()&&resource.data.ownerId==request.auth.uid);allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
-  match /followUps/{id}{allow get:if readable();allow list:if admin()||(member()&&resource.data.ownerId==request.auth.uid);allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
-  match /knowledge/{id}{allow get:if readable();allow list:if admin()||(member()&&resource.data.ownerId==request.auth.uid);allow create:if newOwner()||createdByMe();allow update,delete:if writable();}
-  match /documents/{documentId}/versions/{versionId}{allow get,list:if member()&&(admin()||get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId==request.auth.uid||get(/databases/$(database)/documents/documents/$(documentId)).data.sharedWith[request.auth.uid] in ['read','write']);allow create:if member()&&get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId==request.auth.uid;allow update,delete:if admin()||get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId==request.auth.uid;}
-  match /recurringMeetingTemplates/{id}{allow get,list:if admin()||(member()&&resource.data.ownerId==request.auth.uid);allow create:if newOwner();allow update,delete:if admin()||(member()&&resource.data.ownerId==request.auth.uid);}
-  match /recurringTaskTemplates/{id}{allow get,list:if admin()||(member()&&resource.data.ownerId==request.auth.uid);allow create:if newOwner();allow update,delete:if admin()||(member()&&resource.data.ownerId==request.auth.uid);}
-  match /conversations/{id}{allow get,list:if member()&&resource.data.userId==request.auth.uid;allow create,update,delete:if member()&&request.resource.data.userId==request.auth.uid;}
-  match /memories/{id}{allow get,list:if member()&&resource.data.userId==request.auth.uid;allow create:if member()&&request.resource.data.userId==request.auth.uid;allow update,delete:if member()&&resource.data.userId==request.auth.uid;}
- }
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn(){ return request.auth != null; }
+    function hasUser(){ return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function me(){ return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function member(){ return hasUser() && me().status == 'active'; }
+    function admin(){ return member() && me().role == 'admin'; }
+    function self(uid){ return signedIn() && request.auth.uid == uid; }
+    function readable(){ return member() && (resource.data.ownerId == request.auth.uid || resource.data.visibility == 'workspace' || (resource.data.visibility == 'shared' && resource.data.sharedWith[request.auth.uid] in ['read','write'])); }
+    function writable(){ return member() && (resource.data.ownerId == request.auth.uid || (resource.data.visibility == 'shared' && resource.data.sharedWith[request.auth.uid] == 'write')); }
+    function newOwner(){ return member() && request.resource.data.ownerId == request.auth.uid; }
+    function createdByMe(){ return member() && request.resource.data.createdBy == request.auth.uid; }
+    function visibleList(){ return member() && (resource.data.ownerId == request.auth.uid || resource.data.visibility == 'workspace' || (resource.data.visibility == 'shared' && resource.data.sharedWith[request.auth.uid] in ['read','write'])); }
+
+    match /{document=**} { allow read, write: if false; }
+    match /users/{userId} {
+      allow get: if self(userId) || admin(); allow list: if admin();
+      allow create: if signedIn() && request.resource.data.role == 'staff' && request.resource.data.status == 'active' && request.resource.data.invitationId != null && exists(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)) && get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.status == 'invited' && get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.email == request.auth.token.email && get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.username == request.resource.data.username;
+      allow update: if admin() || (self(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName','photoUrl','name','phone','lastSeenAt'])); allow delete: if admin();
+      match /conversations/{id} { allow read, write: if self(userId) || admin(); }
+      match /private/{document=**} { allow read, write: if self(userId) || admin(); }
+      match /dailyReports/{id} { allow read, write: if self(userId) || admin(); }
+    }
+    match /invitations/{id} { allow get: if admin() || (signedIn() && resource.data.email == request.auth.token.email); allow list: if admin(); allow create: if admin() && request.resource.data.role == 'staff' && request.resource.data.status == 'invited' && request.resource.data.invitedBy == request.auth.uid; allow update, delete: if admin(); }
+    match /connections/{id} { allow get: if member() && (resource.data.requesterId == request.auth.uid || resource.data.recipientId == request.auth.uid); allow list: if admin() || member(); allow create: if member() && (request.resource.data.requesterId == request.auth.uid || request.resource.data.recipientId == request.auth.uid); allow update, delete: if member() && (resource.data.requesterId == request.auth.uid || resource.data.recipientId == request.auth.uid); }
+    match /shares/{id} { allow get: if member() && (resource.data.ownerId == request.auth.uid || resource.data.recipientUserId == request.auth.uid); allow list: if admin() || member(); allow create: if admin() || (member() && request.resource.data.ownerId == request.auth.uid); allow update, delete: if admin() || (member() && resource.data.ownerId == request.auth.uid); }
+    match /notifications/{id} { allow get, list: if member() && resource.data.userId == request.auth.uid; allow create: if admin() || (member() && request.resource.data.userId == request.auth.uid); allow update, delete: if member() && resource.data.userId == request.auth.uid; }
+    match /activityLogs/{id} { allow get, list: if admin() || (member() && resource.data.userId == request.auth.uid); allow create: if member() && request.resource.data.userId == request.auth.uid; allow update, delete: if admin(); }
+
+    match /tasks/{id} { allow get: if readable(); allow list: if admin() || visibleList() || (member() && resource.data.assignedTo == request.auth.uid); allow create: if newOwner() || createdByMe(); allow update, delete: if writable(); }
+    match /documents/{id} { allow get: if readable(); allow list: if admin() || visibleList(); allow create: if newOwner() || createdByMe(); allow update, delete: if writable(); }
+    match /projects/{id} { allow get: if readable(); allow list: if admin() || visibleList(); allow create: if newOwner() || createdByMe(); allow update, delete: if writable(); }
+    match /clients/{id} { allow get: if readable(); allow list: if admin() || visibleList(); allow create: if newOwner() || createdByMe(); allow update, delete: if writable(); }
+    match /meetings/{id} { allow get: if readable(); allow list: if admin() || visibleList(); allow create: if newOwner() || createdByMe(); allow update, delete: if writable(); }
+    match /followUps/{id} { allow get: if readable(); allow list: if admin() || visibleList(); allow create: if newOwner() || createdByMe(); allow update, delete: if writable(); }
+    match /knowledge/{id} { allow get: if readable(); allow list: if admin() || visibleList(); allow create: if newOwner() || createdByMe(); allow update, delete: if writable(); }
+    match /documents/{documentId}/versions/{versionId} { allow get, list: if member() && (admin() || get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId == request.auth.uid || get(/databases/$(database)/documents/documents/$(documentId)).data.sharedWith[request.auth.uid] in ['read','write']); allow create: if member() && get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId == request.auth.uid; allow update, delete: if admin() || get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId == request.auth.uid; }
+    match /recurringMeetingTemplates/{id} { allow get, list: if admin() || (member() && resource.data.ownerId == request.auth.uid); allow create: if newOwner(); allow update, delete: if admin() || (member() && resource.data.ownerId == request.auth.uid); }
+    match /recurringTaskTemplates/{id} { allow get, list: if admin() || (member() && resource.data.ownerId == request.auth.uid); allow create: if newOwner(); allow update, delete: if admin() || (member() && resource.data.ownerId == request.auth.uid); }
+    match /conversations/{id} { allow get, list: if member() && resource.data.userId == request.auth.uid; allow create, update, delete: if member() && request.resource.data.userId == request.auth.uid; }
+    match /memories/{id} { allow get, list: if member() && resource.data.userId == request.auth.uid; allow create: if member() && request.resource.data.userId == request.auth.uid; allow update, delete: if member() && resource.data.userId == request.auth.uid; }
+  }
 }
