@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "verify:jess": "node scripts/verify-jess.mjs"
+    "verify:jess": "node scripts/verify-jess.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --import tsx --test tests/**/*.test.ts tests/**/*.test.mjs",
+    "test": "npm run verify:jess && npm run typecheck && npm run test:unit"
   },
   "dependencies": {
     "@google/genai": "^2.15.0",
