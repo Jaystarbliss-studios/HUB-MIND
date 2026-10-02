@@ -1,31 +1,66 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join, resolve, extname } from 'node:path';
 
 const root = process.cwd();
-const activeFiles = [
-  'src/App.tsx', 'src/types.ts', 'src/lib/jessTools.ts', 'src/lib/jessDocumentBridge.ts',
-  'src/components/JessFloatingAssistant.tsx', 'src/components/JessOrbVisualizer.tsx', 'src/components/JessDocumentBridge.tsx', 'src/services/liveAudioClient.ts',
-];
-const forbidden = /Shawn|shawn|WakeWord|wake-word|wake word/;
 const failures = [];
+const forbidden = /Shawn|shawn|Angel|angel|WakeWord|wake-word|wake word/;
+const textExtensions = new Set(['.ts','.tsx','.js','.jsx','.mjs','.cjs','.json','.md','.html','.css','.yml','.yaml','.rules']);
 
-for (const file of activeFiles) {
-  const path = resolve(root, file);
-  if (!existsSync(path)) failures.push(`${file}: required Jess integration file is missing`);
-  else if (forbidden.test(readFileSync(path, 'utf8'))) failures.push(`${file}: contains a legacy assistant/wake-word reference`);
+function walk(dir) {
+  if (!existsSync(dir)) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === 'dist') continue;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) walk(path);
+    else if (textExtensions.has(extname(entry.name)) || entry.name === 'firestore.rules') {
+      let text = '';
+      try { text = readFileSync(path, 'utf8'); } catch { return; }
+      if (forbidden.test(text)) failures.push(`${path.replace(root + '/', '')}: legacy assistant/wake-word reference remains`);
+    }
+  }
 }
+walk(root);
 
-const requiredToolNames = ['get_user_profile', 'get_current_context', 'get_workspace_overview', 'search_workspace', 'create_task', 'update_task', 'create_document', 'get_document_content', 'update_document', 'list_projects', 'open_project', 'open_document', 'navigate_app'];
+const requiredFiles = [
+  'src/App.tsx',
+  'src/types.ts',
+  'src/lib/rbac.ts',
+  'src/lib/hubMindArchitecture.ts',
+  'src/lib/jessTools.ts',
+  'src/lib/jessDocumentBridge.ts',
+  'src/components/JessFloatingAssistant.tsx',
+  'src/components/JessOrbVisualizer.tsx',
+  'src/components/JessDocumentBridge.tsx',
+  'src/services/liveAudioClient.ts',
+  'netlify/functions/live-token.ts',
+];
+for (const file of requiredFiles) if (!existsSync(resolve(root, file))) failures.push(`${file}: required Jess integration file is missing`);
+
 const tools = readFileSync(resolve(root, 'src/lib/jessTools.ts'), 'utf8');
-for (const tool of requiredToolNames) if (!tools.includes(`name: '${tool}'`)) failures.push(`jessTools.ts: required tool ${tool} is missing`);
+for (const tool of ['get_user_profile','get_current_context','get_workspace_overview','search_workspace','create_task','update_task','create_document','get_document_content','update_document','list_projects','open_project','open_document','navigate_app']) {
+  if (!tools.includes(`name: '${tool}'`)) failures.push(`jessTools.ts: required tool ${tool} is missing`);
+}
 if (!tools.includes('queueJessDocumentEdit')) failures.push('jessTools.ts: document bridge is not connected');
 
-for (const legacy of [
-  'src/lib/shawnAuthorization.ts', 'src/lib/shawnTaskManager.ts', 'src/lib/shawnTools.ts', 'src/services/wakeWordDetector.ts',
-  'src/components/Shawn.tsx', 'src/components/ShawnHistoryDrawer.tsx', 'src/components/ShawnOrbVisualizer.tsx', 'src/components/ShawnTaskStatus.tsx', 'src/components/ShawnVault.tsx',
-  'src/components/LiveVoiceControls.tsx', 'src/components/VoiceAndWakeSettings.tsx', 'src/components/VoiceCalibration.tsx', 'src/components/VoiceDictation.tsx', 'src/components/TranscriptView.tsx',
-  'src/components/WorldPulse.tsx', 'src/components/ChatDrawer.tsx', 'src/components/BrainstormStudio.tsx', 'src/components/documents/ShawnDocCoWriter.tsx',
-]) if (existsSync(resolve(root, legacy))) failures.push(`${legacy}: legacy assistant UI/service still exists`);
+const live = readFileSync(resolve(root, 'src/services/liveAudioClient.ts'), 'utf8');
+for (const contract of ['gemini-3.8-live','Kore','16000','24000','sendFunctionResponse','sessionResumption']) {
+  if (!live.includes(contract)) failures.push(`liveAudioClient.ts: Live API contract ${contract} is missing`);
+}
 
-if (failures.length) { console.error('Jess integration verification failed:'); failures.forEach(failure => console.error(`- ${failure}`)); process.exit(1); }
-console.log('Jess integration static verification passed.');
+const floating = readFileSync(resolve(root, 'src/components/JessFloatingAssistant.tsx'), 'utf8');
+for (const contract of ['onPointerDown','onPointerMove','onPointerUp','localStorage','DOUBLE_TAP_MS','touch-none']) {
+  if (!floating.includes(contract)) failures.push(`JessFloatingAssistant.tsx: interaction contract ${contract} is missing`);
+}
+if (/wake\s*word/i.test(floating)) failures.push('JessFloatingAssistant.tsx: wake-word behavior is present');
+
+const rules = readFileSync(resolve(root, 'firestore.rules'), 'utf8');
+for (const rule of ['match /users/{userId}','match /invitations/{id}','match /tasks/{id}','match /documents/{id}','match /projects/{id}','match /recurringTaskTemplates/{id}']) {
+  if (!rules.includes(rule)) failures.push(`firestore.rules: required boundary ${rule} is missing`);
+}
+
+if (failures.length) {
+  console.error('Jess integration verification failed:');
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+console.log('Jess integration repository contract verification passed.');
