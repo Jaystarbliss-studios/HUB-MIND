@@ -13,7 +13,8 @@
     "verify:jess": "node scripts/verify-jess.mjs",
     "typecheck": "tsc --noEmit",
     "test:unit": "node --import tsx --test tests/jess/*.test.mjs tests/security/*.test.ts tests/security/*.test.mjs tests/auth/*.test.ts tests/recurrence/*.test.ts",
-    "test": "npm run verify:jess && npm run typecheck && npm run test:unit"
+    "test": "npm run verify:jess && npm run typecheck && npm run test:unit",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-hubmind \"node --import tsx --test tests/security/firestore.rules.emulator.test.ts\""
   },
   "dependencies": {
     "@google/genai": "^2.15.0",
