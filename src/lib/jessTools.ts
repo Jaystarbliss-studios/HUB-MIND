@@ -3,11 +3,10 @@ import { db } from '../firebaseConfig';
 import { User } from '../types';
 import { createGoogleCalendarEvent, listGoogleCalendarEvents } from './googleCalendar';
 import { globalSearch } from './globalSearch';
+import { queueJessDocumentEdit } from '../components/JessDocumentBridge';
 
 export interface JessToolDefinition { name: string; description: string; parameters: { type: string; properties: Record<string, any>; required?: string[] } }
-
 const object = (properties: Record<string, any>, required?: string[]): JessToolDefinition['parameters'] => ({ type: 'object', properties, ...(required ? { required } : {}) });
-
 export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'get_user_profile', description: 'Get the signed-in Hub-Mind user profile and role.', parameters: object({}) },
   { name: 'get_current_context', description: 'Get the current Hub-Mind route and active workspace context supplied by the application.', parameters: object({}) },
@@ -19,7 +18,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'list_documents', description: 'List recent documents visible to the signed-in user.', parameters: object({ limit: { type: 'number' } }) },
   { name: 'get_document_content', description: 'Read a document by ID after checking access.', parameters: object({ documentId: { type: 'string' } }, ['documentId']) },
   { name: 'create_document', description: 'Create a document and return its ID so Hub-Mind can open it.', parameters: object({ title: { type: 'string' }, content: { type: 'string' }, projectId: { type: 'string' } }, ['title']) },
-  { name: 'update_document', description: 'Update an existing document after verifying ownership or write access.', parameters: object({ documentId: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' } }, ['documentId']) },
+  { name: 'update_document', description: 'Update an existing document after verifying ownership or write access. The visible editor will show the change.', parameters: object({ documentId: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' } }, ['documentId']) },
   { name: 'list_projects', description: 'List visible Hub-Mind projects.', parameters: object({ limit: { type: 'number' } }) },
   { name: 'open_project', description: 'Open a project on the user screen after checking access.', parameters: object({ projectId: { type: 'string' } }, ['projectId']) },
   { name: 'list_clients', description: 'List visible Hub-Mind clients.', parameters: object({ limit: { type: 'number' } }) },
@@ -31,48 +30,27 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'open_document', description: 'Open a specific document on the user screen.', parameters: object({ documentId: { type: 'string' } }, ['documentId']) },
   { name: 'set_preferred_name', description: 'Save the name the signed-in user wants Jess to use.', parameters: object({ preferredName: { type: 'string' } }, ['preferredName']) },
 ];
-
 const safeLimit = (value: any, fallback = 20) => Math.max(1, Math.min(50, Number(value) || fallback));
-const ownedQuery = (collectionName: string, user: User, limitCount = 20) => user.role === 'admin'
-  ? query(collection(db, collectionName), limit(limitCount))
-  : query(collection(db, collectionName), where('ownerId', '==', user.id), limit(limitCount));
-
-async function readResource(collectionName: string, id: string, user: User) {
-  const snap = await getDoc(doc(db, collectionName, id));
-  if (!snap.exists()) return null;
-  const data: any = snap.data();
-  const sharedPermission = data.sharedWith?.[user.id];
-  const readable = user.role === 'admin' || data.ownerId === user.id || data.visibility === 'workspace' || (data.visibility === 'shared' && !!sharedPermission);
-  return readable ? { id: snap.id, data } : null;
-}
-
-async function canWrite(collectionName: string, id: string, user: User) {
-  const item = await readResource(collectionName, id, user);
-  if (!item) return false;
-  const { data } = item;
-  return user.role === 'admin' || data.ownerId === user.id || (data.visibility === 'shared' && data.sharedWith?.[user.id] === 'write');
-}
-
+const ownedQuery = (collectionName: string, user: User, limitCount = 20) => user.role === 'admin' ? query(collection(db, collectionName), limit(limitCount)) : query(collection(db, collectionName), where('ownerId', '==', user.id), limit(limitCount));
+async function readResource(collectionName: string, id: string, user: User) { const snap = await getDoc(doc(db, collectionName, id)); if (!snap.exists()) return null; const data: any = snap.data(); const sharedPermission = data.sharedWith?.[user.id]; const readable = user.role === 'admin' || data.ownerId === user.id || data.visibility === 'workspace' || (data.visibility === 'shared' && !!sharedPermission); return readable ? { id: snap.id, data } : null; }
+async function canWrite(collectionName: string, id: string, user: User) { const item = await readResource(collectionName, id, user); if (!item) return false; const { data } = item; return user.role === 'admin' || data.ownerId === user.id || (data.visibility === 'shared' && data.sharedWith?.[user.id] === 'write'); }
 const navigatePayload = (path: string) => ({ type: 'navigate', path });
 
 export async function executeJessTool(name: string, args: any, user: User | null, onPreferredName?: (name: string) => void, context?: { page?: string; documentId?: string; projectId?: string }): Promise<{ result: any; actionPayload?: any }> {
-  if (!user?.id || user.status === 'suspended') return { result: { success: false, error: 'No active authorized Hub-Mind user is available.' } };
+  if (!user?.id || user.status === 'suspended' || user.status === 'inactive') return { result: { success: false, error: 'No active authorized Hub-Mind user is available.' } };
   try {
     switch (name) {
       case 'get_user_profile': return { result: { success: true, user: { id: user.id, name: user.preferredName || user.name, email: user.email, role: user.role, status: user.status } } };
       case 'get_current_context': return { result: { success: true, context: context || {} } };
-      case 'get_workspace_overview': {
-        const [tasks, docs, projects] = await Promise.all([getDocs(ownedQuery('tasks', user, 50)), getDocs(ownedQuery('documents', user, 50)), getDocs(ownedQuery('projects', user, 50))]);
-        return { result: { success: true, counts: { tasks: tasks.size, documents: docs.size, projects: projects.size }, tasks: tasks.docs.slice(0, 8).map(d => ({ id: d.id, ...d.data() })), documents: docs.docs.slice(0, 8).map(d => ({ id: d.id, ...d.data() })), projects: projects.docs.slice(0, 8).map(d => ({ id: d.id, ...d.data() })) } };
-      }
+      case 'get_workspace_overview': { const [tasks, docs, projects] = await Promise.all([getDocs(ownedQuery('tasks', user, 50)), getDocs(ownedQuery('documents', user, 50)), getDocs(ownedQuery('projects', user, 50))]); return { result: { success: true, counts: { tasks: tasks.size, documents: docs.size, projects: projects.size }, tasks: tasks.docs.slice(0, 8).map(d => ({ id: d.id, ...d.data() })), documents: docs.docs.slice(0, 8).map(d => ({ id: d.id, ...d.data() })), projects: projects.docs.slice(0, 8).map(d => ({ id: d.id, ...d.data() })) } }; }
       case 'search_workspace': return { result: { success: true, results: await globalSearch(String(args.query || ''), user.id, Math.min(10, safeLimit(args.limit, 8))) } };
       case 'list_tasks': { const snap = await getDocs(ownedQuery('tasks', user, safeLimit(args.limit))); return { result: { success: true, tasks: snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((t: any) => !args.status || t.status === args.status).filter((t: any) => !args.priority || t.priority === args.priority) } }; }
       case 'create_task': { const now = new Date().toISOString(); const data = { title: args.title, description: args.description || '', priority: args.priority || 'medium', status: 'assigned', assignedTo: args.assignedTo || user.id, createdBy: user.id, ownerId: user.id, visibility: 'private', deadline: args.deadline || '', checklist: [], comments: [], createdAt: now, updatedAt: now }; const ref = await addDoc(collection(db, 'tasks'), data); return { result: { success: true, taskId: ref.id, task: { id: ref.id, ...data } }, actionPayload: navigatePayload(`/tasks/${ref.id}`) }; }
-      case 'update_task': { const ok = await canWrite('tasks', args.taskId, user); if (!ok) return { result: { success: false, error: 'You do not have permission to update this task.' } }; const patch: any = { updatedAt: new Date().toISOString() }; for (const key of ['title', 'description', 'priority', 'status', 'deadline', 'assignedTo']) if (args[key] !== undefined) patch[key] = args[key]; await updateDoc(doc(db, 'tasks', args.taskId), patch); return { result: { success: true, taskId: args.taskId, updated: patch } }; }
+      case 'update_task': { if (!(await canWrite('tasks', args.taskId, user))) return { result: { success: false, error: 'You do not have permission to update this task.' } }; const patch: any = { updatedAt: new Date().toISOString() }; for (const key of ['title', 'description', 'priority', 'status', 'deadline', 'assignedTo']) if (args[key] !== undefined) patch[key] = args[key]; await updateDoc(doc(db, 'tasks', args.taskId), patch); return { result: { success: true, taskId: args.taskId, updated: patch } }; }
       case 'list_documents': { const snap = await getDocs(ownedQuery('documents', user, safeLimit(args.limit))); return { result: { success: true, documents: snap.docs.map(d => ({ id: d.id, ...d.data() })) } }; }
       case 'get_document_content': { const item = await readResource('documents', args.documentId, user); if (!item) return { result: { success: false, error: 'Document not found or access denied.' } }; return { result: { success: true, document: { id: item.id, title: item.data.title, content: item.data.content || '', projectId: item.data.projectId || null } } }; }
-      case 'create_document': { const now = new Date().toISOString(); const data = { title: args.title, content: args.content || '', projectId: args.projectId || null, ownerId: user.id, visibility: 'private', createdBy: user.id, createdAt: now, updatedAt: now, lastEditedAt: now, lastSavedAt: now, version: 1, pageSize: 'a4', orientation: 'portrait', marginOption: 'normal' }; const ref = await addDoc(collection(db, 'documents'), data); return { result: { success: true, documentId: ref.id, title: data.title }, actionPayload: navigatePayload(`/documents/${ref.id}`) }; }
-      case 'update_document': { if (!(await canWrite('documents', args.documentId, user))) return { result: { success: false, error: 'You do not have permission to update this document.' } }; const ref = doc(db, 'documents', args.documentId); const snap = await getDoc(ref); if (!snap.exists()) return { result: { success: false, error: 'Document not found.' } }; const current: any = snap.data(); const now = new Date().toISOString(); const patch: any = { updatedAt: now, lastEditedAt: now, lastSavedAt: now, version: Number(current.version || 1) + 1 }; if (args.title !== undefined) patch.title = args.title; if (args.content !== undefined) patch.content = args.content; await updateDoc(ref, patch); return { result: { success: true, documentId: args.documentId, updated: patch }, actionPayload: navigatePayload(`/documents/${args.documentId}`) }; }
+      case 'create_document': { const now = new Date().toISOString(); const data = { title: args.title, content: args.content || '', projectId: args.projectId || null, ownerId: user.id, visibility: 'private', createdBy: user.id, createdAt: now, updatedAt: now, lastEditedAt: now, lastSavedAt: now, version: 1, pageSize: 'a4', orientation: 'portrait', marginOption: 'normal' }; const ref = await addDoc(collection(db, 'documents'), data); if (args.content) queueJessDocumentEdit({ documentId: ref.id, content: args.content, mode: 'replace' }); return { result: { success: true, documentId: ref.id, title: data.title }, actionPayload: navigatePayload(`/documents/${ref.id}`) }; }
+      case 'update_document': { if (!(await canWrite('documents', args.documentId, user))) return { result: { success: false, error: 'You do not have permission to update this document.' } }; const ref = doc(db, 'documents', args.documentId); const snap = await getDoc(ref); if (!snap.exists()) return { result: { success: false, error: 'Document not found.' } }; const current: any = snap.data(); const now = new Date().toISOString(); const patch: any = { updatedAt: now, lastEditedAt: now, lastSavedAt: now, version: Number(current.version || 1) + 1 }; if (args.title !== undefined) patch.title = args.title; if (args.content !== undefined) patch.content = args.content; await updateDoc(ref, patch); if (args.content !== undefined) queueJessDocumentEdit({ documentId: args.documentId, content: args.content, mode: 'replace' }); return { result: { success: true, documentId: args.documentId, updated: patch }, actionPayload: navigatePayload(`/documents/${args.documentId}`) }; }
       case 'list_projects': { const snap = await getDocs(ownedQuery('projects', user, safeLimit(args.limit))); return { result: { success: true, projects: snap.docs.map(d => ({ id: d.id, ...d.data() })) } }; }
       case 'open_project': { const item = await readResource('projects', args.projectId, user); return item ? { result: { success: true, project: { id: item.id, ...item.data } }, actionPayload: navigatePayload(`/projects/${args.projectId}`) } : { result: { success: false, error: 'Project not found or access denied.' } }; }
       case 'list_clients': { const snap = await getDocs(ownedQuery('clients', user, safeLimit(args.limit))); return { result: { success: true, clients: snap.docs.map(d => ({ id: d.id, ...d.data() })) } }; }
@@ -85,8 +63,5 @@ export async function executeJessTool(name: string, args: any, user: User | null
       case 'set_preferred_name': { const clean = String(args.preferredName || '').trim(); if (!clean) return { result: { success: false, error: 'Preferred name cannot be empty.' } }; onPreferredName?.(clean); return { result: { success: true, preferredName: clean } }; }
       default: return { result: { success: false, error: `Unknown Jess tool: ${name}` } };
     }
-  } catch (error: any) {
-    console.error(`[Jess] Tool ${name} failed`, error);
-    return { result: { success: false, error: error?.message || 'Tool execution failed.' } };
-  }
+  } catch (error: any) { console.error(`[Jess] Tool ${name} failed`, error); return { result: { success: false, error: error?.message || 'Tool execution failed.' } }; }
 }
