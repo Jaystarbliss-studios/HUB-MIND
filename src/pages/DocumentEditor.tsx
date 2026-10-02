@@ -39,7 +39,7 @@ import { useAuth } from '../lib/auth';
 import { formatExactTimestamp, formatTimeWithSeconds } from '../lib/dateUtils';
 import { 
   ArrowLeft, Loader2, Save, Sun, Moon, 
-  FileText, Eye, Sparkles,
+  FileText, Eye,
   Clock, Cloud, History, WifiOff, RefreshCw,
   Bold, Italic, List, Undo, Redo,
   SplitSquareVertical, AlertTriangle
@@ -162,8 +162,6 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
   const [showPageBreaks, setShowPageBreaks] = useState<boolean>(true);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState<boolean>(false);
-  const [isCoWriterOpen, setIsCoWriterOpen] = useState<boolean>(false);
-  const [jessActivityFlash, setShawnActivityFlash] = useState<string | null>(null);
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
 
   // Pagination Helper Status & Dynamic Height Metrics
@@ -650,75 +648,6 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
     };
   }, []);
 
-  // Open Unified Shawn Assistant
-  const handleOpenJessAI = (mode: 'chat' | 'voice' = 'chat') => {
-    window.dispatchEvent(
-      new CustomEvent('shawn:open', {
-        detail: {
-          mode,
-          context: 'document',
-          documentId: docId,
-          documentTitle: docMeta?.title || 'Untitled Document',
-        },
-      })
-    );
-  };
-
-  // Publish the active document to Shawn assistant for context grounding
-  useEffect(() => {
-    if (!docId) return;
-    window.dispatchEvent(new CustomEvent('shawn:document_context', {
-      detail: { documentId: docId, title: docMeta?.title || 'Current document' }
-    }));
-  }, [docId, docMeta?.title]);
-
-  // Listen for real-time Shawn AI document modification events
-  useEffect(() => {
-    const handleLiveDocEdit = (e: any) => {
-      const { action, text, html, title, documentId } = e.detail || {};
-      if (documentId && documentId !== docId) return;
-      if (!editor || editor.isDestroyed || !editor.commands) return;
-
-      const now = new Date().toISOString();
-      setLastEditedTime(now);
-
-      if (action === 'insert_text' && text) {
-        editor.commands.insertContent(text);
-        setShawnActivityFlash('Shawn inserted text');
-      } else if (action === 'append_content' && (html || text)) {
-        const contentToAppend = html || `<p>${text}</p>`;
-        editor.commands.insertContentAt(editor.state.doc.content.size, contentToAppend);
-        setShawnActivityFlash('Shawn appended content');
-      } else if (action === 'replace_all' && (html || text)) {
-        const contentToSet = html || `<p>${text}</p>`;
-        editor.commands.setContent(contentToSet);
-        setShawnActivityFlash('Shawn updated document content');
-      } else if (action === 'format_heading' && text) {
-        editor.commands.setHeading({ level: 1 });
-        editor.commands.insertContent(text);
-        setShawnActivityFlash('Shawn formatted heading');
-      }
-
-      if (title && docMeta) {
-        setDocMeta({ ...docMeta, title });
-      }
-
-      hasUserEditedRef.current = true;
-      dirtyRef.current = true;
-      const updatedHtml = editor.getHTML();
-      void saveDocument(updatedHtml, now, undefined, editor.getJSON(), true);
-
-      setTimeout(() => {
-        setShawnActivityFlash(null);
-      }, 4000);
-    };
-
-    window.addEventListener('shawn:live_document_edit', handleLiveDocEdit);
-    return () => {
-      window.removeEventListener('shawn:live_document_edit', handleLiveDocEdit);
-    };
-  }, [editor, docId, docMeta]);
-
   // Recalculate page count whenever layout settings change
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -868,18 +797,6 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
             <History className="w-3.5 h-3.5 text-teal-400" />
             <span className="hidden lg:inline">History</span>
           </button>
-
-          {/* Ask Shawn to Edit Pill Button */}
-          <button
-            onClick={() => handleOpenJessAI('chat')}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-[#00b4a7] hover:bg-[#00c5b7] active:scale-95 text-slate-950 transition-all font-bold text-xs shadow-md shadow-teal-500/20 cursor-pointer shrink-0"
-            title="Ask Shawn to Edit"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-slate-950 fill-slate-950 shrink-0" />
-            <span className="whitespace-nowrap hidden xs:inline">Ask Shawn to Edit</span>
-            <span className="whitespace-nowrap xs:hidden">Shawn</span>
-          </button>
-
           {/* Full Page Print & PDF Preview Button */}
           <button
             onClick={() => setIsPreviewModalOpen(true)}
@@ -1129,7 +1046,7 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
         />
       )}
 
-      {/* Shawn AI Co-Writer Live Dock */}
+      {/* Jess AI Co-Writer Live Dock */}
       {docId && editor && (
         <JessDocumentBridge
           editor={editor}
