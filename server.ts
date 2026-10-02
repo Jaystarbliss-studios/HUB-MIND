@@ -64,21 +64,21 @@ async function startServer() {
           region: "Space",
           title: "Jupiter's Giant Storm",
           summary: "The Great Red Spot on Jupiter is a storm so big that Earth could fit inside it!",
-          shawnNote: "Woah! Imagine flying a spaceship right through that giant red storm!"
+          jessNote: "Woah! Imagine flying a spaceship right through that giant red storm!"
         },
         {
           id: "2",
           region: "Prehistoric",
           title: "T-Rex Had Feathers?",
           summary: "Scientists think that many dinosaurs, even relatives of the T-Rex, might have been covered in fluffy feathers.",
-          shawnNote: "A giant fluffy T-Rex? That's hilarious and awesome at the same time!"
+          jessNote: "A giant fluffy T-Rex? That's hilarious and awesome at the same time!"
         },
         {
           id: "3",
           region: "Oceans",
           title: "The Immortal Jellyfish",
           summary: "There is a type of jellyfish that can revert back to its baby stage when it gets old, meaning it can technically live forever.",
-          shawnNote: "A real-life cheat code for infinite lives! I want an immortal jellyfish as a pet."
+          jessNote: "A real-life cheat code for infinite lives! I want an immortal jellyfish as a pet."
         }
       ]
     });
@@ -604,7 +604,7 @@ async function startServer() {
         },
         {
           name: "set_preferred_name",
-          description: "Update the user's preferred name so Shawn addresses them by this name.",
+          description: "Update the user's preferred name so Jess addresses them by this name.",
           parameters: {
             type: "OBJECT",
             properties: {
@@ -661,7 +661,7 @@ async function startServer() {
     },
   ];
 
-  const SHAWN_PROMPT_INSTRUCTION = `You are Shawn, the embedded AI assistant inside Hub-Mind. You are not a
+  const JESS_PROMPT_INSTRUCTION = `You are Jess, the embedded AI assistant inside Hub-Mind. You are not a
 chatbot bolted onto the app — you have real, live access to its data via
 function calls, and you are expected to use it.
 
@@ -753,7 +753,7 @@ call returns.`;
     const requestUrl = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
     const activeDocumentId = requestUrl.searchParams.get("documentId");
     const activeDocumentTitle = requestUrl.searchParams.get("documentTitle");
-    const liveSystemPrompt = SHAWN_PROMPT_INSTRUCTION +
+    const liveSystemPrompt = JESS_PROMPT_INSTRUCTION +
       (activeDocumentId
         ? `\n\n## CURRENT DOCUMENT\nThe user is currently working in "${activeDocumentTitle || 'Current document'}" (document ID: ${activeDocumentId}). If the user asks about this document, its contents, a section, or requests an edit, use the document tools with this ID before answering. Do not guess document contents.`
         : "");
@@ -763,7 +763,7 @@ call returns.`;
     // Try connecting to Gemini Live API
     if (!geminiApiKey) {
       if (clientWs.readyState === 1) {
-        clientWs.send(JSON.stringify({ type: "error", message: "Shawn Live is not configured. Add GEMINI_API_KEY to the server environment." }));
+        clientWs.send(JSON.stringify({ type: "error", message: "Jess Live is not configured. Add GEMINI_API_KEY to the server environment." }));
       }
       return;
     }
@@ -900,7 +900,7 @@ call returns.`;
         console.warn("Native Live API connection unavailable, activating Voice Bridge mode:", liveErr.message);
         isFallbackMode = true;
         isSessionActive = true;
-        clientWs.send(JSON.stringify({ type: "ready", message: "Connected to Shawn Assistant (Voice Bridge)" }));
+        clientWs.send(JSON.stringify({ type: "ready", message: "Connected to Jess Assistant (Voice Bridge)" }));
       }
 
       // Handler for client messages
