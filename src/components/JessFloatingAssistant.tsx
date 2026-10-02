@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { LiveAudioClient, JessState } from '../services/liveAudioClient';
 import { executeJessTool } from '../lib/jessTools';
+import { resolveJessContext } from '../lib/jessContext';
 import { JessOrbVisualizer } from './JessOrbVisualizer';
 
 const POSITION_KEY = 'hubmind.jess.position.v2';
@@ -60,10 +61,8 @@ export function JessFloatingAssistant() {
       onError: error => console.error('[Jess]', error),
       onAudioLevel: (input, output) => { setInputLevel(input); setOutputLevel(output); },
       onFunctionCall: async fc => {
-        const result = await executeJessTool(fc.name, fc.args, profile, name => void updatePreferredName(name), {
-          page: location.pathname,
-          documentId: location.pathname.startsWith('/documents/') ? location.pathname.split('/')[2] : undefined,
-        });
+        const context = resolveJessContext(location.pathname);
+        const result = await executeJessTool(fc.name, fc.args, profile, name => void updatePreferredName(name), context);
         if (result.actionPayload?.type === 'navigate' && result.actionPayload.path) navigate(result.actionPayload.path);
         client.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
       },
@@ -71,12 +70,8 @@ export function JessFloatingAssistant() {
     clientRef.current = client;
     try {
       const firstName = profile.preferredName || profile.name?.split(' ')[0] || 'there';
-      await client.connect({
-        page: location.pathname,
-        documentId: location.pathname.startsWith('/documents/') ? location.pathname.split('/')[2] : undefined,
-        userName: firstName,
-        userRole: profile.role,
-      });
+      const context = resolveJessContext(location.pathname);
+      await client.connect({ ...context, userName: firstName, userRole: profile.role });
       window.setTimeout(() => client.sendText(`Begin naturally. Greet ${firstName} by name, say you are Jess, and ask what they would like to do. Keep it short.`), 450);
     } catch { await stop(); }
   }, [location.pathname, navigate, profile, stop, updatePreferredName]);
