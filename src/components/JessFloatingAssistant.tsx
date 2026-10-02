@@ -114,6 +114,7 @@ export function JessFloatingAssistant() {
   if (!profile) return null;
   const active = connection === 'connected' || connection === 'connecting';
   const size = active ? 76 : 64;
+  const renderedPosition = typeof window !== 'undefined' ? clampViewportPosition(position, size) : position;
 
   return (
     <button
@@ -126,7 +127,7 @@ export function JessFloatingAssistant() {
       onPointerCancel={onPointerCancel}
       onLostPointerCapture={onPointerCancel}
       className="fixed z-[9999] touch-none select-none rounded-full outline-none transition-[width,height,opacity,filter] duration-300"
-      style={{ left: `${position.x * 100}%`, top: `${position.y * 100}%`, width: size, height: size, transform: 'translate(-50%,-50%)', background: 'transparent', border: 0, padding: 0, opacity: active ? 1 : .76, cursor: pointerRef.current.dragging ? 'grabbing' : 'grab' }}
+      style={{ left: `${renderedPosition.x * 100}%`, top: `${renderedPosition.y * 100}%`, width: size, height: size, transform: 'translate(-50%,-50%)', background: 'transparent', border: 0, padding: 0, opacity: active ? 1 : .76, cursor: pointerRef.current.dragging ? 'grabbing' : 'grab' }}
     >
       <JessOrbVisualizer state={state} inputLevel={inputLevel} outputLevel={outputLevel} connected={active} />
     </button>
