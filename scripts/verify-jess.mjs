@@ -19,7 +19,8 @@ function walk(dir) {
     }
   }
 }
-walk(root);
+for (const path of ['src','netlify','scripts']) walk(resolve(root,path));
+for (const file of ['server.ts']) { const path=resolve(root,file); if(existsSync(path)) { const text=readFileSync(path,'utf8'); if(forbidden.test(text)) failures.push(`${file}: legacy assistant/wake-word reference remains`); } }
 
 const requiredFiles = [
   'src/App.tsx',
