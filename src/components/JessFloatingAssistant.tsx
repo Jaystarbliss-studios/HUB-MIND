@@ -12,6 +12,11 @@ const DRAG_THRESHOLD = 8;
 const DOUBLE_TAP_MS = 380;
 
 function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)); }
+function clampViewportPosition(position: { x:number; y:number }, size:number) {
+  const halfX = size / Math.max(window.innerWidth * 2, 1);
+  const halfY = size / Math.max(window.innerHeight * 2, 1);
+  return { x: clamp(position.x, halfX, 1 - halfX), y: clamp(position.y, halfY, 1 - halfY) };
+}
 
 function wakeTone() {
   try {
@@ -38,7 +43,7 @@ export function JessFloatingAssistant() {
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(POSITION_KEY) || '');
-      if (Number.isFinite(saved?.x) && Number.isFinite(saved?.y)) setPosition({ x: clamp(saved.x, .04, .96), y: clamp(saved.y, .04, .96) });
+      if (Number.isFinite(saved?.x) && Number.isFinite(saved?.y)) setPosition(clampViewportPosition({ x: saved.x, y: saved.y }, 64));
     } catch { /* use default */ }
   }, []);
 
@@ -92,7 +97,7 @@ export function JessFloatingAssistant() {
     const dx = e.clientX - p.startX; const dy = e.clientY - p.startY;
     if (Math.hypot(dx, dy) > DRAG_THRESHOLD) p.moved = true;
     if (!p.moved) return;
-    const next = { x: clamp(p.originX + dx / Math.max(window.innerWidth, 1), .04, .96), y: clamp(p.originY + dy / Math.max(window.innerHeight, 1), .04, .96) };
+    const next = clampViewportPosition({ x: p.originX + dx / Math.max(window.innerWidth, 1), y: p.originY + dy / Math.max(window.innerHeight, 1) }, active ? 76 : 64);
     setPosition(next); try { localStorage.setItem(POSITION_KEY, JSON.stringify(next)); } catch { /* cache is optional */ }
   };
 
