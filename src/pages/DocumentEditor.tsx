@@ -36,6 +36,7 @@ import {
   extractDocumentBody
 } from '../lib/offlineSync';
 import { useAuth } from '../lib/auth';
+import { registerJessDocumentEditor, unregisterJessDocumentEditor } from '../lib/jessDocumentBridge';
 import { formatExactTimestamp, formatTimeWithSeconds } from '../lib/dateUtils';
 import { 
   ArrowLeft, Loader2, Save, Sun, Moon, 
@@ -562,6 +563,12 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
     hasUserEditedRef.current = true;
     await saveDocument(html, now, undefined, json, true);
   };
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !docId) return;
+    registerJessDocumentEditor(editor, docId);
+    return () => unregisterJessDocumentEditor(editor);
+  }, [editor, docId]);
 
   // Keep the latest editor state available for all save paths and consumer modals
   useEffect(() => {
