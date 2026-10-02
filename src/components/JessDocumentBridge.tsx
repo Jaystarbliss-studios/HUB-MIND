@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { JESS_DOCUMENT_EDIT_KEY, PendingJessDocumentEdit } from '../lib/jessDocumentBridge';
+import { JESS_DOCUMENT_EDIT_KEY, PendingJessDocumentEdit, applyJessDocumentEdit } from '../lib/jessDocumentBridge';
 
 function getDocumentId(pathname: string) { if (!pathname.startsWith('/documents/')) return null; return pathname.split('/')[2] || null; }
 
 async function applyVisibleEdit(edit: PendingJessDocumentEdit) {
+  if (applyJessDocumentEdit(edit)) return true;
   const editor = document.querySelector<HTMLElement>('.ProseMirror[contenteditable="true"]');
   if (!editor) return false;
   editor.focus(); const selection = window.getSelection(); if (!selection) return false; const range = document.createRange(); range.selectNodeContents(editor); selection.removeAllRanges(); selection.addRange(range);
