@@ -25,5 +25,7 @@ jobs:
         run: npm run typecheck
       - name: Unit and contract tests
         run: npm run test:unit
+      - name: Firestore security emulator tests
+        run: npm run test:rules
       - name: Production build
         run: npm run build
