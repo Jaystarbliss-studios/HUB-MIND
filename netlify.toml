@@ -30,4 +30,4 @@
 [[headers]]
   for = "/manifest.webmanifest"
   [headers.values]
-    Cache-Control = "no-cache, must-revalidate
+    Cache-Control = "no-cache, must-revalidate"
