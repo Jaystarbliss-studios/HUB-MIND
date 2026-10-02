@@ -22,6 +22,8 @@ type LiveSession = {
   close: () => void;
 };
 
+const ENABLE_SERVER_WS_BRIDGE = import.meta.env.VITE_ENABLE_LIVE_WS_BRIDGE === 'true';
+
 export class LiveAudioClient {
   private session: LiveSession | null = null;
   private fallbackWs: WebSocket | null = null;
@@ -161,7 +163,8 @@ export class LiveAudioClient {
       try {
         token = await this.getEphemeralToken();
       } catch (tokenErr) {
-        console.warn('Ephemeral token error, attempting WebSocket bridge:', tokenErr);
+        if (!ENABLE_SERVER_WS_BRIDGE) throw tokenErr;
+        console.warn('Ephemeral token error, attempting local WebSocket bridge:', tokenErr);
       }
 
       if (token) {
@@ -228,11 +231,17 @@ export class LiveAudioClient {
           }
           return;
         } catch (directErr: any) {
-          console.warn('Direct Live API connect failed, switching to bridge fallback:', directErr?.message || directErr);
+          if (!ENABLE_SERVER_WS_BRIDGE) throw directErr;
+          console.warn('Direct Live API connect failed, switching to local bridge fallback:', directErr?.message || directErr);
         }
       }
 
-      // Fallback: connect via server WebSocket bridge
+      if (!ENABLE_SERVER_WS_BRIDGE) {
+        throw new Error('Jess Live could not establish the secure Gemini Live session.');
+      }
+
+      // Optional local-development fallback. Netlify production does not expose
+      // the Express WebSocket bridge, so it is disabled unless explicitly opted in.
       await this.connectFallbackWebSocket(context);
     } catch (error: any) {
       console.error('Failed to start Jess Live:', error);
