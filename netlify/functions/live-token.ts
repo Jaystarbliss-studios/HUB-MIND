@@ -20,7 +20,15 @@ export default async (req: Request) => {
     const user = await verifyFirebaseUser(idToken); const geminiKey = process.env.GEMINI_API_KEY;
     if (!geminiKey) return json({ error: 'GEMINI_API_KEY is not configured on the deployment.' }, 503);
     const now = Date.now();
-    const tokenResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/auth_tokens', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey }, body: JSON.stringify({ uses: 1, expireTime: new Date(now + 30 * 60 * 1000).toISOString(), newSessionExpireTime: new Date(now + 60 * 1000).toISOString() }) });
+    const tokenResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/auth_tokens', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey }, body: JSON.stringify({
+        uses: 1,
+        expireTime: new Date(now + 30 * 60 * 1000).toISOString(),
+        newSessionExpireTime: new Date(now + 60 * 1000).toISOString(),
+        liveConnectConstraints: {
+          model: 'models/gemini-3.8-live',
+          config: { responseModalities: ['AUDIO'], sessionResumption: {} },
+        },
+      }) });
     const tokenData = await tokenResponse.json() as any;
     if (!tokenResponse.ok || !tokenData?.name) { console.error('Gemini ephemeral-token provisioning failed:', tokenData); return json({ error: tokenData?.error?.message || 'Gemini Live token provisioning failed.' }, 502); }
     return json({ token: tokenData.name, userId: user.localId, expiresAt: tokenData.expireTime || null });
