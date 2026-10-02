@@ -1,6 +1,5 @@
 import { coreIdentity, groqAdapter, ollamaAdapter, geminiAdapter } from "./src/ai/prompts/adapters";
 import express from "express";
-import fs from "fs";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import OpenAI from "openai";
@@ -15,16 +14,6 @@ async function startServer() {
 
   app.use(express.json());
 
-  let firebaseConfig: any = {};
-  try {
-    const configPath = path.resolve(process.cwd(), "firebase-applet-config.json");
-    if (fs.existsSync(configPath)) {
-      firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    }
-  } catch (e) {
-    console.warn("Could not read firebase-applet-config.json:", e);
-  }
-
   // API routes FIRST
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
@@ -32,65 +21,6 @@ async function startServer() {
 
   app.get("/api/config", (req, res) => {
     res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || "" });
-  });
-
-  app.post("/api/live-token", async (req, res) => {
-    try {
-      const authHeader = req.headers.authorization || "";
-      const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-      if (!idToken) {
-        return res.status(401).json({ error: "Authentication required." });
-      }
-
-      const apiKey = process.env.FIREBASE_WEB_API_KEY || firebaseConfig.apiKey;
-      if (!apiKey) {
-        return res.status(500).json({ error: "Firebase Web API key is not configured." });
-      }
-
-      const lookupRes = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken }),
-        }
-      );
-      if (!lookupRes.ok) {
-        return res.status(401).json({ error: "Your Hub-Mind session is no longer valid. Please sign in again." });
-      }
-      const data = (await lookupRes.json()) as any;
-      const user = data?.users?.[0];
-      if (!user || user.disabled) {
-        return res.status(403).json({ error: "Your Hub-Mind account is unavailable." });
-      }
-
-      const geminiKey = process.env.GEMINI_API_KEY;
-      if (!geminiKey) {
-        return res.status(503).json({ error: "GEMINI_API_KEY is not configured on the deployment." });
-      }
-
-      const now = Date.now();
-      const tokenResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/auth_tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
-        body: JSON.stringify({
-          uses: 1,
-          expireTime: new Date(now + 30 * 60 * 1000).toISOString(),
-          newSessionExpireTime: new Date(now + 60 * 1000).toISOString(),
-        }),
-      });
-
-      const tokenData = (await tokenResponse.json()) as any;
-      if (!tokenResponse.ok || !tokenData?.name) {
-        console.error("Gemini ephemeral-token provisioning failed:", tokenData);
-        return res.status(502).json({ error: tokenData?.error?.message || "Gemini Live token provisioning failed." });
-      }
-
-      return res.json({ token: tokenData.name, userId: user.localId, expiresAt: tokenData.expireTime || null });
-    } catch (error: any) {
-      console.error("Live token error:", error);
-      return res.status(500).json({ error: error?.message || "Could not initialise Shawn Live." });
-    }
   });
 
   let memories = [];
@@ -134,21 +64,21 @@ async function startServer() {
           region: "Space",
           title: "Jupiter's Giant Storm",
           summary: "The Great Red Spot on Jupiter is a storm so big that Earth could fit inside it!",
-          shawnNote: "Woah! Imagine flying a spaceship right through that giant red storm!"
+          jessNote: "Woah! Imagine flying a spaceship right through that giant red storm!"
         },
         {
           id: "2",
           region: "Prehistoric",
           title: "T-Rex Had Feathers?",
           summary: "Scientists think that many dinosaurs, even relatives of the T-Rex, might have been covered in fluffy feathers.",
-          shawnNote: "A giant fluffy T-Rex? That's hilarious and awesome at the same time!"
+          jessNote: "A giant fluffy T-Rex? That's hilarious and awesome at the same time!"
         },
         {
           id: "3",
           region: "Oceans",
           title: "The Immortal Jellyfish",
           summary: "There is a type of jellyfish that can revert back to its baby stage when it gets old, meaning it can technically live forever.",
-          shawnNote: "A real-life cheat code for infinite lives! I want an immortal jellyfish as a pet."
+          jessNote: "A real-life cheat code for infinite lives! I want an immortal jellyfish as a pet."
         }
       ]
     });
@@ -674,7 +604,7 @@ async function startServer() {
         },
         {
           name: "set_preferred_name",
-          description: "Update the user's preferred name so Shawn addresses them by this name.",
+          description: "Update the user's preferred name so Jess addresses them by this name.",
           parameters: {
             type: "OBJECT",
             properties: {
@@ -731,7 +661,7 @@ async function startServer() {
     },
   ];
 
-  const SHAWN_PROMPT_INSTRUCTION = `You are Shawn, the embedded AI assistant inside Hub-Mind. You are not a
+  const JESS_PROMPT_INSTRUCTION = `You are Jess, the embedded AI assistant inside Hub-Mind. You are not a
 chatbot bolted onto the app — you have real, live access to its data via
 function calls, and you are expected to use it.
 
@@ -823,7 +753,7 @@ call returns.`;
     const requestUrl = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
     const activeDocumentId = requestUrl.searchParams.get("documentId");
     const activeDocumentTitle = requestUrl.searchParams.get("documentTitle");
-    const liveSystemPrompt = SHAWN_PROMPT_INSTRUCTION +
+    const liveSystemPrompt = JESS_PROMPT_INSTRUCTION +
       (activeDocumentId
         ? `\n\n## CURRENT DOCUMENT\nThe user is currently working in "${activeDocumentTitle || 'Current document'}" (document ID: ${activeDocumentId}). If the user asks about this document, its contents, a section, or requests an edit, use the document tools with this ID before answering. Do not guess document contents.`
         : "");
@@ -833,7 +763,7 @@ call returns.`;
     // Try connecting to Gemini Live API
     if (!geminiApiKey) {
       if (clientWs.readyState === 1) {
-        clientWs.send(JSON.stringify({ type: "error", message: "Shawn Live is not configured. Add GEMINI_API_KEY to the server environment." }));
+        clientWs.send(JSON.stringify({ type: "error", message: "Jess Live is not configured. Add GEMINI_API_KEY to the server environment." }));
       }
       return;
     }
@@ -970,7 +900,7 @@ call returns.`;
         console.warn("Native Live API connection unavailable, activating Voice Bridge mode:", liveErr.message);
         isFallbackMode = true;
         isSessionActive = true;
-        clientWs.send(JSON.stringify({ type: "ready", message: "Connected to Shawn Assistant (Voice Bridge)" }));
+        clientWs.send(JSON.stringify({ type: "ready", message: "Connected to Jess Assistant (Voice Bridge)" }));
       }
 
       // Handler for client messages

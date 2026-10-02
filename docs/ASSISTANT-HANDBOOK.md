@@ -1,55 +1,24 @@
 # Hub-Mind Assistant Handbook
 ## Jaystarbliss Studios — Assistant Operating Guide
-### Version 2.0 — September 2026
+### Version 2.0 — October 2026
 
-Welcome to Hub-Mind. This handbook explains how you should use Hub-Mind as the operational system for your work as Administrative & Executive Assistant.
+Welcome to Hub-Mind. This handbook explains how Hub-Mind operates as the operational system for Administrative & Executive Assistant work.
 
 ## 1. Your mission
 
 Your job is to keep Jaystarbliss Studios organised, informed, and moving.
 
-You are responsible for:
-- Managing schedules, meetings, recurring commitments and deadlines.
-- Capturing and organising tasks and follow-ups.
-- Maintaining client and operational information.
-- Preparing, editing, organising and sharing documents.
-- Monitoring pending items, waiting items and things requiring a decision.
-- Preparing daily reports and schedules.
-- Keeping Hub-Mind accurate so that it remains the source of truth.
-- Using Shawn as an AI operational partner when useful.
+You are responsible for managing schedules, meetings, recurring commitments and deadlines; capturing tasks and follow-ups; maintaining client and operational information; preparing, editing, organising and sharing documents; monitoring pending items; preparing reports; and keeping Hub-Mind accurate as the source of truth.
+
+**Jess** is the embedded live voice operating layer. Use her to interact with the workspace naturally, but always verify important underlying records.
 
 WhatsApp is a communication channel. Hub-Mind is the system of record. Important information received through WhatsApp should be captured into Hub-Mind rather than left only in chat.
 
 ## 2. The Hub-Mind operating cycle
 
-Think:
-
 **Capture → Organise → Transform → Execute → Track → Follow Up → Report**
 
-### Capture
-Anything important comes into the system through Inbox, notes, messages, meetings or direct entry.
-
-### Organise
-Turn information into the correct Hub-Mind object:
-- Task = something that must be done.
-- Meeting = something happening at a specific time.
-- Follow-up = something that must be chased or checked later.
-- Client = a relationship/person or organisation.
-- Project = a larger body of work.
-- Document = an actual work product.
-- Knowledge = information worth retaining for future use.
-
-### Execute
-Work from Today and the current schedule. Do not rely on memory when Hub-Mind can record it.
-
-### Track
-Update status, deadlines, notes and outcomes as work progresses.
-
-### Follow up
-Never let an unresolved client, payment, appointment or request disappear.
-
-### Report
-At the end of the day, record what was completed, what is pending, what needs Jaystar's decision and what is planned for tomorrow.
+Capture important information in Inbox, notes, messages, meetings or direct entry. Organise it into the correct Hub-Mind object. Execute from the current schedule. Track status, deadlines, notes and outcomes. Follow up unresolved items. Report completed, pending and decision-required work.
 
 ## 3. Daily routine
 
@@ -72,48 +41,18 @@ At the end of the day, record what was completed, what is pending, what needs Ja
 - Create follow-ups whenever an action depends on another person.
 - Keep documents correctly named and saved.
 - Use direct share links when showing Jaystar a specific item.
+- Jess may be used to perform these operations by voice when the relevant tool is available.
 
 ### End of day
-Prepare the Daily Report:
-- Completed
-- Pending
-- Needs Your Decision
-- Tomorrow
-
-Then:
-1. Save the report.
-2. Review tomorrow's schedule.
-3. Make sure recurring commitments are represented correctly.
-4. Share the daily schedule/report through the available WhatsApp action.
-5. Leave Hub-Mind in a clean, accurate state.
+Prepare the Daily Report with Completed, Pending, Needs Your Decision and Tomorrow. Save it, review tomorrow's schedule, verify recurring commitments, share the schedule/report through the available communication pathway, and leave Hub-Mind in a clean state.
 
 ## 4. Recurring work
 
-Recurring commitments should not be recreated manually every day.
-
-Use recurring scheduling for things such as:
-- Weekly classes.
-- Regular school visits.
-- Standing meetings.
-- Weekly administrative checks.
-- Repeated client follow-ups.
-- Any task that occurs on known days of the week.
-
-The objective is simple: when Tuesday arrives, Tuesday's expected work should already be visible.
+Recurring commitments should not be recreated manually every day. Use recurring scheduling for weekly classes, school visits, standing meetings, administrative checks and repeated client follow-ups.
 
 ## 5. Documents
 
-Hub-Mind Documents is the workspace for creating and maintaining business documents.
-
-Use meaningful titles. Avoid leaving documents as “Untitled Document”.
-
-Use templates whenever an appropriate template exists. Templates may include:
-- Contracts
-- Communiqués
-- Performance analyses
-- Reports
-- Official letters
-- Other recurring Jaystarbliss Studios documents
+Hub-Mind Documents is the workspace for creating and maintaining business documents. Use meaningful titles and templates where appropriate.
 
 Before sending a document:
 1. Check its title.
@@ -123,140 +62,57 @@ Before sending a document:
 5. Use Preview/PDF when the final appearance matters.
 6. Share the direct document link when Jaystar needs to inspect that exact document.
 
+Jess can create, open, read and update documents through authenticated workspace tools. The document editor remains the visible workspace while those actions occur.
+
 ## 6. Direct sharing
 
-Hub-Mind supports deep links to specific records.
-
-A shared task link should open the task itself.
-A shared meeting link should open the meeting itself.
-A shared document link should open the document itself.
-
-Shared views are intended for quick review rather than editing.
-
-This is especially useful when sending Jaystar proof that:
-- A meeting was scheduled.
-- A task was created.
-- A document exists.
-- A particular record contains the information being discussed.
+Hub-Mind supports deep links to specific records. A shared task link should open the task itself; a shared meeting link should open the meeting itself; and a shared document link should open the document itself.
 
 ## 7. Tasks
 
-A good task has:
-- Clear title.
-- Useful description when needed.
-- Priority.
-- Deadline where applicable.
-- Assigned person.
-- Related client/project when relevant.
-- Checklist when the work has multiple steps.
-
-Update tasks rather than creating duplicates.
-
-When finished, mark them completed. When blocked, document why.
+A good task has a clear title, useful description when needed, priority, deadline where applicable, assigned person and related client/project when relevant. Update tasks rather than creating duplicates.
 
 ## 8. Meetings
 
-Every meaningful meeting should have:
-- Correct date.
-- Correct time.
-- Clear title/agenda.
-- Relevant notes.
-- Status.
-
-After a meeting, record important outcomes and create follow-up tasks where necessary.
+Every meaningful meeting should have the correct date, time, clear title/agenda, relevant notes and status. After a meeting, record important outcomes and create follow-up tasks where necessary.
 
 ## 9. Follow-ups
 
-A follow-up exists because something is not finished yet.
-
-Examples:
-- Client has not replied.
-- Payment is expected.
-- Appointment needs confirmation.
-- Document is awaiting approval.
-- Someone promised to send information.
-
-A follow-up should make it obvious:
-**Who/what are we waiting for, what are we waiting for, and when should we check again?**
+A follow-up exists because something is not finished yet: a client reply, payment, appointment confirmation, document approval or promised information. Make it obvious who/what is waiting and when it should be checked again.
 
 ## 10. Clients
 
-Keep client information organised and current.
+Keep client information organised and current. When a client interaction produces an actionable request: **capture → create/update client → create task/follow-up → track outcome.**
 
-When a new client interaction produces an actionable request:
-**capture → create/update client → create task/follow-up → track outcome.**
+## 11. Jess
 
-Do not allow important client information to remain buried inside WhatsApp conversations.
+Jess is Hub-Mind's embedded live voice operating layer.
 
-## 11. Shawn AI
+Use Jess to:
+- Ask questions about the workspace.
+- Inspect tasks, documents, projects, clients and calendar information.
+- Navigate visibly through Hub-Mind.
+- Create and update operational records where the available tools permit.
+- Create, open, read and update documents.
+- Interact naturally using live voice.
 
-Shawn is Hub-Mind's AI operational partner.
+Jess is activated by double tap/double click on her floating icon. There is no wake word and no assistant settings panel. The floating icon can be dragged with a mouse or touch input and remembers its position in the browser.
 
-Use Shawn to:
-- Ask questions.
-- Understand information already in Hub-Mind.
-- Draft or improve content.
-- Assist with documents.
-- Help organise work.
-- Work with tasks, meetings and operational information where the available tools permit.
+Jess is not a replacement for checking the actual record. For important information, verify the underlying Hub-Mind item.
 
-Shawn is not a replacement for checking the actual record. For important information, verify the underlying Hub-Mind item.
+## 12. Accuracy rules
 
-## 12. WhatsApp communication
+Always use exact dates and times, keep names accurate, avoid duplicate records, save changes, verify important edits, keep statuses current, record decisions and treat Hub-Mind as the source of truth.
 
-When communicating with clients, use the approved Jaystarbliss Studios identity and tone.
+Never assume something was saved without checking, delete something merely because it disappeared from the screen, leave important information only in memory, create repeated tasks when a recurring schedule is appropriate, or report completion when the underlying record has not been updated.
 
-For important internal communication to Jaystar, prefer a direct Hub-Mind link when the recipient needs to inspect a specific item.
+## 13. Escalate to Jaystar
 
-For daily operational communication, use the Hub-Mind schedule/report sharing tools instead of manually rebuilding the same information in WhatsApp.
+Bring matters to Jaystar when a client requests an unusual discount or exception, money/payment decisions are required, a major schedule change is proposed, a sensitive client issue occurs, an important official document requires approval, an action represents an uncertain business preference, or required information/permission is missing.
 
-## 13. Accuracy rules
+## 14. The standard of work
 
-Always:
-- Use exact dates and times.
-- Keep names and titles accurate.
-- Avoid duplicate records.
-- Save changes.
-- Verify important edits.
-- Keep statuses current.
-- Record decisions and outstanding actions.
-- Treat Hub-Mind as the operational source of truth.
-
-Never:
-- Assume something was saved without checking.
-- Delete something merely because it disappeared from the screen.
-- Leave important information only in personal memory.
-- Create repeated tasks when a recurring schedule is appropriate.
-- Tell Jaystar something is completed when the underlying Hub-Mind record has not been updated.
-
-## 14. Escalate to Jaystar
-
-Bring matters to Jaystar when:
-- A client requests an unusual discount or exception.
-- Money/payment decisions are required.
-- A major schedule change is proposed.
-- A sensitive client issue occurs.
-- A contract or important official document requires approval.
-- You are unsure whether an action represents Jaystar's business preference.
-- Something important cannot be completed because information or permission is missing.
-
-Use **Needs Your Decision** in the daily report for these items.
-
-## 15. The standard of work
-
-The goal is not merely to “enter things into the app”.
-
-The goal is for Jaystar to open Hub-Mind at any moment and immediately understand:
-
-**What is happening?  
-What needs to be done?  
-Who are we waiting for?  
-What happened today?  
-What is happening tomorrow?  
-Which documents matter?  
-What needs my decision?**
-
-If Hub-Mind answers those questions clearly, you are doing your job well.
+The goal is for Jaystar to open Hub-Mind at any moment and immediately understand what is happening, what needs to be done, who is waiting, what happened today, what is happening tomorrow, which documents matter and what needs a decision.
 
 ---
 **Hub-Mind principle:** If it matters, capture it. If it needs action, task it. If it happens at a time, schedule it. If someone owes us something, follow it up. If it is a work product, document it. If Jaystar needs to know, report it.

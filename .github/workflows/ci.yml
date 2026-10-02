@@ -2,7 +2,7 @@ name: HUB-MIND CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "jess-integration-complete"]
   pull_request:
     branches: ["main"]
 
@@ -12,18 +12,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-
+      - name: Jess integration verification
+        run: npm run verify:jess
       - name: TypeScript validation
-        run: npm run lint
-
+        run: npm run typecheck
+      - name: Unit and contract tests
+        run: npm run test:unit
+      - name: Firestore security emulator tests
+        run: npm run test:rules
       - name: Production build
         run: npm run build
