@@ -85,7 +85,7 @@
     "@types/html2canvas": "^1.0.0",
     "@types/node": "^22.14.0",
     "@types/ws": "^8.18.1",
-    "@firebase/rules-unit-testing": "^3.0.4",
+    "@firebase/rules-unit-testing": "^5.0.2",
     "firebase-tools": "^15.32.1"
   }
 }
