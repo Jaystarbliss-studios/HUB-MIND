@@ -22,6 +22,9 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'list_projects', description: 'List visible Hub-Mind projects.', parameters: object({ limit: { type: 'number' } }) },
   { name: 'open_project', description: 'Open a project on the user screen after checking access.', parameters: object({ projectId: { type: 'string' } }, ['projectId']) },
   { name: 'list_clients', description: 'List visible Hub-Mind clients.', parameters: object({ limit: { type: 'number' } }) },
+  { name: 'list_meetings', description: 'List meetings visible to the signed-in user.', parameters: object({ limit: { type: 'number' } }) },
+  { name: 'list_follow_ups', description: 'List follow-ups visible to the signed-in user.', parameters: object({ status: { type: 'string' }, limit: { type: 'number' } }) },
+  { name: 'list_knowledge', description: 'List knowledge records visible to the signed-in user.', parameters: object({ limit: { type: 'number' } }) },
   { name: 'open_task', description: 'Open a task on the user screen after checking access.', parameters: object({ taskId: { type: 'string' } }, ['taskId']) },
   { name: 'open_client', description: 'Open a client on the user screen after checking access.', parameters: object({ clientId: { type: 'string' } }, ['clientId']) },
   { name: 'list_calendar_events', description: 'List upcoming Google Calendar events.', parameters: object({ timeMin: { type: 'string' }, timeMax: { type: 'string' } }) },
@@ -54,6 +57,9 @@ export async function executeJessTool(name: string, args: any, user: User | null
       case 'list_projects': { const snap = await getDocs(ownedQuery('projects', user, safeLimit(args.limit))); return { result: { success: true, projects: snap.docs.map(d => ({ id: d.id, ...d.data() })) } }; }
       case 'open_project': { const item = await readResource('projects', args.projectId, user); return item ? { result: { success: true, project: { id: item.id, ...item.data } }, actionPayload: navigatePayload(`/projects/${args.projectId}`) } : { result: { success: false, error: 'Project not found or access denied.' } }; }
       case 'list_clients': { const snap = await getDocs(ownedQuery('clients', user, safeLimit(args.limit))); return { result: { success: true, clients: snap.docs.map(d => ({ id: d.id, ...d.data() })) } }; }
+      case 'list_meetings': { const snap = await getDocs(ownedQuery('meetings', user, safeLimit(args.limit))); return { result: { success: true, meetings: snap.docs.map(d => ({ id: d.id, ...d.data() })) } }; }
+      case 'list_follow_ups': { const snap = await getDocs(ownedQuery('followUps', user, safeLimit(args.limit))); return { result: { success: true, followUps: snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((item: any) => !args.status || item.status === args.status) } }; }
+      case 'list_knowledge': { const snap = await getDocs(ownedQuery('knowledge', user, safeLimit(args.limit))); return { result: { success: true, knowledge: snap.docs.map(d => ({ id: d.id, ...d.data() })) } }; }
       case 'open_task': { const item = await readResource('tasks', args.taskId, user); return item ? { result: { success: true, task: { id: item.id, ...item.data } }, actionPayload: navigatePayload(`/tasks/${args.taskId}`) } : { result: { success: false, error: 'Task not found or access denied.' } }; }
       case 'open_client': { const item = await readResource('clients', args.clientId, user); return item ? { result: { success: true, client: { id: item.id, ...item.data } }, actionPayload: navigatePayload(`/clients/${args.clientId}`) } : { result: { success: false, error: 'Client not found or access denied.' } }; }
       case 'list_calendar_events': { const events = await listGoogleCalendarEvents(args.timeMin, args.timeMax); return { result: { success: true, events: events.map((e: any) => ({ id: e.id, summary: e.summary, start: e.start?.dateTime || e.start?.date, link: e.htmlLink })) } }; }
