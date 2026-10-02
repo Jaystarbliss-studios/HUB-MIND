@@ -9,7 +9,19 @@ async function verifyFirebaseUser(idToken: string) {
   if (!response.ok) throw new Error('Your Hub-Mind session is no longer valid. Please sign in again.');
   const data = await response.json() as any; const user = data?.users?.[0];
   if (!user || user.disabled) throw new Error('Your Hub-Mind account is unavailable.');
-  return user;
+  const projectId = (firebaseConfig as any).projectId;
+  const databaseId = (firebaseConfig as any).firestoreDatabaseId || '(default)';
+  const profileResponse = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/documents/users/${encodeURIComponent(user.localId)}`,
+    { headers: { Authorization: `Bearer ${idToken}` } },
+  );
+  if (!profileResponse.ok) throw new Error('Your Hub-Mind workspace profile could not be verified.');
+  const profileDocument = await profileResponse.json() as any;
+  const fields = profileDocument?.fields || {};
+  const status = fields.status?.stringValue;
+  const role = fields.role?.stringValue;
+  if (status !== 'active' || !['admin', 'staff'].includes(role)) throw new Error('Your Hub-Mind account is not active or authorized.');
+  return { ...user, hubMindRole: role };
 }
 
 export default async (req: Request) => {
