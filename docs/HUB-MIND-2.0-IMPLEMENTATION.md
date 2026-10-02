@@ -32,7 +32,7 @@ This branch is the controlled migration branch for the resource-centric Hub-Mind
 - Occurrences use deterministic template/date keys to prevent duplicates.
 - Recurring tasks materialize only the required occurrence instead of generating an unlimited future backlog.
 - Existing recurring task processing now creates permission-aware task records.
-- Google Calendar integration already present in the repository remains isolated for continued synchronization work.
+- Google Calendar integration remains isolated for continued synchronization work.
 
 ## E — Documents
 - Save lifecycle has explicit hydration/changed/saving/saved/offline/error states.
@@ -41,13 +41,16 @@ This branch is the controlled migration branch for the resource-centric Hub-Mind
 - Existing A4/editor/template/export subsystem is preserved rather than replaced.
 - Shared document access is permission-aware at the data layer.
 
-## F — Shawn
-- Shawn tool names are centralized.
-- Shawn authorization delegates to the same role/resource permission layer.
-- Shawn cannot elevate the speaking user's permissions.
-- Destructive Shawn tools require explicit confirmation.
-- Resource navigation is generated from resource type/id instead of hard-coded UI knowledge.
-- Existing chat/voice UI remains intact; wake-word behavior is not used as an authorization mechanism.
+## F — Jess
+- Jess is the embedded feminine live voice operating layer for Hub-Mind.
+- Jess is activated by double tap/double click on a floating assistant icon; no wake word is required.
+- Jess uses the authenticated Firebase → short-lived Gemini Live token path.
+- Jess tool declarations are centralized and execute through the signed-in user's permissions.
+- Jess cannot elevate the speaking user's permissions.
+- Resource navigation is performed through the existing Hub-Mind router so users can see where Jess is working.
+- Task, document, project, client and calendar operations are available through authenticated tools.
+- The user identity/name and current route/document context are supplied to the live session.
+- The standalone voice-model settings, vault, transcript and chat UI are not embedded in Hub-Mind.
 
 ## G — Communications
 - Notification records support resource-aware notifications.
@@ -55,7 +58,7 @@ This branch is the controlled migration branch for the resource-centric Hub-Mind
 - Resource routes can be placed into external messages without exposing another user's email as the primary identity.
 
 ## H — Admin
-- Admin Centre now manages approved People through invitation-first onboarding.
+- Admin Centre manages approved People through invitation-first onboarding.
 - Direct password/account creation is removed from the workspace admin UI.
 - Staff role is the only non-admin role.
 - Recurring task management remains available.
@@ -66,17 +69,18 @@ This branch is the controlled migration branch for the resource-centric Hub-Mind
 - Admin People UI is responsive.
 - Existing responsive/mobile editor and context-menu work is preserved.
 - Empty/error/loading states remain explicit rather than silently falling back to demo data.
+- Jess has no assistant settings surface and uses a compact responsive floating interaction on desktop and touch devices.
 
 ## J — Hardening
 - Demo seeding remains disabled.
 - Local workspace storage remains cache/offline-only.
 - Firestore is the authoritative source of workspace data.
-- Old assistant-centric Firestore authorization paths are removed.
+- Legacy assistant-centric Firestore authorization paths are removed from the active assistant path.
 - Unauthorized Google identities are rejected before workspace membership is created.
 - Security rules enforce owner/shared/workspace access for resource reads and writes.
 - Destructive operations are routed through authorization-aware helpers.
 
 ## Migration notes
-Firestore queries are not filters: once resource-level privacy rules are enabled, staff list queries must carry constraints compatible with those rules. This is an intentional security property of the migration, not a client-side filtering shortcut. The Firebase documentation explicitly requires queries to match the constraints enforced by rules.
+Firestore queries are not filters: once resource-level privacy rules are enabled, staff list queries must carry constraints compatible with those rules. This is an intentional security property of the migration, not a client-side filtering shortcut.
 
 Before production deployment, the Firebase Rules simulator/CI should be used to verify owner, shared-read, shared-write, workspace, suspended-user, invitation and unauthorized-account cases.
