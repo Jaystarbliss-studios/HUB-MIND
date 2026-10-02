@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 
 const root = process.cwd();
 const activeFiles = [
-  'src/App.tsx', 'src/types.ts', 'src/lib/jessTools.ts',
-  'src/components/JessFloatingAssistant.tsx', 'src/components/JessOrbVisualizer.tsx', 'src/services/liveAudioClient.ts',
+  'src/App.tsx', 'src/types.ts', 'src/lib/jessTools.ts', 'src/components/JessFloatingAssistant.tsx',
+  'src/components/JessOrbVisualizer.tsx', 'src/components/JessDocumentBridge.tsx', 'src/services/liveAudioClient.ts',
 ];
 const forbidden = /Shawn|shawn|WakeWord|wake-word|wake word/;
 const failures = [];
@@ -18,6 +18,7 @@ for (const file of activeFiles) {
 const requiredToolNames = ['get_user_profile', 'get_current_context', 'get_workspace_overview', 'search_workspace', 'create_task', 'update_task', 'create_document', 'get_document_content', 'update_document', 'list_projects', 'open_project', 'open_document', 'navigate_app'];
 const tools = readFileSync(resolve(root, 'src/lib/jessTools.ts'), 'utf8');
 for (const tool of requiredToolNames) if (!tools.includes(`name: '${tool}'`)) failures.push(`jessTools.ts: required tool ${tool} is missing`);
+if (!tools.includes('queueJessDocumentEdit')) failures.push('jessTools.ts: document bridge is not connected');
 
 for (const legacy of [
   'src/lib/shawnAuthorization.ts', 'src/lib/shawnTaskManager.ts', 'src/lib/shawnTools.ts', 'src/services/wakeWordDetector.ts',
