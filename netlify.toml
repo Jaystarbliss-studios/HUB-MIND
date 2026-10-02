@@ -2,6 +2,12 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  # Google OAuth client IDs are intentionally embedded in the browser bundle.
+  # Keep Netlify secret scanning enabled for real secrets while excluding this
+  # known-public configuration value from false-positive scanning.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_GOOGLE_CLIENT_ID"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
@@ -24,4 +30,4 @@
 [[headers]]
   for = "/manifest.webmanifest"
   [headers.values]
-    Cache-Control = "no-cache, must-revalidate"
+    Cache-Control = "no-cache, must-revalidate
