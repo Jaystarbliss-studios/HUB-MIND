@@ -3,7 +3,7 @@ import { db } from '../firebaseConfig';
 import { User } from '../types';
 import { createGoogleCalendarEvent, listGoogleCalendarEvents } from './googleCalendar';
 import { globalSearch } from './globalSearch';
-import { queueJessDocumentEdit } from '../components/JessDocumentBridge';
+import { queueJessDocumentEdit } from './jessDocumentBridge';
 
 export interface JessToolDefinition { name: string; description: string; parameters: { type: string; properties: Record<string, any>; required?: string[] } }
 const object = (properties: Record<string, any>, required?: string[]): JessToolDefinition['parameters'] => ({ type: 'object', properties, ...(required ? { required } : {}) });
