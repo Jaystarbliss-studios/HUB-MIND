@@ -192,7 +192,15 @@ export class LiveAudioClient {
               onerror: (event: any) => {
                 console.warn('Live API event warning:', event);
                 if (!this.connected) {
-                  this.connectFallbackWebSocket(context);
+                  if (ENABLE_SERVER_WS_BRIDGE) {
+                    void this.connectFallbackWebSocket(context);
+                  } else {
+                    this.callbacks.onError?.(
+                      'Gemini Live connection failed. The hosted WebSocket bridge is disabled in production.'
+                    );
+                    this.callbacks.onStatusChange('error');
+                    this.callbacks.onJessStateChange('error');
+                  }
                 }
               },
               onclose: (event: any) => {
