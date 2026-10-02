@@ -18,12 +18,12 @@ async function getVisibleDocs(collectionName:string, userId:string, max:number) 
   return [...map.values()].slice(0,max);
 }
 
-export async function globalSearch(term:string,userId:string,maxPerType=8):Promise<SearchResult[]> {
+export async function globalSearch(term:string,userId:string,maxPerType=8,role:'admin'|'staff'='staff'):Promise<SearchResult[]> {
   const needle=term.trim().toLowerCase();
   if(!needle||!userId)return[];
   const results:SearchResult[]=[];
   for(const type of Object.keys(collections) as ResourceType[]){
-    const docs=await getVisibleDocs(collections[type],userId,maxPerType);
+    const docs=role==='admin' ? (await getDocs(query(collection(db,collections[type]),limit(maxPerType)))).docs.map(d=>({id:d.id,...d.data()})) : await getVisibleDocs(collections[type],userId,maxPerType);
     for(const x of docs){
       const searchable=[x.title,x.name,x.description,x.content,x.email,x.phone].filter(Boolean).join(' ').toLowerCase();
       if(!searchable.includes(needle))continue;
