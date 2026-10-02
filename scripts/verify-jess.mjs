@@ -38,10 +38,12 @@ const requiredFiles = [
 for (const file of requiredFiles) if (!existsSync(resolve(root, file))) failures.push(`${file}: required Jess integration file is missing`);
 
 const tools = readFileSync(resolve(root, 'src/lib/jessTools.ts'), 'utf8');
-for (const tool of ['get_user_profile','get_current_context','get_workspace_overview','search_workspace','create_task','update_task','create_document','get_document_content','update_document','list_projects','open_project','open_document','navigate_app']) {
+for (const tool of ['get_user_profile','get_current_context','get_workspace_overview','search_workspace','create_task','update_task','create_document','get_document_content','update_document','list_projects','open_project','open_document','navigate_app','list_meetings','list_follow_ups','list_knowledge']) {
   if (!tools.includes(`name: '${tool}'`)) failures.push(`jessTools.ts: required tool ${tool} is missing`);
 }
 if (!tools.includes('queueJessDocumentEdit')) failures.push('jessTools.ts: document bridge is not connected');
+const bridge = readFileSync(resolve(root, 'src/lib/jessDocumentBridge.ts'), 'utf8');
+if (!bridge.includes('registerJessDocumentEditor') || !bridge.includes('applyJessDocumentEdit')) failures.push('jessDocumentBridge.ts: direct editor bridge is incomplete');
 
 const live = readFileSync(resolve(root, 'src/services/liveAudioClient.ts'), 'utf8');
 for (const contract of ['gemini-3.8-live','Kore','16000','24000','sendFunctionResponse','sessionResumption']) {
