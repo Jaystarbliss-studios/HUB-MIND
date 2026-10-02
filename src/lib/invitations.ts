@@ -23,6 +23,12 @@ export async function getInvitation(id: string) {
   return { id: snap.id, ...snap.data() } as Invitation;
 }
 
+export function validateInvitationAcceptance(invitation: Invitation, uid: string, email: string, now = Date.now()) {
+  if (invitation.status !== 'invited') throw new Error('This invitation is no longer active.');
+  if (new Date(invitation.expiresAt).getTime() <= now) throw new Error('This invitation has expired.');
+  if (invitation.email !== email.trim().toLowerCase()) throw new Error('Please sign in with the Google account that was invited.');
+}
+
 export async function acceptInvitation(invitationId: string, uid: string, email: string) {
   const normalizedEmail = email.trim().toLowerCase();
   const ref = doc(db, 'invitations', invitationId);
@@ -31,9 +37,7 @@ export async function acceptInvitation(invitationId: string, uid: string, email:
     const snap = await transaction.get(ref);
     if (!snap.exists()) throw new Error('Invitation not found.');
     const invitation = { id: snap.id, ...snap.data() } as Invitation;
-    if (invitation.status !== 'invited') throw new Error('This invitation is no longer active.');
-    if (new Date(invitation.expiresAt).getTime() <= Date.now()) throw new Error('This invitation has expired.');
-    if (invitation.email !== normalizedEmail) throw new Error('Please sign in with the Google account that was invited.');
+    validateInvitationAcceptance(invitation, uid, normalizedEmail);
     transaction.update(ref, { status: 'accepted', acceptedAt, acceptedUid: uid });
     return invitation;
   });
