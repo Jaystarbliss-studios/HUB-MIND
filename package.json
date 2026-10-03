@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "backup:jess": "node scripts/backup-jess-ai.mjs",
+    "restore:jess": "node scripts/restore-jess-ai.mjs",
     "verify:jess": "node scripts/verify-jess.mjs",
     "typecheck": "tsc --noEmit",
     "test:unit": "node --import tsx --test tests/jess/*.test.mjs tests/security/*.test.ts tests/security/*.test.mjs tests/auth/*.test.ts tests/recurrence/*.test.ts",

@@ -1,5 +1,6 @@
 const googleClientId =
-  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_GOOGLE_CLIENT_ID) ||
+  (typeof process !== 'undefined' && process?.env?.VITE_GOOGLE_CLIENT_ID) ||
   "";
 
 export let driveConfig = {

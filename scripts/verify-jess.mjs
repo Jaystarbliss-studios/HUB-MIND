@@ -52,13 +52,13 @@ for (const contract of ['https://generativelanguage.googleapis.com/v1beta/auth_t
 if (liveToken.includes('liveConnectConstraints')) failures.push('live-token.mjs: obsolete REST field liveConnectConstraints remains');
 
 const live = readFileSync(resolve(root, 'src/services/liveAudioClient.ts'), 'utf8');
-for (const contract of ['gemini-3.8-live','Kore','16000','24000','sendFunctionResponse','sessionResumption']) {
+for (const contract of ['gemini-3.8-live','Kore','16000','24000','sendFunctionResponse','sessionResumption','MANDATORY UI NAVIGATION RULE']) {
   if (!live.includes(contract)) failures.push(`liveAudioClient.ts: Live API contract ${contract} is missing`);
-if (!live.includes("ENABLE_SERVER_WS_BRIDGE") || !live.includes("if (ENABLE_SERVER_WS_BRIDGE)")) failures.push('liveAudioClient.ts: production WebSocket fallback guard is missing');
 }
+if (!live.includes("ENABLE_SERVER_WS_BRIDGE") || !live.includes("if (ENABLE_SERVER_WS_BRIDGE)")) failures.push('liveAudioClient.ts: production WebSocket fallback guard is missing');
 
 const floating = readFileSync(resolve(root, 'src/components/JessFloatingAssistant.tsx'), 'utf8');
-for (const contract of ['sessionEndingRef', 'JSON.parse(toolArgs)', 'sendFunctionResponse({ name: fc.name', 'MANDATORY UI NAVIGATION RULE']) {
+for (const contract of ['sessionEndingRef', 'JSON.parse(toolArgs)', 'sendFunctionResponse({ name: fc.name']) {
   if (!floating.includes(contract)) failures.push(`JessFloatingAssistant.tsx: runtime contract ${contract} is missing`);
 }
 if (!floating.includes('}, 100);')) failures.push('JessFloatingAssistant.tsx: end_session does not immediately terminate the Live session');

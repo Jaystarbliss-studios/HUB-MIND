@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-10-03T18:55:23.798Z",
+  "files": [
+    "src/lib/jessTools.ts",
+    "src/services/liveAudioClient.ts",
+    "src/services/memoryService.ts",
+    "src/services/sentimentService.ts",
+    "src/services/jessBackgroundTasks.ts",
+    "src/services/contextScannerService.ts",
+    "src/lib/jessDocumentBridge.ts",
+    "src/lib/jessContext.ts",
+    "src/components/JessFloatingAssistant.tsx",
+    "src/components/JessOrbVisualizer.tsx",
+    "server.ts",
+    "netlify/functions/chat.ts",
+    "netlify/functions/live-token.mjs",
+    "netlify.toml"
+  ]
+}
