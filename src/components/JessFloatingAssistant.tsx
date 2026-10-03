@@ -6,7 +6,22 @@ import { executeJessTool } from '../lib/jessTools';
 import { resolveJessContext } from '../lib/jessContext';
 import { JessOrbVisualizer } from './JessOrbVisualizer';
 import { jessBackgroundTasks, JessBackgroundTask } from '../services/jessBackgroundTasks';
-import { Activity } from 'lucide-react';
+import { autoExtractMemory } from '../services/memoryService';
+import { trackAndPersistSentiment } from '../services/sentimentService';
+import { scanCurrentPageContext, ContextActionSuggestion } from '../services/contextScannerService';
+import { 
+  Activity, 
+  Lightbulb, 
+  FileText, 
+  CheckSquare, 
+  Calendar, 
+  Mail, 
+  Share2, 
+  Users, 
+  ChevronRight,
+  X,
+  Brain
+} from 'lucide-react';
 
 const POSITION_KEY = 'hubmind.jess.position.v2';
 const DEFAULT_POSITION = { x: 0.92, y: 0.88 };
@@ -44,6 +59,12 @@ function wakeTone() {
   }
 }
 
+interface CurrentSpeechState {
+  text: string;
+  speaker: 'user' | 'jess';
+  visible: boolean;
+}
+
 export function JessFloatingAssistant() {
   const { profile, updatePreferredName } = useAuth();
   const location = useLocation();
@@ -56,6 +77,27 @@ export function JessFloatingAssistant() {
   const [inputLevel, setInputLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
   const [activeBgTasks, setActiveBgTasks] = useState<JessBackgroundTask[]>([]);
+
+  // 70% transparent transient Gemini Live style subtitle overlay
+  const [speechState, setSpeechState] = useState<CurrentSpeechState>({
+    text: '',
+    speaker: 'user',
+    visible: false,
+  });
+  const [recentMemorySaved, setRecentMemorySaved] = useState<string | null>(null);
+
+  // Context-aware Page/Document Scanner Menu
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextActions, setContextActions] = useState<ContextActionSuggestion[]>([]);
+
+  const jessSpeechAccumulatorRef = useRef<string>('');
+  const fadeTimerRef = useRef<number | null>(null);
+
+  // Rescan context when route changes
+  useEffect(() => {
+    const actions = scanCurrentPageContext(location.pathname);
+    setContextActions(actions);
+  }, [location.pathname]);
 
   useEffect(() => {
     const unsub = jessBackgroundTasks.subscribe(tasks => {
@@ -73,25 +115,56 @@ export function JessFloatingAssistant() {
     }
   }, []);
 
-  useEffect(() => () => { void clientRef.current?.disconnect(); clientRef.current = null; }, []);
+  useEffect(() => {
+    return () => {
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      void clientRef.current?.disconnect();
+      clientRef.current = null;
+    };
+  }, []);
+
+  const scheduleFade = useCallback((delayMs = 5000) => {
+    if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    fadeTimerRef.current = window.setTimeout(() => {
+      setSpeechState(prev => ({ ...prev, visible: false }));
+    }, delayMs);
+  }, []);
 
   const stop = useCallback(async () => {
+    if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     await clientRef.current?.disconnect();
     clientRef.current = null;
     setConnection('disconnected');
     setState('idle');
     setInputLevel(0);
     setOutputLevel(0);
+    setSpeechState({ text: '', speaker: 'user', visible: false });
+    setShowContextMenu(false);
   }, []);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (initialPrompt?: string) => {
     if (clientRef.current || !profile) return;
     wakeTone();
+    jessSpeechAccumulatorRef.current = '';
+
     const client = new LiveAudioClient({
       onStatusChange: setConnection,
       onJessStateChange: setState,
-      onJessTranscript: () => {},
-      onTurnComplete: () => {},
+      onJessTranscript: (text) => {
+        if (!text) return;
+        if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+        const next = jessSpeechAccumulatorRef.current ? `${jessSpeechAccumulatorRef.current} ${text}` : text;
+        jessSpeechAccumulatorRef.current = next;
+        setSpeechState({
+          text: next,
+          speaker: 'jess',
+          visible: true,
+        });
+      },
+      onTurnComplete: () => {
+        jessSpeechAccumulatorRef.current = '';
+        scheduleFade(5000);
+      },
       onError: error => console.error('[Jess]', error),
       onAudioLevel: (input, output) => {
         setInputLevel(input);
@@ -105,15 +178,43 @@ export function JessFloatingAssistant() {
         }
         client.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
 
+        if (fc.name === 'save_user_memory' && result.result?.success) {
+          setRecentMemorySaved(result.result.content || 'Preference remembered');
+          setTimeout(() => setRecentMemorySaved(null), 3500);
+        }
+
         if (fc.name === 'end_session' || result.actionPayload?.type === 'sleep') {
-          // Allow speech synthesis to complete if speaking, then cleanly deactivate
           window.setTimeout(() => {
             void stop();
           }, 1800);
         }
       },
-      onUserTranscript: text => {
-        const lower = (text || '').toLowerCase().trim();
+      onUserTranscript: (text) => {
+        if (!text) return;
+        if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+        jessSpeechAccumulatorRef.current = '';
+        setSpeechState({
+          text,
+          speaker: 'user',
+          visible: true,
+        });
+
+        // Sentiment Analysis & Emotional State Tracking
+        if (profile?.id) {
+          trackAndPersistSentiment(profile.id, text).catch(() => {});
+        }
+
+        // Auto-extract memory from user statements if explicit preference mentioned
+        if (profile?.id) {
+          autoExtractMemory(profile.id, text).then(saved => {
+            if (saved) {
+              setRecentMemorySaved(saved.content);
+              setTimeout(() => setRecentMemorySaved(null), 3500);
+            }
+          }).catch(() => {});
+        }
+
+        const lower = text.toLowerCase().trim();
         if (
           lower === 'end this session' ||
           lower.includes('end this session') ||
@@ -128,23 +229,42 @@ export function JessFloatingAssistant() {
         }
       },
     });
+
     clientRef.current = client;
     try {
       const firstName = profile.preferredName || profile.displayName || profile.name?.split(' ')[0] || 'there';
       const context = resolveJessContext(location.pathname);
-      await client.connect({ ...context, userName: firstName, userRole: profile.role });
+      await client.connect({ 
+        ...context, 
+        userId: profile.id, 
+        userName: firstName, 
+        userRole: profile.role 
+      });
       window.setTimeout(() => {
-        client.sendText(`Greet ${firstName} warmly and briefly ask what you can assist with today. Do NOT say "I am Jess" or introduce yourself by name unless the user asks for your name or identity.`);
+        if (initialPrompt) {
+          client.sendText(initialPrompt);
+        } else {
+          client.sendText(`Greet ${firstName} warmly and briefly ask what you can assist with today. Do NOT say "I am Jess" or introduce yourself by name unless the user asks for your name or identity.`);
+        }
       }, 450);
     } catch {
       await stop();
     }
-  }, [location.pathname, navigate, profile, stop, updatePreferredName]);
+  }, [location.pathname, navigate, profile, stop, updatePreferredName, scheduleFade]);
 
   const activate = useCallback(() => {
     if (connection === 'connected' || connection === 'connecting') void stop();
     else void start();
   }, [connection, start, stop]);
+
+  const handleExecuteContextAction = (action: ContextActionSuggestion) => {
+    setShowContextMenu(false);
+    if (connection === 'connected' && clientRef.current) {
+      clientRef.current.sendText(action.prompt);
+    } else {
+      start(action.prompt);
+    }
+  };
 
   const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (e.pointerType !== 'touch' && e.button !== 0) return;
@@ -205,8 +325,143 @@ export function JessFloatingAssistant() {
   const size = active ? 76 : 64;
   const renderedPosition = typeof window !== 'undefined' ? clampViewportPosition(position, size) : position;
 
+  const isRightHalf = renderedPosition.x > 0.5;
+  const isBottomHalf = renderedPosition.y > 0.5;
+
+  const renderIcon = (name: string) => {
+    switch (name) {
+      case 'FileText': return <FileText className="w-4 h-4 text-teal-400 shrink-0" />;
+      case 'CheckSquare': return <CheckSquare className="w-4 h-4 text-cyan-400 shrink-0" />;
+      case 'Calendar': return <Calendar className="w-4 h-4 text-teal-300 shrink-0" />;
+      case 'Mail': return <Mail className="w-4 h-4 text-sky-400 shrink-0" />;
+      case 'Share2': return <Share2 className="w-4 h-4 text-teal-400 shrink-0" />;
+      case 'Users': return <Users className="w-4 h-4 text-cyan-300 shrink-0" />;
+      case 'Activity': return <Activity className="w-4 h-4 text-teal-400 shrink-0" />;
+      default: return <Lightbulb className="w-4 h-4 text-teal-400 shrink-0" />;
+    }
+  };
+
   return (
     <>
+      {/* 70% Transparent Floating Subtitle Box (Gemini Live Style) */}
+      <div
+        aria-live="polite"
+        className={`fixed z-[9998] pointer-events-none transition-all duration-300 ease-out flex flex-col items-center justify-end ${
+          speechState.visible && speechState.text
+            ? 'opacity-100 translate-y-0'
+            : 'opacity-0 translate-y-2'
+        }`}
+        style={{
+          left: '50%',
+          bottom: '100px',
+          transform: 'translateX(-50%)',
+          width: 'min(92vw, 440px)',
+        }}
+      >
+        {/* Subtle Memory Saved Pill (Transient) */}
+        {recentMemorySaved && (
+          <div className="mb-2 px-3 py-1 bg-slate-950/85 backdrop-blur-md text-teal-300 text-xs font-semibold rounded-full shadow-lg border border-teal-500/30 flex items-center gap-1.5 animate-in fade-in zoom-in-95 duration-200">
+            <Brain className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+            <span className="truncate max-w-[340px]">Remembered: {recentMemorySaved}</span>
+          </div>
+        )}
+
+        {/* Minimalist 70% Transparent Subtitle Box matching Gemini Live & Hub-Mind theme */}
+        {speechState.text && (
+          <div className="w-full bg-slate-950/75 backdrop-blur-md rounded-2xl px-5 py-3.5 shadow-2xl border border-teal-500/20 text-slate-100 text-sm sm:text-base font-normal leading-relaxed text-left select-none animate-in fade-in duration-200">
+            {speechState.text}
+          </div>
+        )}
+      </div>
+
+      {/* Context-Aware Quick Menu Floating Card (Hub-Mind Aquamarine Palette) */}
+      {showContextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            left: isRightHalf 
+              ? `calc(${renderedPosition.x * 100}% - ${size / 2 + 16}px)` 
+              : `calc(${renderedPosition.x * 100}% + ${size / 2 + 16}px)`,
+            top: isBottomHalf 
+              ? `calc(${renderedPosition.y * 100}% - 270px)` 
+              : `calc(${renderedPosition.y * 100}% + ${size / 2 + 16}px)`,
+            transform: isRightHalf ? 'translateX(-100%)' : 'none',
+            zIndex: 9998,
+          }}
+          className="w-[290px] bg-slate-950/95 backdrop-blur-2xl border border-teal-500/30 rounded-3xl shadow-2xl shadow-teal-950/50 p-3 text-slate-100 flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150"
+        >
+          {/* Menu Header */}
+          <div className="px-2.5 py-1.5 flex items-center justify-between border-b border-teal-500/20">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center">
+                <Lightbulb className="w-3.5 h-3.5 text-teal-400" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-teal-300 tracking-wide">Suggested Actions</h4>
+                <p className="text-[10px] text-slate-400 leading-none">Relevant to active screen</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowContextMenu(false)}
+              className="p-1 hover:bg-slate-800/80 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+              title="Close menu"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Action List */}
+          <div className="space-y-1.5 max-h-[230px] overflow-y-auto pr-0.5">
+            {contextActions.map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                onClick={() => handleExecuteContextAction(action)}
+                className="w-full text-left p-2.5 rounded-2xl bg-slate-900/60 hover:bg-teal-500/10 active:bg-teal-500/15 border border-slate-800/80 hover:border-teal-500/40 transition-all flex items-start gap-2.5 group cursor-pointer"
+              >
+                <div className="mt-0.5 p-1.5 bg-slate-950 rounded-xl border border-slate-800 group-hover:border-teal-500/30 transition-colors shrink-0">
+                  {renderIcon(action.icon)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-slate-100 group-hover:text-teal-300 truncate flex items-center justify-between transition-colors">
+                    <span>{action.title}</span>
+                    <ChevronRight className="w-3 h-3 text-slate-500 group-hover:text-teal-300 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                  <div className="text-[11px] text-slate-400 truncate leading-snug">{action.description}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Planetary Orbiting Quick Suggestions Satellite Button (Pure Lightbulb Icon) */}
+      <div
+        style={{
+          position: 'fixed',
+          left: `${renderedPosition.x * 100}%`,
+          top: `${renderedPosition.y * 100}%`,
+          width: '0px',
+          height: '0px',
+          pointerEvents: 'none',
+          zIndex: 9999,
+        }}
+        className="flex items-center justify-center"
+      >
+        <button
+          type="button"
+          onClick={() => setShowContextMenu(v => !v)}
+          className={`pointer-events-auto group w-[32px] h-[32px] min-w-[32px] min-h-[32px] max-w-[32px] max-h-[32px] aspect-square rounded-full p-0 flex items-center justify-center shrink-0 overflow-hidden box-border bg-slate-950/95 hover:bg-slate-900 border border-teal-400/60 hover:border-teal-300 text-teal-300 shadow-[0_0_12px_rgba(20,184,166,0.35)] backdrop-blur-md ring-1 ring-teal-400/30 transition-all duration-200 cursor-pointer ${
+            showContextMenu ? 'bg-slate-900 ring-2 ring-teal-300 border-teal-300 scale-110 shadow-[0_0_16px_rgba(45,212,191,0.5)]' : 'animate-jess-orbit'
+          }`}
+          title="Quick Suggestions"
+        >
+          <Lightbulb className="w-4 h-4 text-teal-300 group-hover:scale-110 transition-transform shrink-0" />
+        </button>
+      </div>
+
+      {/* Floating Assistant Orb Button */}
       <button
         type="button"
         onPointerDown={onPointerDown}
