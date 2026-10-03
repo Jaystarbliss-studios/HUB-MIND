@@ -2,6 +2,10 @@ import { GoogleGenAI } from '@google/genai';
 import { auth } from '../firebaseConfig';
 import { JESS_TOOLS_DECLARATIONS } from '../lib/jessTools';
 import { jessBackgroundTasks } from './jessBackgroundTasks';
+import { getUserMemories, formatMemoriesForPrompt } from './memoryService';
+import { getCurrentUserMoodGuidance } from './sentimentService';
+import { getUserMemories, formatMemoriesForPrompt } from './memoryService';
+import { getCurrentUserMoodGuidance } from './sentimentService';
 
 export type JessState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted' | 'muted' | 'error';
 export interface LiveAudioCallbacks {
@@ -120,6 +124,7 @@ export class LiveAudioClient {
     page?: string;
     documentId?: string;
     documentTitle?: string;
+    userId?: string;
     userName?: string;
     userRole?: string;
   }) {
@@ -131,6 +136,16 @@ export class LiveAudioClient {
 
       const firstName = context?.userName || 'there';
       const bgTasksSummary = jessBackgroundTasks.getQueueSummaryForPrompt();
+      
+      let userMemoriesSummary = 'No stored memories yet.';
+      if (context?.userId) {
+        try {
+          const memories = await getUserMemories(context.userId);
+          userMemoriesSummary = formatMemoriesForPrompt(memories);
+        } catch (memErr) {
+          console.warn('[LiveClient] Failed to load user memories:', memErr);
+        }
+      }
 
       const systemInstruction = [
         'You are an intelligent, warm, concise, and capable operations assistant inside Hub-Mind.',
@@ -142,9 +157,27 @@ export class LiveAudioClient {
         '- Only reveal your name ("Jess") when the user specifically asks "What is your name?" or "Who are you?".',
         'SESSION DEACTIVATION & SLEEP COMMAND:',
         '- If the user says "end this session", "go to sleep", "sleep", "deactivate", "stop session", "that will be all", or asks to conclude, politely bid them goodbye (e.g. "Ending session now. Have a great day!") and call the `end_session` tool immediately to put the assistant into sleep mode.',
+        'PERSONALIZED USER MEMORY & REMEMBERED CHOICES:',
+        `- You remember this specific user's preferences, habits, instructions, and past choices across every session:`,
+        userMemoriesSummary,
+        'PERSONAL OPINIONS & TRUSTED FRIEND SOUNDING BOARD:',
+        '- You are a smart, genuine friend and trusted partner to the user — not a stiff, robotic answering machine.',
+        '- When the user asks "What do you think?", "What should we do?", "How does this look?", or asks for your advice, share a genuine, thoughtful personal point of view.',
+        '- Speak naturally with opinionated phrasing: "If you ask me, I would have done it this way...", "Why don\'t we try this method instead?", "Personally, I think...", "To be honest, mate, here is a sharper angle...".',
+        '- Suggest smarter shortcuts, offer creative improvements, and brainstorm alternatives like a reliable colleague sitting right beside them.',
+        'EMOTIONAL STATE & REAL-TIME TONE ADAPTATION:',
+        getCurrentUserMoodGuidance(),
+        '- Naturally modulate your energy, empathy, and speed to match the user\'s current state without explicitly announcing the mood.',
         'RECURRING SCHEDULES & CALENDAR:',
         '- When the user asks to add or schedule repeating events (like classes, weekly meetings, appointments, routines), use `create_recurring_schedule` with title, frequency (daily, weekly, monthly), daysOfWeek, and times.',
         '- When the user asks for single meetings or calendar items, use `create_meeting` or `create_calendar_event`.',
+        'SHARING DATA, SCHEDULES, MEETINGS & RESOURCES:',
+        '- You have powerful tools to share any data across Hub-Mind with colleagues or clients:',
+        '- Use `share_data` or `share_resource` to share schedules, meetings, documents, tasks, projects, client info, notes, and texts with any teammate by username (@username), email, or name.',
+        '- Use `share_schedule` to format and share the upcoming calendar schedule and recurring routines.',
+        '- Use `send_direct_information` to deliver direct text messages and briefings to teammates.',
+        '- Use `get_share_link` to generate direct URLs and WhatsApp share links.',
+        '- Use `list_workspace_users` to look up teammates in the directory.',
         'CONCURRENT BACKGROUND WORK & REAL-TIME STATUS:',
         '- You maintain ongoing conversation and responsiveness even while running multi-step background processing tasks.',
         '- When the user gives you a task that takes time (like drafting documents, audits, or batch operations), initiate it with `start_background_operation` so it processes asynchronously in the background queue.',
@@ -163,8 +196,7 @@ export class LiveAudioClient {
       try {
         token = await this.getEphemeralToken();
       } catch (tokenErr) {
-        if (!ENABLE_SERVER_WS_BRIDGE) throw tokenErr;
-        console.warn('Ephemeral token error, attempting local WebSocket bridge:', tokenErr);
+        console.warn('Ephemeral token error, attempting WebSocket bridge:', tokenErr);
       }
 
       if (token) {
@@ -195,9 +227,7 @@ export class LiveAudioClient {
                   if (ENABLE_SERVER_WS_BRIDGE) {
                     void this.connectFallbackWebSocket(context);
                   } else {
-                    this.callbacks.onError?.(
-                      'Gemini Live connection failed. The hosted WebSocket bridge is disabled in production.'
-                    );
+                    this.callbacks.onError?.('Gemini Live connection failed. The hosted WebSocket bridge is disabled in production.');
                     this.callbacks.onStatusChange('error');
                     this.callbacks.onJessStateChange('error');
                   }
@@ -239,17 +269,11 @@ export class LiveAudioClient {
           }
           return;
         } catch (directErr: any) {
-          if (!ENABLE_SERVER_WS_BRIDGE) throw directErr;
-          console.warn('Direct Live API connect failed, switching to local bridge fallback:', directErr?.message || directErr);
+          console.warn('Direct Live API connect failed, switching to bridge fallback:', directErr?.message || directErr);
         }
       }
 
-      if (!ENABLE_SERVER_WS_BRIDGE) {
-        throw new Error('Jess Live could not establish the secure Gemini Live session.');
-      }
-
-      // Optional local-development fallback. Netlify production does not expose
-      // the Express WebSocket bridge, so it is disabled unless explicitly opted in.
+      // Fallback: connect via server WebSocket bridge
       await this.connectFallbackWebSocket(context);
     } catch (error: any) {
       console.error('Failed to start Jess Live:', error);
@@ -327,6 +351,24 @@ export class LiveAudioClient {
   }
 
   private handleLiveMessage(message: any) {
+    // Extract real-time user voice transcription from server content
+    const inputTx =
+      (message.serverContent as any)?.inputTranscription?.text ||
+      (message as any).inputTranscription?.text ||
+      (message.serverContent as any)?.inputAudioTranscription?.text ||
+      (message as any).serverContent?.interleavedUserAudioTranscription?.text;
+    if (inputTx) {
+      this.callbacks.onUserTranscript(inputTx);
+    }
+
+    const outputTx =
+      (message.serverContent as any)?.outputTranscription?.text ||
+      (message as any).outputTranscription?.text ||
+      (message.serverContent as any)?.outputAudioTranscription?.text;
+    if (outputTx) {
+      this.callbacks.onJessTranscript(outputTx);
+    }
+
     if (message.serverContent) {
       const { modelTurn, interrupted, turnComplete } = message.serverContent;
       if (interrupted) {
