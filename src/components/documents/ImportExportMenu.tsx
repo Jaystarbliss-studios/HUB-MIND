@@ -1,17 +1,16 @@
-import { driveConfig, initDriveConfig } from '../../driveConfig'; 
 import React, { useRef, useState } from 'react';
 import { Editor } from '@tiptap/react';
-import { Download, Upload, FileText, File, Code, FileImage, Loader2, Cloud, Eye, Printer } from 'lucide-react';
+import { Download, Upload, FileText, Code, FileImage, Loader2, Cloud, Eye } from 'lucide-react';
 import * as mammoth from 'mammoth';
 import { 
   exportDocumentAsPDF, 
   exportDocumentAsDOCX, 
   exportDocumentAsHTML, 
-  exportDocumentAsTXT, 
-  printDocumentDirect 
+  exportDocumentAsTXT 
 } from '../../lib/documentExporter';
 import { PaperSizeOption, OrientationOption, MarginOption } from '../../lib/paginationEngine';
 import { getOfficialLetterheadHTML } from './OfficialLetterhead';
+import { DRIVE_SCOPES, requestGoogleAccessToken, getCachedCalendarToken } from '../../lib/googleAuthToken';
 
 interface ImportExportMenuProps {
   editor: Editor;
@@ -46,52 +45,22 @@ export function ImportExportMenu({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-   
 
-  const [driveToken, setDriveToken] = useState<string | null>(null);
-  const [driveClient, setDriveClient] = useState<any>(null);
+  const [driveToken, setDriveToken] = useState<string | null>(() => getCachedCalendarToken());
   const [isUploadingDrive, setIsUploadingDrive] = useState(false);
   const [driveError, setDriveError] = useState<string | null>(null);
   const [driveSuccess, setDriveSuccess] = useState(false);
 
-  React.useEffect(() => {
-    let isMounted = true;
-    async function loadScript() {
-      await initDriveConfig();
-      if (!isMounted) return;
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        // @ts-ignore
-        const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-          client_id: driveConfig.clientId,
-          scope: 'https://www.googleapis.com/auth/drive.file',
-          callback: (response: any) => {
-            if (response.error !== undefined) {
-              setDriveError(response.error);
-              return;
-            }
-            setDriveToken(response.access_token);
-          },
-        });
-        setDriveClient(tokenClient);
-      };
-      document.body.appendChild(script);
-    }
-    loadScript();
-    return () => {
-      isMounted = false;
-      const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-      if (script && script.parentNode) script.parentNode.removeChild(script);
-    };
-  }, []);
-
   const handleDriveExport = async () => {
-    if (!driveToken) {
-      if (driveClient) driveClient.requestAccessToken();
-      return;
+    let token = driveToken || getCachedCalendarToken();
+    if (!token) {
+      try {
+        token = await requestGoogleAccessToken(DRIVE_SCOPES);
+        setDriveToken(token);
+      } catch (err: any) {
+        setDriveError(err?.message || 'Failed to authenticate with Google Drive');
+        return;
+      }
     }
     
     setIsUploadingDrive(true);
@@ -131,7 +100,7 @@ export function ImportExportMenu({
     try {
       const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${driveToken}` },
+        headers: { Authorization: `Bearer ${token}` },
         body: form
       });
       const data = await response.json();
@@ -148,7 +117,6 @@ export function ImportExportMenu({
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  
   const handleExportDOCX = async () => {
     setIsExportingDOCX(true);
     try {
@@ -292,7 +260,6 @@ export function ImportExportMenu({
           {driveSuccess && <div className="px-4 py-1 text-xs text-green-400">Upload Successful!</div>}
           {driveError && <div className="px-4 py-1 text-xs text-red-400">{driveError}</div>}
 
-          
           <div className="my-1 border-t border-slate-700"></div>
           
           <div className="px-3 py-1 text-xs font-semibold text-slate-500 uppercase tracking-wider">Import</div>
@@ -302,7 +269,7 @@ export function ImportExportMenu({
             className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-50"
           >
             {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-            {isImporting ? 'Importing...' : 'Upload File (DOCX, TXT, HTML)'}
+            <span>{isImporting ? 'Importing...' : 'Upload File (DOCX, TXT, HTML)'}</span>
           </button>
           <input 
             type="file" 
