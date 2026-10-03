@@ -1,6 +1,7 @@
-import { coreIdentity, groqAdapter, ollamaAdapter, geminiAdapter } from "./src/ai/prompts/adapters";
+import { coreIdentity, groqAdapter, ollamaAdapter, geminiAdapter } from "./src/ai/prompts/adapters.ts";
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import OpenAI from "openai";
 import { WebSocketServer } from "ws";
@@ -10,7 +11,7 @@ const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   app.use(express.json());
 
@@ -424,8 +425,15 @@ async function startServer() {
     res.redirect(303, '/inbox?shared=true');
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  // Vite middleware for development, static dist for production
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    Boolean(process.env.K_SERVICE) ||
+    Boolean(process.env.K_REVISION) ||
+    process.env.npm_lifecycle_event === "start" ||
+    (fs.existsSync(path.join(process.cwd(), "dist", "index.html")) && process.env.npm_lifecycle_event !== "dev");
+
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: false },
       appType: "spa",
