@@ -1,6 +1,6 @@
 import { addDoc, collection, doc, getDoc, getDocs, limit, query, updateDoc, where, orderBy, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { User, DocumentInfo, RecurringMeetingTemplate } from '../types';
+import { User, DocumentInfo, RecurringMeetingTemplate, ResourceType, SharePermission } from '../types';
 import { 
   createGoogleCalendarEvent, 
   listGoogleCalendarEvents, 
@@ -13,6 +13,18 @@ import { queueJessDocumentEdit } from './jessDocumentBridge';
 import { getLocalDocsMap, setLocalDocsMap } from './offlineSync';
 import { jessBackgroundTasks } from '../services/jessBackgroundTasks';
 import { materializeRecurringMeetings } from './recurringMeetings';
+import { 
+  shareResourceWithUser, 
+  sendDirectInformation, 
+  findRecipientUser 
+} from '../services/sharingService';
+import { 
+  saveUserMemory, 
+  getUserMemories, 
+  deleteUserMemory 
+} from '../services/memoryService';
+import { getAllUsers } from '../services/userService';
+import { getShareUrl } from './shareLinks';
 
 export interface JessToolDefinition {
   name: string;
@@ -31,35 +43,139 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'get_current_context', description: 'Get the current Hub-Mind route and active workspace context.', parameters: object({}) },
   { name: 'get_workspace_overview', description: 'Get a concise overview of tasks, documents, and projects.', parameters: object({}) },
   { name: 'search_workspace', description: 'Search the signed-in workspace for documents, tasks, projects, clients and records by keywords.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }, ['query']) },
+  
+  // Workspace Users & Directory
+  { name: 'list_workspace_users', description: 'List and search colleagues, team members, and users in the Hub-Mind workspace to find usernames, roles, and contacts for sharing resources, assigning tasks, and sending schedules.', parameters: object({ query: { type: 'string', description: 'Optional search query by name, username, or email' }, limit: { type: 'number' } }) },
+
+  // Sharing & Direct Info Distribution Tools
+  {
+    name: 'share_data',
+    description: 'Universal sharing tool to share any Hub-Mind data (schedules, meetings, documents, tasks, projects, client profiles, briefing notes, texts, or operational updates) with other team members, colleagues, or external contacts. Updates permissions, delivers in-app notifications, and provides direct app and WhatsApp share links.',
+    parameters: object({
+      recipient: { type: 'string', description: 'Username (e.g. @sarah), name, email, or user ID of the recipient' },
+      dataType: { type: 'string', enum: ['schedule', 'meeting', 'document', 'task', 'project', 'client', 'text', 'note', 'briefing', 'followup'], description: 'Type of data or resource being shared' },
+      title: { type: 'string', description: 'Subject or title of the shared data' },
+      content: { type: 'string', description: 'The text, message, meeting agenda, briefing, or summary to share' },
+      resourceId: { type: 'string', description: 'Optional specific ID or title of the document, task, project, client, or meeting' },
+      permission: { type: 'string', enum: ['read', 'write'], description: 'Access permission: "read" (view only) or "write" (can edit). Defaults to "read".' },
+      daysAhead: { type: 'number', description: 'If sharing a schedule, number of days ahead to include (e.g. 7). Defaults to 7.' },
+      notes: { type: 'string', description: 'Optional personal note or instructions to accompany the shared data' }
+    }, ['recipient'])
+  },
+  { 
+    name: 'share_resource', 
+    description: 'Share any Hub-Mind resource (document, task, project, client, meeting, schedule, or note) with a colleague or team member by username (@username), email, name, or user ID. Grants read or edit permissions, updates workspace permissions, sends an instant in-app notification, and provides direct sharing links.', 
+    parameters: object({ 
+      resourceType: { type: 'string', enum: ['document', 'task', 'project', 'client', 'meeting', 'followup'], description: 'Type of resource to share' }, 
+      resourceId: { type: 'string', description: 'ID or title of the resource to share' }, 
+      resourceTitle: { type: 'string', description: 'Optional title of the resource' }, 
+      recipient: { type: 'string', description: 'Username (e.g. @john), name, email, or user ID of the colleague to share with' }, 
+      permission: { type: 'string', enum: ['read', 'write'], description: 'Access level: "read" (view only) or "write" (can edit). Defaults to "read".' }, 
+      message: { type: 'string', description: 'Optional message or context to include with the share' } 
+    }, ['resourceType', 'resourceId', 'recipient']) 
+  },
+  { 
+    name: 'send_direct_information', 
+    description: 'Send direct text messages, briefing notes, schedule summaries, or operational updates directly to another colleague or team member in Hub-Mind. Delivers directly to their notification inbox with optional links to workspace items.', 
+    parameters: object({ 
+      recipient: { type: 'string', description: 'Username (@username), name, email, or user ID of the recipient' }, 
+      title: { type: 'string', description: 'Subject or title of the information' }, 
+      content: { type: 'string', description: 'The text, message, summary, or briefing content to send' }, 
+      type: { type: 'string', enum: ['note', 'briefing', 'document', 'task', 'project', 'meeting'], description: 'Type of information' }, 
+      resourceId: { type: 'string', description: 'Optional resource ID if linking to a specific item' }, 
+      permission: { type: 'string', enum: ['read', 'write'] } 
+    }, ['recipient', 'title', 'content']) 
+  },
+  { 
+    name: 'share_schedule', 
+    description: 'Share the users upcoming calendar schedule, recurring classes, or a specific meeting agenda with a team member, client, or collaborator. Formats the schedule into a clear briefing and delivers it to the recipient in Hub-Mind.', 
+    parameters: object({ 
+      recipient: { type: 'string', description: 'Username, name, email, or user ID of the recipient' }, 
+      meetingId: { type: 'string', description: 'Optional specific meeting ID to share' }, 
+      daysAhead: { type: 'number', description: 'Number of days of schedule to summarize (e.g. 7 for next week). Defaults to 7.' }, 
+      notes: { type: 'string', description: 'Optional personal note to include' } 
+    }, ['recipient']) 
+  },
+  { 
+    name: 'get_share_link', 
+    description: 'Generate shareable URLs (direct app link, secure shared record link, and WhatsApp share link) for any document, task, meeting, project, client, or record in Hub-Mind.', 
+    parameters: object({ 
+      resourceType: { type: 'string', enum: ['document', 'task', 'project', 'client', 'meeting', 'followup'], description: 'Type of resource' }, 
+      resourceId: { type: 'string', description: 'ID of the resource' }, 
+      title: { type: 'string', description: 'Optional title of the resource' } 
+    }, ['resourceType', 'resourceId']) 
+  },
+
+  // Tasks
   { name: 'list_tasks', description: 'List tasks visible to the signed-in user with status or priority filters.', parameters: object({ status: { type: 'string' }, priority: { type: 'string' }, limit: { type: 'number' } }) },
   { name: 'create_task', description: 'Create a new task in Hub-Mind.', parameters: object({ title: { type: 'string' }, description: { type: 'string' }, priority: { type: 'string', enum: ['urgent', 'high', 'medium', 'low'] }, deadline: { type: 'string' }, assignedTo: { type: 'string' } }, ['title']) },
   { name: 'update_task', description: 'Update an existing task.', parameters: object({ taskId: { type: 'string' }, title: { type: 'string' }, description: { type: 'string' }, priority: { type: 'string' }, status: { type: 'string' }, deadline: { type: 'string' }, assignedTo: { type: 'string' } }, ['taskId']) },
+  
+  // Documents
   { name: 'list_documents', description: 'List recent documents in the workspace, sorted with newest first.', parameters: object({ limit: { type: 'number' }, query: { type: 'string' } }) },
   { name: 'find_document', description: 'Find a document by searching title or content.', parameters: object({ title: { type: 'string' } }, ['title']) },
   { name: 'get_document_content', description: 'Read a document content by ID or title.', parameters: object({ documentId: { type: 'string' } }, ['documentId']) },
   { name: 'create_document', description: 'Create a new document with title and content in Hub-Mind.', parameters: object({ title: { type: 'string' }, content: { type: 'string' }, projectId: { type: 'string' }, category: { type: 'string' } }, ['title']) },
   { name: 'update_document', description: 'Update an existing document content or title.', parameters: object({ documentId: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' } }, ['documentId']) },
+  
+  // Projects & Clients
   { name: 'list_projects', description: 'List visible projects in Hub-Mind.', parameters: object({ limit: { type: 'number' } }) },
   { name: 'open_project', description: 'Open a project on screen.', parameters: object({ projectId: { type: 'string' } }, ['projectId']) },
   { name: 'list_clients', description: 'List visible clients in Hub-Mind.', parameters: object({ limit: { type: 'number' } }) },
+  
+  // Meetings & Calendar
   { name: 'list_meetings', description: 'List upcoming and scheduled meetings from the Hub-Mind calendar.', parameters: object({ limit: { type: 'number' } }) },
   { name: 'create_meeting', description: 'Schedule a new meeting on the Hub-Mind calendar.', parameters: object({ title: { type: 'string' }, date: { type: 'string', description: 'ISO date string or YYYY-MM-DDTHH:mm' }, location: { type: 'string' }, notes: { type: 'string' }, clientId: { type: 'string' }, projectId: { type: 'string' } }, ['title', 'date']) },
   { name: 'update_meeting', description: 'Update a meeting on the Hub-Mind calendar.', parameters: object({ meetingId: { type: 'string' }, title: { type: 'string' }, date: { type: 'string' }, location: { type: 'string' }, status: { type: 'string' } }, ['meetingId']) },
   { name: 'delete_meeting', description: 'Delete a meeting from the Hub-Mind calendar.', parameters: object({ meetingId: { type: 'string' } }, ['meetingId']) },
+  
+  // Recurring Schedules
   { name: 'create_recurring_schedule', description: 'Create a repeating schedule (e.g. music classes, weekly team meetings, daily standups, appointments) in Hub-Mind that automatically generates recurring calendar entries.', parameters: object({ title: { type: 'string' }, type: { type: 'string', enum: ['class', 'meeting', 'appointment', 'school_event', 'other'] }, frequency: { type: 'string', enum: ['weekly', 'daily', 'monthly'] }, daysOfWeek: { type: 'array', items: { type: 'number' }, description: 'Array of day numbers: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat' }, dayOfMonth: { type: 'number', description: 'Day of month (1-31) for monthly recurrence' }, startTime: { type: 'string', description: 'Start time in HH:mm format, e.g. 09:00 or 14:30' }, endTime: { type: 'string', description: 'End time in HH:mm format, e.g. 10:00 or 15:30' }, startDate: { type: 'string', description: 'Start date in YYYY-MM-DD format' }, endDate: { type: 'string', description: 'Optional end date in YYYY-MM-DD format' }, location: { type: 'string' }, description: { type: 'string' }, syncToGoogleCalendar: { type: 'boolean' } }, ['title', 'frequency', 'startTime']) },
   { name: 'list_recurring_schedules', description: 'List all recurring schedule templates in Hub-Mind.', parameters: object({ limit: { type: 'number' } }) },
   { name: 'delete_recurring_schedule', description: 'Delete a recurring schedule template.', parameters: object({ templateId: { type: 'string' } }, ['templateId']) },
+  
+  // Follow-ups & Knowledge
   { name: 'list_follow_ups', description: 'List follow-ups visible to the user.', parameters: object({ status: { type: 'string' }, limit: { type: 'number' } }) },
   { name: 'list_knowledge', description: 'List knowledge base articles.', parameters: object({ limit: { type: 'number' } }) },
+  
+  // Direct Screen Navigation
   { name: 'open_task', description: 'Open a task on screen.', parameters: object({ taskId: { type: 'string' } }, ['taskId']) },
   { name: 'open_client', description: 'Open a client on screen.', parameters: object({ clientId: { type: 'string' } }, ['clientId']) },
+  { name: 'open_document', description: 'Open a document in the document editor.', parameters: object({ documentId: { type: 'string' } }, ['documentId']) },
+  { name: 'navigate_app', description: 'Navigate to an internal application page.', parameters: object({ path: { type: 'string' } }, ['path']) },
+
+  // Google Calendar Integration
   { name: 'list_calendar_events', description: 'List Google Calendar events.', parameters: object({ timeMin: { type: 'string' }, timeMax: { type: 'string' } }) },
   { name: 'create_calendar_event', description: 'Create a Google Calendar event (supports single and recurring events via recurrenceRule).', parameters: object({ title: { type: 'string' }, startDateTime: { type: 'string' }, endDateTime: { type: 'string' }, reminderMinutes: { type: 'number' }, location: { type: 'string' }, description: { type: 'string' }, recurrenceRule: { type: 'string', description: 'Optional recurrence rule e.g. RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR' } }, ['title', 'startDateTime']) },
   { name: 'connect_google_calendar', description: 'Perform one-time Google Calendar connection to link the users account once for permanent sync.', parameters: object({}) },
   { name: 'get_google_calendar_status', description: 'Check whether Google Calendar is currently connected.', parameters: object({}) },
-  { name: 'navigate_app', description: 'Navigate to an internal application page.', parameters: object({ path: { type: 'string' } }, ['path']) },
-  { name: 'open_document', description: 'Open a document in the document editor.', parameters: object({ documentId: { type: 'string' } }, ['documentId']) },
+  
+  // Personalization, User Memory & Background Operations
   { name: 'set_preferred_name', description: 'Save the name the signed-in user wants to be addressed with.', parameters: object({ preferredName: { type: 'string' } }, ['preferredName']) },
+  { 
+    name: 'save_user_memory', 
+    description: 'Save a specific personal preference, decision, habit, workflow choice, or key fact into the logged-in user\'s private AI memory. The AI remembers this across all future sessions whenever this specific user logs in.', 
+    parameters: object({ 
+      content: { type: 'string', description: 'The fact, preference, habit, choice, or instruction to remember (e.g. "Prefers summary bullet points first", "Always uses Letterhead template for proposals")' }, 
+      key: { type: 'string', description: 'Optional short key name (e.g. "preferred_tone", "formatting_choice", "frequent_contact")' }, 
+      category: { type: 'string', enum: ['preference', 'workflow', 'fact', 'instruction', 'habit', 'personal', 'business'], description: 'Category of the memory' },
+      importance: { type: 'string', enum: ['high', 'medium', 'low'] }
+    }, ['content']) 
+  },
+  { 
+    name: 'get_user_memories', 
+    description: 'Retrieve the private memories, choices, and stored preferences for the currently logged-in user.', 
+    parameters: object({ 
+      category: { type: 'string', description: 'Optional category filter' } 
+    }) 
+  },
+  { 
+    name: 'forget_user_memory', 
+    description: 'Remove or forget a specific saved preference or memory for the current user when asked to clear or forget.', 
+    parameters: object({ 
+      keyOrMemoryId: { type: 'string', description: 'Key name or ID of the memory to remove' } 
+    }, ['keyOrMemoryId']) 
+  },
   { name: 'start_background_operation', description: 'Start a long-running task in the background (e.g. document drafting, audit, batch organization, research). Jess can continue conversing while it runs.', parameters: object({ title: { type: 'string' }, description: { type: 'string' }, taskType: { type: 'string' } }, ['title']) },
   { name: 'get_background_tasks_status', description: 'Check the real-time progress percentage and stage of background tasks.', parameters: object({ taskId: { type: 'string' } }) },
   { name: 'end_session', description: 'Put the AI assistant to sleep or end the current live voice session when the user says "end this session", "go to sleep", "sleep", "deactivate", or wants to conclude.', parameters: object({ reason: { type: 'string' } }) },
@@ -206,6 +322,7 @@ export async function executeJessTool(
             user: {
               id: user.id,
               name: user.preferredName || user.displayName || user.name,
+              username: user.username,
               email: user.email,
               role: user.role,
               status: user.status,
@@ -249,6 +366,513 @@ export async function executeJessTool(
             results: await globalSearch(String(args.query || ''), user.id, Math.min(15, safeLimit(args.limit, 10)), user.role),
           },
         };
+
+      case 'list_workspace_users': {
+        const users = await getAllUsers();
+        let filtered = users.filter(u => u.status !== 'inactive' && u.status !== 'suspended');
+        if (args.query) {
+          const q = String(args.query).toLowerCase().trim().replace(/^@/, '');
+          filtered = filtered.filter(u =>
+            (u.username && u.username.toLowerCase().includes(q)) ||
+            (u.displayName && u.displayName.toLowerCase().includes(q)) ||
+            (u.name && u.name.toLowerCase().includes(q)) ||
+            (u.email && u.email.toLowerCase().includes(q))
+          );
+        }
+        return {
+          result: {
+            success: true,
+            total: filtered.length,
+            users: filtered.slice(0, safeLimit(args.limit, 20)).map(u => ({
+              id: u.id,
+              username: u.username,
+              name: u.displayName || u.name || u.username,
+              role: u.role,
+              email: u.email,
+            })),
+          },
+        };
+      }
+
+      case 'share_data': {
+        const recipientIdentifier = String(args.recipient || '').trim();
+        const dataType = String(args.dataType || '').toLowerCase().trim();
+        const rawTitle = args.title ? String(args.title).trim() : '';
+        const rawContent = args.content ? String(args.content).trim() : '';
+        let resourceId = args.resourceId ? String(args.resourceId).trim() : '';
+        const permission = (args.permission || 'read') as SharePermission;
+        const daysAhead = Math.max(1, Math.min(30, Number(args.daysAhead) || 7));
+        const notes = args.notes ? String(args.notes).trim() : '';
+
+        if (!recipientIdentifier) {
+          return { result: { success: false, error: 'recipient (username @username, email, or name) is required to share data.' } };
+        }
+
+        const recipientUser = await findRecipientUser(recipientIdentifier);
+        if (!recipientUser) {
+          const allUsers = await getAllUsers();
+          const suggestions = allUsers.filter(u => u.status === 'active').slice(0, 5).map(u => `@${u.username} (${u.displayName || u.name})`);
+          return {
+            result: {
+              success: false,
+              error: `Could not find a user matching "${recipientIdentifier}". Available teammates: ${suggestions.join(', ')}`,
+            },
+          };
+        }
+
+        // Branch 1: Schedule sharing
+        if (dataType === 'schedule' || (!resourceId && !rawContent && (rawTitle.toLowerCase().includes('schedule') || rawTitle.toLowerCase().includes('calendar')))) {
+          const [meetingsSnap, templatesSnap] = await Promise.all([
+            getDocs(query(collection(db, 'meetings'), limit(30))).catch(() => ({ docs: [] })),
+            getDocs(collection(db, 'recurringMeetingTemplates')).catch(() => ({ docs: [] })),
+          ]);
+
+          const now = new Date();
+          const horizon = new Date(now.getTime() + daysAhead * 86400000);
+          const upcomingMeetings = meetingsSnap.docs
+            .map(d => ({ id: d.id, ...d.data() } as any))
+            .filter(m => m.date && new Date(m.date) >= now && new Date(m.date) <= horizon)
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+          const templates = templatesSnap.docs
+            .map(d => ({ id: d.id, ...d.data() } as any))
+            .filter(t => t.active !== false && (t.ownerId === user.id || user.role === 'admin'));
+
+          const scheduleTitle = rawTitle || `Upcoming Schedule & Routine (${daysAhead} Days)`;
+          const lines: string[] = [];
+          if (upcomingMeetings.length > 0) {
+            lines.push('--- Scheduled Meetings & Events ---');
+            upcomingMeetings.forEach((m, idx) => {
+              const dt = new Date(m.date);
+              lines.push(`${idx + 1}. ${dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} at ${dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — ${m.title || m.notesRaw?.split('\n')[0] || 'Meeting'}${m.location ? ` (${m.location})` : ''}`);
+            });
+          }
+          if (templates.length > 0) {
+            lines.push('\n--- Recurring Classes & Sessions ---');
+            templates.forEach(t => {
+              lines.push(`• ${t.title}: ${t.frequency} at ${t.startTime}${t.endTime ? `–${t.endTime}` : ''}${t.location ? ` (${t.location})` : ''}`);
+            });
+          }
+          if (lines.length === 0) {
+            lines.push(`No scheduled meetings or recurring classes found for the next ${daysAhead} days.`);
+          }
+
+          let fullSummary = lines.join('\n');
+          if (notes) fullSummary = `${notes}\n\n${fullSummary}`;
+          if (rawContent) fullSummary = `${rawContent}\n\n${fullSummary}`;
+
+          await sendDirectInformation({
+            senderId: user.id,
+            senderName: user.preferredName || user.displayName || user.name || `@${user.username}`,
+            recipientId: recipientUser.id,
+            recipientName: recipientUser.displayName || recipientUser.name,
+            type: 'briefing',
+            title: scheduleTitle,
+            content: fullSummary,
+            permission: 'read',
+          });
+
+          const origin = typeof window !== 'undefined' ? window.location.origin : '';
+          const calendarUrl = `${origin}/calendar`;
+          const waText = `Hi ${recipientUser.displayName || recipientUser.name || `@${recipientUser.username}`},\n\n*${scheduleTitle}*\n${fullSummary}\n\nCalendar: ${calendarUrl}\n— Shared via Hub-Mind by ${user.preferredName || user.displayName || user.name}`;
+          const waLink = `https://wa.me/?text=${encodeURIComponent(waText)}`;
+
+          return {
+            result: {
+              success: true,
+              recipient: { id: recipientUser.id, username: recipientUser.username, name: recipientUser.displayName || recipientUser.name },
+              title: scheduleTitle,
+              dataType: 'schedule',
+              content: fullSummary,
+              directUrl: calendarUrl,
+              whatsAppShareLink: waLink,
+              message: `Successfully shared your ${daysAhead}-day schedule with @${recipientUser.username}. A full schedule briefing was delivered to their notification inbox.`,
+            },
+            actionPayload: navigatePayload('/calendar'),
+          };
+        }
+
+        // Branch 2: Resource sharing (document, task, project, client, meeting, followup)
+        const recognizedTypes: ResourceType[] = ['document', 'task', 'project', 'client', 'meeting', 'followup'];
+        const matchedType = recognizedTypes.find(t => t === dataType || (t === 'followup' && (dataType === 'follow_up' || dataType === 'follow-up')));
+
+        if (resourceId || matchedType) {
+          const resType = (matchedType || 'document') as ResourceType;
+          const collName = resType === 'followup' ? 'followUps' : `${resType}s`;
+          let targetItem = resourceId ? await readResource(collName, resourceId, user) : null;
+          let resolvedTitle = rawTitle;
+
+          if (!targetItem && resType === 'document') {
+            const allDocs = await fetchAllDocumentsForUser(user);
+            const found = allDocs.find(d => d.id === resourceId || (resourceId && d.title && d.title.toLowerCase().includes(resourceId.toLowerCase())) || (rawTitle && d.title && d.title.toLowerCase().includes(rawTitle.toLowerCase())));
+            if (found) {
+              targetItem = { id: found.id, data: found };
+              resourceId = found.id;
+              resolvedTitle = resolvedTitle || found.title;
+            }
+          } else if (!targetItem && resType === 'task') {
+            const tasksSnap = await getDocs(query(collection(db, 'tasks'), limit(50))).catch(() => ({ docs: [] }));
+            const found = tasksSnap.docs.find(d => d.id === resourceId || (resourceId && String(d.data().title || '').toLowerCase().includes(resourceId.toLowerCase())) || (rawTitle && String(d.data().title || '').toLowerCase().includes(rawTitle.toLowerCase())));
+            if (found) {
+              targetItem = { id: found.id, data: found.data() };
+              resourceId = found.id;
+              resolvedTitle = resolvedTitle || (found.data() as any).title;
+            }
+          }
+
+          if (targetItem || resourceId) {
+            const resTitle = resolvedTitle || targetItem?.data?.title || targetItem?.data?.name || `${resType} ${resourceId}`;
+            const share = await shareResourceWithUser({
+              resourceType: resType,
+              resourceId: resourceId || targetItem?.id || 'record',
+              resourceTitle: resTitle,
+              ownerId: user.id,
+              ownerName: user.preferredName || user.displayName || user.name || `@${user.username}`,
+              recipientUsernameOrId: recipientUser.username || recipientUser.id,
+              permission,
+              message: notes || rawContent || undefined,
+            });
+
+            const origin = typeof window !== 'undefined' ? window.location.origin : '';
+            let sharePath = `/${resType}s/${resourceId || targetItem?.id}`;
+            if (resType === 'followup') sharePath = `/follow-ups/${resourceId || targetItem?.id}`;
+            const directUrl = `${origin}${sharePath}`;
+            const waText = `*${resTitle}*\nShared with you on Hub-Mind (${permission === 'write' ? 'Can Edit' : 'Read Only'}): ${directUrl}${notes ? `\n\nNote: ${notes}` : ''}`;
+            const waLink = `https://wa.me/?text=${encodeURIComponent(waText)}`;
+
+            return {
+              result: {
+                success: true,
+                shareId: share.id,
+                dataType: resType,
+                resourceId: resourceId || targetItem?.id,
+                title: resTitle,
+                recipient: { id: recipientUser.id, username: recipientUser.username, name: recipientUser.displayName || recipientUser.name },
+                permission,
+                directUrl,
+                whatsAppShareLink: waLink,
+                message: `Successfully shared ${resType} "${resTitle}" with @${recipientUser.username} (${permission === 'write' ? 'Can Edit' : 'Read Only'}). Delivered to their notification center.`,
+              },
+              actionPayload: navigatePayload(sharePath),
+            };
+          }
+        }
+
+        // Branch 3: Direct text message, meeting agenda, briefing, or custom data payload
+        const finalTitle = rawTitle || (dataType ? `${dataType.charAt(0).toUpperCase() + dataType.slice(1)} Information` : 'Direct Information');
+        const finalContent = rawContent || notes || (dataType ? `Shared ${dataType} data.` : 'No additional content.');
+
+        await sendDirectInformation({
+          senderId: user.id,
+          senderName: user.preferredName || user.displayName || user.name || `@${user.username}`,
+          recipientId: recipientUser.id,
+          recipientName: recipientUser.displayName || recipientUser.name,
+          type: (dataType === 'briefing' || dataType === 'note' ? dataType : 'note') as any,
+          title: finalTitle,
+          content: finalContent,
+          permission,
+        });
+
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        const waText = `Hi ${recipientUser.displayName || recipientUser.name || `@${recipientUser.username}`},\n\n*${finalTitle}*\n${finalContent}\n\n— Sent via Hub-Mind by ${user.preferredName || user.displayName || user.name}`;
+        const waLink = `https://wa.me/?text=${encodeURIComponent(waText)}`;
+
+        return {
+          result: {
+            success: true,
+            dataType: dataType || 'text',
+            title: finalTitle,
+            content: finalContent,
+            recipient: { id: recipientUser.id, username: recipientUser.username, name: recipientUser.displayName || recipientUser.name },
+            whatsAppShareLink: waLink,
+            message: `Sent "${finalTitle}" directly to @${recipientUser.username}. Delivered to their notification center and inbox.`,
+          },
+        };
+      }
+
+      case 'share_resource': {
+        const resourceType = (args.resourceType || 'document') as ResourceType;
+        let resourceId = String(args.resourceId || '').trim();
+        let resourceTitle = String(args.resourceTitle || '').trim();
+        const recipientIdentifier = String(args.recipient || '').trim();
+        const permission = (args.permission || 'read') as SharePermission;
+        const message = args.message ? String(args.message).trim() : undefined;
+
+        if (!resourceId) {
+          return { result: { success: false, error: 'resourceId is required to share a resource.' } };
+        }
+        if (!recipientIdentifier) {
+          return { result: { success: false, error: 'recipient (username, email, or name) is required.' } };
+        }
+
+        // Auto-resolve resource if passed by title
+        const collName = resourceType === 'followup' ? 'followUps' : `${resourceType}s`;
+        let item = await readResource(collName, resourceId, user);
+        if (!item && resourceType === 'document') {
+          const allDocs = await fetchAllDocumentsForUser(user);
+          const match = allDocs.find(d => d.id === resourceId || (d.title && d.title.toLowerCase().includes(resourceId.toLowerCase())));
+          if (match) {
+            item = { id: match.id, data: match };
+            resourceId = match.id;
+            resourceTitle = resourceTitle || match.title;
+          }
+        } else if (!item && resourceType === 'task') {
+          const tasksSnap = await getDocs(query(collection(db, 'tasks'), limit(50))).catch(() => ({ docs: [] }));
+          const match = tasksSnap.docs.find(d => d.id === resourceId || String(d.data().title || '').toLowerCase().includes(resourceId.toLowerCase()));
+          if (match) {
+            item = { id: match.id, data: match.data() };
+            resourceId = match.id;
+            resourceTitle = resourceTitle || (match.data() as any).title;
+          }
+        }
+
+        if (item && !resourceTitle) {
+          resourceTitle = item.data.title || item.data.name || item.data.notesRaw?.split('\n')[0] || `${resourceType} ${resourceId}`;
+        }
+
+        const recipientUser = await findRecipientUser(recipientIdentifier);
+        if (!recipientUser) {
+          return {
+            result: {
+              success: false,
+              error: `Could not find a user matching "${recipientIdentifier}". Please check the username or run list_workspace_users.`,
+            },
+          };
+        }
+
+        const share = await shareResourceWithUser({
+          resourceType,
+          resourceId,
+          resourceTitle: resourceTitle || 'Shared Resource',
+          ownerId: user.id,
+          ownerName: user.preferredName || user.displayName || user.name || `@${user.username}`,
+          recipientUsernameOrId: recipientUser.username || recipientUser.id,
+          permission,
+          message,
+        });
+
+        const sharePath = `/${resourceType}s/${resourceId}`;
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        const directUrl = `${origin}${sharePath}`;
+        const waText = `*${resourceTitle || 'Resource'}*\nShared with you on Hub-Mind (${permission === 'write' ? 'Can Edit' : 'Read Only'}): ${directUrl}${message ? `\n\nNote: ${message}` : ''}`;
+        const waLink = `https://wa.me/?text=${encodeURIComponent(waText)}`;
+
+        return {
+          result: {
+            success: true,
+            shareId: share.id,
+            resourceType,
+            resourceId,
+            resourceTitle: resourceTitle || 'Shared Resource',
+            recipient: {
+              id: recipientUser.id,
+              username: recipientUser.username,
+              name: recipientUser.displayName || recipientUser.name,
+            },
+            permission,
+            directUrl,
+            whatsAppShareLink: waLink,
+            message: `Successfully shared ${resourceType} "${resourceTitle || resourceId}" with @${recipientUser.username} (${permission === 'write' ? 'Can Edit' : 'Read Only'}). A notification has been delivered to their workspace.`,
+          },
+          actionPayload: navigatePayload(sharePath),
+        };
+      }
+
+      case 'send_direct_information': {
+        const recipientIdentifier = String(args.recipient || '').trim();
+        const title = String(args.title || 'Direct Information / Note').trim();
+        const content = String(args.content || '').trim();
+        const infoType = (args.type || 'note') as any;
+        const resourceId = args.resourceId ? String(args.resourceId).trim() : undefined;
+        const permission = (args.permission || 'read') as SharePermission;
+
+        if (!recipientIdentifier) return { result: { success: false, error: 'recipient is required.' } };
+        if (!content) return { result: { success: false, error: 'content is required.' } };
+
+        const recipientUser = await findRecipientUser(recipientIdentifier);
+        if (!recipientUser) {
+          return {
+            result: {
+              success: false,
+              error: `Could not find a user matching "${recipientIdentifier}". Ask to check the username.`,
+            },
+          };
+        }
+
+        await sendDirectInformation({
+          senderId: user.id,
+          senderName: user.preferredName || user.displayName || user.name || `@${user.username}`,
+          recipientId: recipientUser.id,
+          recipientName: recipientUser.displayName || recipientUser.name,
+          type: infoType,
+          title,
+          content,
+          resourceId,
+          permission,
+        });
+
+        const waText = `Hi ${recipientUser.displayName || recipientUser.name || `@${recipientUser.username}`},\n\n*${title}*\n${content}\n\n— Sent via Hub-Mind by ${user.preferredName || user.displayName || user.name}`;
+        const waLink = `https://wa.me/?text=${encodeURIComponent(waText)}`;
+
+        return {
+          result: {
+            success: true,
+            recipient: {
+              id: recipientUser.id,
+              username: recipientUser.username,
+              name: recipientUser.displayName || recipientUser.name,
+            },
+            title,
+            type: infoType,
+            contentPreview: content.slice(0, 150),
+            whatsAppShareLink: waLink,
+            message: `Sent "${title}" directly to @${recipientUser.username}. Delivered to their notification center.`,
+          },
+        };
+      }
+
+      case 'share_schedule': {
+        const recipientIdentifier = String(args.recipient || '').trim();
+        const meetingId = args.meetingId ? String(args.meetingId).trim() : undefined;
+        const daysAhead = Math.max(1, Math.min(30, Number(args.daysAhead) || 7));
+        const customNotes = args.notes ? String(args.notes).trim() : '';
+
+        if (!recipientIdentifier) {
+          return { result: { success: false, error: 'recipient is required to share a schedule.' } };
+        }
+
+        const recipientUser = await findRecipientUser(recipientIdentifier);
+        if (!recipientUser) {
+          return {
+            result: {
+              success: false,
+              error: `Could not find user "${recipientIdentifier}".`,
+            },
+          };
+        }
+
+        let scheduleSummaryText = '';
+        let scheduleTitle = '';
+
+        if (meetingId) {
+          const item = await readResource('meetings', meetingId, user);
+          if (!item) {
+            return { result: { success: false, error: `Meeting with ID "${meetingId}" not found.` } };
+          }
+          const m = item.data;
+          scheduleTitle = `Meeting Details: ${m.title || m.notesRaw?.split('\n')[0] || 'Scheduled Meeting'}`;
+          scheduleSummaryText = `📅 Date/Time: ${new Date(m.date).toLocaleString()}\n📍 Location: ${m.location || 'Hub-Mind / Online'}\n📝 Agenda: ${m.notesRaw || 'Regular Sync'}`;
+        } else {
+          // Fetch upcoming meetings and recurring events for the user
+          const [meetingsSnap, templatesSnap] = await Promise.all([
+            getDocs(query(collection(db, 'meetings'), limit(30))).catch(() => ({ docs: [] })),
+            getDocs(collection(db, 'recurringMeetingTemplates')).catch(() => ({ docs: [] })),
+          ]);
+
+          const now = new Date();
+          const horizon = new Date(now.getTime() + daysAhead * 86400000);
+
+          const upcomingMeetings = meetingsSnap.docs
+            .map(d => ({ id: d.id, ...d.data() } as any))
+            .filter(m => {
+              if (!m.date) return false;
+              const d = new Date(m.date);
+              return d >= now && d <= horizon;
+            })
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+          const templates = templatesSnap.docs
+            .map(d => ({ id: d.id, ...d.data() } as any))
+            .filter(t => t.active !== false && (t.ownerId === user.id || user.role === 'admin'));
+
+          scheduleTitle = `Upcoming Schedule (${daysAhead} Days)`;
+          const lines: string[] = [];
+
+          if (upcomingMeetings.length > 0) {
+            lines.push('--- Scheduled Meetings & Events ---');
+            upcomingMeetings.forEach((m, idx) => {
+              const dt = new Date(m.date);
+              lines.push(`${idx + 1}. ${dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} at ${dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — ${m.title || m.notesRaw?.split('\n')[0] || 'Meeting'}${m.location ? ` (${m.location})` : ''}`);
+            });
+          }
+
+          if (templates.length > 0) {
+            lines.push('\n--- Recurring Classes & Sessions ---');
+            templates.forEach(t => {
+              lines.push(`• ${t.title}: ${t.frequency} at ${t.startTime}${t.endTime ? `–${t.endTime}` : ''}${t.location ? ` (${t.location})` : ''}`);
+            });
+          }
+
+          if (lines.length === 0) {
+            lines.push('No scheduled meetings or classes on calendar for the next ' + daysAhead + ' days.');
+          }
+
+          scheduleSummaryText = lines.join('\n');
+        }
+
+        if (customNotes) {
+          scheduleSummaryText = `${customNotes}\n\n${scheduleSummaryText}`;
+        }
+
+        await sendDirectInformation({
+          senderId: user.id,
+          senderName: user.preferredName || user.displayName || user.name || `@${user.username}`,
+          recipientId: recipientUser.id,
+          recipientName: recipientUser.displayName || recipientUser.name,
+          type: 'briefing',
+          title: scheduleTitle,
+          content: scheduleSummaryText,
+          resourceId: meetingId,
+          permission: 'read',
+        });
+
+        const waText = `Hi ${recipientUser.displayName || recipientUser.name || `@${recipientUser.username}`},\n\n*${scheduleTitle}*\n${scheduleSummaryText}\n\n— Sent via Hub-Mind by ${user.preferredName || user.displayName || user.name}`;
+        const waLink = `https://wa.me/?text=${encodeURIComponent(waText)}`;
+
+        return {
+          result: {
+            success: true,
+            recipient: {
+              id: recipientUser.id,
+              username: recipientUser.username,
+              name: recipientUser.displayName || recipientUser.name,
+            },
+            title: scheduleTitle,
+            scheduleSummary: scheduleSummaryText,
+            whatsAppShareLink: waLink,
+            message: `Successfully shared schedule with @${recipientUser.username}. A full schedule briefing was delivered to their notification inbox.`,
+          },
+          actionPayload: navigatePayload('/calendar'),
+        };
+      }
+
+      case 'get_share_link': {
+        const resourceType = (args.resourceType || 'document') as ResourceType;
+        const resourceId = String(args.resourceId || '').trim();
+        const title = String(args.title || resourceId).trim();
+
+        if (!resourceId) return { result: { success: false, error: 'resourceId is required.' } };
+
+        let path = `/${resourceType}s/${resourceId}`;
+        if (resourceType === 'followup') path = `/follow-ups/${resourceId}`;
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        const fullUrl = `${origin}${path}`;
+        const shareUrl = `${origin}/share/${resourceType}/${encodeURIComponent(resourceId)}`;
+        const waText = `*${title}*\nOpen in Hub-Mind: ${fullUrl}`;
+        const waLink = `https://wa.me/?text=${encodeURIComponent(waText)}`;
+
+        return {
+          result: {
+            success: true,
+            resourceType,
+            resourceId,
+            directLink: fullUrl,
+            sharedRecordLink: shareUrl,
+            whatsAppShareLink: waLink,
+            message: `Generated share links for ${resourceType} "${title}". Direct Link: ${fullUrl}`,
+          },
+        };
+      }
 
       case 'list_tasks': {
         const snap = await getDocs(user.role === 'admin' ? query(collection(db, 'tasks'), limit(safeLimit(args.limit))) : query(collection(db, 'tasks'), where('assignedTo', '==', user.id), limit(safeLimit(args.limit))));
@@ -711,7 +1335,73 @@ export async function executeJessTool(
         const clean = String(args.preferredName || '').trim();
         if (!clean) return { result: { success: false, error: 'Preferred name cannot be empty.' } };
         onPreferredName?.(clean);
-        return { result: { success: true, preferredName: clean } };
+        // Persist to user's personalized memory
+        await saveUserMemory(user.id, {
+          key: 'preferred_name',
+          content: `User prefers to be addressed as "${clean}".`,
+          category: 'preference',
+          importance: 'high',
+          source: 'explicit',
+        }).catch(() => {});
+        return { result: { success: true, preferredName: clean, message: `Saved preferred name as "${clean}". Jess will remember this across all sessions.` } };
+      }
+
+      case 'save_user_memory': {
+        const content = String(args.content || '').trim();
+        if (!content) return { result: { success: false, error: 'Memory content is required.' } };
+        const key = args.key ? String(args.key).trim() : undefined;
+        const category = (args.category || 'preference') as any;
+        const importance = (args.importance || 'medium') as any;
+
+        const memory = await saveUserMemory(user.id, {
+          content,
+          key,
+          category,
+          importance,
+          source: 'explicit',
+        });
+
+        return {
+          result: {
+            success: true,
+            memoryId: memory.id,
+            key: memory.key,
+            content: memory.content,
+            category: memory.category,
+            message: `Remembered for @${user.username}: "${content}". I will keep this in mind across all your future sessions.`,
+          },
+        };
+      }
+
+      case 'get_user_memories': {
+        const memories = await getUserMemories(user.id);
+        const filtered = args.category ? memories.filter(m => m.category === args.category) : memories;
+        return {
+          result: {
+            success: true,
+            total: filtered.length,
+            memories: filtered.map(m => ({
+              id: m.id,
+              key: m.key,
+              content: m.content,
+              category: m.category,
+              importance: m.importance,
+              updatedAt: m.updatedAt,
+            })),
+          },
+        };
+      }
+
+      case 'forget_user_memory': {
+        const keyOrId = String(args.keyOrMemoryId || '').trim();
+        if (!keyOrId) return { result: { success: false, error: 'keyOrMemoryId is required.' } };
+        const ok = await deleteUserMemory(user.id, keyOrId);
+        return {
+          result: {
+            success: ok,
+            message: ok ? `Successfully forgot memory "${keyOrId}".` : `Memory "${keyOrId}" could not be found.`,
+          },
+        };
       }
 
       case 'start_background_operation': {
