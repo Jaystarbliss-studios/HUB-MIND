@@ -11,7 +11,7 @@ const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = 3000;
 
   app.use(express.json());
 
@@ -425,15 +425,8 @@ async function startServer() {
     res.redirect(303, '/inbox?shared=true');
   });
 
-  // Vite middleware for development, static dist for production
-  const isProduction =
-    process.env.NODE_ENV === "production" ||
-    Boolean(process.env.K_SERVICE) ||
-    Boolean(process.env.K_REVISION) ||
-    process.env.npm_lifecycle_event === "start" ||
-    (fs.existsSync(path.join(process.cwd(), "dist", "index.html")) && process.env.npm_lifecycle_event !== "dev");
-
-  if (!isProduction) {
+  // In development, use Vite middleware. In production, serve the compiled dist/ directory.
+  if (process.env.NODE_ENV === "development") {
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: false },
       appType: "spa",
