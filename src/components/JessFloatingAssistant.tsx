@@ -188,11 +188,21 @@ export function JessFloatingAssistant() {
       },
       onFunctionCall: async fc => {
         const context = resolveJessContext(location.pathname);
-        const result = await executeJessTool(fc.name, fc.args, profile, name => void updatePreferredName(name), context);
+        let toolArgs = fc.args;
+        if (typeof toolArgs === 'string') {
+          try {
+            toolArgs = JSON.parse(toolArgs);
+          } catch {
+            toolArgs = {};
+          }
+        }
+        const result = await executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context);
+        // Return the tool result to Gemini before changing the React route so the
+        // Live session receives a definitive acknowledgement of the action.
+        client.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
         if (result.actionPayload?.type === 'navigate' && result.actionPayload.path) {
           navigate(result.actionPayload.path);
         }
-        client.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
 
         if (result.actionPayload?.type === 'confirm_delete') {
           setPendingDelete({
