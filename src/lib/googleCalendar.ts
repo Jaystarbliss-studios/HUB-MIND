@@ -1,6 +1,12 @@
-import { driveConfig, initDriveConfig } from '../driveConfig';
 import { db, auth } from '../firebaseConfig';
 import { doc, updateDoc } from 'firebase/firestore';
+import { 
+  CALENDAR_SCOPES, 
+  getCachedCalendarToken, 
+  setCachedCalendarToken, 
+  clearGoogleTokens, 
+  requestGoogleAccessToken 
+} from './googleAuthToken';
 
 export interface CalendarEventPayload {
   summary: string;
@@ -22,32 +28,17 @@ export interface GoogleCalendarEvent {
   recurrence?: string[];
 }
 
-const STORAGE_TOKEN_KEY = 'hubmind_gcal_token';
-const STORAGE_EXP_KEY = 'hubmind_gcal_token_exp';
 const STORAGE_CONNECTED_KEY = 'hubmind_gcal_connected';
 const STORAGE_EMAIL_KEY = 'hubmind_gcal_email';
-
-let cachedCalendarToken: string | null = null;
-let tokenExpiryTime: number = 0;
-
-// Initialize memory cache from localStorage if valid
-try {
-  const savedToken = localStorage.getItem(STORAGE_TOKEN_KEY);
-  const savedExp = Number(localStorage.getItem(STORAGE_EXP_KEY)) || 0;
-  if (savedToken && Date.now() < savedExp) {
-    cachedCalendarToken = savedToken;
-    tokenExpiryTime = savedExp;
-  }
-} catch {}
+const STORAGE_EXP_KEY = 'hubmind_gcal_token_exp';
 
 export function isGoogleCalendarConnected(): boolean {
   try {
     const isConn = localStorage.getItem(STORAGE_CONNECTED_KEY) === 'true';
-    const savedToken = localStorage.getItem(STORAGE_TOKEN_KEY);
-    const savedExp = Number(localStorage.getItem(STORAGE_EXP_KEY)) || 0;
-    return isConn && !!savedToken && Date.now() < savedExp;
+    const hasToken = !!getCachedCalendarToken();
+    return isConn && hasToken;
   } catch {
-    return !!cachedCalendarToken && Date.now() < tokenExpiryTime;
+    return !!getCachedCalendarToken();
   }
 }
 
@@ -58,10 +49,10 @@ export function getGoogleCalendarConnectionInfo(): {
 } {
   try {
     const isConn = localStorage.getItem(STORAGE_CONNECTED_KEY) === 'true';
-    const savedToken = localStorage.getItem(STORAGE_TOKEN_KEY);
+    const hasToken = !!getCachedCalendarToken();
     const savedExp = Number(localStorage.getItem(STORAGE_EXP_KEY)) || 0;
     const email = localStorage.getItem(STORAGE_EMAIL_KEY) || auth.currentUser?.email || null;
-    const isValid = isConn && !!savedToken && Date.now() < savedExp;
+    const isValid = isConn && hasToken;
     return { connected: isValid, email: isValid ? email : null, expiresAt: savedExp };
   } catch {
     return { connected: false, email: null, expiresAt: 0 };
@@ -69,15 +60,7 @@ export function getGoogleCalendarConnectionInfo(): {
 }
 
 export async function disconnectGoogleCalendar(): Promise<void> {
-  cachedCalendarToken = null;
-  tokenExpiryTime = 0;
-  try {
-    localStorage.removeItem(STORAGE_TOKEN_KEY);
-    localStorage.removeItem(STORAGE_EXP_KEY);
-    localStorage.removeItem(STORAGE_CONNECTED_KEY);
-    localStorage.removeItem(STORAGE_EMAIL_KEY);
-  } catch {}
-
+  clearGoogleTokens();
   const current = auth.currentUser;
   if (current) {
     try {
@@ -91,93 +74,37 @@ export async function disconnectGoogleCalendar(): Promise<void> {
   }
 }
 
-export async function getCalendarAccessToken(forceRefresh = false): Promise<string> {
-  // Check memory or localStorage if valid and not forcing refresh
-  if (!forceRefresh && cachedCalendarToken && Date.now() < tokenExpiryTime - 60000) {
-    return cachedCalendarToken;
+export async function getCalendarAccessToken(forcePrompt = false): Promise<string> {
+  if (!forcePrompt) {
+    const existing = getCachedCalendarToken();
+    if (existing) return existing;
+  }
+
+  const token = await requestGoogleAccessToken(CALENDAR_SCOPES);
+  if (!token) {
+    throw new Error('Google Calendar access token could not be obtained.');
   }
 
   try {
-    const savedToken = localStorage.getItem(STORAGE_TOKEN_KEY);
-    const savedExp = Number(localStorage.getItem(STORAGE_EXP_KEY)) || 0;
-    if (!forceRefresh && savedToken && Date.now() < savedExp - 60000) {
-      cachedCalendarToken = savedToken;
-      tokenExpiryTime = savedExp;
-      return savedToken;
+    localStorage.setItem(STORAGE_CONNECTED_KEY, 'true');
+    if (auth.currentUser?.email) {
+      localStorage.setItem(STORAGE_EMAIL_KEY, auth.currentUser.email);
     }
   } catch {}
 
-  await initDriveConfig();
-  const clientId = driveConfig.clientId;
-
-  if (!clientId) {
-    throw new Error('Google OAuth Client ID is not configured. Please ensure your Google Cloud Client ID is set.');
+  const user = auth.currentUser;
+  if (user) {
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        googleCalendarConnected: true,
+        googleCalendarConnectedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Could not sync gcal connection to user doc:', e);
+    }
   }
 
-  return new Promise((resolve, reject) => {
-    const checkGSI = () => {
-      const g = (window as any).google;
-      if (!g || !g.accounts || !g.accounts.oauth2) {
-        const script = document.createElement('script');
-        script.src = 'https://accounts.google.com/gsi/client';
-        script.async = true;
-        script.onload = () => initClient();
-        script.onerror = () => reject(new Error('Failed to load Google Identity Services'));
-        document.body.appendChild(script);
-      } else {
-        initClient();
-      }
-    };
-
-    const initClient = () => {
-      try {
-        const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-          client_id: clientId,
-          scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar',
-          callback: async (response: any) => {
-            if (response.error) {
-              reject(new Error(response.error_description || response.error));
-              return;
-            }
-            const token = response.access_token;
-            const expiresIn = parseInt(response.expires_in, 10) || 3500;
-            const expiry = Date.now() + expiresIn * 1000;
-
-            cachedCalendarToken = token;
-            tokenExpiryTime = expiry;
-
-            try {
-              localStorage.setItem(STORAGE_TOKEN_KEY, token);
-              localStorage.setItem(STORAGE_EXP_KEY, String(expiry));
-              localStorage.setItem(STORAGE_CONNECTED_KEY, 'true');
-              if (auth.currentUser?.email) {
-                localStorage.setItem(STORAGE_EMAIL_KEY, auth.currentUser.email);
-              }
-            } catch {}
-
-            const user = auth.currentUser;
-            if (user) {
-              try {
-                await updateDoc(doc(db, 'users', user.uid), {
-                  googleCalendarConnected: true,
-                  googleCalendarConnectedAt: new Date().toISOString(),
-                });
-              } catch (e) {
-                console.warn('Could not sync gcal connection to user doc:', e);
-              }
-            }
-
-            resolve(token);
-          },
-        });
-        tokenClient.requestAccessToken({ prompt: forceRefresh ? 'consent' : '' });
-      } catch (err) {
-        reject(err);
-      }
-    };
-
-    checkGSI();
-  });
+  return token;
 }
 
 /**
@@ -210,13 +137,13 @@ export async function connectGoogleCalendarOnce(): Promise<{
     return {
       success: true,
       email: primaryEmail,
-      message: `Google Calendar successfully connected for ${primaryEmail}. Hub-Mind will sync events and recurring schedules seamlessly without prompting every time.`,
+      message: `Google Calendar successfully connected for ${primaryEmail}. Hub-Mind will sync events and recurring schedules seamlessly.`,
     };
   } catch (error: any) {
-    console.error('Google Calendar one-time connection failed:', error);
+    console.error('Google Calendar connection error:', error);
     return {
       success: false,
-      message: error?.message || 'Failed to connect Google Calendar. Please check your browser popup blocker or permissions.',
+      message: error?.message || 'Failed to connect Google Calendar. Please allow popups for this site.',
     };
   }
 }
@@ -292,7 +219,11 @@ export async function createGoogleCalendarEvent(payload: CalendarEventPayload): 
 }
 
 export async function listGoogleCalendarEvents(timeMin?: string, timeMax?: string): Promise<GoogleCalendarEvent[]> {
-  const token = await getCalendarAccessToken();
+  const token = getCachedCalendarToken();
+  if (!token) {
+    // If not connected, return empty list instead of throwing an unprompted popup error
+    return [];
+  }
 
   const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
   url.searchParams.set('timeMin', timeMin || new Date().toISOString());

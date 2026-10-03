@@ -4,7 +4,7 @@ import { RecurringMeetingTemplate, User } from '../types';
 import { addDays, format, startOfDay } from 'date-fns';
 
 const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-const ADMIN_EMAIL = 'johnrufai242@gmail.com';
+import { isAdminEmail } from '../services/userService';
 
 export function getRecurringMeetingDateKey(templateId: string, date: Date) {
   return `recurring-meeting-${templateId}-${format(date, 'yyyy-MM-dd')}`;
@@ -14,7 +14,7 @@ async function resolveCurrentRole(profile?: Pick<User, 'id' | 'role'>): Promise<
   if (profile) return profile;
   const current = auth.currentUser;
   if (!current) return undefined;
-  if ((current.email || '').toLowerCase() === ADMIN_EMAIL) return { id: current.uid, role: 'admin' };
+  if (isAdminEmail(current.email)) return { id: current.uid, role: 'admin' };
   try {
     const snap = await getDoc(doc(db, 'users', current.uid));
     const role = snap.exists() ? String(snap.data().role || 'staff') : 'staff';

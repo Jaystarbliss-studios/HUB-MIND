@@ -33,7 +33,7 @@ const requiredFiles = [
   'src/components/JessOrbVisualizer.tsx',
   'src/components/JessDocumentBridge.tsx',
   'src/services/liveAudioClient.ts',
-  'netlify/functions/live-token.ts',
+  'netlify/functions/live-token.mjs',
 ];
 for (const file of requiredFiles) if (!existsSync(resolve(root, file))) failures.push(`${file}: required Jess integration file is missing`);
 
@@ -48,6 +48,7 @@ if (!bridge.includes('registerJessDocumentEditor') || !bridge.includes('applyJes
 const live = readFileSync(resolve(root, 'src/services/liveAudioClient.ts'), 'utf8');
 for (const contract of ['gemini-3.8-live','Kore','16000','24000','sendFunctionResponse','sessionResumption']) {
   if (!live.includes(contract)) failures.push(`liveAudioClient.ts: Live API contract ${contract} is missing`);
+if (!live.includes("ENABLE_SERVER_WS_BRIDGE") || !live.includes("if (ENABLE_SERVER_WS_BRIDGE)")) failures.push('liveAudioClient.ts: production WebSocket fallback guard is missing');
 }
 
 const floating = readFileSync(resolve(root, 'src/components/JessFloatingAssistant.tsx'), 'utf8');

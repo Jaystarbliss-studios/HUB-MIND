@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { UploadCloud, Loader2, FileText, CheckCircle2 } from 'lucide-react';
-import { driveConfig, initDriveConfig } from '../driveConfig';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { DRIVE_SCOPES, requestGoogleAccessToken, getCachedCalendarToken } from '../lib/googleAuthToken';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -17,60 +17,29 @@ interface DriveUploadProps {
 export function DriveUpload({ onUploadSuccess, className, label = "Upload to Drive" }: DriveUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [client, setClient] = useState<any>(null);
-  
-  useEffect(() => {
-    let isMounted = true;
-    
-    async function loadScript() {
-      await initDriveConfig();
-      if (!isMounted) return;
+  const [token, setToken] = useState<string | null>(() => getCachedCalendarToken());
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        // @ts-ignore
-        const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-          client_id: driveConfig.clientId,
-          scope: 'https://www.googleapis.com/auth/drive.file',
-          callback: (response: any) => {
-            if (response.error !== undefined) {
-              setError(response.error);
-              return;
-            }
-            setToken(response.access_token);
-          },
-        });
-        setClient(tokenClient);
-      };
-      document.body.appendChild(script);
-    }
-    
-    loadScript();
-    
-    return () => {
-      isMounted = false;
-      const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-      if (script && script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
-    };
-  }, []);
-
-  const requestAuth = () => {
-    if (client) {
-      client.requestAccessToken();
+  const requestAuth = async () => {
+    setIsAuthenticating(true);
+    setError(null);
+    try {
+      const accessToken = await requestGoogleAccessToken(DRIVE_SCOPES);
+      setToken(accessToken);
+    } catch (err: any) {
+      setError(err?.message || "Failed to authenticate with Google Drive.");
+    } finally {
+      setIsAuthenticating(false);
     }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!token) {
-      setError("Please authenticate with Google first.");
+
+    let activeToken = token || getCachedCalendarToken();
+    if (!activeToken) {
+      setError("Please connect Google Drive first.");
       return;
     }
 
@@ -90,7 +59,7 @@ export function DriveUpload({ onUploadSuccess, className, label = "Upload to Dri
       const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${activeToken}`
         },
         body: form
       });
@@ -115,10 +84,15 @@ export function DriveUpload({ onUploadSuccess, className, label = "Upload to Dri
         <button
           type="button"
           onClick={requestAuth}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md text-sm font-medium transition-colors"
+          disabled={isAuthenticating}
+          className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
         >
-          <img src="https://www.gstatic.com/images/branding/product/1x/drive_2020q4_48dp.png" alt="Drive" className="w-4 h-4" />
-          Connect Google Drive
+          {isAuthenticating ? (
+            <Loader2 className="w-4 h-4 animate-spin text-teal-400" />
+          ) : (
+            <img src="https://www.gstatic.com/images/branding/product/1x/drive_2020q4_48dp.png" alt="Drive" className="w-4 h-4" />
+          )}
+          {isAuthenticating ? "Connecting..." : "Connect Google Drive"}
         </button>
       ) : (
         <label className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md cursor-pointer text-sm font-medium transition-colors">
