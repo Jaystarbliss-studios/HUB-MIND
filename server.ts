@@ -1,3 +1,11 @@
+// Clean up tsx injected global.__dirname so ESM packages like vite-plugin-pwa don't receive "." in createRequire
+if (typeof (globalThis as any).__dirname === "string" && !(globalThis as any).__dirname.startsWith("/")) {
+  delete (globalThis as any).__dirname;
+}
+if (typeof (global as any).__dirname === "string" && !(global as any).__dirname.startsWith("/")) {
+  delete (global as any).__dirname;
+}
+
 import { coreIdentity, groqAdapter, ollamaAdapter, geminiAdapter } from "./src/ai/prompts/adapters.ts";
 import express from "express";
 import path from "path";
@@ -428,7 +436,7 @@ async function startServer() {
   // In development, use Vite middleware. In production, serve the compiled dist/ directory.
   if (process.env.NODE_ENV === "development") {
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
+      server: { middlewareMode: true, hmr: false, ws: false },
       appType: "spa",
     });
     app.use(vite.middlewares);
