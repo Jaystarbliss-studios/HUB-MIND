@@ -58,6 +58,11 @@ if (!live.includes("ENABLE_SERVER_WS_BRIDGE") || !live.includes("if (ENABLE_SERV
 }
 
 const floating = readFileSync(resolve(root, 'src/components/JessFloatingAssistant.tsx'), 'utf8');
+for (const contract of ['sessionEndingRef', 'JSON.parse(toolArgs)', 'sendFunctionResponse({ name: fc.name', 'MANDATORY UI NAVIGATION RULE']) {
+  if (!floating.includes(contract)) failures.push(`JessFloatingAssistant.tsx: runtime contract ${contract} is missing`);
+}
+if (!floating.includes('}, 100);')) failures.push('JessFloatingAssistant.tsx: end_session does not immediately terminate the Live session');
+
 for (const contract of ['onPointerDown','onPointerMove','onPointerUp','localStorage','DOUBLE_TAP_MS','touch-none']) {
   if (!floating.includes(contract)) failures.push(`JessFloatingAssistant.tsx: interaction contract ${contract} is missing`);
 }
