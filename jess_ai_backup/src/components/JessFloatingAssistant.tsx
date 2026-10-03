@@ -181,7 +181,17 @@ export function JessFloatingAssistant() {
         jessSpeechAccumulatorRef.current = '';
         scheduleFade(5000);
       },
-      onError: error => console.error('[Jess]', error),
+      onError: error => {
+        console.warn('[Jess]', error);
+        setSpeechState({
+          text: typeof error === 'string' && error.includes('Permission')
+            ? 'Microphone permission was denied. You can interact with Jess using actions and suggestions.'
+            : (typeof error === 'string' ? error : 'Unable to connect to assistant.'),
+          speaker: 'jess',
+          visible: true,
+        });
+        scheduleFade(6000);
+      },
       onAudioLevel: (input, output) => {
         setInputLevel(input);
         setOutputLevel(output);

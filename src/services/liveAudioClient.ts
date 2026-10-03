@@ -43,6 +43,7 @@ export class LiveAudioClient {
   private activeSources: AudioBufferSourceNode[] = [];
   private callbacks: LiveAudioCallbacks;
   private isMuted = false;
+  private micPermissionDenied = false;
   private isPushToTalkActive = false;
   private pushToTalkMode = false;
   private levelIntervalId: number | null = null;
@@ -99,15 +100,27 @@ export class LiveAudioClient {
     this.outputGainNode.gain.value = 1.0;
     this.outputGainNode.connect(this.outputAudioCtx.destination);
 
-    this.mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        sampleRate: 16000,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        this.mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            sampleRate: 16000,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        this.micPermissionDenied = false;
+      } else {
+        throw new Error('Microphone audio input is not supported in this browser context.');
+      }
+    } catch (micErr: any) {
+      console.warn('[Jess Live] Microphone access unavailable or permission denied, using silent input stream fallback:', micErr?.message || micErr);
+      this.micPermissionDenied = true;
+      const silentDestination = this.inputAudioCtx.createMediaStreamDestination();
+      this.mediaStream = silentDestination.stream;
+    }
 
     this.sourceNode = this.inputAudioCtx.createMediaStreamSource(this.mediaStream);
     this.sourceNode.connect(this.inputGainNode);
@@ -220,7 +233,10 @@ export class LiveAudioClient {
                 this.connected = true;
                 this.isUsingFallbackWs = false;
                 this.callbacks.onStatusChange('connected');
-                this.callbacks.onJessStateChange(this.isMuted ? 'muted' : 'listening');
+                this.callbacks.onJessStateChange(this.isMuted || this.micPermissionDenied ? 'muted' : 'listening');
+                if (this.micPermissionDenied) {
+                  this.callbacks.onJessTranscript?.('Microphone access is unavailable or denied. Jess is active in text and suggested actions mode.');
+                }
               },
               onmessage: (message: any) => this.handleLiveMessage(message),
               onerror: (event: any) => {
@@ -250,7 +266,7 @@ export class LiveAudioClient {
 
           if (this.scriptProcessor) {
             this.scriptProcessor.onaudioprocess = event => {
-              if (this.isMuted || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
+              if (this.isMuted || this.micPermissionDenied || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
               const pcmBuffer = this.floatTo16BitPCM(event.inputBuffer.getChannelData(0));
               const base64Data = this.base64EncodeArrayBuffer(pcmBuffer);
               if (this.session && this.connected && !this.isUsingFallbackWs) {
@@ -284,8 +300,13 @@ export class LiveAudioClient {
       // the Express WebSocket bridge, so it is disabled unless explicitly opted in.
       await this.connectFallbackWebSocket(context);
     } catch (error: any) {
-      console.error('Failed to start Jess Live:', error);
-      this.callbacks.onError?.(error?.message || 'Failed to start Jess Live.');
+      const msg = error?.message || 'Failed to start Jess Live.';
+      if (error?.name === 'NotAllowedError' || msg.includes('Permission') || msg.includes('permission')) {
+        console.warn('Jess Live notice:', msg);
+      } else {
+        console.error('Failed to start Jess Live:', error);
+      }
+      this.callbacks.onError?.(msg);
       this.callbacks.onStatusChange('error');
       this.callbacks.onJessStateChange('error');
       await this.disconnect(false);

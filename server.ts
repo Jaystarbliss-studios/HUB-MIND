@@ -19,7 +19,7 @@ const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
 
@@ -50,9 +50,12 @@ async function startServer() {
             uses: 1,
             expireTime: new Date(now + 30 * 60 * 1000).toISOString(),
             newSessionExpireTime: new Date(now + 60 * 1000).toISOString(),
-            liveConnectConstraints: {
+            bidiGenerateContentSetup: {
               model: "models/gemini-3.8-live",
-              config: { responseModalities: ["AUDIO"], sessionResumption: {} },
+              generationConfig: {
+                responseModalities: ["AUDIO"],
+              },
+              sessionResumption: {},
             },
           }),
         });
@@ -442,7 +445,8 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const staticDirName = fs.existsSync(path.join(process.cwd(), 'dist')) ? 'dist' : 'build';
+    const distPath = path.join(process.cwd(), staticDirName);
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

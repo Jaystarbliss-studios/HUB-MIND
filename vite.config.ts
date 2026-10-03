@@ -1,6 +1,7 @@
 import { VitePWA } from 'vite-plugin-pwa';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { defineConfig, loadEnv } from 'vite';
@@ -114,7 +115,21 @@ export default defineConfig(({ mode }) => {
             }
           }
         }
-      })
+      }),
+      {
+        name: 'mirror-build-dir',
+        closeBundle() {
+          try {
+            const distDir = path.resolve(__dirname, 'dist');
+            const buildDir = path.resolve(__dirname, 'build');
+            if (fs.existsSync(distDir)) {
+              fs.cpSync(distDir, buildDir, { recursive: true });
+            }
+          } catch (e) {
+            console.warn('Could not mirror build directory:', e);
+          }
+        }
+      }
     ],
     resolve: {
       alias: { '@': path.resolve(__dirname, '.') },
