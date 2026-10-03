@@ -4,8 +4,6 @@ import { JESS_TOOLS_DECLARATIONS } from '../lib/jessTools';
 import { jessBackgroundTasks } from './jessBackgroundTasks';
 import { getUserMemories, formatMemoriesForPrompt } from './memoryService';
 import { getCurrentUserMoodGuidance } from './sentimentService';
-import { getUserMemories, formatMemoriesForPrompt } from './memoryService';
-import { getCurrentUserMoodGuidance } from './sentimentService';
 
 export type JessState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted' | 'muted' | 'error';
 export interface LiveAudioCallbacks {
@@ -196,7 +194,8 @@ export class LiveAudioClient {
       try {
         token = await this.getEphemeralToken();
       } catch (tokenErr) {
-        console.warn('Ephemeral token error, attempting WebSocket bridge:', tokenErr);
+        if (!ENABLE_SERVER_WS_BRIDGE) throw tokenErr;
+        console.warn('Ephemeral token error, attempting local WebSocket bridge:', tokenErr);
       }
 
       if (token) {
@@ -269,11 +268,17 @@ export class LiveAudioClient {
           }
           return;
         } catch (directErr: any) {
-          console.warn('Direct Live API connect failed, switching to bridge fallback:', directErr?.message || directErr);
+          if (!ENABLE_SERVER_WS_BRIDGE) throw directErr;
+          console.warn('Direct Live API connect failed, switching to local bridge fallback:', directErr?.message || directErr);
         }
       }
 
-      // Fallback: connect via server WebSocket bridge
+      if (!ENABLE_SERVER_WS_BRIDGE) {
+        throw new Error('Jess Live could not establish the secure Gemini Live session.');
+      }
+
+      // Optional local-development fallback. Netlify production does not expose
+      // the Express WebSocket bridge, so it is disabled unless explicitly opted in.
       await this.connectFallbackWebSocket(context);
     } catch (error: any) {
       console.error('Failed to start Jess Live:', error);
