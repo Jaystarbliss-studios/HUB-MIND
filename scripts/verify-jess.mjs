@@ -45,6 +45,12 @@ if (!tools.includes('queueJessDocumentEdit')) failures.push('jessTools.ts: docum
 const bridge = readFileSync(resolve(root, 'src/lib/jessDocumentBridge.ts'), 'utf8');
 if (!bridge.includes('registerJessDocumentEditor') || !bridge.includes('applyJessDocumentEdit')) failures.push('jessDocumentBridge.ts: direct editor bridge is incomplete');
 
+const liveToken = readFileSync(resolve(root, 'netlify/functions/live-token.mjs'), 'utf8');
+for (const contract of ['https://generativelanguage.googleapis.com/v1beta/auth_tokens','bidiGenerateContentSetup','models/gemini-3.8-live','responseModalities','sessionResumption']) {
+  if (!liveToken.includes(contract)) failures.push(`live-token.mjs: Gemini ephemeral-token contract ${contract} is missing`);
+}
+if (liveToken.includes('liveConnectConstraints')) failures.push('live-token.mjs: obsolete REST field liveConnectConstraints remains');
+
 const live = readFileSync(resolve(root, 'src/services/liveAudioClient.ts'), 'utf8');
 for (const contract of ['gemini-3.8-live','Kore','16000','24000','sendFunctionResponse','sessionResumption']) {
   if (!live.includes(contract)) failures.push(`liveAudioClient.ts: Live API contract ${contract} is missing`);
