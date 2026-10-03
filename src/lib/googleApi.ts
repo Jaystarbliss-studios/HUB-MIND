@@ -1,73 +1,13 @@
-import { driveConfig, initDriveConfig } from '../driveConfig';
-
-let tokenClient: any = null;
-let cachedToken: string | null = null;
+import { CALENDAR_SCOPES, GMAIL_SCOPES, requestGoogleAccessToken, getCachedCalendarToken } from './googleAuthToken';
 
 export const initGoogleApi = async () => {
-  await initDriveConfig();
-  return new Promise((resolve) => {
-    if (document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
-      if (typeof (window as any).google !== 'undefined') {
-        initClient();
-        resolve(true);
-      } else {
-        setTimeout(() => {
-          initClient();
-          resolve(true);
-        }, 1000);
-      }
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      initClient();
-      resolve(true);
-    };
-    document.body.appendChild(script);
-  });
+  return true;
 };
 
-const initClient = () => {
-  if (tokenClient) return;
-  if (typeof (window as any).google === 'undefined') return;
-  tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-    client_id: driveConfig.clientId,
-    scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.send',
-    callback: (response: any) => {
-      if (response.error !== undefined) {
-        console.error('OAuth error:', response.error);
-        return;
-      }
-      cachedToken = response.access_token;
-    },
-  });
-};
-
-export const getGoogleToken = (): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    if (cachedToken) {
-      resolve(cachedToken);
-      return;
-    }
-    if (!tokenClient) {
-      reject(new Error("Google API not initialized"));
-      return;
-    }
-    // Override callback for this specific request
-    tokenClient.callback = (response: any) => {
-      if (response.error !== undefined) {
-        reject(new Error(response.error));
-        return;
-      }
-      cachedToken = response.access_token;
-      resolve(cachedToken);
-    };
-    tokenClient.requestAccessToken({ prompt: '' });
-  });
+export const getGoogleToken = async (): Promise<string> => {
+  const cached = getCachedCalendarToken();
+  if (cached) return cached;
+  return requestGoogleAccessToken([...CALENDAR_SCOPES, ...GMAIL_SCOPES]);
 };
 
 export const getCalendarEvents = async (timeMin: string, timeMax: string) => {
