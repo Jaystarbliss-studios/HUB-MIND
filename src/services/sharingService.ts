@@ -19,6 +19,7 @@ import {
   SharePermission, 
   User 
 } from '../types';
+export type { ResourceType, SharePermission };
 import { getUserByUsername, getUserProfile, getAllUsers } from './userService';
 
 function getCollectionName(resourceType: ResourceType): string {
