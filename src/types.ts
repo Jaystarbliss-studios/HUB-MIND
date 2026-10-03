@@ -348,6 +348,31 @@ export interface ChatMessage {
   groundingChunks?: GroundingChunk[];
 }
 
+export type MemoryCategory = 'preference' | 'workflow' | 'fact' | 'instruction' | 'habit' | 'interaction' | 'personal' | 'business';
+
+export interface UserMemory {
+  id: string;
+  userId: string;
+  key?: string;
+  content: string;
+  category: MemoryCategory;
+  source?: 'voice' | 'chat' | 'system' | 'explicit';
+  importance?: number | 'high' | 'medium' | 'low';
+  createdAt: string;
+  updatedAt: string;
+  lastReferencedAt?: string;
+}
+
+export interface UserPreferences {
+  theme?: 'dark' | 'light' | 'system';
+  preferredTone?: string;
+  defaultDocumentFormat?: string;
+  voiceAutoPlay?: boolean;
+  transcriptAlwaysVisible?: boolean;
+  notifyOnShare?: boolean;
+  [key: string]: any;
+}
+
 export interface MemoryItem {
   id: string;
   category: 'personal' | 'business' | 'health' | 'reminder' | 'confidential';
