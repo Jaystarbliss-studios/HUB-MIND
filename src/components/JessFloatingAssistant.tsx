@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { LiveAudioClient, JessState } from '../services/liveAudioClient';
 import { executeJessTool } from '../lib/jessTools';
@@ -20,7 +22,9 @@ import {
   Users, 
   ChevronRight,
   X,
-  Brain
+  Brain,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 
 const POSITION_KEY = 'hubmind.jess.position.v2';
@@ -89,6 +93,16 @@ export function JessFloatingAssistant() {
   // Context-aware Page/Document Scanner Menu
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextActions, setContextActions] = useState<ContextActionSuggestion[]>([]);
+
+  // Assistant Deletion Confirmation Modal State
+  const [pendingDelete, setPendingDelete] = useState<{
+    itemType: string;
+    itemId: string;
+    itemTitle: string;
+    collectionName: string;
+    message?: string;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const jessSpeechAccumulatorRef = useRef<string>('');
   const fadeTimerRef = useRef<number | null>(null);
@@ -178,6 +192,16 @@ export function JessFloatingAssistant() {
         }
         client.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
 
+        if (result.actionPayload?.type === 'confirm_delete') {
+          setPendingDelete({
+            itemType: result.actionPayload.itemType,
+            itemId: result.actionPayload.itemId,
+            itemTitle: result.actionPayload.itemTitle,
+            collectionName: result.actionPayload.collectionName,
+            message: result.actionPayload.message,
+          });
+        }
+
         if (fc.name === 'save_user_memory' && result.result?.success) {
           setRecentMemorySaved(result.result.content || 'Preference remembered');
           setTimeout(() => setRecentMemorySaved(null), 3500);
@@ -256,6 +280,36 @@ export function JessFloatingAssistant() {
     if (connection === 'connected' || connection === 'connecting') void stop();
     else void start();
   }, [connection, start, stop]);
+
+  const handleConfirmDeletion = async () => {
+    if (!pendingDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, pendingDelete.collectionName, pendingDelete.itemId));
+      const title = pendingDelete.itemTitle;
+      const type = pendingDelete.itemType;
+      setPendingDelete(null);
+      setRecentMemorySaved(`Deleted ${type} "${title}"`);
+      setTimeout(() => setRecentMemorySaved(null), 3500);
+      if (clientRef.current) {
+        clientRef.current.sendText(`I have confirmed and permanently deleted the ${type} "${title}".`);
+      }
+    } catch (err: any) {
+      console.error('Delete error:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleCancelDeletion = () => {
+    if (!pendingDelete) return;
+    const type = pendingDelete.itemType;
+    const title = pendingDelete.itemTitle;
+    setPendingDelete(null);
+    if (clientRef.current) {
+      clientRef.current.sendText(`I cancelled the deletion request for ${type} "${title}". Keep it safe.`);
+    }
+  };
 
   const handleExecuteContextAction = (action: ContextActionSuggestion) => {
     setShowContextMenu(false);
@@ -491,6 +545,68 @@ export function JessFloatingAssistant() {
           </div>
         )}
       </button>
+
+      {/* Delete Confirmation Modal (User has the final say) */}
+      {pendingDelete && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div 
+            className="w-full max-w-md bg-slate-900 border border-rose-500/30 rounded-3xl p-6 shadow-2xl shadow-rose-950/40 text-slate-100 flex flex-col gap-4 animate-in zoom-in-95 duration-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+          >
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 id="delete-dialog-title" className="text-base font-bold text-slate-100 flex items-center gap-2">
+                  <span>Confirm Assistant Deletion Request</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Jess requested to delete the following item from your dashboard. You have the final say.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 flex flex-col gap-1">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-rose-400/90">
+                {pendingDelete.itemType}
+              </div>
+              <div className="text-sm font-semibold text-slate-100 truncate">
+                "{pendingDelete.itemTitle}"
+              </div>
+              <div className="text-[11px] text-slate-400">
+                ID: <span className="font-mono text-slate-400">{pendingDelete.itemId}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              This action cannot be undone. Are you sure you want to permanently delete this {pendingDelete.itemType}?
+            </p>
+
+            <div className="flex items-center justify-end gap-3 mt-2">
+              <button
+                type="button"
+                onClick={handleCancelDeletion}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+              >
+                Keep Item (Cancel)
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeletion}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white shadow-lg shadow-rose-950/50 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeleting ? 'Deleting...' : `Delete ${pendingDelete.itemType}`}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

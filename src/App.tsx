@@ -8,33 +8,81 @@ import { JessFloatingAssistant } from './components/JessFloatingAssistant';
 import { JessDocumentBridge } from './components/JessDocumentBridge';
 import { Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
 
-const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
-const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
-const Inbox = lazy(() => import('./pages/Inbox').then(m => ({ default: m.Inbox })));
-const Tasks = lazy(() => import('./pages/Tasks').then(m => ({ default: m.Tasks })));
-const TaskDetail = lazy(() => import('./pages/TaskDetail').then(m => ({ default: m.TaskDetail })));
-const MeetingDetail = lazy(() => import('./pages/MeetingDetail').then(m => ({ default: m.MeetingDetail })));
-const Clients = lazy(() => import('./pages/Clients').then(m => ({ default: m.Clients })));
-const ClientDetail = lazy(() => import('./pages/ClientDetail').then(m => ({ default: m.ClientDetail })));
-const Documents = lazy(() => import('./pages/Documents').then(m => ({ default: m.Documents })));
-const DocumentEditor = lazy(() => import('./pages/DocumentEditor').then(m => ({ default: m.DocumentEditor })));
-const Calendar = lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
-const People = lazy(() => import('./pages/People').then(m => ({ default: m.People })));
-const AdminUsers = lazy(() => import('./pages/AdminUsers').then(m => ({ default: m.AdminUsers })));
-const Notifications = lazy(() => import('./pages/Notifications').then(m => ({ default: m.Notifications })));
-const Projects = lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
-const ProjectDetail = lazy(() => import('./pages/ProjectDetail').then(m => ({ default: m.ProjectDetail })));
-const Knowledge = lazy(() => import('./pages/Knowledge').then(m => ({ default: m.Knowledge })));
-const FollowUps = lazy(() => import('./pages/FollowUps').then(m => ({ default: m.FollowUps })));
-const SharedRecord = lazy(() => import('./pages/SharedRecord').then(m => ({ default: m.SharedRecord })));
+function safeLazy<T extends React.ComponentType<any>>(
+  importer: () => Promise<{ [key: string]: any }>,
+  namedExport?: string
+): React.LazyExoticComponent<T> {
+  return lazy(async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const mod = await importer();
+        const component = (namedExport && mod[namedExport]) || mod.default || Object.values(mod).find(v => typeof v === 'function');
+        if (component) {
+          return { default: component as T };
+        }
+        throw new Error(`Export ${namedExport || 'default'} not found`);
+      } catch (err: any) {
+        console.warn(`[HubMind] Dynamic import failed (attempt ${attempt + 1}/3):`, err);
+        if (attempt < 2) {
+          await new Promise(res => setTimeout(res, 300 * Math.pow(2, attempt)));
+        } else {
+          const isChunkError = /failed to fetch dynamically imported module|loading chunk|importing a module script/i.test(
+            err?.message || String(err)
+          );
+          if (isChunkError && typeof window !== 'undefined' && !sessionStorage.getItem('hubmind_chunk_recovered')) {
+            sessionStorage.setItem('hubmind_chunk_recovered', 'true');
+            window.location.reload();
+            return new Promise(() => {});
+          }
+          throw err;
+        }
+      }
+    }
+    throw new Error('Failed to load page component');
+  });
+}
+
+const Login = safeLazy(() => import('./pages/Login'), 'Login');
+const Dashboard = safeLazy(() => import('./pages/Dashboard'), 'Dashboard');
+const Inbox = safeLazy(() => import('./pages/Inbox'), 'Inbox');
+const Tasks = safeLazy(() => import('./pages/Tasks'), 'Tasks');
+const TaskDetail = safeLazy(() => import('./pages/TaskDetail'), 'TaskDetail');
+const MeetingDetail = safeLazy(() => import('./pages/MeetingDetail'), 'MeetingDetail');
+const Clients = safeLazy(() => import('./pages/Clients'), 'Clients');
+const ClientDetail = safeLazy(() => import('./pages/ClientDetail'), 'ClientDetail');
+const Documents = safeLazy(() => import('./pages/Documents'), 'Documents');
+const DocumentEditor = safeLazy(() => import('./pages/DocumentEditor'), 'DocumentEditor');
+const Calendar = safeLazy(() => import('./pages/Calendar'), 'Calendar');
+const Colleagues = safeLazy(() => import('./pages/People'), 'Colleagues');
+const AdminUsers = safeLazy(() => import('./pages/AdminUsers'), 'AdminUsers');
+const Notifications = safeLazy(() => import('./pages/Notifications'), 'Notifications');
+const Projects = safeLazy(() => import('./pages/Projects'), 'Projects');
+const ProjectDetail = safeLazy(() => import('./pages/ProjectDetail'), 'ProjectDetail');
+const Knowledge = safeLazy(() => import('./pages/Knowledge'), 'Knowledge');
+const FollowUps = safeLazy(() => import('./pages/FollowUps'), 'FollowUps');
+const SharedRecord = safeLazy(() => import('./pages/SharedRecord'), 'SharedRecord');
 
 const LoadingScreen = () => <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-slate-400"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
 
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) { return { error }; }
-  componentDidCatch(error: Error, info: React.ErrorInfo) { console.error('[HubMind] Unhandled application error:', error, info); }
-  handleReload = () => window.location.reload();
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[HubMind] Unhandled application error:', error, info);
+    const isChunkError = /failed to fetch dynamically imported module|loading chunk|importing a module script/i.test(
+      error?.message || ''
+    );
+    if (isChunkError && typeof window !== 'undefined' && !sessionStorage.getItem('hubmind_chunk_recovered')) {
+      sessionStorage.setItem('hubmind_chunk_recovered', 'true');
+      window.location.reload();
+    }
+  }
+  handleReload = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('hubmind_chunk_recovered');
+      window.location.reload();
+    }
+  };
   render() {
     if (this.state.error) return <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center p-6"><div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-7 shadow-xl"><div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center"><AlertTriangle className="w-5 h-5 text-amber-400" /></div><div><h1 className="font-bold text-white">Hub-Mind recovered from an error</h1><p className="text-xs text-slate-500">Your saved cloud data has not been intentionally changed.</p></div></div><p className="text-sm text-slate-400 mb-5">This screen caught an unexpected UI failure instead of leaving you with a blank page. Reload and try the action again.</p><button onClick={this.handleReload} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent text-slate-950 font-bold text-sm"><RefreshCw className="w-4 h-4" /> Reload Hub-Mind</button></div></div>;
     return this.props.children;
@@ -86,7 +134,8 @@ export default function App() {
                   <Route path="clients/:id" element={<ClientDetail />} />
                   <Route path="meetings/:id" element={<MeetingDetail />} />
                   <Route path="calendar" element={<Calendar />} />
-                  <Route path="people" element={<People />} />
+                  <Route path="colleagues" element={<Colleagues />} />
+                  <Route path="people" element={<Navigate to="/colleagues" replace />} />
                   <Route path="documents" element={<Documents />} />
                   <Route path="documents/:id" element={<DocumentEditor />} />
                   <Route path="notifications" element={<Notifications />} />

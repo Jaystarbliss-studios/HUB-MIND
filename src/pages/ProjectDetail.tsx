@@ -18,10 +18,14 @@ import {
   Clock, 
   ChevronRight,
   Shield,
-  Trash2
+  Trash2,
+  CalendarRange,
+  Layers,
+  Flag
 } from 'lucide-react';
 import { ShareResourceModal } from '../components/ShareResourceModal';
 import { deleteProject } from '../services/projectService';
+import { ProjectGanttTimeline } from '../components/ProjectGanttTimeline';
 
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
@@ -35,7 +39,7 @@ export function ProjectDetail() {
   const [clients, setClients] = useState<Client[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'documents' | 'meetings' | 'clients' | 'activity'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'tasks' | 'documents' | 'meetings' | 'clients' | 'activity'>('overview');
   const [showShareModal, setShowShareModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -163,6 +167,17 @@ export function ProjectDetail() {
         </button>
 
         <button
+          onClick={() => setActiveTab('timeline')}
+          className={`pb-3 font-medium transition-colors cursor-pointer relative shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'timeline' ? 'text-teal-400' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <CalendarRange className="w-4 h-4" />
+          Timeline & Milestones
+          {activeTab === 'timeline' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-400" />}
+        </button>
+
+        <button
           onClick={() => setActiveTab('tasks')}
           className={`pb-3 font-medium transition-colors cursor-pointer relative shrink-0 ${
             activeTab === 'tasks' ? 'text-teal-400' : 'text-slate-400 hover:text-slate-200'
@@ -237,6 +252,70 @@ export function ProjectDetail() {
               </div>
             </div>
 
+            {/* Gantt Timeline Roadmap Snapshot */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                  <CalendarRange className="w-4 h-4 text-teal-400" />
+                  Timeline & Milestones Roadmap
+                </h3>
+                <button
+                  onClick={() => setActiveTab('timeline')}
+                  className="text-xs text-teal-400 hover:text-teal-300 font-semibold flex items-center gap-1 cursor-pointer"
+                >
+                  Open Gantt View <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {tasks.length > 0 ? (
+                <div className="space-y-2 pt-1">
+                  {tasks.slice(0, 3).map((t) => {
+                    const isDone = t.status === 'completed';
+                    return (
+                      <div
+                        key={t.id}
+                        onClick={() => setActiveTab('timeline')}
+                        className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl flex items-center justify-between hover:border-slate-700 transition-all text-xs cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                          <div
+                            className={`w-2 h-2 rounded-full shrink-0 ${
+                              isDone ? 'bg-emerald-400' : 'bg-teal-400'
+                            }`}
+                          />
+                          <span
+                            className={`font-medium truncate ${
+                              isDone ? 'text-slate-500 line-through' : 'text-slate-200 group-hover:text-teal-300'
+                            }`}
+                          >
+                            {t.title}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {t.deadline && (
+                            <span className="text-[11px] text-slate-400 font-mono">
+                              Due: {new Date(t.deadline).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            </span>
+                          )}
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 capitalize">
+                            {t.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <button
+                    onClick={() => setActiveTab('timeline')}
+                    className="w-full py-2 text-center text-xs text-teal-400 hover:bg-teal-500/10 rounded-xl border border-teal-500/20 font-medium transition-colors cursor-pointer"
+                  >
+                    View Interactive Gantt Timeline ({tasks.length} Deliverables)
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 py-3 text-center">No timeline tasks added yet.</p>
+              )}
+            </div>
+
             {/* Recent Tasks */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
               <div className="flex items-center justify-between">
@@ -299,6 +378,16 @@ export function ProjectDetail() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Tab: Timeline & Milestones */}
+      {activeTab === 'timeline' && (
+        <ProjectGanttTimeline
+          project={project}
+          tasks={tasks}
+          meetings={meetings}
+          onAddTask={() => navigate(`/tasks?new=true&projectId=${project.id}`)}
+        />
       )}
 
       {/* Tab: Tasks */}

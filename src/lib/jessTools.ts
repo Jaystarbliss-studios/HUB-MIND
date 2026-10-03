@@ -110,6 +110,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'list_tasks', description: 'List tasks visible to the signed-in user with status or priority filters.', parameters: object({ status: { type: 'string' }, priority: { type: 'string' }, limit: { type: 'number' } }) },
   { name: 'create_task', description: 'Create a new task in Hub-Mind.', parameters: object({ title: { type: 'string' }, description: { type: 'string' }, priority: { type: 'string', enum: ['urgent', 'high', 'medium', 'low'] }, deadline: { type: 'string' }, assignedTo: { type: 'string' } }, ['title']) },
   { name: 'update_task', description: 'Update an existing task.', parameters: object({ taskId: { type: 'string' }, title: { type: 'string' }, description: { type: 'string' }, priority: { type: 'string' }, status: { type: 'string' }, deadline: { type: 'string' }, assignedTo: { type: 'string' } }, ['taskId']) },
+  { name: 'delete_task', description: 'Delete a task from Hub-Mind. Opens the dashboard confirmation modal so the user has final confirmation.', parameters: object({ taskId: { type: 'string' }, confirmed: { type: 'boolean' } }, ['taskId']) },
   
   // Documents
   { name: 'list_documents', description: 'List recent documents in the workspace, sorted with newest first.', parameters: object({ limit: { type: 'number' }, query: { type: 'string' } }) },
@@ -117,32 +118,49 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'get_document_content', description: 'Read a document content by ID or title.', parameters: object({ documentId: { type: 'string' } }, ['documentId']) },
   { name: 'create_document', description: 'Create a new document with title and content in Hub-Mind.', parameters: object({ title: { type: 'string' }, content: { type: 'string' }, projectId: { type: 'string' }, category: { type: 'string' } }, ['title']) },
   { name: 'update_document', description: 'Update an existing document content or title.', parameters: object({ documentId: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' } }, ['documentId']) },
+  { name: 'delete_document', description: 'Delete a document from Hub-Mind. Opens the confirmation modal so the user has the final say.', parameters: object({ documentId: { type: 'string' }, confirmed: { type: 'boolean' } }, ['documentId']) },
   
   // Projects & Clients
   { name: 'list_projects', description: 'List visible projects in Hub-Mind.', parameters: object({ limit: { type: 'number' } }) },
+  { name: 'create_project', description: 'Create a new project in Hub-Mind.', parameters: object({ name: { type: 'string' }, description: { type: 'string' }, status: { type: 'string', enum: ['active', 'completed', 'on_hold'] } }, ['name']) },
+  { name: 'update_project', description: 'Update an existing project in Hub-Mind.', parameters: object({ projectId: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, status: { type: 'string' } }, ['projectId']) },
+  { name: 'delete_project', description: 'Delete a project from Hub-Mind. Opens the confirmation modal for final user verification.', parameters: object({ projectId: { type: 'string' }, confirmed: { type: 'boolean' } }, ['projectId']) },
   { name: 'open_project', description: 'Open a project on screen.', parameters: object({ projectId: { type: 'string' } }, ['projectId']) },
+  
   { name: 'list_clients', description: 'List visible clients in Hub-Mind.', parameters: object({ limit: { type: 'number' } }) },
+  { name: 'create_client', description: 'Create a new client or contact profile in Hub-Mind.', parameters: object({ name: { type: 'string' }, type: { type: 'string', enum: ['school', 'parent', 'partner'] }, email: { type: 'string' }, phone: { type: 'string' }, address: { type: 'string' }, notes: { type: 'string' }, status: { type: 'string', enum: ['active', 'lead', 'inactive'] } }, ['name']) },
+  { name: 'update_client', description: 'Update an existing client profile.', parameters: object({ clientId: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, address: { type: 'string' }, notes: { type: 'string' }, status: { type: 'string' } }, ['clientId']) },
+  { name: 'delete_client', description: 'Delete a client profile from Hub-Mind. Opens confirmation modal for final user verification.', parameters: object({ clientId: { type: 'string' }, confirmed: { type: 'boolean' } }, ['clientId']) },
   
   // Meetings & Calendar
   { name: 'list_meetings', description: 'List upcoming and scheduled meetings from the Hub-Mind calendar.', parameters: object({ limit: { type: 'number' } }) },
   { name: 'create_meeting', description: 'Schedule a new meeting on the Hub-Mind calendar.', parameters: object({ title: { type: 'string' }, date: { type: 'string', description: 'ISO date string or YYYY-MM-DDTHH:mm' }, location: { type: 'string' }, notes: { type: 'string' }, clientId: { type: 'string' }, projectId: { type: 'string' } }, ['title', 'date']) },
   { name: 'update_meeting', description: 'Update a meeting on the Hub-Mind calendar.', parameters: object({ meetingId: { type: 'string' }, title: { type: 'string' }, date: { type: 'string' }, location: { type: 'string' }, status: { type: 'string' } }, ['meetingId']) },
-  { name: 'delete_meeting', description: 'Delete a meeting from the Hub-Mind calendar.', parameters: object({ meetingId: { type: 'string' } }, ['meetingId']) },
+  { name: 'delete_meeting', description: 'Delete a meeting from the Hub-Mind calendar. Opens confirmation modal for user verification.', parameters: object({ meetingId: { type: 'string' }, confirmed: { type: 'boolean' } }, ['meetingId']) },
   
   // Recurring Schedules
   { name: 'create_recurring_schedule', description: 'Create a repeating schedule (e.g. music classes, weekly team meetings, daily standups, appointments) in Hub-Mind that automatically generates recurring calendar entries.', parameters: object({ title: { type: 'string' }, type: { type: 'string', enum: ['class', 'meeting', 'appointment', 'school_event', 'other'] }, frequency: { type: 'string', enum: ['weekly', 'daily', 'monthly'] }, daysOfWeek: { type: 'array', items: { type: 'number' }, description: 'Array of day numbers: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat' }, dayOfMonth: { type: 'number', description: 'Day of month (1-31) for monthly recurrence' }, startTime: { type: 'string', description: 'Start time in HH:mm format, e.g. 09:00 or 14:30' }, endTime: { type: 'string', description: 'End time in HH:mm format, e.g. 10:00 or 15:30' }, startDate: { type: 'string', description: 'Start date in YYYY-MM-DD format' }, endDate: { type: 'string', description: 'Optional end date in YYYY-MM-DD format' }, location: { type: 'string' }, description: { type: 'string' }, syncToGoogleCalendar: { type: 'boolean' } }, ['title', 'frequency', 'startTime']) },
   { name: 'list_recurring_schedules', description: 'List all recurring schedule templates in Hub-Mind.', parameters: object({ limit: { type: 'number' } }) },
-  { name: 'delete_recurring_schedule', description: 'Delete a recurring schedule template.', parameters: object({ templateId: { type: 'string' } }, ['templateId']) },
+  { name: 'update_recurring_schedule', description: 'Update an existing recurring schedule template.', parameters: object({ templateId: { type: 'string' }, title: { type: 'string' }, frequency: { type: 'string' }, startTime: { type: 'string' }, endTime: { type: 'string' }, location: { type: 'string' }, description: { type: 'string' } }, ['templateId']) },
+  { name: 'delete_recurring_schedule', description: 'Delete a recurring schedule template. Opens confirmation modal for final user verification.', parameters: object({ templateId: { type: 'string' }, confirmed: { type: 'boolean' } }, ['templateId']) },
   
   // Follow-ups & Knowledge
   { name: 'list_follow_ups', description: 'List follow-ups visible to the user.', parameters: object({ status: { type: 'string' }, limit: { type: 'number' } }) },
+  { name: 'create_follow_up', description: 'Create a tracked follow-up reminder for a contact or pending task.', parameters: object({ title: { type: 'string' }, person: { type: 'string' }, reason: { type: 'string' }, dueAt: { type: 'string' }, priority: { type: 'string', enum: ['urgent', 'high', 'medium', 'low'] }, notes: { type: 'string' } }, ['title', 'dueAt']) },
+  { name: 'update_follow_up', description: 'Update a follow-up reminder status, due date, or notes.', parameters: object({ followUpId: { type: 'string' }, title: { type: 'string' }, person: { type: 'string' }, reason: { type: 'string' }, dueAt: { type: 'string' }, status: { type: 'string', enum: ['scheduled', 'due', 'contacted', 'waiting', 'resolved', 'cancelled'] }, priority: { type: 'string' }, notes: { type: 'string' } }, ['followUpId']) },
+  { name: 'delete_follow_up', description: 'Delete a follow-up reminder. Opens confirmation modal for user verification.', parameters: object({ followUpId: { type: 'string' }, confirmed: { type: 'boolean' } }, ['followUpId']) },
+
   { name: 'list_knowledge', description: 'List knowledge base articles.', parameters: object({ limit: { type: 'number' } }) },
+  { name: 'create_knowledge', description: 'Create a knowledge base article, SOP, or template in Hub-Mind.', parameters: object({ title: { type: 'string' }, content: { type: 'string' }, category: { type: 'string', enum: ['sop', 'template', 'faq', 'lesson'] }, tags: { type: 'array', items: { type: 'string' } } }, ['title', 'content']) },
+  { name: 'update_knowledge', description: 'Update a knowledge base article in Hub-Mind.', parameters: object({ knowledgeId: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' }, category: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } }, ['knowledgeId']) },
+  { name: 'delete_knowledge', description: 'Delete a knowledge article from Hub-Mind. Opens confirmation modal for user verification.', parameters: object({ knowledgeId: { type: 'string' }, confirmed: { type: 'boolean' } }, ['knowledgeId']) },
   
   // Direct Screen Navigation
+  { name: 'open_colleagues', description: 'Open the Colleagues & Team Directory tab on screen.', parameters: object({}) },
   { name: 'open_task', description: 'Open a task on screen.', parameters: object({ taskId: { type: 'string' } }, ['taskId']) },
   { name: 'open_client', description: 'Open a client on screen.', parameters: object({ clientId: { type: 'string' } }, ['clientId']) },
   { name: 'open_document', description: 'Open a document in the document editor.', parameters: object({ documentId: { type: 'string' } }, ['documentId']) },
-  { name: 'navigate_app', description: 'Navigate to an internal application page.', parameters: object({ path: { type: 'string' } }, ['path']) },
+  { name: 'navigate_app', description: 'Navigate user to a specific tab or page in Hub-Mind (e.g. /colleagues, /tasks, /calendar, /documents, /projects, /clients, /knowledge, /follow-ups, /inbox, /admin, /).', parameters: object({ path: { type: 'string', description: 'Path to open: /colleagues, /tasks, /calendar, /documents, /projects, /clients, /knowledge, /follow-ups, /inbox, /admin, /' } }, ['path']) },
 
   // Google Calendar Integration
   { name: 'list_calendar_events', description: 'List Google Calendar events.', parameters: object({ timeMin: { type: 'string' }, timeMax: { type: 'string' } }) },
@@ -923,6 +941,22 @@ export async function executeJessTool(
         return { result: { success: true, taskId: args.taskId, updated: patch } };
       }
 
+      case 'delete_task': {
+        const item = await readResource('tasks', args.taskId, user);
+        if (!item || !(await canWrite('tasks', args.taskId, user))) {
+          return { result: { success: false, error: 'Task not found or you do not have permission to delete it.' } };
+        }
+        const title = item.data.title || 'Task';
+        if (args.confirmed === true) {
+          await deleteDoc(doc(db, 'tasks', args.taskId));
+          return { result: { success: true, taskId: args.taskId, message: `Task "${title}" permanently deleted.` } };
+        }
+        return {
+          result: { success: true, pendingConfirmation: true, message: `Opened deletion confirmation modal for task "${title}". Please click the final Delete button on your dashboard to confirm.` },
+          actionPayload: { type: 'confirm_delete', itemType: 'task', itemId: args.taskId, itemTitle: title, collectionName: 'tasks' }
+        };
+      }
+
       case 'list_documents': {
         const allDocs = await fetchAllDocumentsForUser(user);
         let filtered = allDocs;
@@ -1065,9 +1099,82 @@ export async function executeJessTool(
         };
       }
 
+      case 'delete_document': {
+        let docId = args.documentId;
+        let item = await readResource('documents', docId, user);
+        if (!item) {
+          const allDocs = await fetchAllDocumentsForUser(user);
+          const found = allDocs.find(d => d.id === docId || (d.title && d.title.toLowerCase() === String(docId).toLowerCase()));
+          if (found) { item = { id: found.id, data: found }; docId = found.id; }
+        }
+        if (!item || !(await canWrite('documents', docId, user))) {
+          return { result: { success: false, error: 'Document not found or you do not have permission to delete it.' } };
+        }
+        const title = item.data.title || 'Document';
+        if (args.confirmed === true) {
+          await deleteDoc(doc(db, 'documents', docId));
+          const local = getLocalDocsMap();
+          delete local[docId];
+          setLocalDocsMap(local);
+          return { result: { success: true, documentId: docId, message: `Document "${title}" permanently deleted.` } };
+        }
+        return {
+          result: { success: true, pendingConfirmation: true, message: `Opened deletion confirmation modal for document "${title}". Please click the final Delete button on your dashboard to confirm.` },
+          actionPayload: { type: 'confirm_delete', itemType: 'document', itemId: docId, itemTitle: title, collectionName: 'documents' }
+        };
+      }
+
       case 'list_projects': {
         const snap = await getDocs(query(collection(db, 'projects'), limit(safeLimit(args.limit))));
         return { result: { success: true, projects: snap.docs.map(d => ({ id: d.id, ...d.data() })) } };
+      }
+
+      case 'create_project': {
+        const now = new Date().toISOString();
+        const name = String(args.name || 'New Project').trim();
+        const data = {
+          name,
+          description: args.description || '',
+          status: args.status || 'active',
+          ownerId: user.id,
+          createdBy: user.id,
+          visibility: 'workspace',
+          createdAt: now,
+          updatedAt: now,
+        };
+        const ref = await addDoc(collection(db, 'projects'), data);
+        return {
+          result: { success: true, projectId: ref.id, project: { id: ref.id, ...data }, message: `Project "${name}" created.` },
+          actionPayload: navigatePayload(`/projects/${ref.id}`)
+        };
+      }
+
+      case 'update_project': {
+        if (!(await canWrite('projects', args.projectId, user))) {
+          return { result: { success: false, error: 'You do not have permission to update this project.' } };
+        }
+        const patch: any = { updatedAt: new Date().toISOString() };
+        if (args.name !== undefined) patch.name = args.name;
+        if (args.description !== undefined) patch.description = args.description;
+        if (args.status !== undefined) patch.status = args.status;
+        await updateDoc(doc(db, 'projects', args.projectId), patch);
+        return { result: { success: true, projectId: args.projectId, updated: patch } };
+      }
+
+      case 'delete_project': {
+        const item = await readResource('projects', args.projectId, user);
+        if (!item || !(await canWrite('projects', args.projectId, user))) {
+          return { result: { success: false, error: 'Project not found or you do not have permission to delete it.' } };
+        }
+        const title = item.data.name || 'Project';
+        if (args.confirmed === true) {
+          await deleteDoc(doc(db, 'projects', args.projectId));
+          return { result: { success: true, projectId: args.projectId, message: `Project "${title}" permanently deleted.` } };
+        }
+        return {
+          result: { success: true, pendingConfirmation: true, message: `Opened deletion confirmation modal for project "${title}". Please click the final Delete button on your dashboard to confirm.` },
+          actionPayload: { type: 'confirm_delete', itemType: 'project', itemId: args.projectId, itemTitle: title, collectionName: 'projects' }
+        };
       }
 
       case 'open_project': {
@@ -1080,6 +1187,58 @@ export async function executeJessTool(
       case 'list_clients': {
         const snap = await getDocs(query(collection(db, 'clients'), limit(safeLimit(args.limit))));
         return { result: { success: true, clients: snap.docs.map(d => ({ id: d.id, ...d.data() })) } };
+      }
+
+      case 'create_client': {
+        const now = new Date().toISOString();
+        const name = String(args.name || 'New Client').trim();
+        const data = {
+          name,
+          type: args.type || 'partner',
+          email: args.email || '',
+          phone: args.phone || '',
+          address: args.address || '',
+          notes: args.notes || '',
+          status: args.status || 'active',
+          ownerId: user.id,
+          createdBy: user.id,
+          visibility: 'workspace',
+          createdAt: now,
+          updatedAt: now,
+        };
+        const ref = await addDoc(collection(db, 'clients'), data);
+        return {
+          result: { success: true, clientId: ref.id, client: { id: ref.id, ...data }, message: `Client profile "${name}" created.` },
+          actionPayload: navigatePayload(`/clients/${ref.id}`)
+        };
+      }
+
+      case 'update_client': {
+        if (!(await canWrite('clients', args.clientId, user))) {
+          return { result: { success: false, error: 'You do not have permission to update this client.' } };
+        }
+        const patch: any = { updatedAt: new Date().toISOString() };
+        for (const key of ['name', 'type', 'email', 'phone', 'address', 'notes', 'status']) {
+          if (args[key] !== undefined) patch[key] = args[key];
+        }
+        await updateDoc(doc(db, 'clients', args.clientId), patch);
+        return { result: { success: true, clientId: args.clientId, updated: patch } };
+      }
+
+      case 'delete_client': {
+        const item = await readResource('clients', args.clientId, user);
+        if (!item || !(await canWrite('clients', args.clientId, user))) {
+          return { result: { success: false, error: 'Client not found or you do not have permission to delete it.' } };
+        }
+        const title = item.data.name || 'Client';
+        if (args.confirmed === true) {
+          await deleteDoc(doc(db, 'clients', args.clientId));
+          return { result: { success: true, clientId: args.clientId, message: `Client "${title}" permanently deleted.` } };
+        }
+        return {
+          result: { success: true, pendingConfirmation: true, message: `Opened deletion confirmation modal for client "${title}". Please click the final Delete button on your dashboard to confirm.` },
+          actionPayload: { type: 'confirm_delete', itemType: 'client', itemId: args.clientId, itemTitle: title, collectionName: 'clients' }
+        };
       }
 
       case 'list_meetings': {
@@ -1126,11 +1285,19 @@ export async function executeJessTool(
       }
 
       case 'delete_meeting': {
-        if (!(await canWrite('meetings', args.meetingId, user))) {
-          return { result: { success: false, error: 'You do not have permission to delete this meeting.' } };
+        const item = await readResource('meetings', args.meetingId, user);
+        if (!item || !(await canWrite('meetings', args.meetingId, user))) {
+          return { result: { success: false, error: 'Meeting not found or you do not have permission to delete it.' } };
         }
-        await deleteDoc(doc(db, 'meetings', args.meetingId));
-        return { result: { success: true, meetingId: args.meetingId, message: 'Meeting removed from calendar.' } };
+        const title = item.data.title || item.data.notesRaw?.split('\n')[0] || 'Meeting';
+        if (args.confirmed === true) {
+          await deleteDoc(doc(db, 'meetings', args.meetingId));
+          return { result: { success: true, meetingId: args.meetingId, message: `Meeting "${title}" removed from calendar.` } };
+        }
+        return {
+          result: { success: true, pendingConfirmation: true, message: `Opened deletion confirmation modal for meeting "${title}". Please click the final Delete button on your dashboard to confirm.` },
+          actionPayload: { type: 'confirm_delete', itemType: 'meeting', itemId: args.meetingId, itemTitle: title, collectionName: 'meetings' }
+        };
       }
 
       case 'create_recurring_schedule': {
@@ -1232,11 +1399,42 @@ export async function executeJessTool(
         };
       }
 
+      case 'update_recurring_schedule': {
+        const templateId = String(args.templateId || '');
+        if (!templateId) return { result: { success: false, error: 'templateId is required.' } };
+        const snap = await getDoc(doc(db, 'recurringMeetingTemplates', templateId));
+        if (!snap.exists()) return { result: { success: false, error: 'Schedule template not found.' } };
+        const patch: any = { updatedAt: new Date().toISOString() };
+        if (args.title !== undefined) patch.title = args.title;
+        if (args.type !== undefined) patch.type = args.type;
+        if (args.frequency !== undefined) patch.frequency = args.frequency;
+        if (args.daysOfWeek !== undefined) patch.daysOfWeek = normalizeDaysOfWeek(args.daysOfWeek);
+        if (args.startTime !== undefined) patch.startTime = normalizeTime(args.startTime);
+        if (args.endTime !== undefined) patch.endTime = normalizeTime(args.endTime);
+        if (args.startDate !== undefined) patch.startDate = args.startDate;
+        if (args.endDate !== undefined) patch.endDate = args.endDate;
+        if (args.location !== undefined) patch.location = args.location;
+        if (args.description !== undefined) patch.description = args.description;
+        await updateDoc(doc(db, 'recurringMeetingTemplates', templateId), patch);
+        await materializeRecurringMeetings(90, user);
+        return { result: { success: true, templateId, updated: patch, message: 'Recurring schedule updated and calendar regenerated.' } };
+      }
+
       case 'delete_recurring_schedule': {
         const templateId = String(args.templateId || '');
         if (!templateId) return { result: { success: false, error: 'templateId is required.' } };
-        await deleteDoc(doc(db, 'recurringMeetingTemplates', templateId));
-        return { result: { success: true, message: `Recurring schedule template ${templateId} deleted.` } };
+        const snap = await getDoc(doc(db, 'recurringMeetingTemplates', templateId));
+        if (!snap.exists()) return { result: { success: false, error: 'Schedule template not found.' } };
+        const tData: any = snap.data();
+        const title = tData.title || 'Recurring schedule';
+        if (args.confirmed === true) {
+          await deleteDoc(doc(db, 'recurringMeetingTemplates', templateId));
+          return { result: { success: true, message: `Recurring schedule template "${title}" deleted.` } };
+        }
+        return {
+          result: { success: true, pendingConfirmation: true, message: `Opened deletion confirmation modal for schedule "${title}". Please click the final Delete button on your dashboard to confirm.` },
+          actionPayload: { type: 'confirm_delete', itemType: 'schedule', itemId: templateId, itemTitle: title, collectionName: 'recurringMeetingTemplates' }
+        };
       }
 
       case 'list_follow_ups': {
@@ -1249,9 +1447,107 @@ export async function executeJessTool(
         };
       }
 
+      case 'create_follow_up': {
+        const now = new Date().toISOString();
+        const data = {
+          title: args.title,
+          person: args.person || '',
+          reason: args.reason || '',
+          dueAt: args.dueAt || now,
+          status: 'scheduled',
+          priority: args.priority || 'medium',
+          notes: args.notes || '',
+          ownerId: user.id,
+          createdBy: user.id,
+          createdAt: now,
+          updatedAt: now,
+        };
+        const ref = await addDoc(collection(db, 'followUps'), data);
+        return {
+          result: { success: true, followUpId: ref.id, followUp: { id: ref.id, ...data }, message: `Follow-up "${args.title}" created.` },
+          actionPayload: navigatePayload('/follow-ups')
+        };
+      }
+
+      case 'update_follow_up': {
+        if (!(await canWrite('followUps', args.followUpId, user))) {
+          return { result: { success: false, error: 'You do not have permission to update this follow-up.' } };
+        }
+        const patch: any = { updatedAt: new Date().toISOString() };
+        for (const key of ['title', 'person', 'reason', 'dueAt', 'status', 'priority', 'notes']) {
+          if (args[key] !== undefined) patch[key] = args[key];
+        }
+        await updateDoc(doc(db, 'followUps', args.followUpId), patch);
+        return { result: { success: true, followUpId: args.followUpId, updated: patch } };
+      }
+
+      case 'delete_follow_up': {
+        const item = await readResource('followUps', args.followUpId, user);
+        if (!item || !(await canWrite('followUps', args.followUpId, user))) {
+          return { result: { success: false, error: 'Follow-up not found or you do not have permission to delete it.' } };
+        }
+        const title = item.data.title || 'Follow-up';
+        if (args.confirmed === true) {
+          await deleteDoc(doc(db, 'followUps', args.followUpId));
+          return { result: { success: true, followUpId: args.followUpId, message: `Follow-up "${title}" permanently deleted.` } };
+        }
+        return {
+          result: { success: true, pendingConfirmation: true, message: `Opened deletion confirmation modal for follow-up "${title}". Please click the final Delete button on your dashboard to confirm.` },
+          actionPayload: { type: 'confirm_delete', itemType: 'followUp', itemId: args.followUpId, itemTitle: title, collectionName: 'followUps' }
+        };
+      }
+
       case 'list_knowledge': {
         const snap = await getDocs(query(collection(db, 'knowledge'), limit(safeLimit(args.limit))));
         return { result: { success: true, knowledge: snap.docs.map(d => ({ id: d.id, ...d.data() })) } };
+      }
+
+      case 'create_knowledge': {
+        const now = new Date().toISOString();
+        const data = {
+          title: args.title,
+          content: args.content,
+          category: args.category || 'sop',
+          tags: Array.isArray(args.tags) ? args.tags : [],
+          createdBy: user.id,
+          ownerId: user.id,
+          createdAt: now,
+          updatedAt: now,
+        };
+        const ref = await addDoc(collection(db, 'knowledge'), data);
+        return {
+          result: { success: true, knowledgeId: ref.id, message: `Knowledge article "${args.title}" created.` },
+          actionPayload: navigatePayload('/knowledge')
+        };
+      }
+
+      case 'update_knowledge': {
+        if (!(await canWrite('knowledge', args.knowledgeId, user))) {
+          return { result: { success: false, error: 'You do not have permission to update this knowledge item.' } };
+        }
+        const patch: any = { updatedAt: new Date().toISOString() };
+        if (args.title !== undefined) patch.title = args.title;
+        if (args.content !== undefined) patch.content = args.content;
+        if (args.category !== undefined) patch.category = args.category;
+        if (args.tags !== undefined) patch.tags = args.tags;
+        await updateDoc(doc(db, 'knowledge', args.knowledgeId), patch);
+        return { result: { success: true, knowledgeId: args.knowledgeId, updated: patch } };
+      }
+
+      case 'delete_knowledge': {
+        const item = await readResource('knowledge', args.knowledgeId, user);
+        if (!item || !(await canWrite('knowledge', args.knowledgeId, user))) {
+          return { result: { success: false, error: 'Knowledge item not found or you do not have permission to delete it.' } };
+        }
+        const title = item.data.title || 'Knowledge article';
+        if (args.confirmed === true) {
+          await deleteDoc(doc(db, 'knowledge', args.knowledgeId));
+          return { result: { success: true, knowledgeId: args.knowledgeId, message: `Knowledge article "${title}" permanently deleted.` } };
+        }
+        return {
+          result: { success: true, pendingConfirmation: true, message: `Opened deletion confirmation modal for knowledge article "${title}". Please click the final Delete button on your dashboard to confirm.` },
+          actionPayload: { type: 'confirm_delete', itemType: 'knowledge', itemId: args.knowledgeId, itemTitle: title, collectionName: 'knowledge' }
+        };
       }
 
       case 'open_task': {
@@ -1307,9 +1603,23 @@ export async function executeJessTool(
         };
       }
 
+      case 'open_colleagues':
+      case 'open_people': {
+        return { result: { success: true, path: '/colleagues' }, actionPayload: navigatePayload('/colleagues') };
+      }
+
       case 'navigate_app': {
-        const path = String(args.path || '');
-        if (!path.startsWith('/') || path.startsWith('//') || path.includes('://')) {
+        let path = String(args.path || '').trim();
+        const lower = path.toLowerCase().replace(/^\/+/, '');
+        if (lower === 'people' || lower === 'colleagues' || lower === 'colleague' || lower === 'team' || lower === 'directory' || lower === 'members') {
+          path = '/colleagues';
+        } else if (lower === 'today' || lower === 'dashboard' || lower === 'home') {
+          path = '/';
+        } else if (!path.startsWith('/')) {
+          path = '/' + path;
+        }
+        if (path === '/people') path = '/colleagues';
+        if (path.startsWith('//') || path.includes('://')) {
           return { result: { success: false, error: 'Only internal Hub-Mind routes are allowed.' } };
         }
         return { result: { success: true, path }, actionPayload: navigatePayload(path) };

@@ -434,7 +434,8 @@ async function startServer() {
   });
 
   // In development, use Vite middleware. In production, serve the compiled dist/ directory.
-  if (process.env.NODE_ENV === "development") {
+  const isDev = process.env.NODE_ENV !== "production";
+  if (isDev) {
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: false, ws: false },
       appType: "spa",
@@ -628,12 +629,20 @@ async function startServer() {
           },
         },
         {
+          name: "open_colleagues",
+          description: "Open the Colleagues & Team Directory tab on screen.",
+          parameters: {
+            type: "OBJECT",
+            properties: {},
+          },
+        },
+        {
           name: "navigate_app",
-          description: "Navigate user to a specific section or tab in Hub-Mind (e.g. /tasks, /calendar, /documents).",
+          description: "Navigate user to a specific section or tab in Hub-Mind (e.g. /colleagues, /tasks, /calendar, /documents, /projects, /clients, /knowledge, /follow-ups, /inbox, /admin).",
           parameters: {
             type: "OBJECT",
             properties: {
-              path: { type: "STRING", description: "Path: /, /tasks, /projects, /knowledge, /clients, /calendar, /documents, /admin" },
+              path: { type: "STRING", description: "Path: /, /colleagues, /tasks, /projects, /knowledge, /clients, /calendar, /documents, /follow-ups, /inbox, /admin" },
             },
             required: ["path"],
           },
@@ -669,9 +678,109 @@ async function startServer() {
           },
         },
         {
+          name: "save_user_memory",
+          description: "Save a permanent user detail, preference, working habit, personal fact, or instruction noticed during conversation into persistent memory.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              content: { type: "STRING", description: "The specific fact or preference remembered about the user" },
+              key: { type: "STRING", description: "Short identifier for the memory (e.g. working_hours, client_preference)" },
+              category: { type: "STRING", enum: ["preference", "instruction", "personal", "workflow", "fact", "schedule"], description: "Category of memory" },
+              importance: { type: "STRING", enum: ["high", "medium", "low"], description: "Importance level" },
+            },
+            required: ["content"],
+          },
+        },
+        {
+          name: "get_user_memories",
+          description: "Retrieve all stored user memories and personal preferences across past sessions.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              category: { type: "STRING", enum: ["preference", "instruction", "personal", "workflow", "fact", "schedule"] },
+            },
+          },
+        },
+        {
+          name: "forget_user_memory",
+          description: "Remove or forget a specific saved memory.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              keyOrMemoryId: { type: "STRING", description: "ID or key of the memory to remove" },
+            },
+            required: ["keyOrMemoryId"],
+          },
+        },
+        {
+          name: "delete_task",
+          description: "Delete a task from Hub-Mind. Triggers dashboard confirmation modal.",
+          parameters: { type: "OBJECT", properties: { taskId: { type: "STRING" }, confirmed: { type: "BOOLEAN" } }, required: ["taskId"] }
+        },
+        {
+          name: "delete_document",
+          description: "Delete a document from Hub-Mind. Triggers confirmation modal.",
+          parameters: { type: "OBJECT", properties: { documentId: { type: "STRING" }, confirmed: { type: "BOOLEAN" } }, required: ["documentId"] }
+        },
+        {
+          name: "create_project",
+          description: "Create a new project.",
+          parameters: { type: "OBJECT", properties: { name: { type: "STRING" }, description: { type: "STRING" }, status: { type: "STRING", enum: ["active", "completed", "on_hold"] } }, required: ["name"] }
+        },
+        {
+          name: "update_project",
+          description: "Update an existing project.",
+          parameters: { type: "OBJECT", properties: { projectId: { type: "STRING" }, name: { type: "STRING" }, description: { type: "STRING" }, status: { type: "STRING" } }, required: ["projectId"] }
+        },
+        {
+          name: "delete_project",
+          description: "Delete a project. Triggers confirmation modal.",
+          parameters: { type: "OBJECT", properties: { projectId: { type: "STRING" }, confirmed: { type: "BOOLEAN" } }, required: ["projectId"] }
+        },
+        {
+          name: "create_client",
+          description: "Create a new client profile.",
+          parameters: { type: "OBJECT", properties: { name: { type: "STRING" }, type: { type: "STRING" }, email: { type: "STRING" }, phone: { type: "STRING" }, address: { type: "STRING" }, notes: { type: "STRING" }, status: { type: "STRING" } }, required: ["name"] }
+        },
+        {
+          name: "update_client",
+          description: "Update a client profile.",
+          parameters: { type: "OBJECT", properties: { clientId: { type: "STRING" }, name: { type: "STRING" }, type: { type: "STRING" }, email: { type: "STRING" }, phone: { type: "STRING" }, address: { type: "STRING" }, notes: { type: "STRING" }, status: { type: "STRING" } }, required: ["clientId"] }
+        },
+        {
+          name: "delete_client",
+          description: "Delete a client profile. Triggers confirmation modal.",
+          parameters: { type: "OBJECT", properties: { clientId: { type: "STRING" }, confirmed: { type: "BOOLEAN" } }, required: ["clientId"] }
+        },
+        {
           name: "create_follow_up",
           description: "Create a tracked follow-up for a person, client, payment, proposal, response, promise or other pending action.",
           parameters: { type: "OBJECT", properties: { title: {type:"STRING"}, person:{type:"STRING"}, reason:{type:"STRING"}, dueAt:{type:"STRING"}, priority:{type:"STRING", enum:["urgent","high","medium","low"]}}, required:["title","dueAt"] }
+        },
+        {
+          name: "update_follow_up",
+          description: "Update a follow-up item status, due date, or notes.",
+          parameters: { type: "OBJECT", properties: { followUpId: { type: "STRING" }, title: { type: "STRING" }, person: { type: "STRING" }, dueAt: { type: "STRING" }, status: { type: "STRING" }, priority: { type: "STRING" }, notes: { type: "STRING" } }, required: ["followUpId"] }
+        },
+        {
+          name: "delete_follow_up",
+          description: "Delete a follow-up item. Triggers confirmation modal.",
+          parameters: { type: "OBJECT", properties: { followUpId: { type: "STRING" }, confirmed: { type: "BOOLEAN" } }, required: ["followUpId"] }
+        },
+        {
+          name: "create_knowledge",
+          description: "Create a knowledge base article, SOP, or template in Hub-Mind.",
+          parameters: { type: "OBJECT", properties: { title: { type: "STRING" }, content: { type: "STRING" }, category: { type: "STRING" }, tags: { type: "ARRAY", items: { type: "STRING" } } }, required: ["title", "content"] }
+        },
+        {
+          name: "update_knowledge",
+          description: "Update a knowledge base article.",
+          parameters: { type: "OBJECT", properties: { knowledgeId: { type: "STRING" }, title: { type: "STRING" }, content: { type: "STRING" }, category: { type: "STRING" } }, required: ["knowledgeId"] }
+        },
+        {
+          name: "delete_knowledge",
+          description: "Delete a knowledge article. Triggers confirmation modal.",
+          parameters: { type: "OBJECT", properties: { knowledgeId: { type: "STRING" }, confirmed: { type: "BOOLEAN" } }, required: ["knowledgeId"] }
         },
         {
           name: "list_follow_ups",
@@ -788,6 +897,11 @@ function calls, and you are expected to use it.
 ## RECURRING SCHEDULES & CALENDAR
 - When the user asks to add or schedule recurring events (like classes, weekly team meetings, lessons, daily standups, appointments), use \`create_recurring_schedule\` with the title, frequency, daysOfWeek, and times.
 - For single meetings or deadlines, use \`create_meeting\` or \`create_calendar_event\`.
+
+## ATTENTIVE MEMORY & CONTINUOUS DETAIL RETENTION
+- You actively listen for and notice small details, personal preferences, working styles, schedule constraints, colleague roles, client nuances, family or pet mentions, and project goals dropped in conversation.
+- Whenever the user mentions any small detail or preference (e.g. "I prefer concise bullet points", "Don't schedule before 10 AM", "Sarah is the lead for project X", "I usually work late on Thursdays"), proactively and discreetly save it to their persistent memory using \`save_user_memory\` with a descriptive key and content.
+- When the user comes into the operations hub in any future session, use these stored memories to personalize the conversation effortlessly without requiring them to repeat themselves.
 
 ## HARD RULE: GROUND EVERYTHING IN TOOL CALLS
 Never state that a task, document, event, or piece of data exists, was

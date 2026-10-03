@@ -4,6 +4,17 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
+// Handle dynamic import / vite chunk preload errors gracefully
+if (typeof window !== 'undefined') {
+  window.addEventListener('vite:preloadError', (event) => {
+    event.preventDefault();
+    if (!sessionStorage.getItem('hubmind_chunk_preload_reload')) {
+      sessionStorage.setItem('hubmind_chunk_preload_reload', 'true');
+      window.location.reload();
+    }
+  });
+}
+
 // Remove splash screen when app is ready
 const removeSplash = () => {
   const splash = document.getElementById('pwa-splash');

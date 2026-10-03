@@ -62,7 +62,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [queryText, setQueryText] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'apps' | 'actions' | 'tasks' | 'docs' | 'projects' | 'people'>('all');
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'apps' | 'actions' | 'tasks' | 'docs' | 'projects' | 'people' | 'colleagues'>('all');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [workspaceItems, setWorkspaceItems] = useState<PaletteItem[]>([]);
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
@@ -134,14 +134,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       url: '/inbox',
     },
     {
-      id: 'nav-people',
-      title: 'People Directory',
+      id: 'nav-colleagues',
+      title: 'Colleagues Directory',
       subtitle: 'Team members, @usernames & network connections',
       category: 'navigation',
       icon: Users,
       iconColor: 'text-cyan-400',
       shortcut: 'G U',
-      url: '/people',
+      url: '/colleagues',
     },
     {
       id: 'nav-clients',
@@ -403,7 +403,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           icon: AtSign,
           iconColor: 'text-cyan-400',
           badge: data.role || 'Member',
-          url: `/people`,
+          url: `/colleagues`,
         });
       });
 
@@ -443,7 +443,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       combined = workspaceItems.filter((i) => i.category === 'document');
     } else if (selectedFilter === 'projects') {
       combined = workspaceItems.filter((i) => i.category === 'project');
-    } else if (selectedFilter === 'people') {
+    } else if (selectedFilter === 'people' || selectedFilter === 'colleagues') {
       combined = workspaceItems.filter((i) => i.category === 'person');
     } else {
       // 'all'
@@ -554,7 +554,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             { id: 'tasks', label: 'Tasks', icon: CheckSquare },
             { id: 'docs', label: 'Documents', icon: FileText },
             { id: 'projects', label: 'Projects', icon: Briefcase },
-            { id: 'people', label: 'People', icon: Users },
+            { id: 'colleagues', label: 'Colleagues', icon: Users },
           ].map((tab) => {
             const isSelected = selectedFilter === tab.id;
             return (

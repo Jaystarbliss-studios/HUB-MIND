@@ -168,7 +168,37 @@ export function scanCurrentPageContext(pathname: string): ContextActionSuggestio
     ];
   }
 
-  // 5. Dashboard / General View
+  // 5. Colleagues & Team Directory Page
+  if (path.includes('/colleagues') || path.includes('/people')) {
+    return [
+      {
+        id: 'colleagues_list_team',
+        title: 'List Team Members',
+        description: 'Review active colleagues and usernames',
+        prompt: 'List the active colleagues and team members in our workspace directory.',
+        category: 'general',
+        icon: 'Users',
+      },
+      {
+        id: 'colleagues_send_info',
+        title: 'Send Teammate Briefing',
+        description: 'Directly share a note or update',
+        prompt: 'Help me compose and send a direct briefing note to a colleague.',
+        category: 'general',
+        icon: 'Mail',
+      },
+      {
+        id: 'colleagues_share_schedule',
+        title: 'Share Weekly Schedule',
+        description: 'Send calendar & routine overview',
+        prompt: 'Format and share my upcoming weekly schedule with my colleagues.',
+        category: 'general',
+        icon: 'Share2',
+      },
+    ];
+  }
+
+  // 6. Dashboard / General View
   return [
     {
       id: 'gen_morning_briefing',

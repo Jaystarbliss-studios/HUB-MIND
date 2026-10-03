@@ -25,7 +25,7 @@ const navItems = [
   { to: '/projects', label: 'Projects', icon: Briefcase },
   { to: '/documents', label: 'Documents', icon: Folder },
   { to: '/calendar', label: 'Calendar', icon: Calendar },
-  { to: '/people', label: 'People', icon: Users },
+  { to: '/colleagues', label: 'Colleagues', icon: Users },
   { to: '/clients', label: 'Clients', icon: Book },
   { to: '/knowledge', label: 'Knowledge', icon: Brain },
   { to: '/follow-ups', label: 'Follow-ups', icon: Clock3 },

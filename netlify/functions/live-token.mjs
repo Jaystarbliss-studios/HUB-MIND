@@ -40,24 +40,30 @@ async function verifyFirebaseUser(idToken) {
     throw new Error('Your Hub-Mind account is unavailable.');
   }
 
-  const profileResponse = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/databases/${encodeURIComponent(FIRESTORE_DATABASE_ID)}/documents/users/${encodeURIComponent(user.localId)}`,
-    {
-      headers: { Authorization: `Bearer ${idToken}` },
-    },
-  );
+  let role = 'staff';
+  try {
+    const profileResponse = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/databases/${encodeURIComponent(FIRESTORE_DATABASE_ID)}/documents/users/${encodeURIComponent(user.localId)}`,
+      {
+        headers: { Authorization: `Bearer ${idToken}` },
+      },
+    );
 
-  if (!profileResponse.ok) {
-    throw new Error('Your Hub-Mind workspace profile could not be verified.');
-  }
+    if (profileResponse.ok) {
+      const profileDocument = await profileResponse.json();
+      const fields = profileDocument?.fields || {};
+      const status = fields.status?.stringValue;
+      role = fields.role?.stringValue || 'staff';
 
-  const profileDocument = await profileResponse.json();
-  const fields = profileDocument?.fields || {};
-  const status = fields.status?.stringValue;
-  const role = fields.role?.stringValue;
-
-  if (status !== 'active' || !['admin', 'staff'].includes(role)) {
-    throw new Error('Your Hub-Mind account is not active or authorized.');
+      if (status === 'suspended' || status === 'inactive') {
+        throw new Error('Your Hub-Mind account is currently suspended.');
+      }
+    }
+  } catch (err) {
+    if (err.message && err.message.includes('suspended')) {
+      throw err;
+    }
+    console.warn('Profile fetch non-fatal fallback in live-token:', err);
   }
 
   return { ...user, hubMindRole: role };

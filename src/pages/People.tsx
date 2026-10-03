@@ -117,10 +117,10 @@ export function People() {
         <div>
           <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2.5">
             <Users className="w-7 h-7 text-teal-400" />
-            People & Connections
+            Colleagues & Directory
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            Connect with team members using their @username to collaborate and share tasks & documents.
+            Connect with colleagues and team members using their @username to collaborate and share tasks & documents.
           </p>
         </div>
 
@@ -485,3 +485,6 @@ export function People() {
     </div>
   );
 }
+
+export const Colleagues = People;
+export default People;

@@ -187,6 +187,7 @@ export class LiveAudioClient {
         context?.documentId ? `Active document on screen: "${context.documentTitle || 'Untitled'}" (ID: ${context.documentId}).` : '',
         'TOOLS & ACCURACY:',
         'Use tools whenever the user asks to search, find, list, read, create, update, or navigate Hub-Mind data. Never claim an action succeeded unless confirmed by tool response.',
+        'When asked to open the colleagues, people, or team directory tab, call `open_colleagues` or `navigate_app` with path "/colleagues".',
         'When asked to find or open a document, use find_document or open_document.',
       ].filter(Boolean).join('\n');
 
