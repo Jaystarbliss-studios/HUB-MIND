@@ -1,12 +1,16 @@
 const FIREBASE_WEB_API_KEY =
   process.env.FIREBASE_WEB_API_KEY ||
-  'AIzaSyADIDnMwd5zP1gvxieBHY0J5T5EyMYuQsU';
+  process.env.VITE_FIREBASE_API_KEY ||
+  '';
 
 const FIREBASE_PROJECT_ID =
-  process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0197530608';
+  process.env.FIREBASE_PROJECT_ID ||
+  process.env.VITE_FIREBASE_PROJECT_ID ||
+  'gen-lang-client-0197530608';
 
 const FIRESTORE_DATABASE_ID =
   process.env.FIRESTORE_DATABASE_ID ||
+  process.env.VITE_FIRESTORE_DATABASE_ID ||
   'ai-studio-hubmind-4cac2024-c6eb-4208-80cf-928714dfd430';
 
 function json(body, status = 200) {
