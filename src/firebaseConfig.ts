@@ -20,6 +20,8 @@ const firebaseConfig = {
 
 if (!firebaseConfig.apiKey) throw new Error('VITE_FIREBASE_WEB_API_KEY is not configured.');
 
+export const FIREBASE_PROJECT_ID = projectId;
+
 export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 let authInstance: Auth;
