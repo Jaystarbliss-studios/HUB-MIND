@@ -74,6 +74,7 @@ export function JessFloatingAssistant() {
   const location = useLocation();
   const navigate = useNavigate();
   const clientRef = useRef<LiveAudioClient | null>(null);
+  const sessionEndingRef = useRef(false);
   const pointerRef = useRef({ dragging: false, moved: false, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0 });
   const [position, setPosition] = useState(DEFAULT_POSITION);
   const [connection, setConnection] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
@@ -158,6 +159,7 @@ export function JessFloatingAssistant() {
 
   const start = useCallback(async (initialPrompt?: string) => {
     if (clientRef.current || !profile) return;
+    sessionEndingRef.current = false;
     wakeTone();
     jessSpeechAccumulatorRef.current = '';
 
@@ -208,13 +210,17 @@ export function JessFloatingAssistant() {
         }
 
         if (fc.name === 'end_session' || result.actionPayload?.type === 'sleep') {
+          sessionEndingRef.current = true;
+          // Acknowledge the tool call first, then immediately tear down the Live
+          // session. The previous 1.8s delay allowed Jess to remain listening
+          // and sometimes continue the conversation after a sleep request.
           window.setTimeout(() => {
             void stop();
-          }, 1800);
+          }, 100);
         }
       },
       onUserTranscript: (text) => {
-        if (!text) return;
+        if (sessionEndingRef.current || !text) return;
         if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
         jessSpeechAccumulatorRef.current = '';
         setSpeechState({
