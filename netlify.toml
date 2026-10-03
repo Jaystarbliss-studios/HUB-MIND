@@ -3,7 +3,7 @@
   publish = "dist"
 
 [build.environment]
-  SECRETS_SCAN_OMIT_KEYS = "VITE_GOOGLE_CLIENT_ID"
+  SECRETS_SCAN_OMIT_KEYS = "VITE_GOOGLE_CLIENT_ID,FIREBASE_WEB_API_KEY"
 
 [functions]
   directory = "netlify/functions"
