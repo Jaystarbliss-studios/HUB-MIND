@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Profile does not exist yet in Firestore: Check if user is admin or if database is empty
-      const userEmail = (firebaseUser.email || '').toLowerCase();
+      const userEmail = (firebaseUser.email || '').trim().toLowerCase();
       const isAdminByEmail = isAdminEmail(userEmail);
 
       let isWorkspaceEmpty = false;
@@ -132,9 +132,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(newAdminProfile);
           setLoading(false);
           return;
-        } catch (err) {
+        } catch (err: any) {
           console.error('[AuthProvider] Failed to auto-bootstrap admin profile:', err);
-          handleFirestoreError(err, OperationType.WRITE, `users/${firebaseUser.uid}`);
+          setAuthorizationError(`Failed to initialize admin profile: ${err?.message || 'Database permission error'}`);
+          setLoading(false);
+          return;
         }
       }
 

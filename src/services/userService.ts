@@ -15,11 +15,12 @@ import { db } from '../firebaseConfig';
 import { User, UserStatus } from '../types';
 
 export const ADMIN_EMAILS = ['johnrufai242@gmail.com', 'rufaijohnny@gmail.com'];
-export const ADMIN_EMAIL = 'rufaijohnny@gmail.com';
+export const ADMIN_EMAIL = 'johnrufai242@gmail.com';
 
 export function isAdminEmail(email?: string | null): boolean {
   if (!email) return false;
-  return ADMIN_EMAILS.includes(email.trim().toLowerCase());
+  const clean = email.trim().toLowerCase();
+  return ADMIN_EMAILS.some((admin) => admin.toLowerCase() === clean);
 }
 
 /**

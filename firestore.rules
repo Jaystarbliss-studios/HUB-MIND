@@ -2,10 +2,11 @@ rules_version='2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn(){ return request.auth != null; }
+    function isBootstrappedAdmin(){ return signedIn() && request.auth.token.email in ['johnrufai242@gmail.com', 'rufaijohnny@gmail.com']; }
     function hasUser(){ return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
     function me(){ return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
-    function member(){ return hasUser() && me().status == 'active'; }
-    function admin(){ return member() && me().role == 'admin'; }
+    function member(){ return (hasUser() && me().status == 'active') || isBootstrappedAdmin(); }
+    function admin(){ return isBootstrappedAdmin() || (hasUser() && me().status == 'active' && me().role == 'admin'); }
     function self(uid){ return signedIn() && request.auth.uid == uid; }
     function readable(){ return member() && (admin() || resource.data.ownerId == request.auth.uid || resource.data.createdBy == request.auth.uid || resource.data.visibility == 'workspace' || (resource.data.visibility == 'shared' && resource.data.sharedWith[request.auth.uid] in ['read','write'])); }
     function writable(){ return member() && (admin() || resource.data.ownerId == request.auth.uid || resource.data.createdBy == request.auth.uid || (resource.data.visibility == 'shared' && resource.data.sharedWith[request.auth.uid] == 'write') || (resource.data.visibility == 'workspace')); }
@@ -17,7 +18,8 @@ service cloud.firestore {
     match /{document=**} { allow read, write: if false; }
     match /users/{userId} {
       allow get, list: if member() || admin() || self(userId);
-      allow create: if validAcceptedInvitation(request.resource.data.invitationId) && request.resource.data.id == request.auth.uid && request.resource.data.role == 'staff' && request.resource.data.status == 'active' && request.resource.data.email == request.auth.token.email;
+      allow create: if (isBootstrappedAdmin() && request.resource.data.id == request.auth.uid && request.resource.data.role == 'admin' && request.resource.data.status == 'active' && request.resource.data.email == request.auth.token.email) ||
+                       (validAcceptedInvitation(request.resource.data.invitationId) && request.resource.data.id == request.auth.uid && request.resource.data.role == 'staff' && request.resource.data.status == 'active' && request.resource.data.email == request.auth.token.email);
       allow update: if admin() || (self(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName','photoUrl','name','phone','lastSeenAt','displayName']));
       allow delete: if admin();
       match /conversations/{id} { allow read, write: if self(userId) || admin(); }
