@@ -1,20 +1,27 @@
 import { collection, doc, getDocs, limit, query, setDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+
 export interface JessQueuedTask {
   id: string;
   title: string;
   description: string;
   taskType: 'document_generation' | 'workspace_audit' | 'batch_schedule' | 'research_report' | 'data_cleanup' | 'custom';
-  progress: number; // 0 - 100
+  progress: number;
   stage: string;
   status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
   priority: 'low' | 'normal' | 'high';
   startedAt: string;
   updatedAt: string;
   completedAt?: string;
+  failedAt?: string;
   resultSummary?: string;
+  lastError?: string;
   targetId?: string;
   targetType?: string;
+  currentStep?: number;
+  totalSteps?: number;
+  attempt?: number;
+  executionLog?: string[];
   payload?: Record<string, any>;
   userId?: string;
 }
@@ -26,27 +33,21 @@ export type JessTaskStatusEventType =
   | 'hubmind:jess-task-failed'
   | 'hubmind:jess-task-cancelled';
 
-const QUEUE_STORAGE_KEY = 'hubmind_jess_task_queue_v3';
+const QUEUE_STORAGE_KEY = 'hubmind_jess_task_queue_v4';
+const MAX_TASKS = 50;
 
 class JessBackgroundProcessingQueue {
-  private queue: Map<string, JessQueuedTask> = new Map();
-  private subscribers: Set<(tasks: JessQueuedTask[]) => void> = new Set();
-  private isProcessing = false;
+  private queue = new Map<string, JessQueuedTask>();
+  private subscribers = new Set<(tasks: JessQueuedTask[]) => void>();
+  private running = new Set<string>();
 
-  constructor() {
-    this.loadQueue();
-  }
+  constructor() { this.loadQueue(); }
 
   private loadQueue() {
     try {
-      const data = localStorage.getItem(QUEUE_STORAGE_KEY);
-      if (data) {
-        const parsed: JessQueuedTask[] = JSON.parse(data);
-        parsed.forEach(t => this.queue.set(t.id, t));
-      }
-    } catch {
-      // Storage unavailable or invalid
-    }
+      const parsed = JSON.parse(localStorage.getItem(QUEUE_STORAGE_KEY) || '[]') as JessQueuedTask[];
+      if (Array.isArray(parsed)) parsed.forEach(t => this.queue.set(t.id, t));
+    } catch {}
   }
 
   private persistRemote(task: JessQueuedTask) {
@@ -56,28 +57,26 @@ class JessBackgroundProcessingQueue {
 
   private persistQueue() {
     try {
-      const all = Array.from(this.queue.values()).slice(-30);
-      localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(all));
-    } catch {
-      // Persist failure handled silently
-    }
+      localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(this.getAllTasks().slice(0, MAX_TASKS)));
+    } catch {}
     this.notifySubscribers();
     for (const task of this.queue.values()) this.persistRemote(task);
   }
 
-  private emitStatusEvent(eventType: JessTaskStatusEventType, task: JessQueuedTask) {
+  private emit(eventType: JessTaskStatusEventType, task: JessQueuedTask) {
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(eventType, { detail: { task, queue: this.getAllTasks() } }));
-      window.dispatchEvent(new CustomEvent('hubmind:jess-queue-updated', { detail: { task, queue: this.getAllTasks() } }));
+      const detail = { task, queue: this.getAllTasks() };
+      window.dispatchEvent(new CustomEvent(eventType, { detail }));
+      window.dispatchEvent(new CustomEvent('hubmind:jess-queue-updated', { detail }));
     }
   }
 
   private notifySubscribers() {
-    const list = this.getAllTasks();
-    this.subscribers.forEach(fn => fn(list));
+    const tasks = this.getAllTasks();
+    this.subscribers.forEach(fn => fn(tasks));
   }
 
-  public subscribe(fn: (tasks: JessQueuedTask[]) => void): () => void {
+  public subscribe(fn: (tasks: JessQueuedTask[]) => void) {
     this.subscribers.add(fn);
     fn(this.getAllTasks());
     return () => this.subscribers.delete(fn);
@@ -85,7 +84,7 @@ class JessBackgroundProcessingQueue {
 
   public async hydrateUserTasks(userId: string) {
     try {
-      const snap = await getDocs(query(collection(db, 'users', userId, 'jessTasks'), limit(50)));
+      const snap = await getDocs(query(collection(db, 'users', userId, 'jessTasks'), limit(100)));
       snap.docs.forEach(d => {
         const remote = d.data() as JessQueuedTask;
         const local = this.queue.get(remote.id);
@@ -94,10 +93,8 @@ class JessBackgroundProcessingQueue {
         }
       });
       this.persistQueue();
-      return this.getAllTasks();
-    } catch {
-      return this.getAllTasks();
-    }
+    } catch {}
+    return this.getAllTasks();
   }
 
   public async resumePersistedTasks(
@@ -105,37 +102,79 @@ class JessBackgroundProcessingQueue {
     executor: (task: JessQueuedTask, step: any, index: number, total: number) => Promise<void>
   ) {
     const tasks = await this.hydrateUserTasks(userId);
-    for (const task of tasks.filter(t => t.userId === userId && t.status === 'in_progress' && Array.isArray(t.payload?.steps))) {
-      const steps = task.payload!.steps as any[];
-      const completed = Math.min(
-        steps.length,
-        Math.max(0, Math.floor(((task.progress || 1) / 95) * steps.length))
-      );
-      try {
-        for (let i = completed; i < steps.length; i++) {
-          await executor(task, steps[i], i, steps.length);
-          this.updateTaskProgress(task.id, Math.round(((i + 1) / steps.length) * 95), 'Completed: ' + String(steps[i].label || steps[i].tool) + ' (' + (i + 1) + '/' + steps.length + ')');
-        }
-        this.updateTaskProgress(task.id, 100, 'Completed successfully.', 'Resumed and completed all persisted background steps.');
-      } catch (err: any) {
-        this.failTask(task.id, err?.message || 'Persisted background task failed while resuming.');
-      }
+    for (const task of tasks.filter(t =>
+      t.userId === userId &&
+      t.status === 'in_progress' &&
+      Array.isArray(t.payload?.steps) &&
+      !this.running.has(t.id)
+    )) {
+      void this.runPersistedTask(task, executor);
     }
   }
 
-  public getAllTasks(): JessQueuedTask[] {
-    return Array.from(this.queue.values()).sort(
-      (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
-    );
+  private async runPersistedTask(
+    task: JessQueuedTask,
+    executor: (task: JessQueuedTask, step: any, index: number, total: number) => Promise<void>
+  ) {
+    if (this.running.has(task.id)) return;
+    this.running.add(task.id);
+    const steps = task.payload?.steps as any[];
+    const completed = Math.min(steps.length, Math.max(0, Number(task.currentStep || 0)));
+    try {
+      for (let i = completed; i < steps.length; i++) {
+        if (this.queue.get(task.id)?.status === 'cancelled') return;
+        await this.executeWithRetries(task, steps[i], i, steps.length, executor);
+        this.updateTaskProgress(task.id, Math.round(((i + 1) / steps.length) * 95), `Completed: ${String(steps[i].label || steps[i].tool)} (${i + 1}/${steps.length})`, undefined, i + 1, 0);
+      }
+      this.updateTaskProgress(task.id, 100, 'Completed successfully.', 'All executable background steps completed.', steps.length, 0);
+    } catch (err: any) {
+      this.failTask(task.id, err?.message || 'Background task failed during execution.');
+    } finally {
+      this.running.delete(task.id);
+    }
   }
 
-  public getActiveTasks(): JessQueuedTask[] {
+  private async executeWithRetries(
+    task: JessQueuedTask,
+    step: any,
+    index: number,
+    total: number,
+    executor: (task: JessQueuedTask, step: any, index: number, total: number) => Promise<void>
+  ) {
+    const maxAttempts = Math.max(1, Math.min(7, Number(step.maxAttempts || task.payload?.maxAttempts || 4)));
+    let lastError = 'Unknown background step failure.';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const current = this.queue.get(task.id);
+      if (!current || current.status === 'cancelled') return;
+      this.updateTaskProgress(
+        task.id,
+        Math.max(1, Math.round((index / total) * 95)),
+        attempt === 1 ? `Working: ${String(step.label || step.tool)} (${index + 1}/${total})` : `Retrying ${String(step.label || step.tool)} (attempt ${attempt}/${maxAttempts})`,
+        undefined,
+        index,
+        attempt
+      );
+      try {
+        await executor(task, step, index, total);
+        return;
+      } catch (err: any) {
+        lastError = err?.message || 'Background step failed.';
+        this.updateTaskProgress(task.id, Math.max(1, Math.round((index / total) * 95)), `Step failed; retrying: ${String(step.label || step.tool)}`, undefined, index, attempt, lastError);
+        if (attempt < maxAttempts) await new Promise(resolve => setTimeout(resolve, Math.min(1000 * 2 ** (attempt - 1), 8000)));
+      }
+    }
+    throw new Error(`${String(step.label || step.tool)} failed after ${maxAttempts} attempts: ${lastError}`);
+  }
+
+  public getAllTasks() {
+    return Array.from(this.queue.values()).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+
+  public getActiveTasks() {
     return this.getAllTasks().filter(t => t.status === 'in_progress' || t.status === 'queued');
   }
 
-  public getTask(id: string): JessQueuedTask | undefined {
-    return this.queue.get(id);
-  }
+  public getTask(id: string) { return this.queue.get(id); }
 
   public enqueueTask(params: {
     title: string;
@@ -143,94 +182,94 @@ class JessBackgroundProcessingQueue {
     taskType?: JessQueuedTask['taskType'];
     priority?: JessQueuedTask['priority'];
     payload?: Record<string, any>;
-    customStages?: { atPct: number; stage: string; delayMs?: number }[];
     onComplete?: (task: JessQueuedTask) => Promise<{ summary: string; targetId?: string; targetType?: string }>;
     userId?: string;
   }): JessQueuedTask {
     const now = new Date().toISOString();
-    const id = `jtask_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const id = `jtask_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const task: JessQueuedTask = {
       id,
       title: params.title,
       description: params.description || '',
       taskType: params.taskType || 'custom',
-      progress: 5,
-      stage: 'Queued for background execution...',
+      progress: 0,
+      stage: 'Queued for background execution.',
       status: 'queued',
       priority: params.priority || 'normal',
       startedAt: now,
       updatedAt: now,
+      totalSteps: Array.isArray(params.payload?.steps) ? params.payload!.steps.length : undefined,
+      currentStep: 0,
+      attempt: 0,
+      executionLog: [],
       payload: params.payload,
       userId: params.userId,
     };
-
     this.queue.set(id, task);
     this.persistQueue();
-    this.emitStatusEvent('hubmind:jess-task-queued', task);
+    this.emit('hubmind:jess-task-queued', task);
 
-    // Run task execution asynchronously without blocking the conversation
-    this.processTaskAsynchronously(task, params.customStages, params.onComplete);
-
+    if (params.onComplete) {
+      void this.runTask(task, params.onComplete);
+    }
     return task;
   }
 
-  private async processTaskAsynchronously(
-    task: JessQueuedTask,
-    customStages?: { atPct: number; stage: string; delayMs?: number }[],
-    onComplete?: (task: JessQueuedTask) => Promise<{ summary: string; targetId?: string; targetType?: string }>
-  ) {
-    // Progress is never simulated. A background task is only allowed to report
-    // progress when its executor has actually completed a measurable step.
-    if (!onComplete) {
-      this.updateTaskProgress(task.id, 5, 'Waiting for an executable background plan.');
-      return;
-    }
-
-    this.updateTaskProgress(task.id, 1, 'Background task accepted; starting execution.');
+  private async runTask(task: JessQueuedTask, onComplete: (task: JessQueuedTask) => Promise<{ summary: string; targetId?: string; targetType?: string }>) {
+    if (this.running.has(task.id)) return;
+    this.running.add(task.id);
+    this.updateTaskProgress(task.id, 1, 'Background task accepted; starting execution.', undefined, 0, 1);
     try {
       const result = await onComplete(task);
       const current = this.queue.get(task.id);
       if (!current || current.status === 'cancelled' || current.status === 'failed') return;
       current.targetId = result.targetId;
       current.targetType = result.targetType;
-      this.updateTaskProgress(task.id, 100, 'Completed successfully.', result.summary);
+      this.updateTaskProgress(task.id, 100, 'Completed successfully.', result.summary, current.totalSteps, 0);
     } catch (err: any) {
       this.failTask(task.id, err?.message || 'Task failed during execution.');
+    } finally {
+      this.running.delete(task.id);
     }
   }
 
-  public updateTaskProgress(id: string, progress: number, stage?: string, resultSummary?: string) {
+  public updateTaskProgress(
+    id: string,
+    progress: number,
+    stage?: string,
+    resultSummary?: string,
+    currentStep?: number,
+    attempt?: number,
+    lastError?: string
+  ) {
     const task = this.queue.get(id);
     if (!task) return;
     const now = new Date().toISOString();
     task.progress = Math.min(100, Math.max(0, Math.round(progress)));
-    if (stage) task.stage = stage;
-    if (resultSummary) task.resultSummary = resultSummary;
+    task.status = task.progress >= 100 ? 'completed' : 'in_progress';
+    task.stage = stage || task.stage;
+    task.resultSummary = resultSummary || task.resultSummary;
+    if (currentStep !== undefined) task.currentStep = currentStep;
+    if (attempt !== undefined) task.attempt = attempt;
+    if (lastError) task.lastError = lastError;
     task.updatedAt = now;
-
-    if (task.progress >= 100) {
-      task.status = 'completed';
-      task.completedAt = now;
-      if (!task.stage || task.stage.includes('...')) {
-        task.stage = 'Completed successfully.';
-      }
-      this.persistQueue();
-      this.emitStatusEvent('hubmind:jess-task-completed', task);
-    } else {
-      task.status = 'in_progress';
-      this.persistQueue();
-      this.emitStatusEvent('hubmind:jess-task-progress', task);
-    }
+    task.executionLog = [...(task.executionLog || []), `${now} — ${task.stage}`].slice(-20);
+    if (task.status === 'completed') task.completedAt = now;
+    this.persistQueue();
+    this.emit(task.status === 'completed' ? 'hubmind:jess-task-completed' : 'hubmind:jess-task-progress', task);
   }
 
   public failTask(id: string, errorMessage: string) {
     const task = this.queue.get(id);
     if (!task) return;
     task.status = 'failed';
+    task.lastError = errorMessage;
     task.stage = `Failed: ${errorMessage}`;
-    task.updatedAt = new Date().toISOString();
+    task.failedAt = new Date().toISOString();
+    task.updatedAt = task.failedAt;
+    task.executionLog = [...(task.executionLog || []), `${task.failedAt} — ${task.stage}`].slice(-20);
     this.persistQueue();
-    this.emitStatusEvent('hubmind:jess-task-failed', task);
+    this.emit('hubmind:jess-task-failed', task);
   }
 
   public cancelTask(id: string) {
@@ -240,41 +279,26 @@ class JessBackgroundProcessingQueue {
     task.stage = 'Cancelled by user or system.';
     task.updatedAt = new Date().toISOString();
     this.persistQueue();
-    this.emitStatusEvent('hubmind:jess-task-cancelled', task);
+    this.emit('hubmind:jess-task-cancelled', task);
   }
 
-  public getActiveTasksSummary(): string {
-    return this.getQueueSummaryForPrompt();
-  }
+  public getActiveTasksSummary() { return this.getQueueSummaryForPrompt(); }
 
-  public getQueueSummaryForPrompt(): string {
+  public getQueueSummaryForPrompt() {
     const active = this.getActiveTasks();
-    const recent = this.getAllTasks()
-      .filter(t => t.status === 'completed')
-      .slice(0, 3);
-
-    if (active.length === 0 && recent.length === 0) {
-      return 'Background processing queue is currently idle (0 active jobs).';
-    }
-
+    const recent = this.getAllTasks().filter(t => t.status === 'completed').slice(0, 5);
+    if (!active.length && !recent.length) return 'Background processing queue is currently idle (0 active jobs).';
     const lines: string[] = [];
-    if (active.length > 0) {
+    if (active.length) {
       lines.push('ACTIVE BACKGROUND QUEUE JOBS:');
-      active.forEach(t => {
-        lines.push(`• [${t.progress}% complete] Task: "${t.title}" (ID: ${t.id}) — Stage: ${t.stage}`);
-      });
+      active.forEach(t => lines.push(`• [${t.progress}% complete | step ${t.currentStep || 0}/${t.totalSteps || '?'}] "${t.title}" — ${t.stage}`));
     }
-
-    if (recent.length > 0) {
+    if (recent.length) {
       lines.push('RECENTLY COMPLETED QUEUE JOBS:');
-      recent.forEach(t => {
-        lines.push(`• [100% complete] Task: "${t.title}" — ${t.resultSummary || t.stage || 'Completed'}`);
-      });
+      recent.forEach(t => lines.push(`• [100% complete] "${t.title}" — ${t.resultSummary || 'Completed'}`));
     }
-
     return lines.join('\n');
   }
 }
-
 export const jessBackgroundTasks = new JessBackgroundProcessingQueue();
 export type JessBackgroundTask = JessQueuedTask;
