@@ -72,9 +72,47 @@ export function clearGoogleTokens() {
  * Requests a Google OAuth access token using Firebase Auth popup (with GSI fallback).
  * MUST be invoked in response to a user action (click/touch) to avoid popup blocker issues.
  */
-export async function requestGoogleAccessToken(scopes: string[] = CALENDAR_SCOPES): Promise<string> {
+export async function requestGoogleAccessToken(scopes: string[] = CALENDAR_SCOPES, interactive = true): Promise<string> {
+  // If the user already granted this scope, ask Google for a fresh access token
+  // silently first. This makes the connection durable across token expiry, reloads,
+  // and later Jess sessions without repeatedly asking the user to reconnect.
+  if (!interactive) {
+    try {
+      await initDriveConfig();
+      const clientId = driveConfig.clientId;
+      const g = (window as any).google;
+      if (clientId && g?.accounts?.oauth2) {
+        const token = await new Promise<string | null>((resolve) => {
+          let settled = false;
+          const timer = window.setTimeout(() => { if (!settled) { settled = true; resolve(null); } }, 2500);
+          try {
+            const client = g.accounts.oauth2.initTokenClient({
+              client_id: clientId,
+              scope: scopes.join(' '),
+              callback: (resp: any) => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timer);
+                resolve(resp?.access_token || null);
+              },
+            });
+            client.requestAccessToken({ prompt: '' });
+          } catch {
+            window.clearTimeout(timer);
+            resolve(null);
+          }
+        });
+        if (token) {
+          setCachedCalendarToken(token);
+          return token;
+        }
+      }
+    } catch {}
+  }
+
   // 1. Try Firebase Auth popup (works reliably inside AI Studio preview iframe)
   try {
+    if (!interactive) throw new Error('Silent Google Calendar renewal unavailable; interactive authorization is required.');
     const provider = new GoogleAuthProvider();
     scopes.forEach(scope => provider.addScope(scope));
     provider.setCustomParameters({ prompt: 'select_account' });
