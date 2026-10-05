@@ -2210,8 +2210,16 @@ export async function executeJessTool(
               const step = steps[index];
               const label = String(step.label || step.tool);
               jessBackgroundTasks.updateTaskProgress(task.id, Math.max(1, Math.round((index / total) * 95)), 'Working: ' + label + ' (' + (index + 1) + '/' + total + ')');
-              const stepResult = await executeJessTool(String(step.tool), step.args || {}, user, onPreferredName, context);
-              if (!stepResult.result?.success) throw new Error(label + ' failed: ' + (stepResult.result?.error || 'tool execution failed'));
+              let stepResult: any = null;
+              let lastError = 'tool execution failed';
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                stepResult = await executeJessTool(String(step.tool), step.args || {}, user, onPreferredName, context);
+                if (stepResult.result?.success) break;
+                lastError = stepResult.result?.error || 'tool execution failed';
+                jessBackgroundTasks.updateTaskProgress(task.id, Math.max(1, Math.round((index / total) * 95)), 'Retrying: ' + label + ' (attempt ' + (attempt + 1) + '/3)');
+                await new Promise(resolve => setTimeout(resolve, Math.min(1500 * attempt, 4000)));
+              }
+              if (!stepResult?.result?.success) throw new Error(label + ' failed after retries: ' + lastError);
               completed.push(label);
               jessBackgroundTasks.updateTaskProgress(task.id, Math.round(((index + 1) / total) * 95), 'Completed: ' + label + ' (' + (index + 1) + '/' + total + ')');
             }
