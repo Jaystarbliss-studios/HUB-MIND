@@ -47,6 +47,8 @@ export class LiveAudioClient {
   private pushToTalkMode = false;
   private levelIntervalId: number | null = null;
   private connected = false;
+  private connectPromise: Promise<void> | null = null;
+  private connectionGeneration = 0;
 
   // Adaptive noise suppression and dominant speaker tracking
   private ambientNoiseFloor = 0.008;
@@ -86,8 +88,8 @@ export class LiveAudioClient {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) throw new Error('Web Audio API is not supported in this browser.');
 
-    this.inputAudioCtx = new AudioCtx({ sampleRate: 16000 });
-    this.outputAudioCtx = new AudioCtx({ sampleRate: 24000 });
+    this.inputAudioCtx = new AudioCtx({ sampleRate: 16000, latencyHint: 'interactive' });
+    this.outputAudioCtx = new AudioCtx({ sampleRate: 24000, latencyHint: 'interactive' });
 
     if (this.inputAudioCtx.state === 'suspended') await this.inputAudioCtx.resume();
     if (this.outputAudioCtx.state === 'suspended') await this.outputAudioCtx.resume();
@@ -111,6 +113,11 @@ export class LiveAudioClient {
     this.outputAnalyser.fftSize = 256;
     this.outputGainNode = this.outputAudioCtx.createGain();
     this.outputGainNode.gain.value = 1.0;
+    // Keep the assistant's mono Gemini response duplicated across both speaker
+    // channels. The browser/OS still chooses the actual output device.
+    this.outputGainNode.channelCount = 2;
+    this.outputGainNode.channelCountMode = 'explicit';
+    this.outputGainNode.channelInterpretation = 'speakers';
     this.outputGainNode.connect(this.outputAudioCtx.destination);
 
     try {
@@ -135,6 +142,9 @@ export class LiveAudioClient {
       this.mediaStream = silentDestination.stream;
     }
 
+    if (!this.inputAudioCtx || !this.mediaStream) {
+      throw new Error('Jess microphone audio context became unavailable during initialization.');
+    }
     this.sourceNode = this.inputAudioCtx.createMediaStreamSource(this.mediaStream);
     this.sourceNode.connect(this.highpassFilter);
     this.highpassFilter.connect(this.lowpassFilter);
@@ -184,11 +194,29 @@ export class LiveAudioClient {
     userName?: string;
     userRole?: string;
   }) {
+    if (this.connectPromise) return this.connectPromise;
+    const generation = ++this.connectionGeneration;
+    this.connectPromise = this.connectInternal(context, generation).finally(() => {
+      this.connectPromise = null;
+    });
+    return this.connectPromise;
+  }
+
+  private async connectInternal(context?: {
+    page?: string;
+    documentId?: string;
+    documentTitle?: string;
+    userId?: string;
+    userName?: string;
+    userRole?: string;
+  }, generation = this.connectionGeneration) {
     this.callbacks.onStatusChange('connecting');
     this.callbacks.onJessStateChange('thinking');
     try {
       await this.disconnect(false);
+      if (generation !== this.connectionGeneration) return;
       await this.setupAudioNodes();
+      if (generation !== this.connectionGeneration) return;
 
       const firstName = context?.userName || 'there';
       const bgTasksSummary = jessBackgroundTasks.getQueueSummaryForPrompt(context?.userId || '');
@@ -313,6 +341,8 @@ export class LiveAudioClient {
                 // Treat provider/network errors as recoverable. Tear down the broken
                 // session cleanly so the floating assistant remains activatable.
                 this.connected = false;
+                this.session = null;
+                this.stopPlayback();
                 this.callbacks.onError?.('Jess encountered a temporary Live connection error. Jess is ready to reconnect.');
                 this.callbacks.onStatusChange('error');
                 this.callbacks.onJessStateChange('error');
@@ -430,8 +460,9 @@ export class LiveAudioClient {
       const float32 = new Float32Array(pcm16.length);
       for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 32768.0;
 
-      const audioBuffer = this.outputAudioCtx.createBuffer(1, float32.length, 24000);
+      const audioBuffer = this.outputAudioCtx.createBuffer(2, float32.length, 24000);
       audioBuffer.copyToChannel(float32, 0);
+      audioBuffer.copyToChannel(float32, 1);
 
       const source = this.outputAudioCtx.createBufferSource();
       source.buffer = audioBuffer;
