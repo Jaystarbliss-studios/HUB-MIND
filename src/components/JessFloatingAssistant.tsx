@@ -51,10 +51,10 @@ function findJessVisibleElement(target?: string, selector?: string): HTMLElement
   }
   const needle = String(target || '').trim().toLowerCase();
   if (!needle) return null;
-  const candidates = Array.from(document.querySelectorAll<HTMLElement>('button,a,[role="button"],input,textarea,[contenteditable="true"],[title],[aria-label]'));
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>('button,a,[role="button"],input,textarea,[contenteditable="true"],[title],[aria-label],[data-jess-click-target],p,span,li,h1,h2,h3,h4,h5,h6'));
   return candidates
     .map(el => ({ el, text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || (el as HTMLInputElement).placeholder || '').trim().toLowerCase() }))
-    .filter(x => x.text && (x.text === needle || x.text.includes(needle) || needle.includes(x.text)))
+    .filter(x => x.text && x.text.length <= 240 && (x.text === needle || x.text.includes(needle) || needle.includes(x.text)))
     .sort((a,b) => Math.abs(a.text.length - needle.length) - Math.abs(b.text.length - needle.length))[0]?.el || null;
 }
 
