@@ -2110,13 +2110,7 @@ export async function executeJessTool(
           snapshot: args.snapshot || {},
         }, { merge: true });
 
-        const htmlContent = report.split('\n').map((line: string) => {
-          const trimmed = line.trim();
-          if (!trimmed) return '<br/>';
-          if (trimmed.startsWith('•')) return '<li>' + trimmed.substring(1).trim() + '</li>';
-          if (trimmed.endsWith(':') || /REPORT/i.test(trimmed)) return '<h3><strong>' + trimmed + '</strong></h3>';
-          return '<p>' + trimmed.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>';
-        }).join('');
+        const htmlContent = markdownToTiptapHtml(report);
         const docRef = await addDoc(collection(db, 'documents'), {
           title,
           content: htmlContent,
