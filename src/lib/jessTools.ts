@@ -397,19 +397,29 @@ export async function executeJessTool(
 
       case 'get_workspace_overview': {
         const docs = await fetchAllDocumentsForUser(user);
-        const [tasksSnap, projectsSnap, meetingsSnap] = await Promise.all([
-          getDocs(user.role === 'admin' ? query(collection(db, 'tasks'), limit(50)) : query(collection(db, 'tasks'), where('assignedTo', '==', user.id), limit(50))).catch(() => ({ docs: [], size: 0 })),
-          getDocs(query(collection(db, 'projects'), limit(50))).catch(() => ({ docs: [], size: 0 })),
-          getDocs(query(collection(db, 'meetings'), limit(50))).catch(() => ({ docs: [], size: 0 })),
-        ]);
+        let tasks = getCachedCollection<any>('tasks');
+        let projects = getCachedCollection<any>('projects');
+        let meetings = getCachedCollection<any>('meetings');
+
+        if (!tasks.length || !projects.length || !meetings.length) {
+          const [tasksSnap, projectsSnap, meetingsSnap] = await Promise.all([
+            tasks.length ? Promise.resolve({ docs: tasks, size: tasks.length }) : getDocs(user.role === 'admin' ? query(collection(db, 'tasks'), limit(50)) : query(collection(db, 'tasks'), where('assignedTo', '==', user.id), limit(50))).catch(() => ({ docs: [], size: 0 })),
+            projects.length ? Promise.resolve({ docs: projects, size: projects.length }) : getDocs(query(collection(db, 'projects'), limit(50))).catch(() => ({ docs: [], size: 0 })),
+            meetings.length ? Promise.resolve({ docs: meetings, size: meetings.length }) : getDocs(query(collection(db, 'meetings'), limit(50))).catch(() => ({ docs: [], size: 0 })),
+          ]);
+          tasks = (tasksSnap.docs || []).map((d: any) => d.data ? ({ id: d.id, ...d.data() }) : d);
+          projects = (projectsSnap.docs || []).map((d: any) => d.data ? ({ id: d.id, ...d.data() }) : d);
+          meetings = (meetingsSnap.docs || []).map((d: any) => d.data ? ({ id: d.id, ...d.data() }) : d);
+        }
+
         return {
           result: {
             success: true,
-            counts: { tasks: tasksSnap.size, documents: docs.length, projects: projectsSnap.size, meetings: meetingsSnap.size },
+            counts: { tasks: tasks.length, documents: docs.length, projects: projects.length, meetings: meetings.length },
             recentDocuments: docs.slice(0, 8).map(d => ({ id: d.id, title: d.title, category: d.category, updatedAt: d.updatedAt })),
-            tasks: (tasksSnap.docs || []).slice(0, 8).map(d => ({ id: d.id, ...d.data() })),
-            projects: (projectsSnap.docs || []).slice(0, 8).map(d => ({ id: d.id, ...d.data() })),
-            meetings: (meetingsSnap.docs || []).slice(0, 8).map(d => ({ id: d.id, ...d.data() })),
+            tasks: tasks.slice(0, 8),
+            projects: projects.slice(0, 8),
+            meetings: meetings.slice(0, 8),
           },
         };
       }
