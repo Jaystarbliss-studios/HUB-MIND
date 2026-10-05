@@ -108,6 +108,12 @@ for (const contract of ['onPointerDown','onPointerMove','onPointerUp','localStor
 }
 if (/wake\s*word/i.test(floating)) failures.push('JessFloatingAssistant.tsx: wake-word behavior is present');
 
+const netlifyConfig = readFileSync(resolve(root, 'netlify.toml'), 'utf8');
+if (!netlifyConfig.includes('SECRETS_SCAN_OMIT_KEYS')) failures.push('netlify.toml: public Firebase configuration is not classified for secret scanning');
+if (netlifyConfig.includes('GEMINI_API_KEY') && /SECRETS_SCAN_OMIT_KEYS[^\\n]*GEMINI_API_KEY/.test(netlifyConfig)) failures.push('netlify.toml: GEMINI_API_KEY must never be omitted from secret scanning');
+if (netlifyConfig.includes('GOOGLE_CLIENT_SECRET') && /SECRETS_SCAN_OMIT_KEYS[^\\n]*GOOGLE_CLIENT_SECRET/.test(netlifyConfig)) failures.push('netlify.toml: GOOGLE_CLIENT_SECRET must never be omitted from secret scanning');
+if (netlifyConfig.includes('GOOGLE_OAUTH_SECRET') && /SECRETS_SCAN_OMIT_KEYS[^\\n]*GOOGLE_OAUTH_SECRET/.test(netlifyConfig)) failures.push('netlify.toml: GOOGLE_OAUTH_SECRET must never be omitted from secret scanning');
+
 const rules = readFileSync(resolve(root, 'firestore.rules'), 'utf8');
 for (const rule of ['match /users/{userId}','match /invitations/{id}','match /tasks/{id}','match /documents/{id}','match /projects/{id}','match /recurringTaskTemplates/{id}']) {
   if (!rules.includes(rule)) failures.push(`firestore.rules: required boundary ${rule} is missing`);
