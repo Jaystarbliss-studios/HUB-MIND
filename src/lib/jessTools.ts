@@ -63,6 +63,102 @@ function tokenSimilarity(a: string, b: string): number {
   }
   return 1 - prev[b.length] / Math.max(a.length, b.length);
 }
+function markdownToTiptapHtml(input: any): string {
+  const source = String(input ?? '').replace(/\r\n?/g, '\n').trim();
+  if (!source) return '<p></p>';
+
+  // Jess can still pass already-structured Tiptap HTML. Do not double-escape it.
+  if (/^\s*<(?:p|h[1-6]|ul|ol|li|blockquote|pre|table|div|section|strong|em|br)\b/i.test(source)) {
+    return source;
+  }
+
+  const escape = (value: string) => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  const inline = (value: string) => {
+    let out = escape(value);
+    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    out = out.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+    out = out.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
+    out = out.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+    return out;
+  };
+
+  const lines = source.split('\n');
+  const blocks: string[] = [];
+  let listType: 'ul' | 'ol' | null = null;
+  let listItems: string[] = [];
+  let inCode = false;
+  let codeLines: string[] = [];
+
+  const flushList = () => {
+    if (!listType || !listItems.length) return;
+    blocks.push('<' + listType + '>' + listItems.map(item => '<li>' + inline(item) + '</li>').join('') + '</' + listType + '>');
+    listType = null;
+    listItems = [];
+  };
+  const flushCode = () => {
+    if (!inCode) return;
+    blocks.push('<pre><code>' + escape(codeLines.join('\n')) + '</code></pre>');
+    inCode = false;
+    codeLines = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (/^\s*\x60\x60\x60/.test(line)) {
+      if (inCode) flushCode();
+      else { flushList(); inCode = true; codeLines = []; }
+      continue;
+    }
+    if (inCode) { codeLines.push(rawLine); continue; }
+    if (!line) { flushList(); continue; }
+
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      flushList();
+      const level = Math.min(6, heading[1].length);
+      blocks.push('<h' + level + '>' + inline(heading[2]) + '</h' + level + '>');
+      continue;
+    }
+    if (/^[-*_]{3,}$/.test(line)) {
+      flushList();
+      blocks.push('<hr>');
+      continue;
+    }
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    if (bullet) {
+      if (listType !== 'ul') { flushList(); listType = 'ul'; }
+      listItems.push(bullet[1]);
+      continue;
+    }
+    const numbered = line.match(/^\d+[.)]\s+(.+)$/);
+    if (numbered) {
+      if (listType !== 'ol') { flushList(); listType = 'ol'; }
+      listItems.push(numbered[1]);
+      continue;
+    }
+    const quote = line.match(/^>\s?(.*)$/);
+    if (quote) {
+      flushList();
+      blocks.push('<blockquote><p>' + inline(quote[1]) + '</p></blockquote>');
+      continue;
+    }
+
+    flushList();
+    blocks.push('<p>' + inline(line) + '</p>');
+  }
+
+  flushList();
+  flushCode();
+  return blocks.join('') || '<p></p>';
+}
+
 function fuzzyRelevance(queryText: string, record: any): number {
   const queryTokens = normalizeSearchText(queryText).split(' ').filter(t => t.length >= 2);
   if (!queryTokens.length) return 0;
@@ -1143,7 +1239,7 @@ export async function executeJessTool(
         const rawTitle = String(args.title || 'Untitled Document').trim();
         const data = {
           title: rawTitle,
-          content: args.content || '<p></p>',
+          content: markdownToTiptapHtml(args.content || ''),
           projectId: args.projectId || null,
           category: args.category || 'other',
           ownerId: user.id,
@@ -1164,7 +1260,7 @@ export async function executeJessTool(
         localDocs[ref.id] = {
           id: ref.id,
           title: rawTitle,
-          content: args.content || '',
+          content: markdownToTiptapHtml(args.content || ''),
           updatedAt: now,
           lastSavedAt: now,
           lastEditedAt: now,
@@ -1173,7 +1269,7 @@ export async function executeJessTool(
         setLocalDocsMap(localDocs);
 
         if (args.content) {
-          queueJessDocumentEdit({ documentId: ref.id, content: args.content, mode: 'replace' });
+          queueJessDocumentEdit({ documentId: ref.id, content: data.content, mode: 'replace' });
         }
 
         return {
@@ -1220,13 +1316,13 @@ export async function executeJessTool(
         const patch: any = { updatedAt: now, lastEditedAt: now, lastSavedAt: now, version: Number(current.version || 1) + 1 };
         if (rawTitle !== undefined) patch.title = rawTitle;
         
-        let finalContent = rawContent;
+        let finalContent = rawContent !== undefined ? markdownToTiptapHtml(rawContent) : undefined;
         if (rawContent !== undefined) {
           const mode = args.mode || 'replace';
           if (mode === 'append' && current.content) {
-            finalContent = `${current.content}\n${rawContent}`;
+            finalContent = `${current.content}${markdownToTiptapHtml(rawContent)}`;
           } else if (mode === 'prepend' && current.content) {
-            finalContent = `${rawContent}\n${current.content}`;
+            finalContent = `${markdownToTiptapHtml(rawContent)}${current.content}`;
           }
           patch.content = finalContent;
         }
