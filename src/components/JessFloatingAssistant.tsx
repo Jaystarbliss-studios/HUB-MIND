@@ -482,7 +482,7 @@ export function JessFloatingAssistant() {
   // from Gemini Live so the full microphone session is not held open while Jess
   // is asleep. Phones/tablets remain tap-only.
   useEffect(() => {
-    if (!profile || active) return;
+    if (!profile || connection === 'connected' || connection === 'connecting') return;
     if (!isJessPcWakeSupported()) return;
 
     const wakeListener = new JessPcWakeListener({
@@ -495,7 +495,7 @@ export function JessFloatingAssistant() {
 
     wakeListener.start();
     return () => wakeListener.stop();
-  }, [profile?.id, active, start]);
+  }, [profile?.id, connection, start]);
 
   const handleConfirmDeletion = async () => {
     if (!pendingDelete) return;
