@@ -40,25 +40,51 @@ export interface JessToolDefinition {
 
 
 function normalizeSearchText(value: any): string {
-  return String(value || '').toLowerCase().replace(/<[^>]+>/g, ' ').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return String(value || '')
+    .toLowerCase()
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\b(about|the|a|an|this|that|please|find|show|open|document|doc)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function tokenSimilarity(a: string, b: string): number {
+  if (a === b) return 1;
+  if (a.length < 3 || b.length < 3) return 0;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const old = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = old;
+    }
+  }
+  return 1 - prev[b.length] / Math.max(a.length, b.length);
 }
 function fuzzyRelevance(queryText: string, record: any): number {
   const queryTokens = normalizeSearchText(queryText).split(' ').filter(t => t.length >= 2);
   if (!queryTokens.length) return 0;
-  const fields = [record.title, record.name, record.description, record.category, record.content, record.notes, record.tags].map(normalizeSearchText);
-  const title = fields[0] || '';
-  const haystack = fields.join(' ');
-  let score = 0;
+  const title = normalizeSearchText(record.title || record.name);
+  const titleTokens = title.split(' ').filter(Boolean);
+  const haystack = normalizeSearchText([
+    record.title, record.name, record.description, record.category, record.content,
+    record.notes, record.tags, record.projectName, record.clientName,
+    record.assigneeName, record.location, record.summary
+  ].join(' '));
+  let score = title.includes(queryTokens.join(' ')) ? 30 : 0;
   for (const token of queryTokens) {
-    if (title.includes(token)) score += 8;
-    else if (haystack.includes(token)) score += 4;
-    else {
-      const first = token[0];
-      if (first && haystack.split(' ').some((word: string) => word.startsWith(first) && word.length >= 4 && Math.abs(word.length - token.length) <= 2)) score += 1;
+    let best = 0;
+    for (const candidate of titleTokens) {
+      if (candidate.includes(token) || token.includes(candidate)) best = Math.max(best, 0.95);
+      else best = Math.max(best, tokenSimilarity(token, candidate));
     }
+    if (best >= 0.82) score += 9;
+    else if (best >= 0.68) score += 5;
+    else if (haystack.includes(token)) score += 4;
   }
-  const phrase = normalizeSearchText(queryText);
-  if (phrase && title.includes(phrase)) score += 12;
+  score += Math.min(12, queryTokens.filter(t => haystack.includes(t)).length * 2);
   return score;
 }
 
@@ -2232,16 +2258,16 @@ export async function executeJessTool(
 
       case 'get_background_tasks_status': {
         if (args.taskId) {
-          const t = jessBackgroundTasks.getTask(args.taskId);
+          const t = jessBackgroundTasks.getTask(args.taskId, user.id);
           if (!t) return { result: { success: false, error: `Task ${args.taskId} not found.` } };
           return { result: { success: true, task: t } };
         }
         return {
           result: {
             success: true,
-            activeTasks: jessBackgroundTasks.getActiveTasks(),
-            allTasks: jessBackgroundTasks.getAllTasks().slice(0, 5),
-            summary: jessBackgroundTasks.getActiveTasksSummary(),
+            activeTasks: jessBackgroundTasks.getActiveTasksForUser(user.id),
+            allTasks: jessBackgroundTasks.getTasksForUser(user.id).slice(0, 5),
+            summary: jessBackgroundTasks.getActiveTasksSummary(user.id),
           },
         };
       }

@@ -12,7 +12,7 @@ import { autoExtractMemory } from '../services/memoryService';
 import { trackAndPersistSentiment } from '../services/sentimentService';
 import { scanCurrentPageContext, ContextActionSuggestion } from '../services/contextScannerService';
 import { startJessWorkspaceCache } from '../services/jessWorkspaceCache';
-import { isGoogleCalendarConnected, refreshGoogleCalendarEvents } from '../lib/googleCalendar';
+import { hydrateGoogleCalendarConnection, isGoogleCalendarConnected, refreshGoogleCalendarEvents } from '../lib/googleCalendar';
 import { 
   Activity, 
   Lightbulb, 
@@ -108,7 +108,8 @@ export function JessFloatingAssistant() {
   const navigate = useNavigate();
   const clientRef = useRef<LiveAudioClient | null>(null);
   const sessionEndingRef = useRef(false);
-  const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number }>({ timer: null, running: false, speed: 3 });
+  const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number }>({ timer: null, running: false, speed: 3, direction: 1 });
+  const backgroundHydratedUserRef = useRef<string | null>(null);
   const pointerRef = useRef({ dragging: false, moved: false, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0 });
   const [position, setPosition] = useState(DEFAULT_POSITION);
   const [connection, setConnection] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
@@ -149,11 +150,16 @@ export function JessFloatingAssistant() {
   }, [location.pathname]);
 
   useEffect(() => {
+    if (!profile?.id) {
+      backgroundHydratedUserRef.current = null;
+      setActiveBgTasks([]);
+      return;
+    }
     const unsub = jessBackgroundTasks.subscribe(tasks => {
-      setActiveBgTasks(tasks.filter(t => t.status === 'in_progress'));
+      setActiveBgTasks(tasks.filter(t => t.userId === profile.id && t.status === 'in_progress'));
     });
-    return () => unsub();
-  }, []);
+    return () => { unsub(); };
+  }, [profile?.id]);
 
   // Keep a warm, user-scoped local index of the workspace. Firestore's persistent
   // cache gives this listener immediate local data, while server updates arrive
@@ -161,15 +167,30 @@ export function JessFloatingAssistant() {
   useEffect(() => {
     if (!profile) return;
     const stopCache = startJessWorkspaceCache(profile);
-    if (isGoogleCalendarConnected()) {
-      void refreshGoogleCalendarEvents().catch(() => {});
+    let cancelled = false;
+
+    void (async () => {
+      const calendarConnected = await hydrateGoogleCalendarConnection();
+      if (!cancelled && (calendarConnected || isGoogleCalendarConnected())) {
+        void refreshGoogleCalendarEvents().catch(() => {});
+      }
+    })();
+
+    // Hydrate/resume persisted jobs once per signed-in user. Navigation must not
+    // restart the same background operation or duplicate its executor.
+    if (backgroundHydratedUserRef.current !== profile.id) {
+      backgroundHydratedUserRef.current = profile.id;
+      void jessBackgroundTasks.resumePersistedTasks(profile.id, async (_task, step) => {
+        const result = await executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), resolveJessContext(location.pathname));
+        if (!result.result?.success) throw new Error(result.result?.error || 'Background step failed.');
+      });
     }
-    void jessBackgroundTasks.resumePersistedTasks(profile.id, async (_task, step) => {
-      const result = await executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), resolveJessContext(location.pathname));
-      if (!result.result?.success) throw new Error(result.result?.error || 'Background step failed.');
-    });
-    return stopCache;
-  }, [profile?.id, profile?.role, location.pathname]);
+
+    return () => {
+      cancelled = true;
+      stopCache();
+    };
+  }, [profile?.id, profile?.role]);
 
   useEffect(() => {
     try {
@@ -183,6 +204,10 @@ export function JessFloatingAssistant() {
   useEffect(() => {
     return () => {
       if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      const control = screenControlRef.current;
+      if (control.timer !== null) window.clearInterval(control.timer);
+      control.timer = null;
+      control.running = false;
       void clientRef.current?.disconnect();
       clientRef.current = null;
     };

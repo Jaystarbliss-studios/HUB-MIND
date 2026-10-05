@@ -5,18 +5,76 @@ import { getLocalDocsMap } from './offlineSync';
 import { getCachedCollection } from '../services/jessWorkspaceCache';
 
 
-function tokenize(value: any): string[] {
-  return String(value || '').toLowerCase().replace(/<[^>]+>/g, ' ').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length >= 2);
+function normalizeToken(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/ing$/i, '')
+    .replace(/ed$/i, '')
+    .replace(/s$/i, '');
 }
-function relevance(term: string, item: any): number {
-  const q = tokenize(term);
-  const title = tokenize(item.title || item.name).join(' ');
-  const all = tokenize([item.title,item.name,item.description,item.content,item.category,item.notes,item.tags].join(' ')).join(' ');
-  let score = title.includes(tokenize(term).join(' ')) ? 15 : 0;
-  for (const t of q) {
-    if (title.includes(t)) score += 7;
-    else if (all.includes(t)) score += 3;
+
+function tokenize(value: any): string[] {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map(normalizeToken)
+    .filter(t => t.length >= 2);
+}
+
+function editSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.length < 3 || b.length < 3) return 0;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const old = prev[j];
+      prev[j] = Math.min(
+        prev[j] + 1,
+        prev[j - 1] + 1,
+        diag + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+      diag = old;
+    }
   }
+  return 1 - prev[b.length] / Math.max(a.length, b.length);
+}
+
+function relevance(term: string, item: any): number {
+  const queryTokens = tokenize(term);
+  if (!queryTokens.length) return 0;
+
+  const titleTokens = tokenize(item.title || item.name);
+  const bodyTokens = tokenize([
+    item.title, item.name, item.description, item.content, item.category,
+    item.notes, item.tags, item.projectName, item.clientName, item.assigneeName,
+    item.location, item.summary
+  ].join(' '));
+
+  const title = titleTokens.join(' ');
+  const body = bodyTokens.join(' ');
+  const phrase = queryTokens.join(' ');
+  let score = title.includes(phrase) ? 30 : 0;
+
+  for (const queryToken of queryTokens) {
+    let best = 0;
+    for (const candidate of titleTokens) {
+      if (candidate.includes(queryToken) || queryToken.includes(candidate)) best = Math.max(best, 0.95);
+      else best = Math.max(best, editSimilarity(queryToken, candidate));
+    }
+    if (best >= 0.82) score += 9;
+    else if (best >= 0.68) score += 5;
+    else if (body.includes(queryToken)) score += 4;
+  }
+
+  // Conversational requests often contain filler words. Reward records where
+  // several meaningful concepts agree, but do not require the exact title.
+  const meaningfulMatches = queryTokens.filter(t => body.includes(t)).length;
+  score += Math.min(12, meaningfulMatches * 2);
   return score;
 }
 
