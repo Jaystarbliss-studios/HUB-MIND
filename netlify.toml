@@ -2,6 +2,11 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  # Firebase/browser configuration is intentionally part of the client build.
+  # Keep real server credentials (for example GEMINI_API_KEY) protected.
+  SECRETS_SCAN_OMIT_KEYS = "FIREBASE_PROJECT_ID,FIREBASE_WEB_API_KEY,FIREBASE_DATABASE_ID,FIRESTORE_DATABASE_ID,FIREBASE_APP_ID,FIREBASE_AUTH_DOMAIN,FIREBASE_STORAGE_BUCKET,FIREBASE_MESSAGING_SENDER_ID,VITE_FIREBASE_PROJECT_ID,VITE_FIREBASE_WEB_API_KEY,VITE_FIRESTORE_DATABASE_ID,VITE_FIREBASE_APP_ID,VITE_FIREBASE_AUTH_DOMAIN,VITE_FIREBASE_STORAGE_BUCKET,VITE_FIREBASE_MESSAGING_SENDER_ID,VITE_GOOGLE_CLIENT_ID"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
