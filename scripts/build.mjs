@@ -39,7 +39,11 @@ for (const file of scanFiles) {
 
 // Client credentials must never be statically injected into the browser bundle.
 // Firebase browser configuration is loaded at runtime through /api/config instead.
-for (const file of scanFiles) {
+const clientSourceFiles = scanFiles.filter((file) => {
+  const relative = path.relative(projectRoot, file).split(path.sep).join('/');
+  return relative.startsWith('src/') || sourceFiles.includes(relative);
+});
+for (const file of clientSourceFiles) {
   if (!fs.existsSync(file)) continue;
   const source = fs.readFileSync(file, 'utf8');
   if (/import\.meta\.env\.VITE_FIREBASE_|process\.env\.VITE_FIREBASE_/.test(source)) {
