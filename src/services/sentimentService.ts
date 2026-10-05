@@ -1,4 +1,5 @@
 import { saveUserMemory, getUserMemories } from './memoryService';
+import { auth } from '../firebaseConfig';
 
 export type UserMood = 
   | 'urgent' 
@@ -122,7 +123,8 @@ export function analyzeSentiment(text: string): SentimentAnalysisResult {
   };
 }
 
-const LAST_SENTIMENT_KEY = 'hubmind_current_user_mood';
+const LAST_SENTIMENT_KEY = 'hubmind_current_user_mood_v2';
+function moodStorageKey(userId?: string) { return `${LAST_SENTIMENT_KEY}_${userId || auth.currentUser?.uid || 'anonymous'}`; }
 
 /**
  * Tracks the sentiment of a conversation turn and persists significant mood patterns to user memory.
@@ -131,20 +133,30 @@ export async function trackAndPersistSentiment(userId: string, userText: string)
   const result = analyzeSentiment(userText);
 
   try {
-    sessionStorage.setItem(LAST_SENTIMENT_KEY, JSON.stringify(result));
+    localStorage.setItem(moodStorageKey(userId), JSON.stringify({ ...result, recordedAt: new Date().toISOString() }));
   } catch {}
 
-  // If a distinct emotional state is detected with high confidence, persist to user's personalized memory
-  if (result.mood !== 'neutral' && result.confidence >= 0.7 && userId) {
+  // Persist meaningful emotional state twice: a stable latest-state record for fast
+  // prompt guidance and an append-only interaction record for long-term understanding.
+  if (userId && result.mood !== 'neutral' && result.confidence >= 0.7) {
     try {
       const now = new Date().toISOString();
-      await saveUserMemory(userId, {
-        key: 'current_mood_preference',
-        content: `User is currently in a ${result.mood} state. Recommended AI Tone: ${result.suggestedTone}`,
-        category: 'preference',
-        importance: 'medium',
-        source: 'system',
-      });
+      await Promise.all([
+        saveUserMemory(userId, {
+          key: 'current_mood_state',
+          content: `Latest detected emotional state: ${result.mood}. Energy: ${result.energyLevel}. Valence: ${result.valence}. Recommended AI tone: ${result.suggestedTone}`,
+          category: 'interaction',
+          importance: 'medium',
+          source: 'system',
+        }),
+        saveUserMemory(userId, {
+          key: `mood_event_${Date.now()}`,
+          content: `Detected ${result.mood} mood (confidence ${Math.round(result.confidence * 100)}%, energy ${result.energyLevel}, valence ${result.valence}). Keywords: ${result.detectedKeywords.join(', ') || 'none'}.`,
+          category: 'interaction',
+          importance: 'low',
+          source: 'system',
+        }),
+      ]);
     } catch (err) {
       console.warn('[SentimentService] Failed to persist sentiment memory:', err);
     }
@@ -155,7 +167,7 @@ export async function trackAndPersistSentiment(userId: string, userText: string)
 
 export function getCurrentUserMoodGuidance(): string {
   try {
-    const raw = sessionStorage.getItem(LAST_SENTIMENT_KEY);
+    const raw = localStorage.getItem(moodStorageKey());
     if (raw) {
       const parsed: SentimentAnalysisResult = JSON.parse(raw);
       if (parsed.mood && parsed.mood !== 'neutral') {
