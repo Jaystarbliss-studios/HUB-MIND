@@ -20,7 +20,7 @@ const scanFiles = [
     const walk = (currentDir) => fs.readdirSync(currentDir, { withFileTypes: true }).flatMap((entry) => {
       const fullPath = path.join(currentDir, entry.name);
       if (entry.isDirectory()) return walk(fullPath);
-      return /\\.(?:ts|tsx|js|mjs|cjs|json|html|css|toml)$/i.test(entry.name) ? [fullPath] : [];
+      return /\.(?:ts|tsx|js|mjs|cjs|json|html|css|toml)$/i.test(entry.name) ? [fullPath] : [];
     });
     return walk(dir);
   }),
@@ -42,10 +42,10 @@ for (const file of scanFiles) {
 for (const file of scanFiles) {
   if (!fs.existsSync(file)) continue;
   const source = fs.readFileSync(file, 'utf8');
-  if (/import\\.meta\\.env\\.VITE_FIREBASE_|process\\.env\\.VITE_FIREBASE_/.test(source)) {
+  if (/import\.meta\.env\.VITE_FIREBASE_|process\.env\.VITE_FIREBASE_/.test(source)) {
     throw new Error(`Client Firebase environment injection detected in source: ${path.relative(projectRoot, file)}`);
   }
-  if (/import\\.meta\\.env\\.VITE_GOOGLE_CLIENT_ID|process\\.env\\.VITE_GOOGLE_CLIENT_ID/.test(source)) {
+  if (/import\.meta\.env\.VITE_GOOGLE_CLIENT_ID|process\.env\.VITE_GOOGLE_CLIENT_ID/.test(source)) {
     throw new Error(`Client Google OAuth environment injection detected in source: ${path.relative(projectRoot, file)}`);
   }
 }
@@ -77,7 +77,7 @@ const collectBuiltFiles = (dir) => {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) collectBuiltFiles(fullPath);
-    else if (/\\.(?:js|mjs|cjs|html|css|json|svg|webmanifest)$/i.test(entry.name)) builtFiles.push(fullPath);
+    else if (/\.(?:js|mjs|cjs|html|css|json|svg|webmanifest)$/i.test(entry.name)) builtFiles.push(fullPath);
   }
 };
 collectBuiltFiles(distDir);
