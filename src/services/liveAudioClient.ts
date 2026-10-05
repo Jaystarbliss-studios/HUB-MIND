@@ -160,7 +160,7 @@ export class LiveAudioClient {
       numberOfInputs: 1,
       numberOfOutputs: 1,
       channelCount: 1,
-      processorOptions: { targetFrames: 1024 },
+      processorOptions: { targetFrames: 640 },
     });
 
     this.inputAnalyser.connect(this.audioWorkletNode);
@@ -176,9 +176,10 @@ export class LiveAudioClient {
 
       try {
         const base64Data = this.base64EncodeArrayBuffer(pcmBuffer);
+        // Send every 40 ms PCM frame. Do not locally drop silence: Gemini's
+        // realtime VAD needs the continuous stream to detect the end of speech.
         this.session.sendRealtimeInput({
           audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
-          media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
         });
       } catch (e) {
         console.warn('Live input error:', e);
@@ -322,6 +323,13 @@ export class LiveAudioClient {
               inputAudioTranscription: {},
               outputAudioTranscription: {},
               sessionResumption: {},
+              realtimeInputConfig: {
+                automaticActivityDetection: {
+                  disabled: false,
+                  prefixPaddingMs: 40,
+                  silenceDurationMs: 500,
+                },
+              },
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
               systemInstruction: { parts: [{ text: systemInstruction }] },
               tools: [{ functionDeclarations: JESS_TOOLS_DECLARATIONS as any }],
