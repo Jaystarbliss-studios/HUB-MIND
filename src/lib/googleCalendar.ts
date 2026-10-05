@@ -13,7 +13,7 @@ export interface CalendarEventPayload {
   description?: string;
   startDateTime: string; // ISO string or YYYY-MM-DDTHH:mm:ss
   endDateTime?: string;   // ISO string or YYYY-MM-DDTHH:mm:ss
-  reminderMinutes?: number;
+  reminderMinutes?: number | number[];
   location?: string;
   recurrenceRule?: string; // e.g. 'RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR' or 'RRULE:FREQ=DAILY'
 }
