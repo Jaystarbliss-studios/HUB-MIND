@@ -56,7 +56,7 @@ const live = readFileSync(resolve(root, 'src/services/liveAudioClient.ts'), 'utf
 for (const contract of ['gemini-3.8-live','Kore','16000','24000','sendFunctionResponse','sessionResumption','MANDATORY UI NAVIGATION RULE']) {
   if (!live.includes(contract)) failures.push(`liveAudioClient.ts: Live API contract ${contract} is missing`);
 }
-if (!live.includes("ENABLE_SERVER_WS_BRIDGE") || !live.includes("if (ENABLE_SERVER_WS_BRIDGE)")) failures.push('liveAudioClient.ts: production WebSocket fallback guard is missing');
+if (live.includes('ENABLE_SERVER_WS_BRIDGE') || live.includes('connectFallbackWebSocket') || live.includes('/api/live-ws')) failures.push('liveAudioClient.ts: unsupported server WebSocket fallback must remain removed');
 
 const floating = readFileSync(resolve(root, 'src/components/JessFloatingAssistant.tsx'), 'utf8');
 for (const contract of ['sessionEndingRef', 'JSON.parse(toolArgs)', 'sendFunctionResponse({ name: fc.name']) {
