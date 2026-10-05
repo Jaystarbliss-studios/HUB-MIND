@@ -284,7 +284,7 @@ export function JessFloatingAssistant() {
             } else if (p.mode === 'bottom') {
               stopScroll();
               const target = getJessScrollTarget();
-              if (target === window) window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); else target.scrollTo({ top: target.scrollHeight, behavior: 'smooth' });
+              if (target === window) window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); else target.scrollTo({ top: (target as HTMLElement).scrollHeight, behavior: 'smooth' });
             } else if (p.mode === 'by') {
               stopScroll();
               const direction = p.direction === 'up' ? -1 : 1;
