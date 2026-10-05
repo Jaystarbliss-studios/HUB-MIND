@@ -317,10 +317,6 @@ export class LiveAudioClient {
           }
           return;
         } catch (directErr: any) {
-          if (ENABLE_SERVER_WS_BRIDGE) {
-            await this.connectFallbackWebSocket(context);
-            return;
-          }
           throw directErr;
         }
       }
