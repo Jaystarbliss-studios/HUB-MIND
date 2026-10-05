@@ -666,12 +666,10 @@ export class LiveAudioClient {
     return false;
   }
 
-  private processAudioBufferWithNoiseSuppression(input: Float32Array): ArrayBuffer | null {
-    const isSpeech = this.isVoiceAboveNoiseFloor(input);
-    if (!isSpeech) {
-      return null;
-    }
-
+  private processAudioBufferWithNoiseSuppression(input: Float32Array): ArrayBuffer {
+    // Keep the PCM stream continuous. Browser-level echo/noise suppression and
+    // Gemini's realtime VAD handle speech boundaries. Dropping silence locally
+    // prevents the server from seeing the end of an utterance and adds latency.
     const output = new DataView(new ArrayBuffer(input.length * 2));
     for (let i = 0; i < input.length; i++) {
       const s = Math.max(-1, Math.min(1, input[i]));
