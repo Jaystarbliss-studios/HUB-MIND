@@ -1,3 +1,5 @@
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
 export interface JessQueuedTask {
   id: string;
   title: string;
@@ -47,6 +49,11 @@ class JessBackgroundProcessingQueue {
     }
   }
 
+  private persistRemote(task: JessQueuedTask) {
+    if (!task.userId) return;
+    void setDoc(doc(db, 'users', task.userId, 'jessTasks', task.id), task, { merge: true }).catch(() => {});
+  }
+
   private persistQueue() {
     try {
       const all = Array.from(this.queue.values()).slice(-30);
@@ -55,6 +62,7 @@ class JessBackgroundProcessingQueue {
       // Persist failure handled silently
     }
     this.notifySubscribers();
+    for (const task of this.queue.values()) this.persistRemote(task);
   }
 
   private emitStatusEvent(eventType: JessTaskStatusEventType, task: JessQueuedTask) {
