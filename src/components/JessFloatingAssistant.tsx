@@ -538,6 +538,13 @@ export function JessFloatingAssistant() {
     }
     if (p.moved) return;
     const now = Date.now();
+    // Once Jess is active, a single tap is an explicit microphone mute/unmute.
+    // When Jess is idle, the established double-tap gesture still activates her.
+    if (active) {
+      p.lastTap = 0;
+      clientRef.current?.toggleMute();
+      return;
+    }
     if (now - p.lastTap <= DOUBLE_TAP_MS) {
       p.lastTap = 0;
       activate();
