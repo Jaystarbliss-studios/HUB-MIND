@@ -73,12 +73,9 @@ export async function verifyOAuthState(state) {
   if (!payload || !signature) throw new Error('Invalid Google OAuth state.');
   const expected = await hmac(payload);
   const received = fromBase64url(signature);
-  if (received.length !== expected.length || !(await crypto.subtle.timingSafeEqual?.(expected, received).catch(() => false))) {
-    // timingSafeEqual is not exposed by every Web Crypto implementation; compare bytes if unavailable.
-    let equal = received.length === expected.length;
-    for (let i = 0; equal && i < expected.length; i++) equal = expected[i] === received[i];
-    if (!equal) throw new Error('Google OAuth state validation failed.');
-  }
+  let equal = received.length === expected.length;
+  for (let i = 0; equal && i < expected.length; i++) equal = expected[i] === received[i];
+  if (!equal) throw new Error('Google OAuth state validation failed.');
   const data = JSON.parse(fromBase64url(payload).toString('utf8'));
   if (!data?.uid || !data?.redirectUri || Number(data.exp) < Date.now()) throw new Error('Google OAuth state expired.');
   return data;
