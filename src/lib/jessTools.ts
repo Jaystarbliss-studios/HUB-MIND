@@ -342,7 +342,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'set_preferred_name', description: 'Save the name the signed-in user wants to be addressed with.', parameters: object({ preferredName: { type: 'string' } }, ['preferredName']) },
   {
     name: 'set_language_preference',
-    description: 'Update the user\'s preferred conversational language (e.g. English, Spanish, French, Yoruba, German, etc.). The workspace defaults to English for 90%+ of interactions, but smoothly switches and remembers any user-requested language preference.',
+    description: 'Update the user\'s preferred conversational language (e.g. English, Spanish, French, Yoruba, German, etc.). The workspace defaults strictly to English. Only switch languages when the user explicitly requests the change, and remember that explicit preference.',
     parameters: object({
       language: { type: 'string', description: 'The preferred language name (e.g. "English", "Spanish", "French", "Yoruba", "German")' },
       reason: { type: 'string', description: 'Optional reason or context for the preference change' }
