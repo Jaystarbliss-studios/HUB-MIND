@@ -150,11 +150,16 @@ export function JessFloatingAssistant() {
   }, [location.pathname]);
 
   useEffect(() => {
+    if (!profile?.id) {
+      backgroundHydratedUserRef.current = null;
+      setActiveBgTasks([]);
+      return;
+    }
     const unsub = jessBackgroundTasks.subscribe(tasks => {
-      setActiveBgTasks(tasks.filter(t => t.status === 'in_progress'));
+      setActiveBgTasks(tasks.filter(t => t.userId === profile.id && t.status === 'in_progress'));
     });
     return () => unsub();
-  }, []);
+  }, [profile?.id]);
 
   // Keep a warm, user-scoped local index of the workspace. Firestore's persistent
   // cache gives this listener immediate local data, while server updates arrive
