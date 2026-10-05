@@ -3,6 +3,7 @@ import {
   onSnapshot,
   query,
   where,
+  or,
   limit,
   Unsubscribe,
 } from 'firebase/firestore';
@@ -59,6 +60,22 @@ function replaceCollection(name: string, records: CachedRecord[]) {
   persistLocal();
 }
 
+
+function authorizedQuery(collectionName: string, userId: string, isAdmin: boolean) {
+  const col = collection(db, collectionName);
+  if (isAdmin) return query(col, limit(MAX_PER_COLLECTION));
+  return query(
+    col,
+    or(
+      where('ownerId', '==', userId),
+      where('createdBy', '==', userId),
+      where('visibility', '==', 'workspace'),
+      where('sharedWith.' + userId, 'in', ['read', 'write'])
+    ),
+    limit(MAX_PER_COLLECTION)
+  );
+}
+
 function startListener(name: string, q: any) {
   const unsub = onSnapshot(
     q,
@@ -88,23 +105,15 @@ export function startJessWorkspaceCache(user: User): () => void {
   // Each listener immediately receives the SDK's locally persisted snapshot when
   // available, then updates from the server. Jess therefore has a warm local index
   // without waiting for a network round-trip during a voice session.
-  startListener('documents', isAdmin
-    ? query(collection(db, 'documents'), limit(MAX_PER_COLLECTION))
-    : query(collection(db, 'documents'), where('visibility', '==', 'workspace'), limit(MAX_PER_COLLECTION)));
-
-  startListener('tasks', isAdmin
-    ? query(collection(db, 'tasks'), limit(MAX_PER_COLLECTION))
-    : query(collection(db, 'tasks'), where('assignedTo', '==', user.id), limit(MAX_PER_COLLECTION)));
-
-  startListener('projects', query(collection(db, 'projects'), limit(MAX_PER_COLLECTION)));
-  startListener('meetings', query(collection(db, 'meetings'), limit(MAX_PER_COLLECTION)));
-  startListener('clients', query(collection(db, 'clients'), limit(MAX_PER_COLLECTION)));
-  startListener('followUps', query(collection(db, 'followUps'), limit(MAX_PER_COLLECTION)));
-  startListener('knowledge', query(collection(db, 'knowledge'), limit(MAX_PER_COLLECTION)));
-  startListener('reports', query(collection(db, 'reports'), limit(MAX_PER_COLLECTION)));
-  startListener('recurringMeetingTemplates', isAdmin
-    ? query(collection(db, 'recurringMeetingTemplates'), limit(MAX_PER_COLLECTION))
-    : query(collection(db, 'recurringMeetingTemplates'), where('ownerId', '==', user.id), limit(MAX_PER_COLLECTION)));
+  startListener('documents', authorizedQuery('documents', user.id, isAdmin));
+  startListener('tasks', authorizedQuery('tasks', user.id, isAdmin));
+  startListener('projects', authorizedQuery('projects', user.id, isAdmin));
+  startListener('meetings', authorizedQuery('meetings', user.id, isAdmin));
+  startListener('clients', authorizedQuery('clients', user.id, isAdmin));
+  startListener('followUps', authorizedQuery('followUps', user.id, isAdmin));
+  startListener('knowledge', authorizedQuery('knowledge', user.id, isAdmin));
+  startListener('reports', authorizedQuery('reports', user.id, isAdmin));
+  startListener('recurringMeetingTemplates', authorizedQuery('recurringMeetingTemplates', user.id, isAdmin));
 
   return () => stopJessWorkspaceCache();
 }
