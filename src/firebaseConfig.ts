@@ -8,7 +8,7 @@ import {
   persistentMultipleTabManager, Firestore
 } from 'firebase/firestore';
 
-type RuntimeConfig = {
+export type RuntimeConfig = {
   firebase: {
     apiKey: string;
     projectId: string;
@@ -23,9 +23,62 @@ type RuntimeConfig = {
 
 const isBrowser = typeof window !== 'undefined';
 
-const loadRuntimeConfig = async (): Promise<RuntimeConfig> => {
+export let FIRESTORE_DATABASE_ID = '(default)';
+export let FIREBASE_PROJECT_ID = '';
+export let GOOGLE_CLIENT_ID = '';
+
+export let app: FirebaseApp;
+export let auth: Auth;
+export let db: Firestore;
+
+const createFirebaseInstances = (runtimeConfig: RuntimeConfig) => {
+  if (app) return;
+
+  const firebaseConfig = runtimeConfig.firebase;
+  FIRESTORE_DATABASE_ID = firebaseConfig.firestoreDatabaseId || '(default)';
+  FIREBASE_PROJECT_ID = firebaseConfig.projectId;
+  GOOGLE_CLIENT_ID = runtimeConfig.googleClientId || '';
+
+  app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
+  try {
+    auth = initializeAuth(app, {
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
+  } catch {
+    auth = getAuth(app);
+  }
+
+  try {
+    db = initializeFirestore(
+      app,
+      { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) },
+      FIRESTORE_DATABASE_ID === '(default)' ? undefined : FIRESTORE_DATABASE_ID
+    );
+  } catch {
+    try {
+      db = FIRESTORE_DATABASE_ID === '(default)'
+        ? getFirestore(app)
+        : getFirestore(app, FIRESTORE_DATABASE_ID);
+    } catch {
+      db = initializeFirestore(
+        app, {}, FIRESTORE_DATABASE_ID === '(default)' ? undefined : FIRESTORE_DATABASE_ID
+      );
+    }
+  }
+};
+
+export async function initializeFirebaseConfig(config?: RuntimeConfig) {
+  if (app) return;
+
+  if (config) {
+    createFirebaseInstances(config);
+    return;
+  }
+
   if (!isBrowser) {
-    return {
+    createFirebaseInstances({
       firebase: {
         apiKey: 'test-api-key',
         projectId: 'test-project',
@@ -36,7 +89,8 @@ const loadRuntimeConfig = async (): Promise<RuntimeConfig> => {
         firestoreDatabaseId: '(default)',
       },
       googleClientId: '',
-    };
+    });
+    return;
   }
 
   const response = await fetch('/api/config', {
@@ -46,60 +100,35 @@ const loadRuntimeConfig = async (): Promise<RuntimeConfig> => {
   });
 
   if (!response.ok) {
-    throw new Error('Hub-Mind could not load its secure runtime configuration. Please refresh and try again.');
+    throw new Error('Hub-Mind could not load its runtime configuration. Please refresh and try again.');
   }
 
-  const data = await response.json();
+  const data = await response.json() as RuntimeConfig;
   const firebase = data?.firebase;
 
   const missing = ['apiKey', 'projectId', 'appId', 'messagingSenderId']
-    .filter((key) => !firebase?.[key]);
+    .filter((key) => !firebase?.[key as keyof RuntimeConfig['firebase']]);
 
   if (missing.length) {
     throw new Error(`Hub-Mind runtime configuration is incomplete: ${missing.join(', ')}`);
   }
 
-  return data as RuntimeConfig;
-};
+  createFirebaseInstances(data);
+}
 
-// Firebase browser configuration is intentionally loaded at runtime.
-// It is never injected by Vite into the static JavaScript bundle.
-const runtimeConfig = await loadRuntimeConfig();
-const firebaseConfig = runtimeConfig.firebase;
-
-export const FIRESTORE_DATABASE_ID = firebaseConfig.firestoreDatabaseId || '(default)';
-export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
-export const GOOGLE_CLIENT_ID = runtimeConfig.googleClientId || '';
-
-export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-
-let authInstance: Auth;
-try {
-  authInstance = initializeAuth(app, {
-    persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
-    popupRedirectResolver: browserPopupRedirectResolver,
+// Node-based tests need Firebase bindings immediately; browser startup is
+// explicitly bootstrapped by src/main.tsx after /api/config is fetched.
+if (!isBrowser) {
+  createFirebaseInstances({
+    firebase: {
+      apiKey: 'test-api-key',
+      projectId: 'test-project',
+      appId: 'test-app-id',
+      authDomain: 'test-project.firebaseapp.com',
+      storageBucket: 'test-project.firebasestorage.app',
+      messagingSenderId: 'test-sender-id',
+      firestoreDatabaseId: '(default)',
+    },
+    googleClientId: '',
   });
-} catch {
-  authInstance = getAuth(app);
 }
-export const auth: Auth = authInstance;
-
-let dbInstance: Firestore;
-try {
-  dbInstance = initializeFirestore(
-    app,
-    { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) },
-    FIRESTORE_DATABASE_ID === '(default)' ? undefined : FIRESTORE_DATABASE_ID
-  );
-} catch {
-  try {
-    dbInstance = FIRESTORE_DATABASE_ID === '(default)'
-      ? getFirestore(app)
-      : getFirestore(app, FIRESTORE_DATABASE_ID);
-  } catch {
-    dbInstance = initializeFirestore(
-      app, {}, FIRESTORE_DATABASE_ID === '(default)' ? undefined : FIRESTORE_DATABASE_ID
-    );
-  }
-}
-export const db: Firestore = dbInstance;
