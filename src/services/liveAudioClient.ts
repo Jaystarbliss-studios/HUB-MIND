@@ -293,7 +293,7 @@ export class LiveAudioClient {
         context?.page ? `Current Hub-Mind view: ${context.page}.` : '',
         context?.documentId ? `Active document on screen: "${context.documentTitle || 'Untitled'}" (ID: ${context.documentId}).` : '',
         'TOOLS & ACCURACY:',
-        'Use tools whenever the user asks to search, find, list, read, create, update, or navigate Hub-Mind data. Never claim an action succeeded unless confirmed by tool response.',
+        'Use tools whenever the user asks to search, find, list, read, create, update, email, schedule, navigate, scroll, click, type, or otherwise control Hub-Mind. Never claim an action succeeded unless confirmed by tool response.',
         'MANDATORY UI NAVIGATION RULE: Any request to open, go to, show, bring up, switch to, enter, or navigate to a Hub-Mind tab, section, page, screen, directory, or workspace view MUST trigger a navigation tool call. Use the most specific open_* tool when one exists; otherwise use navigate_app with the correct internal path. Do not merely say that you are opening or navigating to it. Do not claim it is open until the navigation tool has returned success.',
         'When asked to open the colleagues, people, or team directory tab, call `open_colleagues` or `navigate_app` with path "/colleagues".',
         'When asked to find or open a document, use find_document or open_document. Search by meaning, phrases, content, topic, project, person, and likely wording—not only exact titles. If the user says "the document about...", infer and rank the closest relevant records.',
