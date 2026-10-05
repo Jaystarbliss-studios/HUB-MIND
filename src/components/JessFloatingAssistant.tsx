@@ -150,8 +150,12 @@ export function JessFloatingAssistant() {
     if (isGoogleCalendarConnected()) {
       void refreshGoogleCalendarEvents().catch(() => {});
     }
+    void jessBackgroundTasks.resumePersistedTasks(profile.id, async (_task, step) => {
+      const result = await executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), resolveJessContext(location.pathname));
+      if (!result.result?.success) throw new Error(result.result?.error || 'Background step failed.');
+    });
     return stopCache;
-  }, [profile?.id, profile?.role]);
+  }, [profile?.id, profile?.role, location.pathname]);
 
   useEffect(() => {
     try {
