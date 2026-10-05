@@ -174,7 +174,14 @@ class JessBackgroundProcessingQueue {
     return this.getAllTasks().filter(t => t.status === 'in_progress' || t.status === 'queued');
   }
 
-  public getTask(id: string) { return this.queue.get(id); }
+  public getTask(id: string, userId?: string) {
+    const task = this.queue.get(id);
+    if (!task || (userId && task.userId !== userId)) return undefined;
+    return task;
+  }
+
+  public getTasksForUser(userId: string) { return this.getAllTasks().filter(t => t.userId === userId); }
+  public getActiveTasksForUser(userId: string) { return this.getTasksForUser(userId).filter(t => t.status === 'in_progress' || t.status === 'queued'); }
 
   public enqueueTask(params: {
     title: string;
@@ -282,11 +289,12 @@ class JessBackgroundProcessingQueue {
     this.emit('hubmind:jess-task-cancelled', task);
   }
 
-  public getActiveTasksSummary() { return this.getQueueSummaryForPrompt(); }
+  public getActiveTasksSummary(userId?: string) { return this.getQueueSummaryForPrompt(userId); }
 
-  public getQueueSummaryForPrompt() {
-    const active = this.getActiveTasks();
-    const recent = this.getAllTasks().filter(t => t.status === 'completed').slice(0, 5);
+  public getQueueSummaryForPrompt(userId?: string) {
+    const scoped = userId ? this.getTasksForUser(userId) : this.getAllTasks();
+    const active = scoped.filter(t => t.status === 'in_progress' || t.status === 'queued');
+    const recent = scoped.filter(t => t.status === 'completed').slice(0, 5);
     if (!active.length && !recent.length) return 'Background processing queue is currently idle (0 active jobs).';
     const lines: string[] = [];
     if (active.length) {
