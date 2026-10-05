@@ -1,7 +1,6 @@
-
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { initializeFirebaseConfig } from './firebaseConfig';
 import './index.css';
 
 // Handle dynamic import / vite chunk preload errors gracefully
@@ -15,15 +14,12 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Remove splash screen when app is ready
 const removeSplash = () => {
   const splash = document.getElementById('pwa-splash');
   if (splash) {
     splash.style.opacity = '0';
     setTimeout(() => {
-      if (splash.parentNode) {
-        splash.parentNode.removeChild(splash);
-      }
+      if (splash.parentNode) splash.parentNode.removeChild(splash);
     }, 500);
   }
 };
@@ -31,11 +27,34 @@ const removeSplash = () => {
 const rootElement = document.getElementById('root')!;
 const root = createRoot(rootElement);
 
-root.render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);
+async function bootstrap() {
+  try {
+    // Load browser configuration before importing App. This keeps all Firebase
+    // configuration out of Vite's static module graph and deployed JS bundles.
+    await initializeFirebaseConfig();
 
-// We can remove the splash screen right after render, or wait a bit
-setTimeout(removeSplash, 100);
+    const { default: App } = await import('./App.tsx');
+
+    root.render(
+      <StrictMode>
+        <App />
+      </StrictMode>
+    );
+
+    setTimeout(removeSplash, 100);
+  } catch (error) {
+    console.error('[HubMind] Bootstrap failed:', error);
+    root.render(
+      <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 text-slate-200 p-6">
+        <div className="max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-7 text-center">
+          <h1 className="text-lg font-bold text-white mb-2">Hub-Mind could not start</h1>
+          <p className="text-sm text-slate-400">
+            Runtime configuration could not be loaded. Refresh the page and try again.
+          </p>
+        </div>
+      </div>
+    );
+  }
+}
+
+void bootstrap();

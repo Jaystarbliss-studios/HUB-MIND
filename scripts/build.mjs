@@ -20,13 +20,14 @@ const scanFiles = [
     const walk = (currentDir) => fs.readdirSync(currentDir, { withFileTypes: true }).flatMap((entry) => {
       const fullPath = path.join(currentDir, entry.name);
       if (entry.isDirectory()) return walk(fullPath);
-      return /\\.(?:ts|tsx|js|mjs|cjs|json|html|css|toml)$/i.test(entry.name) ? [fullPath] : [];
+      return /\.(?:ts|tsx|js|mjs|cjs|json|html|css|toml)$/i.test(entry.name) ? [fullPath] : [];
     });
     return walk(dir);
   }),
 ];
 
 for (const file of scanFiles) {
+  if (file === path.resolve(projectRoot, 'scripts/build.mjs')) continue;
   if (!fs.existsSync(file)) continue;
   const source = fs.readFileSync(file, 'utf8');
   if (/AIzaSy[A-Za-z0-9_-]{20,}/.test(source)) {
@@ -37,12 +38,66 @@ for (const file of scanFiles) {
   }
 }
 
+// Client credentials must never be statically injected into the browser bundle.
+// Firebase browser configuration is loaded at runtime through /api/config instead.
+const clientSourceFiles = scanFiles.filter((file) => {
+  const relative = path.relative(projectRoot, file).split(path.sep).join('/');
+  return relative.startsWith('src/') || sourceFiles.includes(relative);
+});
+for (const file of clientSourceFiles) {
+  if (!fs.existsSync(file)) continue;
+  const source = fs.readFileSync(file, 'utf8');
+  if (/import\.meta\.env\.VITE_FIREBASE_|process\.env\.VITE_FIREBASE_/.test(source)) {
+    throw new Error(`Client Firebase environment injection detected in source: ${path.relative(projectRoot, file)}`);
+  }
+  if (/import\.meta\.env\.VITE_GOOGLE_CLIENT_ID|process\.env\.VITE_GOOGLE_CLIENT_ID/.test(source)) {
+    throw new Error(`Client Google OAuth environment injection detected in source: ${path.relative(projectRoot, file)}`);
+  }
+}
+
 // 1. Run Vite build with all plugins (including Tailwind and VitePWA)
 await build();
 
 const distDir = path.resolve(process.cwd(), 'dist');
 if (!fs.existsSync(distDir) || fs.readdirSync(distDir).length === 0) {
   throw new Error('Build output directory "dist" was not produced!');
+}
+
+// Defense-in-depth: fail the build if a Google API key or any configured
+// client-side environment value has been embedded into static artifacts.
+const clientEnvKeys = [
+  'VITE_FIREBASE_WEB_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_APP_ID',
+  'VITE_FIREBASE_MESSAGING_SENDER_ID',
+  'VITE_FIREBASE_STORAGE_BUCKET',
+  'VITE_FIRESTORE_DATABASE_ID',
+  'VITE_GOOGLE_CLIENT_ID',
+];
+
+const builtFiles = [];
+const collectBuiltFiles = (dir) => {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) collectBuiltFiles(fullPath);
+    else if (/\.(?:js|mjs|cjs|html|css|json|svg|webmanifest)$/i.test(entry.name)) builtFiles.push(fullPath);
+  }
+};
+collectBuiltFiles(distDir);
+
+for (const file of builtFiles) {
+  const output = fs.readFileSync(file, 'utf8');
+  if (/AIzaSy[A-Za-z0-9_-]{20,}/.test(output)) {
+    throw new Error(`Google API key detected in production artifact: ${path.relative(projectRoot, file)}`);
+  }
+  for (const key of clientEnvKeys) {
+    const value = process.env[key];
+    if (value && value.length > 4 && output.includes(value)) {
+      throw new Error(`Client environment value ${key} was embedded in production artifact: ${path.relative(projectRoot, file)}`);
+    }
+  }
 }
 
 // 2. Mirror complete build artifacts to 'build' and 'out' directories
