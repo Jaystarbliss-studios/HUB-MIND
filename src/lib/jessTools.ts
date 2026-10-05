@@ -37,6 +37,30 @@ export interface JessToolDefinition {
   parameters: { type: string; properties: Record<string, any>; required?: string[] };
 }
 
+
+function normalizeSearchText(value: any): string {
+  return String(value || '').toLowerCase().replace(/<[^>]+>/g, ' ').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function fuzzyRelevance(queryText: string, record: any): number {
+  const queryTokens = normalizeSearchText(queryText).split(' ').filter(t => t.length >= 2);
+  if (!queryTokens.length) return 0;
+  const fields = [record.title, record.name, record.description, record.category, record.content, record.notes, record.tags].map(normalizeSearchText);
+  const title = fields[0] || '';
+  const haystack = fields.join(' ');
+  let score = 0;
+  for (const token of queryTokens) {
+    if (title.includes(token)) score += 8;
+    else if (haystack.includes(token)) score += 4;
+    else {
+      const first = token[0];
+      if (first && haystack.split(' ').some((word: string) => word.startsWith(first) && word.length >= 4 && Math.abs(word.length - token.length) <= 2)) score += 1;
+    }
+  }
+  const phrase = normalizeSearchText(queryText);
+  if (phrase && title.includes(phrase)) score += 12;
+  return score;
+}
+
 const object = (properties: Record<string, any>, required?: string[]): JessToolDefinition['parameters'] => ({
   type: 'object',
   properties,
@@ -1014,8 +1038,11 @@ export async function executeJessTool(
         const allDocs = await fetchAllDocumentsForUser(user);
         let filtered = allDocs;
         if (args.query) {
-          const q = String(args.query).toLowerCase();
-          filtered = allDocs.filter(d => (d.title || '').toLowerCase().includes(q) || (d.content || '').toLowerCase().includes(q));
+          filtered = allDocs
+            .map(d => ({ doc: d, score: fuzzyRelevance(String(args.query), d) }))
+            .filter(x => x.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .map(x => x.doc);
         }
         return {
           result: {
@@ -1033,18 +1060,21 @@ export async function executeJessTool(
       }
 
       case 'find_document': {
-        const term = String(args.title || '').toLowerCase().trim();
+        const term = String(args.title || '').trim();
         const allDocs = await fetchAllDocumentsForUser(user);
-        const matches = allDocs.filter(d => (d.title || '').toLowerCase().includes(term));
-        if (matches.length === 0) {
-          return { result: { success: false, message: `No document matching "${args.title}" was found.` } };
-        }
-        const top = matches[0];
+        const ranked = allDocs
+          .map(d => ({ doc: d, score: fuzzyRelevance(term, d) }))
+          .filter(x => x.score > 0)
+          .sort((a, b) => b.score - a.score || new Date(b.doc.updatedAt || b.doc.createdAt || 0).getTime() - new Date(a.doc.updatedAt || a.doc.createdAt || 0).getTime());
+        if (!ranked.length) return { result: { success: false, message: `No document or workspace record related to "${args.title}" was found.` } };
+        const top = ranked[0].doc;
         return {
           result: {
             success: true,
             document: { id: top.id, title: top.title, content: top.content || '', category: top.category },
-            otherMatches: matches.slice(1, 5).map(d => ({ id: d.id, title: d.title })),
+            relevance: ranked[0].score,
+            otherMatches: ranked.slice(1, 6).map(x => ({ id: x.doc.id, title: x.doc.title, relevance: x.score })),
+            message: ranked[0].score >= 8 ? `Found the most relevant document: "${top.title}".` : `I found the closest relevant document, "${top.title}", based on your wording and its content.`,
           },
           actionPayload: navigatePayload(`/documents/${top.id}`),
         };
