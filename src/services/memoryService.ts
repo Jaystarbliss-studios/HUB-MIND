@@ -270,14 +270,14 @@ export function extractNuancedDetails(userMessage: string): ExtractedDetail[] {
     add('user_note', rememberMatch[1].trim(), 'instruction', 'high');
   }
 
-  // 2. Strong Preferences ("I prefer...", "I always prefer...", "I like my docs formatted...", "My preference is...")
-  const preferMatch = text.match(/(?:i prefer|i always prefer|my preference is|i like to have|i like my)\s+([^.!?\n]+)/i);
+  // 2. Strong Preferences, likes, and dislikes.
+  const preferMatch = text.match(/(?:i prefer|i always prefer|my preference is|i like to have|i like my|i like|i love|i enjoy)\s+([^.!?\n]+)/i);
   if (preferMatch && preferMatch[1]) {
-    add('user_preference', `User preference: ${preferMatch[1].trim()}`, 'preference', 'high');
+    add('user_preference', `User preference/like: ${preferMatch[1].trim()}`, 'preference', 'high');
   }
 
   // 3. Dislikes & Constraints ("I don't like...", "Avoid...", "Never...", "Don't schedule...")
-  const dislikeMatch = text.match(/(?:i (?:don't|do not) like|i hate|avoid|never|do not schedule|don't schedule|please avoid)\s+([^.!?\n]+)/i);
+  const dislikeMatch = text.match(/(?:i (?:don't|do not) like|i hate|i dislike|avoid|never|do not schedule|don't schedule|please avoid)\s+([^.!?\n]+)/i);
   if (dislikeMatch && dislikeMatch[1]) {
     add('user_constraint', `Constraint/Dislike: ${dislikeMatch[1].trim()}`, 'preference', 'high');
   }
