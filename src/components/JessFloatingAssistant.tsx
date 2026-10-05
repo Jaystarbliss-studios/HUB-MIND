@@ -12,6 +12,7 @@ import { autoExtractMemory } from '../services/memoryService';
 import { trackAndPersistSentiment } from '../services/sentimentService';
 import { scanCurrentPageContext, ContextActionSuggestion } from '../services/contextScannerService';
 import { startJessWorkspaceCache } from '../services/jessWorkspaceCache';
+import { isGoogleCalendarConnected, refreshGoogleCalendarEvents } from '../lib/googleCalendar';
 import { 
   Activity, 
   Lightbulb, 
@@ -127,7 +128,11 @@ export function JessFloatingAssistant() {
   // continuously in the background.
   useEffect(() => {
     if (!profile) return;
-    return startJessWorkspaceCache(profile);
+    const stopCache = startJessWorkspaceCache(profile);
+    if (isGoogleCalendarConnected()) {
+      void refreshGoogleCalendarEvents().catch(() => {});
+    }
+    return stopCache;
   }, [profile?.id, profile?.role]);
 
   useEffect(() => {
