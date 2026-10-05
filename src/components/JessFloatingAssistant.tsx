@@ -158,7 +158,7 @@ export function JessFloatingAssistant() {
     const unsub = jessBackgroundTasks.subscribe(tasks => {
       setActiveBgTasks(tasks.filter(t => t.userId === profile.id && t.status === 'in_progress'));
     });
-    return () => unsub();
+    return () => { unsub(); };
   }, [profile?.id]);
 
   // Keep a warm, user-scoped local index of the workspace. Firestore's persistent
