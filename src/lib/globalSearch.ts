@@ -4,6 +4,22 @@ import { ResourceType } from '../types';
 import { getLocalDocsMap } from './offlineSync';
 import { getCachedCollection } from '../services/jessWorkspaceCache';
 
+
+function tokenize(value: any): string[] {
+  return String(value || '').toLowerCase().replace(/<[^>]+>/g, ' ').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length >= 2);
+}
+function relevance(term: string, item: any): number {
+  const q = tokenize(term);
+  const title = tokenize(item.title || item.name).join(' ');
+  const all = tokenize([item.title,item.name,item.description,item.content,item.category,item.notes,item.tags].join(' ')).join(' ');
+  let score = title.includes(tokenize(term).join(' ')) ? 15 : 0;
+  for (const t of q) {
+    if (title.includes(t)) score += 7;
+    else if (all.includes(t)) score += 3;
+  }
+  return score;
+}
+
 export interface SearchResult {
   type: ResourceType;
   id: string;
@@ -112,11 +128,8 @@ export async function globalSearch(
     let matchesForType = 0;
     for (const x of docs) {
       if (matchesForType >= maxPerType) break;
-      const searchable = [x.title, x.name, x.description, x.content, x.email, x.phone, x.category]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      if (!searchable.includes(needle)) continue;
+      const score = relevance(needle, x);
+      if (score <= 0) continue;
       const title = String(x.title || x.name || x.description || x.id);
       const route = searchRoutes[type] || collName;
       results.push({
@@ -125,10 +138,11 @@ export async function globalSearch(
         title,
         subtitle: x.description ? String(x.description) : undefined,
         path: `/${route}/${x.id}`,
-      });
+        relevance: score,
+      } as SearchResult & { relevance: number });
       matchesForType++;
     }
   }
 
-  return results.slice(0, 50);
+  return results.sort((a: any, b: any) => (b.relevance || 0) - (a.relevance || 0)).slice(0, 50);
 }
