@@ -282,11 +282,6 @@ export class LiveAudioClient {
                   this.callbacks.onError?.('Gemini Live connection failed.');
                   this.callbacks.onStatusChange('error');
                   this.callbacks.onJessStateChange('error');
-                } else {
-                    this.callbacks.onError?.('Gemini Live connection failed.');
-                    this.callbacks.onStatusChange('error');
-                    this.callbacks.onJessStateChange('error');
-                  }
                 }
               },
               onclose: (event: any) => {
