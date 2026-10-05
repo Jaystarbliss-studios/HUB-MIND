@@ -211,6 +211,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'create_calendar_event', description: 'Create a Google Calendar event (supports single and recurring events via recurrenceRule).', parameters: object({ title: { type: 'string' }, startDateTime: { type: 'string' }, endDateTime: { type: 'string' }, reminderMinutes: { type: 'array', items: { type: 'number' }, description: 'Optional reminder times in minutes before the event, e.g. [1440, 60, 10].' }, location: { type: 'string' }, description: { type: 'string' }, recurrenceRule: { type: 'string', description: 'Optional recurrence rule e.g. RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR' } }, ['title', 'startDateTime']) },
   { name: 'connect_google_calendar', description: 'Perform one-time Google Calendar connection to link the users account once for permanent sync.', parameters: object({}) },
   { name: 'get_google_calendar_status', description: 'Check whether Google Calendar is currently connected.', parameters: object({}) },
+  { name: 'save_activity_report', description: 'Write a daily or weekly activity report into the signed-in user\'s Today/report area and also save it as a workspace document. Use this for end-of-day reports, weekly activity summaries, and requested written operational reports.', parameters: object({ period: { type: 'string', enum: ['daily', 'weekly'] }, dateKey: { type: 'string', description: 'Optional YYYY-MM-DD date for daily reports.' }, title: { type: 'string' }, report: { type: 'string' }, snapshot: { type: 'object' } }, ['period', 'report']) },
   
   // Personalization, User Memory & Background Operations
   { name: 'set_preferred_name', description: 'Save the name the signed-in user wants to be addressed with.', parameters: object({ preferredName: { type: 'string' } }, ['preferredName']) },
@@ -1967,6 +1968,47 @@ export async function executeJessTool(
       case 'connect_google_calendar': {
         const res = await connectGoogleCalendarOnce();
         return { result: res };
+      }
+
+      case 'save_activity_report': {
+        const period = args.period === 'weekly' ? 'weekly' : 'daily';
+        const now = new Date();
+        const dateKey = String(args.dateKey || format(now, 'yyyy-MM-dd'));
+        const title = String(args.title || (period === 'weekly' ? 'Weekly Activity Report' : 'Daily Report — ' + format(now, 'dd MMMM yyyy')));
+        const report = String(args.report || '').trim();
+        if (!report) return { result: { success: false, error: 'Report content is required.' } };
+        const collectionName = period === 'weekly' ? 'weeklyReports' : 'dailyReports';
+        await setDoc(doc(db, 'users', user.id, collectionName, dateKey), {
+          date: dateKey,
+          authorId: user.id,
+          authorName: user.displayName || user.preferredName || user.name || user.username,
+          report,
+          updatedAt: now.toISOString(),
+          snapshot: args.snapshot || {},
+        }, { merge: true });
+
+        const htmlContent = report.split('\n').map((line: string) => {
+          const trimmed = line.trim();
+          if (!trimmed) return '<br/>';
+          if (trimmed.startsWith('•')) return '<li>' + trimmed.substring(1).trim() + '</li>';
+          if (trimmed.endsWith(':') || /REPORT/i.test(trimmed)) return '<h3><strong>' + trimmed + '</strong></h3>';
+          return '<p>' + trimmed.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>';
+        }).join('');
+        const docRef = await addDoc(collection(db, 'documents'), {
+          title,
+          content: htmlContent,
+          category: 'report',
+          ownerId: user.id,
+          createdBy: user.id,
+          visibility: 'workspace',
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+          lastEditedAt: now.toISOString(),
+          lastSavedAt: now.toISOString(),
+          version: 1,
+          type: 'internal',
+        });
+        return { result: { success: true, reportId: dateKey, documentId: docRef.id, title, message: title + ' saved to the ' + period + ' reports and workspace Documents.' } };
       }
 
       case 'get_google_calendar_status': {
