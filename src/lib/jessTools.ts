@@ -35,6 +35,7 @@ export interface JessToolDefinition {
   name: string;
   description: string;
   parameters: { type: string; properties: Record<string, any>; required?: string[] };
+  behavior?: 'NON_BLOCKING';
 }
 
 
@@ -254,7 +255,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
       keyOrMemoryId: { type: 'string', description: 'Key name or ID of the memory to remove' } 
     }, ['keyOrMemoryId']) 
   },
-  { name: 'start_background_operation', description: 'Start a long-running task in the background (e.g. document drafting, audit, batch organization, research). Jess can continue conversing while it runs.', parameters: object({ title: { type: 'string' }, description: { type: 'string' }, taskType: { type: 'string' } }, ['title']) },
+  { behavior: 'NON_BLOCKING', name: 'start_background_operation', description: 'Start a real multi-step background workflow. Jess can continue conversing while it runs. Progress must reflect completed executable steps, never simulated waiting.', parameters: object({ title: { type: 'string' }, description: { type: 'string' }, taskType: { type: 'string' }, steps: { type: 'array', description: 'Ordered executable tool steps.', items: { type: 'object', properties: { tool: { type: 'string' }, args: { type: 'object' }, label: { type: 'string' } }, required: ['tool'] } } }, ['title', 'steps']) },
   { name: 'get_background_tasks_status', description: 'Check the real-time progress percentage and stage of background tasks.', parameters: object({ taskId: { type: 'string' } }) },
   { name: 'end_session', description: 'Put the AI assistant to sleep or end the current live voice session when the user says "end this session", "go to sleep", "sleep", "deactivate", or wants to conclude.', parameters: object({ reason: { type: 'string' } }) },
 ];
