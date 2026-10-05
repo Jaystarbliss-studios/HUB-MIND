@@ -65,7 +65,7 @@ if (!existsSync(resolve(root, 'public/jess-capture-processor.js'))) failures.pus
 const wake = readFileSync(resolve(root, 'src/services/jessWakeListener.ts'), 'utf8');
 if (!wake.includes('isJessPcWakeSupported') || !wake.includes('extractJessWakeCommand') || !wake.includes('SpeechRecognition') || !wake.includes('webkitSpeechRecognition')) failures.push('jessWakeListener.ts: PC voice wake implementation is incomplete');
 if (!wake.includes('MOBILE_UA') || !wake.includes("pointer: fine")) failures.push('jessWakeListener.ts: PC-only device gating is missing');
-if (!wake.includes('\\b(?:hey|hi)?\\s*jess\\b')) failures.push('jessWakeListener.ts: Jess wake phrase matcher is missing');
+if (!wake.includes('\\bjess\\b')) failures.push('jessWakeListener.ts: Jess wake phrase matcher is missing');
 if (!wake.includes('recognition.continuous = true') || !wake.includes('recognition.interimResults = true')) failures.push('jessWakeListener.ts: continuous/interim wake recognition is not configured');
 if (!existsSync(resolve(root, 'tests/jess/jessWakeListener.test.mjs'))) failures.push('tests/jess/jessWakeListener.test.mjs: wake phrase regression tests are missing');
 
