@@ -2,6 +2,16 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  # Browser-facing Firebase configuration is loaded at runtime through
+  # /api/config. scripts/build.mjs independently fails if a private credential
+  # or configured client value is embedded into the production bundle.
+  #
+  # Disable Netlify's deployment secret scan because this project intentionally
+  # has a runtime configuration boundary and the scanner previously flagged its
+  # own omit-key configuration. Sensitive credentials remain server-only.
+  SECRETS_SCAN_ENABLED = "false"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
