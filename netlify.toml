@@ -65,3 +65,5 @@
   for = "/manifest.webmanifest"
   [headers.values]
     Cache-Control = "no-cache, must-revalidate"
+
+# Production deployment trigger: keep main as the authoritative Netlify production branch.
