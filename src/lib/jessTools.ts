@@ -15,6 +15,7 @@ import { queueJessDocumentEdit } from './jessDocumentBridge';
 import { getLocalDocsMap, setLocalDocsMap } from './offlineSync';
 import { jessBackgroundTasks } from '../services/jessBackgroundTasks';
 import { materializeRecurringMeetings } from './recurringMeetings';
+import { getCachedCollection } from '../services/jessWorkspaceCache';
 import { 
   shareResourceWithUser, 
   sendDirectInformation, 
@@ -276,36 +277,39 @@ async function fetchAllDocumentsForUser(user: User): Promise<any[]> {
   const map = new Map<string, any>();
 
   try {
-    const local = getLocalDocsMap();
-    Object.values(local).forEach(d => {
+    Object.values(getLocalDocsMap()).forEach(d => {
       if (d && d.id) map.set(d.id, { id: d.id, ...d });
     });
   } catch {}
 
-  try {
-    const colRef = collection(db, 'documents');
-    if (user.role === 'admin') {
-      const snap = await getDocs(query(colRef, limit(100)));
-      snap.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
-    } else {
-      const [ownSnap, workSnap, createdSnap] = await Promise.all([
-        getDocs(query(colRef, where('ownerId', '==', user.id), limit(60))).catch(() => null),
-        getDocs(query(colRef, where('visibility', '==', 'workspace'), limit(60))).catch(() => null),
-        getDocs(query(colRef, where('createdBy', '==', user.id), limit(60))).catch(() => null),
-      ]);
-      ownSnap?.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
-      workSnap?.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
-      createdSnap?.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+  // Warm workspace cache is the primary fast path.
+  getCachedCollection<any>('documents').forEach(d => map.set(d.id, d));
+
+  // Only hit Firestore directly when the local index is empty. The live listener
+  // will populate the cache in the background for subsequent requests.
+  if (map.size === 0) {
+    try {
+      const colRef = collection(db, 'documents');
+      if (user.role === 'admin') {
+        const snap = await getDocs(query(colRef, limit(100)));
+        snap.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+      } else {
+        const [ownSnap, workSnap, createdSnap] = await Promise.all([
+          getDocs(query(colRef, where('ownerId', '==', user.id), limit(60))).catch(() => null),
+          getDocs(query(colRef, where('visibility', '==', 'workspace'), limit(60))).catch(() => null),
+          getDocs(query(colRef, where('createdBy', '==', user.id), limit(60))).catch(() => null),
+        ]);
+        ownSnap?.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+        workSnap?.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+        createdSnap?.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+      }
+    } catch (e) {
+      console.warn('[Jess] Documents fetch fallback:', e);
     }
-  } catch (e) {
-    console.warn('[Jess] Documents fetch fallback:', e);
   }
 
-  return Array.from(map.values()).sort((a, b) => {
-    const aTime = new Date(a.lastEditedAt || a.updatedAt || a.createdAt || 0).getTime();
-    const bTime = new Date(b.lastEditedAt || b.updatedAt || b.createdAt || 0).getTime();
-    return bTime - aTime;
-  });
+  return Array.from(map.values())
+    .sort((a, b) => new Date(b.lastEditedAt || b.updatedAt || b.createdAt || 0).getTime() - new Date(a.lastEditedAt || a.updatedAt || a.createdAt || 0).getTime());
 }
 
 async function readResource(collectionName: string, id: string, user: User) {
@@ -1340,10 +1344,8 @@ export async function executeJessTool(
 
       case 'get_schedule':
       case 'list_meetings': {
-        // Materialize recurring meetings to ensure fresh sync
-        try {
-          await materializeRecurringMeetings(90, user);
-        } catch (e) {}
+        // Materialization is maintenance work, not a reason to delay a voice answer.
+        void materializeRecurringMeetings(90, user).catch(() => {});
 
         const now = new Date();
         let queryStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
@@ -1394,16 +1396,28 @@ export async function executeJessTool(
           }
         }
 
-        // 1. Fetch meetings from Firestore
-        const isPrivileged = user.role === 'admin';
-        const meetingsQuery = isPrivileged
-          ? collection(db, 'meetings')
-          : query(collection(db, 'meetings'), where('ownerId', '==', user.id));
-        
-        const meetingsSnap = await getDocs(meetingsQuery);
+        // 1. Read the warm local workspace index first. Firestore listeners keep it fresh.
+        let cachedMeetings = getCachedCollection<any>('meetings');
+        let cachedTemplates = getCachedCollection<any>('recurringMeetingTemplates');
+        if (cachedMeetings.length === 0 || cachedTemplates.length === 0) {
+          const isPrivileged = user.role === 'admin';
+          const meetingsQuery = isPrivileged
+            ? collection(db, 'meetings')
+            : query(collection(db, 'meetings'), where('ownerId', '==', user.id));
+          const [meetingsSnap, templatesSnap] = await Promise.all([
+            getDocs(query(meetingsQuery, limit(150))).catch(() => ({ docs: [] })),
+            getDocs(isPrivileged
+              ? query(collection(db, 'recurringMeetingTemplates'), where('active', '==', true), limit(150))
+              : query(collection(db, 'recurringMeetingTemplates'), where('active', '==', true), where('ownerId', '==', user.id), limit(150))
+            ).catch(() => ({ docs: [] })),
+          ]);
+          if (cachedMeetings.length === 0) cachedMeetings = meetingsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          if (cachedTemplates.length === 0) cachedTemplates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+
         const allMeetings: any[] = [];
-        meetingsSnap.forEach(d => {
-          const data = d.data();
+        cachedMeetings.forEach((d: any) => {
+          const data = d.data || d;
           const mDate = new Date(data.date);
           if (!isNaN(mDate.getTime()) && mDate >= queryStart && mDate <= queryEnd) {
             allMeetings.push({
@@ -1423,13 +1437,10 @@ export async function executeJessTool(
           }
         });
 
-        // 2. Also check recurringMeetingTemplates directly
-        const templatesQuery = isPrivileged
-          ? query(collection(db, 'recurringMeetingTemplates'), where('active', '==', true))
-          : query(collection(db, 'recurringMeetingTemplates'), where('active', '==', true), where('ownerId', '==', user.id));
-        
-        const templatesSnap = await getDocs(templatesQuery);
-        const templates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() } as RecurringMeetingTemplate));
+        // 2. Recurring templates are already in the same warm index.
+        const templates = cachedTemplates
+          .map((d: any) => ({ id: d.id, ...(d.data || d) } as RecurringMeetingTemplate))
+          .filter((template: any) => template.active !== false && (user.role === 'admin' || template.ownerId === user.id));
 
         // Evaluate recurring templates within queryStart .. queryEnd
         const dayDifference = Math.min(90, Math.max(1, Math.ceil((queryEnd.getTime() - queryStart.getTime()) / (1000 * 60 * 60 * 24))));
