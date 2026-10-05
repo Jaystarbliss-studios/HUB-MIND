@@ -62,6 +62,12 @@ if (!live.includes('connectPromise') || !live.includes('connectInternal')) failu
 if (!live.includes('AudioWorkletNode') || !live.includes("/jess-capture-processor.js")) failures.push('liveAudioClient.ts: AudioWorklet microphone pipeline is missing');
 if (live.includes('ScriptProcessorNode') || live.includes('createScriptProcessor') || live.includes('audioprocess')) failures.push('liveAudioClient.ts: deprecated ScriptProcessor audio pipeline remains');
 if (!existsSync(resolve(root, 'public/jess-capture-processor.js'))) failures.push('public/jess-capture-processor.js: AudioWorklet processor is missing');
+const wake = readFileSync(resolve(root, 'src/services/jessWakeListener.ts'), 'utf8');
+if (!wake.includes('isJessPcWakeSupported') || !wake.includes('extractJessWakeCommand') || !wake.includes('SpeechRecognition') || !wake.includes('webkitSpeechRecognition')) failures.push('jessWakeListener.ts: PC voice wake implementation is incomplete');
+if (!wake.includes('MOBILE_UA') || !wake.includes("pointer: fine")) failures.push('jessWakeListener.ts: PC-only device gating is missing');
+if (!wake.includes('\\bjess\\b')) failures.push('jessWakeListener.ts: Jess wake phrase matcher is missing');
+if (!wake.includes('recognition.continuous = true') || !wake.includes('recognition.interimResults = true')) failures.push('jessWakeListener.ts: continuous/interim wake recognition is not configured');
+if (!existsSync(resolve(root, 'tests/jess/jessWakeListener.test.mjs'))) failures.push('tests/jess/jessWakeListener.test.mjs: wake phrase regression tests are missing');
 
 const floating = readFileSync(resolve(root, 'src/components/JessFloatingAssistant.tsx'), 'utf8');
 for (const contract of ['sessionEndingRef', 'JSON.parse(toolArgs)', 'sendFunctionResponse({ name: fc.name']) {
