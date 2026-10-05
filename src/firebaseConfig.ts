@@ -7,11 +7,10 @@ import {
   initializeFirestore, getFirestore, persistentLocalCache,
   persistentMultipleTabManager, Firestore
 } from 'firebase/firestore';
-import appletConfig from '../firebase-applet-config.json';
 
 const getEnv = (key: string): string => {
   if (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.[key]) {
-    return (import.meta as any).env[key];
+    return (import.meta as any).env[key] || '';
   }
   if (typeof process !== 'undefined' && process?.env?.[key]) {
     return process.env[key] || '';
@@ -19,15 +18,25 @@ const getEnv = (key: string): string => {
   return '';
 };
 
-const projectId = getEnv('VITE_FIREBASE_PROJECT_ID') || getEnv('FIREBASE_PROJECT_ID') || appletConfig.projectId || '';
-const apiKey = getEnv('VITE_FIREBASE_WEB_API_KEY') || getEnv('FIREBASE_WEB_API_KEY') || appletConfig.apiKey || '';
-const appId = getEnv('VITE_FIREBASE_APP_ID') || getEnv('FIREBASE_APP_ID') || appletConfig.appId || '';
-const authDomain = getEnv('VITE_FIREBASE_AUTH_DOMAIN') || getEnv('FIREBASE_AUTH_DOMAIN') || appletConfig.authDomain || (projectId ? `${projectId}.firebaseapp.com` : '');
-const storageBucket = getEnv('VITE_FIREBASE_STORAGE_BUCKET') || getEnv('FIREBASE_STORAGE_BUCKET') || appletConfig.storageBucket || (projectId ? `${projectId}.firebasestorage.app` : '');
-const messagingSenderId = getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') || getEnv('FIREBASE_MESSAGING_SENDER_ID') || appletConfig.messagingSenderId || '';
+const projectId = getEnv('VITE_FIREBASE_PROJECT_ID') || getEnv('FIREBASE_PROJECT_ID');
+const apiKey = getEnv('VITE_FIREBASE_WEB_API_KEY') || getEnv('FIREBASE_WEB_API_KEY');
+const appId = getEnv('VITE_FIREBASE_APP_ID') || getEnv('FIREBASE_APP_ID');
+const authDomain =
+  getEnv('VITE_FIREBASE_AUTH_DOMAIN') ||
+  getEnv('FIREBASE_AUTH_DOMAIN') ||
+  (projectId ? `${projectId}.firebaseapp.com` : '');
+const storageBucket =
+  getEnv('VITE_FIREBASE_STORAGE_BUCKET') ||
+  getEnv('FIREBASE_STORAGE_BUCKET') ||
+  (projectId ? `${projectId}.firebasestorage.app` : '');
+const messagingSenderId =
+  getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') ||
+  getEnv('FIREBASE_MESSAGING_SENDER_ID');
 
 export const FIRESTORE_DATABASE_ID =
-  getEnv('VITE_FIRESTORE_DATABASE_ID') || getEnv('FIRESTORE_DATABASE_ID') || (appletConfig as any).firestoreDatabaseId || 'ai-studio-hubmind-4cac2024-c6eb-4208-80cf-928714dfd430';
+  getEnv('VITE_FIRESTORE_DATABASE_ID') ||
+  getEnv('FIRESTORE_DATABASE_ID') ||
+  '(default)';
 
 const firebaseConfig = {
   apiKey,
@@ -37,6 +46,17 @@ const firebaseConfig = {
   storageBucket,
   messagingSenderId,
 };
+
+const missing = Object.entries({
+  VITE_FIREBASE_WEB_API_KEY: apiKey,
+  VITE_FIREBASE_PROJECT_ID: projectId,
+  VITE_FIREBASE_APP_ID: appId,
+  VITE_FIREBASE_MESSAGING_SENDER_ID: messagingSenderId,
+}).filter(([, value]) => !value).map(([key]) => key);
+
+if (missing.length) {
+  throw new Error(`Firebase configuration is incomplete. Missing: ${missing.join(', ')}`);
+}
 
 export const FIREBASE_PROJECT_ID = projectId;
 
