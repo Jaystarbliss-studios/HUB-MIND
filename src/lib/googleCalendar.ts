@@ -114,7 +114,7 @@ export async function getCalendarAccessToken(forcePrompt = false): Promise<strin
     if (existing) return existing;
   }
 
-  const token = await requestGoogleAccessToken(CALENDAR_SCOPES);
+  const token = await requestGoogleAccessToken(CALENDAR_SCOPES, forcePrompt);
   if (!token) {
     throw new Error('Google Calendar access token could not be obtained.');
   }
@@ -200,6 +200,7 @@ export async function createGoogleCalendarEvent(payload: CalendarEventPayload): 
   }
 
   const reminderMinutes = payload.reminderMinutes !== undefined ? payload.reminderMinutes : 15;
+  const reminderList = Array.isArray(reminderMinutes) ? reminderMinutes : [reminderMinutes];
 
   const eventBody: any = {
     summary: payload.summary,
@@ -214,8 +215,10 @@ export async function createGoogleCalendarEvent(payload: CalendarEventPayload): 
     reminders: {
       useDefault: false,
       overrides: [
-        { method: 'popup', minutes: reminderMinutes },
-        { method: 'email', minutes: reminderMinutes },
+        ...reminderList.filter((m: any) => Number.isFinite(Number(m)) && Number(m) >= 0).slice(0, 5).flatMap((minutes: any) => [
+          { method: 'popup', minutes: Number(minutes) },
+          { method: 'email', minutes: Number(minutes) },
+        ]),
       ],
     },
   };
