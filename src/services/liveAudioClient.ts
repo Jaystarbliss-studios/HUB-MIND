@@ -36,7 +36,7 @@ export class LiveAudioClient {
   private lowpassFilter: BiquadFilterNode | null = null;
   private outputGainNode: GainNode | null = null;
   private mediaStream: MediaStream | null = null;
-  private scriptProcessor: ScriptProcessorNode | null = null;
+  private audioWorkletNode: AudioWorkletNode | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private nextStartTime = 0;
   private activeSources: AudioBufferSourceNode[] = [];
@@ -97,13 +97,11 @@ export class LiveAudioClient {
     this.inputGainNode = this.inputAudioCtx.createGain();
     this.inputGainNode.gain.value = 1.0;
 
-    // Highpass filter at 85Hz to cut table thumps, AC/fan hum, and sub-bass background noise
     this.highpassFilter = this.inputAudioCtx.createBiquadFilter();
     this.highpassFilter.type = 'highpass';
     this.highpassFilter.frequency.value = 85;
     this.highpassFilter.Q.value = 0.7;
 
-    // Lowpass filter at 7000Hz to eliminate high-frequency electronic hiss and ambient sizzle
     this.lowpassFilter = this.inputAudioCtx.createBiquadFilter();
     this.lowpassFilter.type = 'lowpass';
     this.lowpassFilter.frequency.value = 7000;
@@ -138,15 +136,44 @@ export class LiveAudioClient {
     }
 
     this.sourceNode = this.inputAudioCtx.createMediaStreamSource(this.mediaStream);
-    // Audio Graph: Source -> Highpass -> Lowpass -> Gain -> Analyser -> ScriptProcessor
     this.sourceNode.connect(this.highpassFilter);
     this.highpassFilter.connect(this.lowpassFilter);
     this.lowpassFilter.connect(this.inputGainNode);
     this.inputGainNode.connect(this.inputAnalyser);
 
-    this.scriptProcessor = this.inputAudioCtx.createScriptProcessor(4096, 1, 1);
-    this.inputAnalyser.connect(this.scriptProcessor);
-    this.scriptProcessor.connect(this.inputAudioCtx.destination);
+    if (!this.inputAudioCtx.audioWorklet) {
+      throw new Error('AudioWorklet is not supported in this browser.');
+    }
+
+    await this.inputAudioCtx.audioWorklet.addModule('/jess-capture-processor.js');
+    this.audioWorkletNode = new AudioWorkletNode(this.inputAudioCtx, 'jess-capture-processor', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      channelCount: 1,
+      processorOptions: { targetFrames: 1024 },
+    });
+
+    this.inputAnalyser.connect(this.audioWorkletNode);
+    // The processor outputs silence; connecting it keeps the worklet active without
+    // routing microphone audio back to the user's speakers.
+    this.audioWorkletNode.connect(this.inputAudioCtx.destination);
+
+    this.audioWorkletNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
+      if (this.isMuted || this.micPermissionDenied || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
+      const input = event.data instanceof Float32Array ? event.data : new Float32Array(event.data);
+      const pcmBuffer = this.processAudioBufferWithNoiseSuppression(input);
+      if (!pcmBuffer || !this.session || !this.connected) return;
+
+      try {
+        const base64Data = this.base64EncodeArrayBuffer(pcmBuffer);
+        this.session.sendRealtimeInput({
+          audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
+          media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
+        });
+      } catch (e) {
+        console.warn('Live input error:', e);
+      }
+    };
   }
 
   public async connect(context?: {
@@ -277,11 +304,13 @@ export class LiveAudioClient {
               onmessage: (message: any) => this.handleLiveMessage(message),
               onerror: (event: any) => {
                 console.warn('Live API event warning:', event);
-                if (!this.connected) {
-                  this.callbacks.onError?.('Gemini Live connection failed.');
-                  this.callbacks.onStatusChange('error');
-                  this.callbacks.onJessStateChange('error');
-                }
+                // Treat provider/network errors as recoverable. Tear down the broken
+                // session cleanly so the floating assistant remains activatable.
+                this.connected = false;
+                this.callbacks.onError?.('Jess encountered a temporary Live connection error. Jess is ready to reconnect.');
+                this.callbacks.onStatusChange('error');
+                this.callbacks.onJessStateChange('error');
+                try { this.session?.close(); } catch {}
               },
               onclose: (event: any) => {
                 if (this.connected) {
@@ -296,24 +325,6 @@ export class LiveAudioClient {
           this.session = session as unknown as LiveSession;
           this.startLevelMonitor();
 
-          if (this.scriptProcessor) {
-            this.scriptProcessor.onaudioprocess = event => {
-              if (this.isMuted || this.micPermissionDenied || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
-              const pcmBuffer = this.processAudioBufferWithNoiseSuppression(event.inputBuffer.getChannelData(0));
-              if (!pcmBuffer) return; // Suppressed as background noise or silence
-              const base64Data = this.base64EncodeArrayBuffer(pcmBuffer);
-              if (this.session && this.connected) {
-                try {
-                  this.session.sendRealtimeInput({
-                    audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
-                    media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
-                  });
-                } catch (e) {
-                  console.warn('Live input error:', e);
-                }
-              }
-            };
-          }
           return;
         } catch (directErr: any) {
           throw directErr;
@@ -534,10 +545,10 @@ export class LiveAudioClient {
 
     this.stopPlayback();
 
-    if (this.scriptProcessor) {
-      this.scriptProcessor.onaudioprocess = null;
-      this.scriptProcessor.disconnect();
-      this.scriptProcessor = null;
+    if (this.audioWorkletNode) {
+      try { this.audioWorkletNode.port.onmessage = null; } catch {}
+      try { this.audioWorkletNode.disconnect(); } catch {}
+      this.audioWorkletNode = null;
     }
 
     if (this.sourceNode) {

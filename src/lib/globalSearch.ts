@@ -2,6 +2,7 @@ import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { ResourceType } from '../types';
 import { getLocalDocsMap } from './offlineSync';
+import { getCachedCollection } from '../services/jessWorkspaceCache';
 
 export interface SearchResult {
   type: ResourceType;
@@ -84,24 +85,28 @@ export async function globalSearch(
     const collName = searchCollections[type];
     if (!collName) continue;
 
-    let docs: any[] = [];
+    let docs: any[] = getCachedCollection<any>(collName);
     try {
-      if (role === 'admin') {
-        const snap = await getDocs(query(collection(db, collName), limit(60)));
-        docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        if (type === 'document') {
-          const local = getLocalDocsMap();
-          Object.values(local).forEach(d => {
-            if (d && d.id && !docs.some(x => x.id === d.id)) {
-              docs.push({ id: d.id, ...d });
-            }
-          });
+      if (type === 'document') {
+        const local = getLocalDocsMap();
+        Object.values(local).forEach(d => {
+          if (d && d.id && !docs.some(x => x.id === d.id)) docs.push({ id: d.id, ...d });
+        });
+      }
+
+      // The warm cache is the normal path. Only query Firestore when the cache has
+      // not populated this collection yet, preventing a fresh network scan on every
+      // voice search.
+      if (docs.length === 0) {
+        if (role === 'admin') {
+          const snap = await getDocs(query(collection(db, collName), limit(60)));
+          docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } else {
+          docs = await getVisibleDocs(collName, userId, 60);
         }
-      } else {
-        docs = await getVisibleDocs(collName, userId, 60);
       }
     } catch {
-      continue;
+      if (!docs.length) continue;
     }
 
     let matchesForType = 0;

@@ -11,6 +11,8 @@ import { jessBackgroundTasks, JessBackgroundTask } from '../services/jessBackgro
 import { autoExtractMemory } from '../services/memoryService';
 import { trackAndPersistSentiment } from '../services/sentimentService';
 import { scanCurrentPageContext, ContextActionSuggestion } from '../services/contextScannerService';
+import { startJessWorkspaceCache } from '../services/jessWorkspaceCache';
+import { isGoogleCalendarConnected, refreshGoogleCalendarEvents } from '../lib/googleCalendar';
 import { 
   Activity, 
   Lightbulb, 
@@ -121,6 +123,18 @@ export function JessFloatingAssistant() {
     return () => unsub();
   }, []);
 
+  // Keep a warm, user-scoped local index of the workspace. Firestore's persistent
+  // cache gives this listener immediate local data, while server updates arrive
+  // continuously in the background.
+  useEffect(() => {
+    if (!profile) return;
+    const stopCache = startJessWorkspaceCache(profile);
+    if (isGoogleCalendarConnected()) {
+      void refreshGoogleCalendarEvents().catch(() => {});
+    }
+    return stopCache;
+  }, [profile?.id, profile?.role]);
+
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(POSITION_KEY) || '');
@@ -158,7 +172,16 @@ export function JessFloatingAssistant() {
   }, []);
 
   const start = useCallback(async (initialPrompt?: string) => {
-    if (clientRef.current || !profile) return;
+    if (!profile) return;
+
+    // A previous Live session can remain referenced after a transient network or
+    // provider error. Reclaim it so the next activation can always create a fresh
+    // session instead of silently returning.
+    if (clientRef.current) {
+      if (connection === 'connected' || connection === 'connecting') return;
+      try { await clientRef.current.disconnect(false); } catch {}
+      clientRef.current = null;
+    }
     sessionEndingRef.current = false;
     wakeTone();
     jessSpeechAccumulatorRef.current = '';
@@ -301,7 +324,7 @@ export function JessFloatingAssistant() {
     } catch {
       await stop();
     }
-  }, [location.pathname, navigate, profile, stop, updatePreferredName, scheduleFade]);
+  }, [connection, location.pathname, navigate, profile, stop, updatePreferredName, scheduleFade]);
 
   const activate = useCallback(() => {
     if (connection === 'connected' || connection === 'connecting') void stop();

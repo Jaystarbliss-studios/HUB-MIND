@@ -57,12 +57,16 @@ for (const contract of ['gemini-3.8-live','Kore','16000','24000','sendFunctionRe
   if (!live.includes(contract)) failures.push(`liveAudioClient.ts: Live API contract ${contract} is missing`);
 }
 if (live.includes('ENABLE_SERVER_WS_BRIDGE') || live.includes('connectFallbackWebSocket') || live.includes('/api/live-ws')) failures.push('liveAudioClient.ts: unsupported server WebSocket fallback must remain removed');
+if (!live.includes('AudioWorkletNode') || !live.includes("/jess-capture-processor.js")) failures.push('liveAudioClient.ts: AudioWorklet microphone pipeline is missing');
+if (live.includes('ScriptProcessorNode') || live.includes('createScriptProcessor') || live.includes('audioprocess')) failures.push('liveAudioClient.ts: deprecated ScriptProcessor audio pipeline remains');
+if (!existsSync(resolve(root, 'public/jess-capture-processor.js'))) failures.push('public/jess-capture-processor.js: AudioWorklet processor is missing');
 
 const floating = readFileSync(resolve(root, 'src/components/JessFloatingAssistant.tsx'), 'utf8');
 for (const contract of ['sessionEndingRef', 'JSON.parse(toolArgs)', 'sendFunctionResponse({ name: fc.name']) {
   if (!floating.includes(contract)) failures.push(`JessFloatingAssistant.tsx: runtime contract ${contract} is missing`);
 }
 if (!floating.includes('}, 100);')) failures.push('JessFloatingAssistant.tsx: end_session does not immediately terminate the Live session');
+if (!floating.includes('startJessWorkspaceCache')) failures.push('JessFloatingAssistant.tsx: workspace cache is not started with the signed-in user');
 
 for (const contract of ['onPointerDown','onPointerMove','onPointerUp','localStorage','DOUBLE_TAP_MS','touch-none']) {
   if (!floating.includes(contract)) failures.push(`JessFloatingAssistant.tsx: interaction contract ${contract} is missing`);

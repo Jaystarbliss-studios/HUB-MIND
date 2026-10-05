@@ -28,6 +28,40 @@ export interface GoogleCalendarEvent {
   recurrence?: string[];
 }
 
+
+const CALENDAR_EVENTS_CACHE_PREFIX = 'hubmind_gcal_events_v2_';
+function calendarEventsCacheKey() { return `${CALENDAR_EVENTS_CACHE_PREFIX}${auth.currentUser?.uid || 'anonymous'}`; }
+
+export function getCachedGoogleCalendarEvents(timeMin?: string, timeMax?: string): GoogleCalendarEvent[] {
+  try {
+    const raw = localStorage.getItem(calendarEventsCacheKey());
+    const events = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(events)) return [];
+    const min = timeMin ? new Date(timeMin).getTime() : -Infinity;
+    const max = timeMax ? new Date(timeMax).getTime() : Infinity;
+    return events.filter((event: GoogleCalendarEvent) => {
+      const value = new Date(event.start?.dateTime || event.start?.date || 0).getTime();
+      return value >= min && value <= max;
+    });
+  } catch { return []; }
+}
+
+function cacheGoogleCalendarEvents(events: GoogleCalendarEvent[]) {
+  try {
+    const existing = getCachedGoogleCalendarEvents(undefined, undefined);
+    const map = new Map<string, GoogleCalendarEvent>();
+    existing.forEach(event => map.set(event.id, event));
+    events.forEach(event => map.set(event.id, event));
+    localStorage.setItem(calendarEventsCacheKey(), JSON.stringify(Array.from(map.values()).slice(-300)));
+  } catch {}
+}
+
+export async function refreshGoogleCalendarEvents(timeMin?: string, timeMax?: string): Promise<GoogleCalendarEvent[]> {
+  const events = await listGoogleCalendarEvents(timeMin, timeMax);
+  cacheGoogleCalendarEvents(events);
+  return events;
+}
+
 const STORAGE_CONNECTED_KEY = 'hubmind_gcal_connected';
 const STORAGE_EMAIL_KEY = 'hubmind_gcal_email';
 const STORAGE_EXP_KEY = 'hubmind_gcal_token_exp';
@@ -246,7 +280,9 @@ export async function listGoogleCalendarEvents(timeMin?: string, timeMax?: strin
   }
 
   const data = await res.json();
-  return data.items || [];
+  const events = data.items || [];
+  cacheGoogleCalendarEvents(events);
+  return events;
 }
 
 export async function deleteGoogleCalendarEvent(eventId: string): Promise<boolean> {

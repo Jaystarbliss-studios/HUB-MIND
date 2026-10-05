@@ -3,6 +3,7 @@ import {
   doc, 
   getDoc, 
   getDocs, 
+  getDocsFromCache,
   setDoc, 
   deleteDoc, 
   query, 
@@ -111,29 +112,34 @@ export async function getUserMemories(userId: string): Promise<UserMemory[]> {
 
   const local = getLocalMemories(effectiveUid);
 
-  // If user is authenticated with Firebase, fetch remote memories
+  // Memory is cache-first. Jess must never block voice startup on a network round-trip.
+  // Firestore's persistent web cache is queried immediately; a server refresh runs in
+  // the background and updates the local user-scoped memory cache when available.
   if (auth.currentUser) {
+    const colRef = collection(db, 'users', auth.currentUser.uid, 'memories');
+    const mergeAndCache = (firestoreMemories: UserMemory[]) => {
+      if (!firestoreMemories.length) return;
+      const map = new Map<string, UserMemory>();
+      local.forEach(m => map.set(m.id, m));
+      firestoreMemories.forEach(m => map.set(m.id, m));
+      const merged = Array.from(map.values()).sort(
+        (a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+      );
+      setLocalMemories(effectiveUid, merged);
+    };
+
     try {
-      const colRef = collection(db, 'users', auth.currentUser.uid, 'memories');
-      const snap = await getDocs(query(colRef, limit(60)));
-      if (!snap.empty) {
-        const firestoreMemories = snap.docs.map(d => ({ id: d.id, ...d.data() } as UserMemory));
-        // Merge and update local cache
-        const map = new Map<string, UserMemory>();
-        local.forEach(m => map.set(m.id, m));
-        firestoreMemories.forEach(m => map.set(m.id, m));
-        const merged = Array.from(map.values()).sort(
-          (a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
-        );
-        setLocalMemories(effectiveUid, merged);
-        return merged;
-      }
-    } catch (err: any) {
-      console.warn('[MemoryService] Remote memories sync notice (using cached memories):', err?.message || err);
-    }
+      const cachedSnap = await getDocsFromCache(query(colRef, limit(60)));
+      mergeAndCache(cachedSnap.docs.map(d => ({ id: d.id, ...d.data() } as UserMemory)));
+    } catch {}
+
+    // Do not block the caller on the server. The next session gets the refreshed cache.
+    void getDocs(query(colRef, limit(60)))
+      .then(snap => mergeAndCache(snap.docs.map(d => ({ id: d.id, ...d.data() } as UserMemory))))
+      .catch(err => console.warn('[MemoryService] Background memory refresh notice:', err?.message || err));
   }
 
-  return local;
+  return getLocalMemories(effectiveUid);
 }
 
 export async function deleteUserMemory(userId: string, memoryIdOrKey: string): Promise<boolean> {
@@ -264,14 +270,14 @@ export function extractNuancedDetails(userMessage: string): ExtractedDetail[] {
     add('user_note', rememberMatch[1].trim(), 'instruction', 'high');
   }
 
-  // 2. Strong Preferences ("I prefer...", "I always prefer...", "I like my docs formatted...", "My preference is...")
-  const preferMatch = text.match(/(?:i prefer|i always prefer|my preference is|i like to have|i like my)\s+([^.!?\n]+)/i);
+  // 2. Strong Preferences, likes, and dislikes.
+  const preferMatch = text.match(/(?:i prefer|i always prefer|my preference is|i like to have|i like my|i like|i love|i enjoy)\s+([^.!?\n]+)/i);
   if (preferMatch && preferMatch[1]) {
-    add('user_preference', `User preference: ${preferMatch[1].trim()}`, 'preference', 'high');
+    add('user_preference', `User preference/like: ${preferMatch[1].trim()}`, 'preference', 'high');
   }
 
   // 3. Dislikes & Constraints ("I don't like...", "Avoid...", "Never...", "Don't schedule...")
-  const dislikeMatch = text.match(/(?:i (?:don't|do not) like|i hate|avoid|never|do not schedule|don't schedule|please avoid)\s+([^.!?\n]+)/i);
+  const dislikeMatch = text.match(/(?:i (?:don't|do not) like|i hate|i dislike|avoid|never|do not schedule|don't schedule|please avoid)\s+([^.!?\n]+)/i);
   if (dislikeMatch && dislikeMatch[1]) {
     add('user_constraint', `Constraint/Dislike: ${dislikeMatch[1].trim()}`, 'preference', 'high');
   }
