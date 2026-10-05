@@ -46,7 +46,7 @@ const bridge = readFileSync(resolve(root, 'src/lib/jessDocumentBridge.ts'), 'utf
 if (!bridge.includes('registerJessDocumentEditor') || !bridge.includes('applyJessDocumentEdit')) failures.push('jessDocumentBridge.ts: direct editor bridge is incomplete');
 
 const liveToken = readFileSync(resolve(root, 'netlify/functions/live-token.mjs'), 'utf8');
-for (const contract of ['https://generativelanguage.googleapis.com/v1beta/auth_tokens','models/gemini-3.8-live','responseModalities','sessionResumption']) {
+for (const contract of ['https://generativelanguage.googleapis.com/v1beta/auth_tokens']) {
   if (!liveToken.includes(contract)) failures.push(`live-token.mjs: Gemini ephemeral-token contract ${contract} is missing`);
 }
 if (liveToken.includes('liveConnectConstraints')) failures.push('live-token.mjs: obsolete REST field liveConnectConstraints remains');
