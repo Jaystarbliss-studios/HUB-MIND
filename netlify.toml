@@ -1,3 +1,9 @@
+[build.environment]
+  # Firebase web configuration values are public browser configuration.
+  # Keep secret scanning enabled for actual credentials such as GEMINI_API_KEY,
+  # GOOGLE_CLIENT_SECRET, and GOOGLE_OAUTH_SECRET.
+  SECRETS_SCAN_OMIT_KEYS = "FIREBASE_PROJECT_ID,FIREBASE_WEB_API_KEY,FIREBASE_DATABASE_ID,FIRESTORE_DATABASE_ID,FIREBASE_APP_ID,FIREBASE_AUTH_DOMAIN,FIREBASE_STORAGE_BUCKET,FIREBASE_MESSAGING_SENDER_ID,VITE_FIREBASE_PROJECT_ID,VITE_FIREBASE_WEB_API_KEY,VITE_FIRESTORE_DATABASE_ID,VITE_FIREBASE_APP_ID,VITE_FIREBASE_AUTH_DOMAIN,VITE_FIREBASE_STORAGE_BUCKET,VITE_FIREBASE_MESSAGING_SENDER_ID,VITE_GOOGLE_CLIENT_ID"
+
 [build]
   command = "npm run build"
   publish = "dist"
@@ -19,6 +25,26 @@
 [[redirects]]
   from = "/api/live-token"
   to = "/.netlify/functions/live-token"
+  status = 200
+
+[[redirects]]
+  from = "/api/google-oauth-start"
+  to = "/.netlify/functions/google-oauth-start"
+  status = 200
+
+[[redirects]]
+  from = "/api/google-oauth-callback"
+  to = "/.netlify/functions/google-oauth-callback"
+  status = 200
+
+[[redirects]]
+  from = "/api/google-oauth-exchange"
+  to = "/.netlify/functions/google-oauth-exchange"
+  status = 200
+
+[[redirects]]
+  from = "/api/google-token"
+  to = "/.netlify/functions/google-token"
   status = 200
 
 [[redirects]]

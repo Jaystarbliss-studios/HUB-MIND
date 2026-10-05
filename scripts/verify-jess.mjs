@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve, extname } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const root = process.cwd();
 const failures = [];
@@ -38,7 +39,7 @@ const requiredFiles = [
 for (const file of requiredFiles) if (!existsSync(resolve(root, file))) failures.push(`${file}: required Jess integration file is missing`);
 
 const tools = readFileSync(resolve(root, 'src/lib/jessTools.ts'), 'utf8');
-for (const tool of ['get_user_profile','get_current_context','get_workspace_overview','search_workspace','create_task','update_task','create_document','get_document_content','update_document','list_projects','open_project','open_document','navigate_app','list_meetings','list_follow_ups','list_knowledge']) {
+for (const tool of ['send_email','get_user_profile','get_current_context','get_workspace_overview','search_workspace','create_task','update_task','create_document','get_document_content','update_document','list_projects','open_project','open_document','navigate_app','list_meetings','list_follow_ups','list_knowledge']) {
   if (!tools.includes(`name: '${tool}'`)) failures.push(`jessTools.ts: required tool ${tool} is missing`);
 }
 if (!tools.includes('queueJessDocumentEdit')) failures.push('jessTools.ts: document bridge is not connected');
@@ -57,6 +58,7 @@ for (const contract of ['gemini-3.8-live','Kore','16000','24000','sendFunctionRe
   if (!live.includes(contract)) failures.push(`liveAudioClient.ts: Live API contract ${contract} is missing`);
 }
 if (live.includes('ENABLE_SERVER_WS_BRIDGE') || live.includes('connectFallbackWebSocket') || live.includes('/api/live-ws')) failures.push('liveAudioClient.ts: unsupported server WebSocket fallback must remain removed');
+if (!live.includes('connectPromise') || !live.includes('connectInternal')) failures.push('liveAudioClient.ts: connect race guard is missing');
 if (!live.includes('AudioWorkletNode') || !live.includes("/jess-capture-processor.js")) failures.push('liveAudioClient.ts: AudioWorklet microphone pipeline is missing');
 if (live.includes('ScriptProcessorNode') || live.includes('createScriptProcessor') || live.includes('audioprocess')) failures.push('liveAudioClient.ts: deprecated ScriptProcessor audio pipeline remains');
 if (!existsSync(resolve(root, 'public/jess-capture-processor.js'))) failures.push('public/jess-capture-processor.js: AudioWorklet processor is missing');
@@ -70,6 +72,8 @@ if (!floating.includes('startJessWorkspaceCache')) failures.push('JessFloatingAs
 if (!floating.includes('screen_control') || !floating.includes('getJessScrollTarget')) failures.push('JessFloatingAssistant.tsx: direct screen control bridge is missing');
 if (!tools.includes('scroll_screen') || !tools.includes('click_screen') || !tools.includes('type_screen')) failures.push('jessTools.ts: direct screen control tools are missing');
 if (!tools.includes('save_activity_report')) failures.push('jessTools.ts: activity report tool is missing');
+if (!tools.includes('markdownToTiptapHtml')) failures.push('jessTools.ts: Tiptap HTML formatter is missing');
+if (!tools.includes("name: 'send_email'")) failures.push('jessTools.ts: email tool declaration is missing');
 if (!tools.includes('steps') || !tools.includes('Progress must reflect completed executable steps')) failures.push('jessTools.ts: executable background workflow contract is missing');
 if (!tools.includes("behavior: 'NON_BLOCKING'") || !tools.includes('start_background_operation')) failures.push('jessTools.ts: background workflow is not declared NON_BLOCKING');
 const queue = readFileSync(resolve(root, 'src/services/jessBackgroundTasks.ts'), 'utf8');
@@ -78,9 +82,23 @@ if (!queue.includes('getTasksForUser') || !queue.includes('getActiveTasksForUser
 const search = readFileSync(resolve(root, 'src/lib/globalSearch.ts'), 'utf8');
 if (!search.includes('editSimilarity') || !search.includes('tokenize')) failures.push('globalSearch.ts: conversational fuzzy relevance matching is missing');
 const calendarAuth = readFileSync(resolve(root, 'src/lib/googleAuthToken.ts'), 'utf8');
+for (const file of [
+  'netlify/functions/lib/googleOAuth.mjs',
+  'netlify/functions/google-oauth-start.mjs',
+  'netlify/functions/google-oauth-callback.mjs',
+  'netlify/functions/google-oauth-exchange.mjs',
+  'netlify/functions/google-token.mjs',
+]) {
+  if (!existsSync(resolve(root, file))) failures.push(file + ': persistent Google OAuth endpoint is missing');
+  else {
+    const check = spawnSync(process.execPath, ['--check', resolve(root, file)], { encoding: 'utf8' });
+    if (check.status !== 0) failures.push(file + ': Node syntax check failed: ' + (check.stderr || check.stdout || '').trim());
+  }
+}
+if (!calendarAuth.includes('/api/google-token') || !calendarAuth.includes('/api/google-oauth-start')) failures.push('googleAuthToken.ts: persistent server OAuth flow is missing');
 if (!calendarAuth.includes('userStorageKey') || !calendarAuth.includes('STORAGE_CALENDAR_TOKEN')) failures.push('googleAuthToken.ts: Calendar credential storage is not user-scoped');
 const calendar = readFileSync(resolve(root, 'src/lib/googleCalendar.ts'), 'utf8');
-if (!calendar.includes('hydrateGoogleCalendarConnection') || !calendar.includes('googleCalendarConnected')) failures.push('googleCalendar.ts: persistent connection hydration is missing');
+if (!calendar.includes('hydrateGoogleCalendarConnection') || !calendar.includes('googleCalendarConnected') || !calendar.includes('getCachedGoogleCalendarEvents')) failures.push('googleCalendar.ts: persistent connection hydration is missing');
 const prompt = readFileSync(resolve(root, 'src/ai/prompts/adapters.ts'), 'utf8');
 if (/sharp, quick-witted young boy/i.test(prompt)) failures.push('adapters.ts: outdated male-child Jess persona remains');
 if (!/professor-partner/i.test(prompt)) failures.push('adapters.ts: professor-partner persona contract is missing');
@@ -89,6 +107,12 @@ for (const contract of ['onPointerDown','onPointerMove','onPointerUp','localStor
   if (!floating.includes(contract)) failures.push(`JessFloatingAssistant.tsx: interaction contract ${contract} is missing`);
 }
 if (/wake\s*word/i.test(floating)) failures.push('JessFloatingAssistant.tsx: wake-word behavior is present');
+
+const netlifyConfig = readFileSync(resolve(root, 'netlify.toml'), 'utf8');
+if (!netlifyConfig.includes('SECRETS_SCAN_OMIT_KEYS')) failures.push('netlify.toml: public Firebase configuration is not classified for secret scanning');
+if (netlifyConfig.includes('GEMINI_API_KEY') && /SECRETS_SCAN_OMIT_KEYS[^\\n]*GEMINI_API_KEY/.test(netlifyConfig)) failures.push('netlify.toml: GEMINI_API_KEY must never be omitted from secret scanning');
+if (netlifyConfig.includes('GOOGLE_CLIENT_SECRET') && /SECRETS_SCAN_OMIT_KEYS[^\\n]*GOOGLE_CLIENT_SECRET/.test(netlifyConfig)) failures.push('netlify.toml: GOOGLE_CLIENT_SECRET must never be omitted from secret scanning');
+if (netlifyConfig.includes('GOOGLE_OAUTH_SECRET') && /SECRETS_SCAN_OMIT_KEYS[^\\n]*GOOGLE_OAUTH_SECRET/.test(netlifyConfig)) failures.push('netlify.toml: GOOGLE_OAUTH_SECRET must never be omitted from secret scanning');
 
 const rules = readFileSync(resolve(root, 'firestore.rules'), 'utf8');
 for (const rule of ['match /users/{userId}','match /invitations/{id}','match /tasks/{id}','match /documents/{id}','match /projects/{id}','match /recurringTaskTemplates/{id}']) {

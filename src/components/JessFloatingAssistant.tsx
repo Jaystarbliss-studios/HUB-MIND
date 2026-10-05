@@ -53,6 +53,8 @@ function getJessScrollTarget(): HTMLElement | Window {
   }
   const main = document.querySelector<HTMLElement>('[role="main"],main,.overflow-y-auto,.overflow-auto');
   if (main && main.scrollHeight > main.clientHeight + 20) candidates.push(main);
+  const mainTarget = document.querySelector<HTMLElement>('[role="main"],main');
+  if (mainTarget && mainTarget.scrollHeight > mainTarget.clientHeight + 20) return mainTarget;
   return candidates[0] || window;
 }
 
@@ -286,7 +288,20 @@ export function JessFloatingAssistant() {
         if (typeof toolArgs === 'string') {
           try { toolArgs = JSON.parse(toolArgs); } catch { toolArgs = {}; }
         }
-        const result = await executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context);
+        let result: any;
+        try {
+          result = await executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context);
+        } catch (error: any) {
+          // A tool failure must become a tool response, not an unhandled promise.
+          // Returning the failure to Gemini lets Jess recover conversationally and
+          // keeps the Live session usable for the next command.
+          result = {
+            result: {
+              success: false,
+              error: error?.message || 'The requested Hub-Mind action failed unexpectedly.',
+            },
+          };
+        }
 
         // Screen-control actions are executed by the signed-in browser, not merely
         // acknowledged. This gives Jess direct, visible control of the Hub-Mind UI.
@@ -538,6 +553,18 @@ export function JessFloatingAssistant() {
     }
     if (p.moved) return;
     const now = Date.now();
+    // Once Jess is active, a single tap is an explicit microphone mute/unmute.
+    // When Jess is idle, the established double-tap gesture still activates her.
+    if (connection === 'error') {
+      p.lastTap = 0;
+      activate();
+      return;
+    }
+    if (active) {
+      p.lastTap = 0;
+      clientRef.current?.toggleMute();
+      return;
+    }
     if (now - p.lastTap <= DOUBLE_TAP_MS) {
       p.lastTap = 0;
       activate();

@@ -30,6 +30,7 @@ import {
 } from '../services/memoryService';
 import { getAllUsers } from '../services/userService';
 import { getShareUrl } from './shareLinks';
+import { sendEmail } from './googleApi';
 
 export interface JessToolDefinition {
   name: string;
@@ -63,6 +64,102 @@ function tokenSimilarity(a: string, b: string): number {
   }
   return 1 - prev[b.length] / Math.max(a.length, b.length);
 }
+function markdownToTiptapHtml(input: any): string {
+  const source = String(input ?? '').replace(/\r\n?/g, '\n').trim();
+  if (!source) return '<p></p>';
+
+  // Jess can still pass already-structured Tiptap HTML. Do not double-escape it.
+  if (/^\s*<(?:p|h[1-6]|ul|ol|li|blockquote|pre|table|div|section|strong|em|br)\b/i.test(source)) {
+    return source;
+  }
+
+  const escape = (value: string) => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  const inline = (value: string) => {
+    let out = escape(value);
+    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    out = out.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+    out = out.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
+    out = out.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+    return out;
+  };
+
+  const lines = source.split('\n');
+  const blocks: string[] = [];
+  let listType: 'ul' | 'ol' | null = null;
+  let listItems: string[] = [];
+  let inCode = false;
+  let codeLines: string[] = [];
+
+  const flushList = () => {
+    if (!listType || !listItems.length) return;
+    blocks.push('<' + listType + '>' + listItems.map(item => '<li>' + inline(item) + '</li>').join('') + '</' + listType + '>');
+    listType = null;
+    listItems = [];
+  };
+  const flushCode = () => {
+    if (!inCode) return;
+    blocks.push('<pre><code>' + escape(codeLines.join('\n')) + '</code></pre>');
+    inCode = false;
+    codeLines = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (/^\s*\x60\x60\x60/.test(line)) {
+      if (inCode) flushCode();
+      else { flushList(); inCode = true; codeLines = []; }
+      continue;
+    }
+    if (inCode) { codeLines.push(rawLine); continue; }
+    if (!line) { flushList(); continue; }
+
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      flushList();
+      const level = Math.min(6, heading[1].length);
+      blocks.push('<h' + level + '>' + inline(heading[2]) + '</h' + level + '>');
+      continue;
+    }
+    if (/^[-*_]{3,}$/.test(line)) {
+      flushList();
+      blocks.push('<hr>');
+      continue;
+    }
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    if (bullet) {
+      if (listType !== 'ul') { flushList(); listType = 'ul'; }
+      listItems.push(bullet[1]);
+      continue;
+    }
+    const numbered = line.match(/^\d+[.)]\s+(.+)$/);
+    if (numbered) {
+      if (listType !== 'ol') { flushList(); listType = 'ol'; }
+      listItems.push(numbered[1]);
+      continue;
+    }
+    const quote = line.match(/^>\s?(.*)$/);
+    if (quote) {
+      flushList();
+      blocks.push('<blockquote><p>' + inline(quote[1]) + '</p></blockquote>');
+      continue;
+    }
+
+    flushList();
+    blocks.push('<p>' + inline(line) + '</p>');
+  }
+
+  flushList();
+  flushCode();
+  return blocks.join('') || '<p></p>';
+}
+
 function fuzzyRelevance(queryText: string, record: any): number {
   const queryTokens = normalizeSearchText(queryText).split(' ').filter(t => t.length >= 2);
   if (!queryTokens.length) return 0;
@@ -238,13 +335,14 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'create_calendar_event', description: 'Create a Google Calendar event (supports single and recurring events via recurrenceRule).', parameters: object({ title: { type: 'string' }, startDateTime: { type: 'string' }, endDateTime: { type: 'string' }, reminderMinutes: { type: 'array', items: { type: 'number' }, description: 'Optional reminder times in minutes before the event, e.g. [1440, 60, 10].' }, location: { type: 'string' }, description: { type: 'string' }, recurrenceRule: { type: 'string', description: 'Optional recurrence rule e.g. RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR' } }, ['title', 'startDateTime']) },
   { name: 'connect_google_calendar', description: 'Perform one-time Google Calendar connection to link the users account once for permanent sync.', parameters: object({}) },
   { name: 'get_google_calendar_status', description: 'Check whether Google Calendar is currently connected.', parameters: object({}) },
+  { name: 'send_email', description: 'Send an email through the user\'s permanently connected Google account. Use for schedule notices, meeting follow-ups, reminders, and other requested email communication.', parameters: object({ to: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' } }, ['to', 'subject', 'body']) },
   { name: 'save_activity_report', description: 'Write a daily or weekly activity report into the signed-in user\'s Today/report area and also save it as a workspace document. Use this for end-of-day reports, weekly activity summaries, and requested written operational reports.', parameters: object({ period: { type: 'string', enum: ['daily', 'weekly'] }, dateKey: { type: 'string', description: 'Optional YYYY-MM-DD date for daily reports.' }, title: { type: 'string' }, report: { type: 'string' }, snapshot: { type: 'object' } }, ['period', 'report']) },
   
   // Personalization, User Memory & Background Operations
   { name: 'set_preferred_name', description: 'Save the name the signed-in user wants to be addressed with.', parameters: object({ preferredName: { type: 'string' } }, ['preferredName']) },
   {
     name: 'set_language_preference',
-    description: 'Update the user\'s preferred conversational language (e.g. English, Spanish, French, Yoruba, German, etc.). The workspace defaults to English for 90%+ of interactions, but smoothly switches and remembers any user-requested language preference.',
+    description: 'Update the user\'s preferred conversational language (e.g. English, Spanish, French, Yoruba, German, etc.). The workspace defaults strictly to English. Only switch languages when the user explicitly requests the change, and remember that explicit preference.',
     parameters: object({
       language: { type: 'string', description: 'The preferred language name (e.g. "English", "Spanish", "French", "Yoruba", "German")' },
       reason: { type: 'string', description: 'Optional reason or context for the preference change' }
@@ -1143,7 +1241,7 @@ export async function executeJessTool(
         const rawTitle = String(args.title || 'Untitled Document').trim();
         const data = {
           title: rawTitle,
-          content: args.content || '<p></p>',
+          content: markdownToTiptapHtml(args.content || ''),
           projectId: args.projectId || null,
           category: args.category || 'other',
           ownerId: user.id,
@@ -1164,7 +1262,7 @@ export async function executeJessTool(
         localDocs[ref.id] = {
           id: ref.id,
           title: rawTitle,
-          content: args.content || '',
+          content: markdownToTiptapHtml(args.content || ''),
           updatedAt: now,
           lastSavedAt: now,
           lastEditedAt: now,
@@ -1173,7 +1271,7 @@ export async function executeJessTool(
         setLocalDocsMap(localDocs);
 
         if (args.content) {
-          queueJessDocumentEdit({ documentId: ref.id, content: args.content, mode: 'replace' });
+          queueJessDocumentEdit({ documentId: ref.id, content: data.content, mode: 'replace' });
         }
 
         return {
@@ -1220,13 +1318,13 @@ export async function executeJessTool(
         const patch: any = { updatedAt: now, lastEditedAt: now, lastSavedAt: now, version: Number(current.version || 1) + 1 };
         if (rawTitle !== undefined) patch.title = rawTitle;
         
-        let finalContent = rawContent;
+        let finalContent = rawContent !== undefined ? markdownToTiptapHtml(rawContent) : undefined;
         if (rawContent !== undefined) {
           const mode = args.mode || 'replace';
           if (mode === 'append' && current.content) {
-            finalContent = `${current.content}\n${rawContent}`;
+            finalContent = `${current.content}${markdownToTiptapHtml(rawContent)}`;
           } else if (mode === 'prepend' && current.content) {
-            finalContent = `${rawContent}\n${current.content}`;
+            finalContent = `${markdownToTiptapHtml(rawContent)}${current.content}`;
           }
           patch.content = finalContent;
         }
@@ -1969,6 +2067,15 @@ export async function executeJessTool(
           : { result: { success: false, error: `Client "${clientId || ''}" not found or access denied.` } };
       }
 
+      case 'send_email': {
+        const to = String(args.to || '').trim();
+        const subject = String(args.subject || '').trim();
+        const body = String(args.body || '').trim();
+        if (!to || !subject || !body) return { result: { success: false, error: 'Email recipient, subject, and body are required.' } };
+        const sent = await sendEmail(to, subject, body);
+        return { result: { success: true, message: `Email sent to ${to} with subject "${subject}".`, messageId: sent?.id || sent?.message?.id || null } };
+      }
+
       case 'list_calendar_events': {
         const events = await listGoogleCalendarEvents(args.timeMin, args.timeMax);
         return {
@@ -2014,13 +2121,7 @@ export async function executeJessTool(
           snapshot: args.snapshot || {},
         }, { merge: true });
 
-        const htmlContent = report.split('\n').map((line: string) => {
-          const trimmed = line.trim();
-          if (!trimmed) return '<br/>';
-          if (trimmed.startsWith('•')) return '<li>' + trimmed.substring(1).trim() + '</li>';
-          if (trimmed.endsWith(':') || /REPORT/i.test(trimmed)) return '<h3><strong>' + trimmed + '</strong></h3>';
-          return '<p>' + trimmed.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>';
-        }).join('');
+        const htmlContent = markdownToTiptapHtml(report);
         const docRef = await addDoc(collection(db, 'documents'), {
           title,
           content: htmlContent,

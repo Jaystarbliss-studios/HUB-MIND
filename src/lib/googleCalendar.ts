@@ -4,7 +4,8 @@ import {
   CALENDAR_SCOPES, 
   getCachedCalendarToken, 
   setCachedCalendarToken, 
-  clearGoogleTokens, 
+  clearGoogleTokens,
+  disconnectPersistentGoogleConnection,
   requestGoogleAccessToken 
 } from './googleAuthToken';
 
@@ -30,6 +31,7 @@ export interface GoogleCalendarEvent {
 
 
 const CALENDAR_EVENTS_CACHE_PREFIX = 'hubmind_gcal_events_v2_';
+const CALENDAR_EVENTS_SYNC_PREFIX = 'hubmind_gcal_events_sync_v2_';
 function userKey(base: string) { return `${base}_${auth.currentUser?.uid || 'anonymous'}`; }
 function calendarEventsCacheKey() { return `${CALENDAR_EVENTS_CACHE_PREFIX}${auth.currentUser?.uid || 'anonymous'}`; }
 
@@ -54,6 +56,7 @@ function cacheGoogleCalendarEvents(events: GoogleCalendarEvent[]) {
     existing.forEach(event => map.set(event.id, event));
     events.forEach(event => map.set(event.id, event));
     localStorage.setItem(calendarEventsCacheKey(), JSON.stringify(Array.from(map.values()).slice(-300)));
+    localStorage.setItem(userKey(CALENDAR_EVENTS_SYNC_PREFIX), String(Date.now()));
   } catch {}
 }
 
@@ -81,7 +84,9 @@ export async function hydrateGoogleCalendarConnection(): Promise<boolean> {
   if (!user) return false;
   try {
     const snap = await getDoc(doc(db, 'users', user.uid));
-    const connected = snap.exists() && snap.data()?.googleCalendarConnected === true;
+    const rootConnected = snap.exists() && snap.data()?.googleCalendarConnected === true;
+    const privateConnection = await getDoc(doc(db, 'users', user.uid, 'private', 'googleConnection'));
+    const connected = rootConnected || privateConnection.exists();
     localStorage.setItem(userKey(STORAGE_CONNECTED_KEY), connected ? 'true' : 'false');
     if (connected && snap.data()?.googleCalendarEmail) {
       localStorage.setItem(userKey(STORAGE_EMAIL_KEY), String(snap.data().googleCalendarEmail));
@@ -98,7 +103,7 @@ export function getGoogleCalendarConnectionInfo(): {
   expiresAt: number;
 } {
   try {
-    const isConn = localStorage.getItem(STORAGE_CONNECTED_KEY) === 'true';
+    const isConn = localStorage.getItem(userKey(STORAGE_CONNECTED_KEY)) === 'true';
     const savedExp = Number(localStorage.getItem(userKey(STORAGE_EXP_KEY))) || 0;
     const email = localStorage.getItem(userKey(STORAGE_EMAIL_KEY)) || auth.currentUser?.email || null;
     const isValid = isConn;
@@ -109,6 +114,7 @@ export function getGoogleCalendarConnectionInfo(): {
 }
 
 export async function disconnectGoogleCalendar(): Promise<void> {
+  await disconnectPersistentGoogleConnection();
   clearGoogleTokens();
   const current = auth.currentUser;
   if (current) {
@@ -272,13 +278,23 @@ export async function createGoogleCalendarEvent(payload: CalendarEventPayload): 
 }
 
 export async function listGoogleCalendarEvents(timeMin?: string, timeMax?: string): Promise<GoogleCalendarEvent[]> {
+  const cached = getCachedGoogleCalendarEvents(timeMin, timeMax);
+  let cachedAt = 0;
+  try { cachedAt = Number(localStorage.getItem(userKey(CALENDAR_EVENTS_SYNC_PREFIX))) || 0; } catch {}
+  // Voice queries should be instantaneous when a warm calendar snapshot exists.
+  // Refresh it in the background; do not make Jess wait for Google on every turn.
+  if (cached.length && Date.now() - cachedAt < 60_000) {
+    void refreshGoogleCalendarEvents(timeMin, timeMax).catch(() => {});
+    return cached;
+  }
+
   let token: string;
   try {
     token = await getCalendarAccessToken(false);
   } catch {
     // A previously connected account may have an expired token or revoked grant.
     // Never open an interactive popup from a background schedule read.
-    return [];
+    return cached;
   }
 
   const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
