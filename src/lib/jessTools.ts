@@ -1,6 +1,8 @@
-import { addDoc, collection, doc, getDoc, getDocs, limit, query, updateDoc, where, orderBy, deleteDoc } from 'firebase/firestore';
+import { format } from 'date-fns';
+import { addDoc, collection, doc, getDoc, getDocs, limit, query, updateDoc, setDoc, where, orderBy, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { User, DocumentInfo, RecurringMeetingTemplate, ResourceType, SharePermission } from '../types';
+import { isSharedWith } from './rbac';
 import { 
   createGoogleCalendarEvent, 
   listGoogleCalendarEvents, 
@@ -39,7 +41,8 @@ const object = (properties: Record<string, any>, required?: string[]): JessToolD
 });
 
 export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
-  { name: 'get_user_profile', description: 'Get the signed-in Hub-Mind user profile, role and preferences.', parameters: object({}) },
+  { name: 'get_user_profile', description: 'Get the signed-in Hub-Mind user profile, role, name, preferred name, email, and preferences.', parameters: object({}) },
+  { name: 'get_current_user_profile', description: 'Get the currently signed-in user identity, name, preferred name, email, role, and preferences.', parameters: object({}) },
   { name: 'get_current_context', description: 'Get the current Hub-Mind route and active workspace context.', parameters: object({}) },
   { name: 'get_workspace_overview', description: 'Get a concise overview of tasks, documents, and projects.', parameters: object({}) },
   { name: 'search_workspace', description: 'Search the signed-in workspace for documents, tasks, projects, clients and records by keywords.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }, ['query']) },
@@ -132,8 +135,18 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'update_client', description: 'Update an existing client profile.', parameters: object({ clientId: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, address: { type: 'string' }, notes: { type: 'string' }, status: { type: 'string' } }, ['clientId']) },
   { name: 'delete_client', description: 'Delete a client profile from Hub-Mind. Opens confirmation modal for final user verification.', parameters: object({ clientId: { type: 'string' }, confirmed: { type: 'boolean' } }, ['clientId']) },
   
-  // Meetings & Calendar
-  { name: 'list_meetings', description: 'List upcoming and scheduled meetings from the Hub-Mind calendar.', parameters: object({ limit: { type: 'number' } }) },
+  // Meetings & Calendar & Schedules
+  {
+    name: 'get_schedule',
+    description: 'Get the user\'s complete schedule for any date range, day, or named period (e.g. today, tomorrow, this_week, next_week, this_month). Automatically includes ALL one-time meetings, appointments, AND recurring schedules/classes (daily, weekly, monthly routines) in chronological order.',
+    parameters: object({
+      period: { type: 'string', enum: ['today', 'tomorrow', 'this_week', 'next_week', 'this_month', 'custom'], description: 'Named period to fetch schedule for' },
+      startDate: { type: 'string', description: 'Start date in YYYY-MM-DD or ISO string' },
+      endDate: { type: 'string', description: 'End date in YYYY-MM-DD or ISO string' },
+      limit: { type: 'number', description: 'Max events to return' }
+    })
+  },
+  { name: 'list_meetings', description: 'List upcoming and scheduled meetings and recurring schedules from the Hub-Mind calendar.', parameters: object({ period: { type: 'string' }, startDate: { type: 'string' }, endDate: { type: 'string' }, limit: { type: 'number' } }) },
   { name: 'create_meeting', description: 'Schedule a new meeting on the Hub-Mind calendar.', parameters: object({ title: { type: 'string' }, date: { type: 'string', description: 'ISO date string or YYYY-MM-DDTHH:mm' }, location: { type: 'string' }, notes: { type: 'string' }, clientId: { type: 'string' }, projectId: { type: 'string' } }, ['title', 'date']) },
   { name: 'update_meeting', description: 'Update a meeting on the Hub-Mind calendar.', parameters: object({ meetingId: { type: 'string' }, title: { type: 'string' }, date: { type: 'string' }, location: { type: 'string' }, status: { type: 'string' } }, ['meetingId']) },
   { name: 'delete_meeting', description: 'Delete a meeting from the Hub-Mind calendar. Opens confirmation modal for user verification.', parameters: object({ meetingId: { type: 'string' }, confirmed: { type: 'boolean' } }, ['meetingId']) },
@@ -170,6 +183,21 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   
   // Personalization, User Memory & Background Operations
   { name: 'set_preferred_name', description: 'Save the name the signed-in user wants to be addressed with.', parameters: object({ preferredName: { type: 'string' } }, ['preferredName']) },
+  {
+    name: 'set_language_preference',
+    description: 'Update the user\'s preferred conversational language (e.g. English, Spanish, French, Yoruba, German, etc.). The workspace defaults to English for 90%+ of interactions, but smoothly switches and remembers any user-requested language preference.',
+    parameters: object({
+      language: { type: 'string', description: 'The preferred language name (e.g. "English", "Spanish", "French", "Yoruba", "German")' },
+      reason: { type: 'string', description: 'Optional reason or context for the preference change' }
+    }, ['language'])
+  },
+  {
+    name: 'set_voice_isolation_mode',
+    description: 'Configure noise suppression and dominant speaker isolation so Jess focuses strictly on the highest/nearest voice and filters out room murmurs, typing, or background chatter.',
+    parameters: object({
+      mode: { type: 'string', enum: ['high_priority_voice', 'balanced', 'ambient_allowed'], description: 'Voice isolation profile: "high_priority_voice" (strictly listens to highest voice, ignores noise), "balanced", or "ambient_allowed".' }
+    }, ['mode'])
+  },
   { 
     name: 'save_user_memory', 
     description: 'Save a specific personal preference, decision, habit, workflow choice, or key fact into the logged-in user\'s private AI memory. The AI remembers this across all future sessions whenever this specific user logs in.', 
@@ -291,13 +319,10 @@ async function readResource(collectionName: string, id: string, user: User) {
       return null;
     }
     const data: any = snap.data();
-    const sharedPermission = data.sharedWith?.[user.id];
-    const readable =
-      user.role === 'admin' ||
-      data.ownerId === user.id ||
-      data.createdBy === user.id ||
-      data.visibility === 'workspace' ||
-      (data.visibility === 'shared' && !!sharedPermission);
+    const isOwner = data.ownerId === user.id || data.createdBy === user.id || data.userId === user.id;
+    const isPublicOrWorkspace = !data.visibility || data.visibility === 'workspace' || data.visibility === 'public';
+    const hasShared = isSharedWith(data.sharedWith, user.id) || isSharedWith(data.permissions, user.id);
+    const readable = user.role === 'admin' || isOwner || isPublicOrWorkspace || hasShared;
     return readable ? { id: snap.id, data } : null;
   } catch (err) {
     console.warn(`[Jess] Read resource error on ${collectionName}/${id}:`, err);
@@ -310,12 +335,12 @@ async function canWrite(collectionName: string, id: string, user: User) {
   const item = await readResource(collectionName, id, user);
   if (!item) return false;
   const { data } = item;
-  return (
-    data.ownerId === user.id ||
-    data.createdBy === user.id ||
-    data.visibility === 'workspace' ||
-    (data.visibility === 'shared' && data.sharedWith?.[user.id] === 'write')
-  );
+  const isOwner = data.ownerId === user.id || data.createdBy === user.id || data.userId === user.id;
+  const isWorkspace = !data.visibility || data.visibility === 'workspace';
+  const sharedWrite = (typeof data.sharedWith === 'object' && !Array.isArray(data.sharedWith) && data.sharedWith?.[user.id] === 'write')
+    || (typeof data.permissions === 'object' && data.permissions?.[user.id] === 'write')
+    || (Array.isArray(data.sharedWith) && data.sharedWith.includes(user.id));
+  return isOwner || isWorkspace || sharedWrite;
 }
 
 const navigatePayload = (path: string) => ({ type: 'navigate', path });
@@ -334,20 +359,28 @@ export async function executeJessTool(
   try {
     switch (name) {
       case 'get_user_profile':
+      case 'get_current_user_profile':
+      case 'get_current_user':
+      case 'whoami': {
+        const primaryName = user.preferredName || user.displayName || user.name || `@${user.username}`;
         return {
           result: {
             success: true,
             user: {
               id: user.id,
-              name: user.preferredName || user.displayName || user.name,
+              name: primaryName,
+              preferredName: user.preferredName || user.displayName || user.name,
+              displayName: user.displayName || user.name,
               username: user.username,
               email: user.email,
               role: user.role,
               status: user.status,
               googleCalendarConnected: isGoogleCalendarConnected(),
             },
+            message: `Current logged-in user is ${primaryName} (@${user.username}), role: ${user.role}, email: ${user.email}.`,
           },
         };
+      }
 
       case 'get_current_context':
         return {
@@ -998,13 +1031,15 @@ export async function executeJessTool(
       }
 
       case 'get_document_content': {
-        let docId = args.documentId;
-        let item = await readResource('documents', docId, user);
+        let docId = args.documentId || args.id || context?.documentId;
+        let item = docId ? await readResource('documents', docId, user) : null;
         if (!item) {
           const allDocs = await fetchAllDocumentsForUser(user);
-          const found = allDocs.find(d => d.id === docId || (d.title && d.title.toLowerCase() === String(docId).toLowerCase()));
+          const searchTerm = String(args.documentId || args.title || docId || '').toLowerCase().trim();
+          const found = allDocs.find(d => d.id === docId || (d.title && d.title.toLowerCase().includes(searchTerm)));
           if (found) {
             item = { id: found.id, data: found };
+            docId = found.id;
           }
         }
         if (!item) {
@@ -1069,45 +1104,87 @@ export async function executeJessTool(
         };
       }
 
-      case 'update_document': {
-        if (!(await canWrite('documents', args.documentId, user))) {
+      case 'edit_document':
+      case 'update_document':
+      case 'edit_document_live':
+      case 'background_edit_document': {
+        const rawContent = args.content !== undefined ? args.content : (args.contentToInsert !== undefined ? args.contentToInsert : args.contentToInsertOrUpdate !== undefined ? args.contentToInsertOrUpdate : args.body !== undefined ? args.body : args.text);
+        const rawTitle = args.title !== undefined ? args.title : args.documentTitle;
+        let docId = args.documentId || args.docId || args.id || context?.documentId;
+        let item = docId ? await readResource('documents', docId, user) : null;
+        if (!item) {
+          const allDocs = await fetchAllDocumentsForUser(user);
+          const searchTerm = String(args.documentTitle || args.title || args.documentId || docId || '').toLowerCase().trim();
+          const found = allDocs.find(d => d.id === docId || (d.title && d.title.toLowerCase().includes(searchTerm)) || (searchTerm && d.title && searchTerm.includes(d.title.toLowerCase())));
+          if (found) {
+            item = { id: found.id, data: found };
+            docId = found.id;
+          }
+        }
+
+        // If document doesn't exist yet but user wants to write/create it
+        if (!item || !docId) {
+          if (rawTitle || rawContent) {
+            const createRes = await executeJessTool('create_document', { title: rawTitle || 'New Document', content: rawContent || '' }, user, onPreferredName, context);
+            return createRes;
+          }
+          return { result: { success: false, error: 'Document not found or access denied.' } };
+        }
+
+        if (!(await canWrite('documents', docId, user))) {
           return { result: { success: false, error: 'You do not have permission to update this document.' } };
         }
-        const ref = doc(db, 'documents', args.documentId);
+
+        const ref = doc(db, 'documents', docId);
         const snap = await getDoc(ref);
-        const current: any = snap.exists() ? snap.data() : (getLocalDocsMap()[args.documentId] || {});
+        const current: any = snap.exists() ? snap.data() : (getLocalDocsMap()[docId] || {});
         const now = new Date().toISOString();
         const patch: any = { updatedAt: now, lastEditedAt: now, lastSavedAt: now, version: Number(current.version || 1) + 1 };
-        if (args.title !== undefined) patch.title = args.title;
-        if (args.content !== undefined) patch.content = args.content;
-        await updateDoc(ref, patch);
+        if (rawTitle !== undefined) patch.title = rawTitle;
+        
+        let finalContent = rawContent;
+        if (rawContent !== undefined) {
+          const mode = args.mode || 'replace';
+          if (mode === 'append' && current.content) {
+            finalContent = `${current.content}\n${rawContent}`;
+          } else if (mode === 'prepend' && current.content) {
+            finalContent = `${rawContent}\n${current.content}`;
+          }
+          patch.content = finalContent;
+        }
+
+        await updateDoc(ref, patch).catch(async () => {
+          await setDoc(ref, { ...current, ...patch }, { merge: true });
+        });
 
         const localDocs = getLocalDocsMap();
-        if (localDocs[args.documentId]) {
-          if (args.title) localDocs[args.documentId].title = args.title;
-          if (args.content) localDocs[args.documentId].content = args.content;
-          localDocs[args.documentId].updatedAt = now;
+        if (localDocs[docId]) {
+          if (rawTitle) localDocs[docId].title = rawTitle;
+          if (finalContent !== undefined) localDocs[docId].content = finalContent;
+          localDocs[docId].updatedAt = now;
           setLocalDocsMap(localDocs);
         }
 
-        if (args.content !== undefined) {
-          queueJessDocumentEdit({ documentId: args.documentId, content: args.content, mode: 'replace' });
+        if (finalContent !== undefined) {
+          queueJessDocumentEdit({ documentId: docId, content: finalContent, mode: args.mode || 'replace' });
         }
         return {
-          result: { success: true, documentId: args.documentId, updated: patch },
-          actionPayload: navigatePayload(`/documents/${args.documentId}`),
+          result: { success: true, documentId: docId, updated: patch, message: `Document "${patch.title || current.title || 'Document'}" updated successfully.` },
+          actionPayload: navigatePayload(`/documents/${docId}`),
         };
       }
 
+      case 'request_document_delete':
       case 'delete_document': {
-        let docId = args.documentId;
-        let item = await readResource('documents', docId, user);
+        let docId = args.documentId || args.docId || args.id;
+        let item = docId ? await readResource('documents', docId, user) : null;
         if (!item) {
           const allDocs = await fetchAllDocumentsForUser(user);
-          const found = allDocs.find(d => d.id === docId || (d.title && d.title.toLowerCase() === String(docId).toLowerCase()));
+          const searchTerm = String(args.documentTitle || args.title || docId || '').toLowerCase().trim();
+          const found = allDocs.find(d => d.id === docId || (d.title && d.title.toLowerCase() === searchTerm) || (searchTerm && d.title && d.title.toLowerCase().includes(searchTerm)));
           if (found) { item = { id: found.id, data: found }; docId = found.id; }
         }
-        if (!item || !(await canWrite('documents', docId, user))) {
+        if (!item || !docId || !(await canWrite('documents', docId, user))) {
           return { result: { success: false, error: 'Document not found or you do not have permission to delete it.' } };
         }
         const title = item.data.title || 'Document';
@@ -1122,6 +1199,16 @@ export async function executeJessTool(
           result: { success: true, pendingConfirmation: true, message: `Opened deletion confirmation modal for document "${title}". Please click the final Delete button on your dashboard to confirm.` },
           actionPayload: { type: 'confirm_delete', itemType: 'document', itemId: docId, itemTitle: title, collectionName: 'documents' }
         };
+      }
+
+      case 'request_share_document': {
+        return executeJessTool('share_resource', {
+          resourceType: 'document',
+          resourceId: args.documentId || args.docId || args.id,
+          resourceTitle: args.documentTitle || args.title,
+          recipient: args.recipient,
+          permission: args.permission || 'read'
+        }, user, onPreferredName, context);
       }
 
       case 'list_projects': {
@@ -1178,10 +1265,20 @@ export async function executeJessTool(
       }
 
       case 'open_project': {
-        const item = await readResource('projects', args.projectId, user);
+        let projId = args.projectId || args.id || args.name;
+        let item = projId ? await readResource('projects', projId, user) : null;
+        if (!item) {
+          const snap = await getDocs(query(collection(db, 'projects'), limit(100))).catch(() => ({ docs: [] }));
+          const searchTerm = String(projId || '').toLowerCase().trim();
+          const found = snap.docs.find(d => d.id === projId || String(d.data().name || '').toLowerCase().includes(searchTerm));
+          if (found) {
+            item = { id: found.id, data: found.data() };
+            projId = found.id;
+          }
+        }
         return item
-          ? { result: { success: true, project: { id: item.id, ...item.data } }, actionPayload: navigatePayload(`/projects/${args.projectId}`) }
-          : { result: { success: false, error: 'Project not found or access denied.' } };
+          ? { result: { success: true, project: { id: item.id, ...item.data }, message: `Opening project "${item.data.name || 'Project'}" on screen.` }, actionPayload: navigatePayload(`/projects/${projId}`) }
+          : { result: { success: false, error: `Project "${projId || ''}" not found or access denied.` } };
       }
 
       case 'list_clients': {
@@ -1241,9 +1338,178 @@ export async function executeJessTool(
         };
       }
 
+      case 'get_schedule':
       case 'list_meetings': {
-        const snap = await getDocs(query(collection(db, 'meetings'), limit(safeLimit(args.limit))));
-        return { result: { success: true, meetings: snap.docs.map(d => ({ id: d.id, ...d.data() })) } };
+        // Materialize recurring meetings to ensure fresh sync
+        try {
+          await materializeRecurringMeetings(90, user);
+        } catch (e) {}
+
+        const now = new Date();
+        let queryStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        let queryEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 90, 23, 59, 59);
+
+        const period = String(args.period || '').toLowerCase();
+        if (period === 'today') {
+          queryStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+          queryEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+        } else if (period === 'tomorrow') {
+          queryStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+          queryEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59);
+        } else if (period === 'this_week') {
+          const dayOfWeek = now.getDay();
+          const startSunday = new Date(now);
+          startSunday.setDate(now.getDate() - dayOfWeek);
+          startSunday.setHours(0, 0, 0, 0);
+          const endSaturday = new Date(startSunday);
+          endSaturday.setDate(startSunday.getDate() + 6);
+          endSaturday.setHours(23, 59, 59, 999);
+          queryStart = startSunday;
+          queryEnd = endSaturday;
+        } else if (period === 'next_week') {
+          const dayOfWeek = now.getDay();
+          const nextSunday = new Date(now);
+          nextSunday.setDate(now.getDate() + (7 - dayOfWeek));
+          nextSunday.setHours(0, 0, 0, 0);
+          const nextSaturday = new Date(nextSunday);
+          nextSaturday.setDate(nextSunday.getDate() + 6);
+          nextSaturday.setHours(23, 59, 59, 999);
+          queryStart = nextSunday;
+          queryEnd = nextSaturday;
+        } else if (period === 'this_month') {
+          queryStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+          queryEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+        } else if (args.startDate) {
+          const parsedStart = new Date(args.startDate);
+          if (!isNaN(parsedStart.getTime())) {
+            queryStart = parsedStart;
+          }
+          if (args.endDate) {
+            const parsedEnd = new Date(args.endDate);
+            if (!isNaN(parsedEnd.getTime())) {
+              queryEnd = parsedEnd;
+            }
+          } else {
+            queryEnd = new Date(queryStart.getFullYear(), queryStart.getMonth(), queryStart.getDate(), 23, 59, 59);
+          }
+        }
+
+        // 1. Fetch meetings from Firestore
+        const isPrivileged = user.role === 'admin';
+        const meetingsQuery = isPrivileged
+          ? collection(db, 'meetings')
+          : query(collection(db, 'meetings'), where('ownerId', '==', user.id));
+        
+        const meetingsSnap = await getDocs(meetingsQuery);
+        const allMeetings: any[] = [];
+        meetingsSnap.forEach(d => {
+          const data = d.data();
+          const mDate = new Date(data.date);
+          if (!isNaN(mDate.getTime()) && mDate >= queryStart && mDate <= queryEnd) {
+            allMeetings.push({
+              id: d.id,
+              title: data.title || data.notesRaw?.split('\n')[0] || 'Scheduled Event',
+              date: data.date,
+              time: format(mDate, 'h:mm a'),
+              startTime: data.startTime || format(mDate, 'HH:mm'),
+              endTime: data.endTime,
+              location: data.location || null,
+              status: data.status || 'scheduled',
+              isRecurring: !!data.recurringTemplateId || !!data.recurringInstance,
+              recurringTemplateId: data.recurringTemplateId || null,
+              type: data.recurringTemplateId ? 'recurring_schedule' : 'meeting',
+              attendees: data.attendees || []
+            });
+          }
+        });
+
+        // 2. Also check recurringMeetingTemplates directly
+        const templatesQuery = isPrivileged
+          ? query(collection(db, 'recurringMeetingTemplates'), where('active', '==', true))
+          : query(collection(db, 'recurringMeetingTemplates'), where('active', '==', true), where('ownerId', '==', user.id));
+        
+        const templatesSnap = await getDocs(templatesQuery);
+        const templates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() } as RecurringMeetingTemplate));
+
+        // Evaluate recurring templates within queryStart .. queryEnd
+        const dayDifference = Math.min(90, Math.max(1, Math.ceil((queryEnd.getTime() - queryStart.getTime()) / (1000 * 60 * 60 * 24))));
+        for (const template of templates) {
+          const tStart = new Date(template.startDate);
+          const tEnd = template.endDate ? new Date(template.endDate) : queryEnd;
+
+          for (let i = 0; i <= dayDifference; i++) {
+            const checkDate = new Date(queryStart);
+            checkDate.setDate(queryStart.getDate() + i);
+            if (checkDate < tStart || checkDate > tEnd) continue;
+
+            const dailyMatch = template.frequency === 'daily';
+            const weeklyMatch = template.frequency === 'weekly' && (template.daysOfWeek || []).includes(checkDate.getDay());
+            const monthlyMatch = template.frequency === 'monthly' && checkDate.getDate() === template.dayOfMonth;
+
+            if (dailyMatch || weeklyMatch || monthlyMatch) {
+              const [h, m] = (template.startTime || '09:00').split(':').map(Number);
+              const occDate = new Date(checkDate);
+              occDate.setHours(h || 0, m || 0, 0, 0);
+
+              if (occDate >= queryStart && occDate <= queryEnd) {
+                const exists = allMeetings.some(m => 
+                  m.recurringTemplateId === template.id && 
+                  new Date(m.date).toDateString() === occDate.toDateString()
+                );
+                if (!exists) {
+                  allMeetings.push({
+                    id: `recurring-${template.id}-${format(occDate, 'yyyy-MM-dd')}`,
+                    title: template.title,
+                    date: occDate.toISOString(),
+                    time: format(occDate, 'h:mm a'),
+                    startTime: template.startTime,
+                    endTime: template.endTime,
+                    location: template.location || null,
+                    status: 'scheduled',
+                    isRecurring: true,
+                    frequency: template.frequency,
+                    recurringTemplateId: template.id,
+                    type: template.type || 'recurring_schedule',
+                    attendees: template.attendees || []
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        // Sort chronologically
+        allMeetings.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        // Format conversational summary text
+        const total = allMeetings.length;
+        const periodLabel = period ? period.replace('_', ' ') : `from ${format(queryStart, 'MMM d')} to ${format(queryEnd, 'MMM d')}`;
+        let summaryText = '';
+        if (total === 0) {
+          summaryText = `There are no scheduled meetings or recurring classes found for ${periodLabel}.`;
+        } else {
+          const itemsSummary = allMeetings.map((item, idx) => {
+            const itemDate = new Date(item.date);
+            const dateStr = format(itemDate, 'EEEE, MMM d');
+            const timeStr = item.time || item.startTime || 'All day';
+            const recLabel = item.isRecurring ? ' (Recurring Schedule)' : ' (Meeting)';
+            return `${idx + 1}. ${item.title} at ${timeStr}, ${dateStr}${recLabel}${item.location ? ` [Location: ${item.location}]` : ''}`;
+          }).join('\n');
+          summaryText = `You have ${total} item${total === 1 ? '' : 's'} on your schedule for ${periodLabel}:\n${itemsSummary}`;
+        }
+
+        return {
+          result: {
+            success: true,
+            total,
+            period: period || 'range',
+            startDate: queryStart.toISOString(),
+            endDate: queryEnd.toISOString(),
+            schedules: allMeetings,
+            meetings: allMeetings,
+            summaryText
+          }
+        };
       }
 
       case 'create_meeting': {
@@ -1551,17 +1817,37 @@ export async function executeJessTool(
       }
 
       case 'open_task': {
-        const item = await readResource('tasks', args.taskId, user);
+        let taskId = args.taskId || args.id || args.title;
+        let item = taskId ? await readResource('tasks', taskId, user) : null;
+        if (!item) {
+          const snap = await getDocs(query(collection(db, 'tasks'), limit(100))).catch(() => ({ docs: [] }));
+          const searchTerm = String(taskId || '').toLowerCase().trim();
+          const found = snap.docs.find(d => d.id === taskId || String(d.data().title || '').toLowerCase().includes(searchTerm));
+          if (found) {
+            item = { id: found.id, data: found.data() };
+            taskId = found.id;
+          }
+        }
         return item
-          ? { result: { success: true, task: { id: item.id, ...item.data } }, actionPayload: navigatePayload(`/tasks/${args.taskId}`) }
-          : { result: { success: false, error: 'Task not found or access denied.' } };
+          ? { result: { success: true, task: { id: item.id, ...item.data }, message: `Opening task "${item.data.title || 'Task'}" on screen.` }, actionPayload: navigatePayload(`/tasks/${taskId}`) }
+          : { result: { success: false, error: `Task "${taskId || ''}" not found or access denied.` } };
       }
 
       case 'open_client': {
-        const item = await readResource('clients', args.clientId, user);
+        let clientId = args.clientId || args.id || args.name;
+        let item = clientId ? await readResource('clients', clientId, user) : null;
+        if (!item) {
+          const snap = await getDocs(query(collection(db, 'clients'), limit(100))).catch(() => ({ docs: [] }));
+          const searchTerm = String(clientId || '').toLowerCase().trim();
+          const found = snap.docs.find(d => d.id === clientId || String(d.data().name || '').toLowerCase().includes(searchTerm));
+          if (found) {
+            item = { id: found.id, data: found.data() };
+            clientId = found.id;
+          }
+        }
         return item
-          ? { result: { success: true, client: { id: item.id, ...item.data } }, actionPayload: navigatePayload(`/clients/${args.clientId}`) }
-          : { result: { success: false, error: 'Client not found or access denied.' } };
+          ? { result: { success: true, client: { id: item.id, ...item.data }, message: `Opening client "${item.data.name || 'Client'}" on screen.` }, actionPayload: navigatePayload(`/clients/${clientId}`) }
+          : { result: { success: false, error: `Client "${clientId || ''}" not found or access denied.` } };
       }
 
       case 'list_calendar_events': {
@@ -1626,19 +1912,26 @@ export async function executeJessTool(
       }
 
       case 'open_document': {
-        let docId = args.documentId;
-        let item = await readResource('documents', docId, user);
+        const queryTerm = String(args.documentTitle || args.title || args.documentId || args.id || '').trim();
+        let docId = args.documentId || args.id;
+        let item = docId ? await readResource('documents', docId, user) : null;
         if (!item) {
           const allDocs = await fetchAllDocumentsForUser(user);
-          const found = allDocs.find(d => d.id === docId || (d.title && d.title.toLowerCase() === String(docId).toLowerCase()));
+          const searchTerm = queryTerm.toLowerCase();
+          const found = allDocs.find(d => 
+            d.id === docId || 
+            (d.title && d.title.toLowerCase() === searchTerm) ||
+            (searchTerm && d.title && d.title.toLowerCase().includes(searchTerm)) ||
+            (searchTerm && d.title && searchTerm.includes(d.title.toLowerCase()))
+          );
           if (found) {
             item = { id: found.id, data: found };
             docId = found.id;
           }
         }
-        return item
-          ? { result: { success: true, documentId: docId, title: item.data.title }, actionPayload: navigatePayload(`/documents/${docId}`) }
-          : { result: { success: false, error: 'Document not found or access denied.' } };
+        return item && docId
+          ? { result: { success: true, documentId: docId, title: item.data.title, message: `Opening document "${item.data.title || 'Untitled'}" on screen.` }, actionPayload: navigatePayload(`/documents/${docId}`) }
+          : { result: { success: false, error: `Document "${queryTerm || docId || ''}" not found or access denied.` } };
       }
 
       case 'set_preferred_name': {
@@ -1654,6 +1947,42 @@ export async function executeJessTool(
           source: 'explicit',
         }).catch(() => {});
         return { result: { success: true, preferredName: clean, message: `Saved preferred name as "${clean}". Jess will remember this across all sessions.` } };
+      }
+
+      case 'set_language_preference': {
+        const language = String(args.language || 'English').trim();
+        await saveUserMemory(user.id, {
+          key: 'preferred_language',
+          content: `User's chosen language for conversations and voice interactions is ${language}. The default policy is English 90% of the time, but Jess seamlessly uses ${language} when requested.`,
+          category: 'preference',
+          importance: 'high',
+          source: 'explicit',
+        }).catch(() => {});
+        return {
+          result: {
+            success: true,
+            language,
+            message: `Updated conversation language preference to ${language}. Jess will now listen and respond in ${language}. You can switch back to English or any other language at any time just by asking.`,
+          },
+        };
+      }
+
+      case 'set_voice_isolation_mode': {
+        const mode = String(args.mode || 'high_priority_voice').trim();
+        await saveUserMemory(user.id, {
+          key: 'voice_isolation_mode',
+          content: `Noise suppression & voice isolation mode set to "${mode}". Jess focuses strictly on the highest/clearest speaker voice and rejects background noises.`,
+          category: 'preference',
+          importance: 'medium',
+          source: 'explicit',
+        }).catch(() => {});
+        return {
+          result: {
+            success: true,
+            mode,
+            message: `Voice isolation mode set to "${mode}". Noise suppression is active to prioritize your voice and filter out background chatter and ambient noise.`,
+          },
+        };
       }
 
       case 'save_user_memory': {

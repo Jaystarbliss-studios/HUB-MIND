@@ -7,6 +7,7 @@ import {
   initializeFirestore, getFirestore, persistentLocalCache,
   persistentMultipleTabManager, Firestore
 } from 'firebase/firestore';
+import appletConfig from '../firebase-applet-config.json';
 
 const getEnv = (key: string): string => {
   if (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.[key]) {
@@ -18,16 +19,23 @@ const getEnv = (key: string): string => {
   return '';
 };
 
-const projectId = getEnv('VITE_FIREBASE_PROJECT_ID') || getEnv('FIREBASE_PROJECT_ID') || 'gen-lang-client-0197530608';
-const apiKey = getEnv('VITE_FIREBASE_WEB_API_KEY') || getEnv('FIREBASE_WEB_API_KEY') || (typeof window === 'undefined' ? 'test-api-key' : '');
+const projectId = getEnv('VITE_FIREBASE_PROJECT_ID') || getEnv('FIREBASE_PROJECT_ID') || appletConfig.projectId || '';
+const apiKey = getEnv('VITE_FIREBASE_WEB_API_KEY') || getEnv('FIREBASE_WEB_API_KEY') || appletConfig.apiKey || '';
+const appId = getEnv('VITE_FIREBASE_APP_ID') || getEnv('FIREBASE_APP_ID') || appletConfig.appId || '';
+const authDomain = getEnv('VITE_FIREBASE_AUTH_DOMAIN') || getEnv('FIREBASE_AUTH_DOMAIN') || appletConfig.authDomain || (projectId ? `${projectId}.firebaseapp.com` : '');
+const storageBucket = getEnv('VITE_FIREBASE_STORAGE_BUCKET') || getEnv('FIREBASE_STORAGE_BUCKET') || appletConfig.storageBucket || (projectId ? `${projectId}.firebasestorage.app` : '');
+const messagingSenderId = getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') || getEnv('FIREBASE_MESSAGING_SENDER_ID') || appletConfig.messagingSenderId || '';
+
+export const FIRESTORE_DATABASE_ID =
+  getEnv('VITE_FIRESTORE_DATABASE_ID') || getEnv('FIRESTORE_DATABASE_ID') || (appletConfig as any).firestoreDatabaseId || 'ai-studio-hubmind-4cac2024-c6eb-4208-80cf-928714dfd430';
 
 const firebaseConfig = {
-  apiKey: apiKey || 'AIzaSyADIDnMwd5zP1gvxieBHY0J5T5EyMYuQsU',
+  apiKey,
   projectId,
-  appId: getEnv('VITE_FIREBASE_APP_ID') || getEnv('FIREBASE_APP_ID') || '1:691762959980:web:0979e7745677270cc92a49',
-  authDomain: getEnv('VITE_FIREBASE_AUTH_DOMAIN') || getEnv('FIREBASE_AUTH_DOMAIN') || (projectId + '.firebaseapp.com'),
-  storageBucket: getEnv('VITE_FIREBASE_STORAGE_BUCKET') || getEnv('FIREBASE_STORAGE_BUCKET') || (projectId + '.firebasestorage.app'),
-  messagingSenderId: getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') || getEnv('FIREBASE_MESSAGING_SENDER_ID') || '691762959980',
+  appId,
+  authDomain,
+  storageBucket,
+  messagingSenderId,
 };
 
 export const FIREBASE_PROJECT_ID = projectId;
@@ -44,9 +52,6 @@ try {
   authInstance = getAuth(app);
 }
 export const auth: Auth = authInstance;
-
-export const FIRESTORE_DATABASE_ID =
-  getEnv('VITE_FIRESTORE_DATABASE_ID') || getEnv('FIRESTORE_DATABASE_ID') || 'ai-studio-hubmind-4cac2024-c6eb-4208-80cf-928714dfd430';
 
 let dbInstance: Firestore;
 try {

@@ -2,31 +2,102 @@
 <html lang="en">
   <head>
     <script>
-      // Suppress benign [vite] HMR connection notices and websocket connection messages in container environment
+      // Suppress benign [vite] HMR connection notices and mock Vite WebSocket in container environment
       (function() {
         if (typeof window !== 'undefined' && window.WebSocket) {
           const OrigWebSocket = window.WebSocket;
-          window.WebSocket = function(url, protocols) {
-            const urlStr = String(url || '');
-            const protoStr = String(protocols || '');
-            if (protoStr === 'vite-ping' || urlStr.includes('vite') || protoStr.includes('vite') || urlStr.includes(':24678') || urlStr.includes('/@vite/')) {
-              const dummy = new EventTarget();
-              dummy.readyState = 1; // OPEN
-              dummy.send = function() {};
-              dummy.close = function() { dummy.readyState = 3; };
-              setTimeout(function() {
-                if (typeof dummy.onopen === 'function') dummy.onopen(new Event('open'));
-                dummy.dispatchEvent(new Event('open'));
-              }, 0);
-              return dummy;
-            }
-            return new OrigWebSocket(url, protocols);
+          const isViteWs = function(url, protocols) {
+            const urlStr = String(url || '').toLowerCase();
+            if (urlStr.includes('vite') || urlStr.includes('hmr') || urlStr.includes('ping')) return true;
+            if (typeof protocols === 'string' && (protocols.includes('vite') || protocols.includes('hmr'))) return true;
+            if (Array.isArray(protocols) && protocols.some(function(p) { return String(p).toLowerCase().includes('vite') || String(p).toLowerCase().includes('hmr'); })) return true;
+            return false;
           };
-          window.WebSocket.prototype = OrigWebSocket.prototype;
-          window.WebSocket.CONNECTING = OrigWebSocket.CONNECTING;
-          window.WebSocket.OPEN = OrigWebSocket.OPEN;
-          window.WebSocket.CLOSING = OrigWebSocket.CLOSING;
-          window.WebSocket.CLOSED = OrigWebSocket.CLOSED;
+
+          function ViteMockWebSocket(url, protocols) {
+            if (!(this instanceof ViteMockWebSocket)) {
+              return new ViteMockWebSocket(url, protocols);
+            }
+            if (!isViteWs(url, protocols)) {
+              return new OrigWebSocket(url, protocols);
+            }
+            const self = this;
+            this.url = String(url || '');
+            this.protocol = typeof protocols === 'string' ? protocols : (Array.isArray(protocols) ? protocols[0] : 'vite-hmr');
+            this.readyState = OrigWebSocket.OPEN || 1;
+            this.binaryType = 'blob';
+            this.bufferedAmount = 0;
+            this.extensions = '';
+            this.onopen = null;
+            this.onclose = null;
+            this.onerror = null;
+            this.onmessage = null;
+            const listeners = {};
+
+            this.addEventListener = function(type, listener) {
+              if (!listeners[type]) listeners[type] = [];
+              listeners[type].push(listener);
+            };
+
+            this.removeEventListener = function(type, listener) {
+              if (!listeners[type]) return;
+              listeners[type] = listeners[type].filter(function(l) { return l !== listener; });
+            };
+
+            this.dispatchEvent = function(event) {
+              const type = event && event.type;
+              if (listeners[type]) {
+                listeners[type].forEach(function(fn) {
+                  try { fn.call(self, event); } catch (e) {}
+                });
+              }
+              if (type === 'open' && typeof self.onopen === 'function') {
+                try { self.onopen.call(self, event); } catch (e) {}
+              }
+              if (type === 'message' && typeof self.onmessage === 'function') {
+                try { self.onmessage.call(self, event); } catch (e) {}
+              }
+              if (type === 'close' && typeof self.onclose === 'function') {
+                try { self.onclose.call(self, event); } catch (e) {}
+              }
+              if (type === 'error' && typeof self.onerror === 'function') {
+                try { self.onerror.call(self, event); } catch (e) {}
+              }
+              return true;
+            };
+
+            this.send = function(data) {
+              try {
+                const parsed = typeof data === 'string' ? JSON.parse(data) : null;
+                if (parsed && parsed.type === 'ping') {
+                  setTimeout(function() {
+                    self.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'pong' }) }));
+                  }, 10);
+                }
+              } catch (e) {}
+            };
+
+            this.close = function() {
+              self.readyState = OrigWebSocket.CLOSED || 3;
+              self.dispatchEvent(new CloseEvent('close'));
+            };
+
+            setTimeout(function() {
+              self.readyState = OrigWebSocket.OPEN || 1;
+              self.dispatchEvent(new Event('open'));
+              setTimeout(function() {
+                self.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'connected' }) }));
+              }, 20);
+            }, 10);
+          }
+
+          ViteMockWebSocket.CONNECTING = OrigWebSocket.CONNECTING || 0;
+          ViteMockWebSocket.OPEN = OrigWebSocket.OPEN || 1;
+          ViteMockWebSocket.CLOSING = OrigWebSocket.CLOSING || 2;
+          ViteMockWebSocket.CLOSED = OrigWebSocket.CLOSED || 3;
+          ViteMockWebSocket.prototype = OrigWebSocket.prototype;
+
+          window.WebSocket = ViteMockWebSocket;
         }
 
         const isViteNotice = (args) => {
@@ -35,12 +106,16 @@
           return items.some(arg => {
             if (!arg) return false;
             let fullText = '';
-            if (typeof arg === 'string') {
-              fullText = arg;
-            } else if (typeof arg === 'object') {
-              fullText = String(arg.message || arg.stack || arg.reason || arg.name || '') + ' ' + (typeof arg.toString === 'function' ? arg.toString() : '');
-            } else {
-              fullText = String(arg);
+            try {
+              if (typeof arg === 'string') {
+                fullText = arg;
+              } else if (typeof arg === 'object') {
+                fullText = String(arg.message || arg.stack || arg.reason || arg.name || '') + ' ' + (typeof arg.toString === 'function' ? arg.toString() : '');
+              } else {
+                fullText = String(arg);
+              }
+            } catch (e) {
+              fullText = '';
             }
             const lower = fullText.toLowerCase();
             return (
@@ -53,7 +128,8 @@
               lower.includes('server is unavailable') ||
               lower.includes('hmr') ||
               lower.includes('hot reload') ||
-              lower.includes('vite-ping')
+              lower.includes('vite-ping') ||
+              lower.includes('vite-hmr')
             );
           });
         };

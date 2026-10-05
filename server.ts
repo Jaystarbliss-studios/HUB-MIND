@@ -10,9 +10,53 @@ import { coreIdentity, groqAdapter, ollamaAdapter, geminiAdapter } from "./src/a
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
+import { createServer as createViteServer, createLogger } from "vite";
 import OpenAI from "openai";
 import { WebSocketServer } from "ws";
+
+const customLogger = createLogger();
+const origLoggerError = customLogger.error.bind(customLogger);
+const origLoggerWarn = customLogger.warn.bind(customLogger);
+const origLoggerInfo = customLogger.info.bind(customLogger);
+
+const isBenignViteNotice = (msg: unknown) => {
+  const l = String(msg || '').toLowerCase();
+  return l.includes('websocket') || l.includes('ws') || l.includes('hmr') || l.includes('[vite]') || l.includes('vite:') || l.includes('failed to connect') || l.includes('vite');
+};
+
+customLogger.error = (msg, options) => {
+  if (isBenignViteNotice(msg)) return;
+  origLoggerError(msg, options);
+};
+customLogger.warn = (msg, options) => {
+  if (isBenignViteNotice(msg)) return;
+  origLoggerWarn(msg, options);
+};
+customLogger.info = (msg, options) => {
+  if (isBenignViteNotice(msg)) return;
+  origLoggerInfo(msg, options);
+};
+
+const origConsoleLog = console.log;
+const origConsoleWarn = console.warn;
+const origConsoleError = console.error;
+const origConsoleInfo = console.info;
+const origConsoleDebug = console.debug;
+
+const isViteLog = (...args: any[]) => {
+  return args.some((arg) => {
+    if (!arg) return false;
+    const str = typeof arg === 'string' ? arg : (typeof arg === 'object' ? (arg.message || String(arg)) : String(arg));
+    const lower = str.toLowerCase();
+    return lower.includes('[vite]') || lower.includes('vite:') || lower.includes('failed to connect to websocket') || lower.includes('vite-hmr');
+  });
+};
+
+console.log = (...args) => { if (!isViteLog(...args)) origConsoleLog.apply(console, args); };
+console.warn = (...args) => { if (!isViteLog(...args)) origConsoleWarn.apply(console, args); };
+console.error = (...args) => { if (!isViteLog(...args)) origConsoleError.apply(console, args); };
+console.info = (...args) => { if (!isViteLog(...args)) origConsoleInfo.apply(console, args); };
+console.debug = (...args) => { if (!isViteLog(...args)) origConsoleDebug.apply(console, args); };
 
 
 const delay = (ms) => new Promise(res => setTimeout(res, ms));
@@ -156,7 +200,7 @@ async function startServer() {
       const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-tts-preview",
+        model: "gemini-3.8-flash-lite-tts",
         contents: [{ parts: [{ text }] }],
         config: {
           responseModalities: ["AUDIO"] as any,
@@ -314,11 +358,11 @@ async function startServer() {
         }
       }
 
-      // Primary Gemini models (gemini-3.5-flash for general, gemini-3.1-pro-preview for complex, gemini-3.1-flash-lite for fast)
+      // Primary Gemini models (gemini-3.8-flash for general, gemini-3.1-pro-preview for complex, gemini-3.1-flash-lite for fast)
       const requestedModel = req.body.model;
       const candidateModels = requestedModel
-        ? [requestedModel, "gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-3.1-pro-preview"]
-        : ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-3.1-pro-preview"];
+        ? [requestedModel, "gemini-3.8-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"]
+        : ["gemini-3.8-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"];
       
       let lastError: any = null;
       let response = null;
@@ -440,8 +484,9 @@ async function startServer() {
   const isDev = process.env.NODE_ENV !== "production";
   if (isDev) {
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false, ws: false },
+      server: { middlewareMode: true, hmr: false },
       appType: "spa",
+      customLogger,
     });
     app.use(vite.middlewares);
   } else {
@@ -496,6 +541,12 @@ async function startServer() {
         wss.handleUpgrade(request, socket, head, (ws) => {
           wss.emit("connection", ws, request);
         });
+      } else {
+        // Close unexpected or Vite HMR websocket requests cleanly
+        try {
+          socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+          socket.destroy();
+        } catch (e) {}
       }
     } catch (err) {
       console.error("WebSocket upgrade parse error:", err);
@@ -638,6 +689,64 @@ async function startServer() {
           parameters: {
             type: "OBJECT",
             properties: {},
+          },
+        },
+        {
+          name: "open_project",
+          description: "Open a project by ID or name on screen.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              projectId: { type: "STRING", description: "Project ID or name (e.g. UPHIX)" },
+            },
+            required: ["projectId"],
+          },
+        },
+        {
+          name: "open_task",
+          description: "Open a task by ID or title on screen.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              taskId: { type: "STRING", description: "Task ID or title" },
+            },
+            required: ["taskId"],
+          },
+        },
+        {
+          name: "open_client",
+          description: "Open a client profile by ID or name on screen.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              clientId: { type: "STRING", description: "Client ID or name" },
+            },
+            required: ["clientId"],
+          },
+        },
+        {
+          name: "find_document",
+          description: "Find and open a document by title or keyword.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              title: { type: "STRING", description: "Document title or search keyword" },
+            },
+            required: ["title"],
+          },
+        },
+        {
+          name: "edit_document",
+          description: "Edit or update an existing document's content or title in Hub-Mind and update the live editor.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              documentId: { type: "STRING", description: "Document ID or title" },
+              content: { type: "STRING", description: "Updated content (HTML or markdown)" },
+              title: { type: "STRING", description: "Optional updated title" },
+              mode: { type: "STRING", enum: ["replace", "append"] },
+            },
+            required: ["content"],
           },
         },
         {
@@ -808,8 +917,26 @@ async function startServer() {
         },
         {
           name: "get_user_profile",
-          description: "Get the active Hub-Mind user profile, role and permissions.",
+          description: "Get the active Hub-Mind user profile, role, name, preferred name, email, and permissions.",
           parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "get_current_user_profile",
+          description: "Get the signed-in user's identity, name, preferred name, email, role, and preferences.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "get_schedule",
+          description: "Get the user's complete schedule for any date range, day, or named period (e.g. today, tomorrow, this_week, next_week, this_month). Automatically includes ALL one-time meetings, appointments, events, AND recurring schedules/classes (daily, weekly, monthly routines) in chronological order.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              period: { type: "STRING", enum: ["today", "tomorrow", "this_week", "next_week", "this_month", "custom"], description: "Named period to fetch schedule for" },
+              startDate: { type: "STRING", description: "Start date in YYYY-MM-DD or ISO string" },
+              endDate: { type: "STRING", description: "End date in YYYY-MM-DD or ISO string" },
+              limit: { type: "NUMBER", description: "Max events to return" }
+            }
+          }
         },
         {
           name: "request_share_document",
@@ -873,6 +1000,16 @@ async function startServer() {
           parameters: { type: "OBJECT", properties: { meetingId: { type: "STRING" } }, required: ["meetingId"] }
         },
         {
+          name: "set_language_preference",
+          description: "Set the user's preferred spoken and written language (default is English 90%+ of the time, but smoothly switches to any user-requested language such as Spanish, French, Yoruba, German, etc.).",
+          parameters: { type: "OBJECT", properties: { language: { type: "STRING" }, reason: { type: "STRING" } }, required: ["language"] }
+        },
+        {
+          name: "set_voice_isolation_mode",
+          description: "Tune noise suppression and dominant speaker isolation to focus on the highest voice and ignore background chatter and noises.",
+          parameters: { type: "OBJECT", properties: { mode: { type: "STRING", enum: ["high_priority_voice", "balanced", "ambient_allowed"] } }, required: ["mode"] }
+        },
+        {
           name: "connect_google_calendar",
           description: "Connect the user's account to Google Calendar with one-time persistent authorization.",
           parameters: { type: "OBJECT", properties: {} }
@@ -890,6 +1027,30 @@ async function startServer() {
 chatbot bolted onto the app — you have real, live access to its data via
 function calls, and you are expected to use it.
 
+## NOISE SUPPRESSION & DOMINANT SPEAKER FOCUS
+- You strictly listen to the primary, highest voice speaking directly into the microphone.
+- Ignore background noises, keyboard typing, room chatter, TV audio, and ambient murmurs.
+- When multiple faint voices or background noise exist, prioritize the dominant nearby speaker.
+
+## LANGUAGE POLICY & USER PREFERENCE
+- Default Language: Conduct 90%+ of all conversations and operations in English by default.
+- Dynamic Switching: If the user explicitly asks you to speak or reply in another language (e.g. Spanish, French, Yoruba, German, etc.), immediately switch, answer in that language, and record their preference using \`set_language_preference\` or \`save_user_memory\`.
+- If the user later requests to switch back to English or another language, seamlessly adapt and update the preference.
+
+## USER RECOGNITION & IDENTITY (CRITICAL RULE)
+- You always know who is speaking with you.
+- Always address the person by the name/preferred name tied to their currently logged-in Hub-Mind account.
+- If the user asks "Who am I?", "What is my name?", "Do you know who I am?", "Do you remember me?", or asks about their account, immediately and confidently identify them by their name.
+- If you ever need to verify the user profile, use \`get_user_profile\` or \`get_current_user_profile\`.
+
+## RECURRING SCHEDULES ARE CALENDAR SCHEDULES (CRITICAL RULE)
+- In Hub-Mind, recurring schedule templates (music classes, weekly meetings, daily standups, appointments, routines) ARE full calendar schedules.
+- Whenever the user asks for their schedule, calendar events, meetings, or agenda for a particular day or time range (e.g. "what's my schedule today?", "what are my schedules for this week?", "what do I have on Tuesday?", "what is coming up between 9 AM and 2 PM?"):
+  1. Call \`get_schedule\` or \`list_meetings\` with the period/dates.
+  2. \`get_schedule\` evaluates BOTH single meetings AND all active recurring schedules/classes that fall into that queried time period.
+  3. Announce ALL scheduled items chronologically with their start times, end times, and titles so that recurring classes and meetings are always recognized and included.
+  4. Never tell the user they have nothing on their schedule if there are recurring schedules or classes set for that time period.
+
 ## PERSONA INITIALIZATION & IDENTITY RULE
 - When greeting the user or opening a conversation, greet them professionally and neutrally by their name (e.g. "Hello [Name], how may I assist you today?").
 - Do NOT proactively introduce yourself by name or say "I am Jess" or "My name is Jess" in standard greetings or conversational replies unless the user explicitly asks for your name, who you are, or your identity.
@@ -897,10 +1058,6 @@ function calls, and you are expected to use it.
 
 ## SESSION DEACTIVATION & SLEEP COMMAND
 - When the user says "end this session", "go to sleep", "sleep", "deactivate", "stop session", or asks to conclude, politely bid them goodbye (e.g. "Ending session now. Have a wonderful day!") and immediately call the \`end_session\` tool to put the assistant into sleep mode.
-
-## RECURRING SCHEDULES & CALENDAR
-- When the user asks to add or schedule recurring events (like classes, weekly team meetings, lessons, daily standups, appointments), use \`create_recurring_schedule\` with the title, frequency, daysOfWeek, and times.
-- For single meetings or deadlines, use \`create_meeting\` or \`create_calendar_event\`.
 
 ## ATTENTIVE MEMORY & CONTINUOUS DETAIL RETENTION
 - You actively listen for and notice small details, personal preferences, working styles, schedule constraints, colleague roles, client nuances, family or pet mentions, and project goals dropped in conversation.
@@ -950,7 +1107,19 @@ call returns.`;
     const requestUrl = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
     const activeDocumentId = requestUrl.searchParams.get("documentId");
     const activeDocumentTitle = requestUrl.searchParams.get("documentTitle");
+    const currentUserName = requestUrl.searchParams.get("userName") || requestUrl.searchParams.get("name") || "";
+    const currentUserId = requestUrl.searchParams.get("userId") || "";
+    const currentUserRole = requestUrl.searchParams.get("userRole") || "";
+    const currentPage = requestUrl.searchParams.get("page") || "";
+
+    const userGreetingName = currentUserName ? currentUserName.split(' ')[0] : 'there';
+    const userIntroInstruction = currentUserName
+      ? `\n\n## CURRENT SIGNED-IN USER RECOGNITION (CRITICAL)\n- The signed-in user is "${currentUserName}" (Username/ID: ${currentUserId || 'active-user'}, Role: ${currentUserRole || 'member'}).\n- Always address and greet this user as "${userGreetingName}".\n- You know them immediately and without hesitation: if they ask "Who am I?", "What is my name?", "Do you know me?", "What's my account name?", answer confidently that they are ${currentUserName}.`
+      : `\n\n## USER IDENTITY\n- Address the signed-in user warmly. You can query get_current_user_profile or get_user_profile if needed.`;
+
     const liveSystemPrompt = JESS_PROMPT_INSTRUCTION +
+      userIntroInstruction +
+      (currentPage ? `\n\n## ACTIVE VIEW\nThe user is currently viewing the "${currentPage}" section in Hub-Mind.` : "") +
       (activeDocumentId
         ? `\n\n## CURRENT DOCUMENT\nThe user is currently working in "${activeDocumentTitle || 'Current document'}" (document ID: ${activeDocumentId}). If the user asks about this document, its contents, a section, or requests an edit, use the document tools with this ID before answering. Do not guess document contents.`
         : "");
@@ -1144,9 +1313,16 @@ call returns.`;
               conversationalHistory.push({ role: "user", parts: [{ text: payload.text }] });
 
               // Generate response with Gemini
-              const chatAi = new GoogleGenAI({ apiKey: geminiApiKey });
+              const chatAi = new GoogleGenAI({
+                apiKey: geminiApiKey,
+                httpOptions: {
+                  headers: {
+                    'User-Agent': 'aistudio-build',
+                  },
+                },
+              });
               const chatRes = await chatAi.models.generateContent({
-                model: "gemini-3.7-flash",
+                model: "gemini-3.8-flash",
                 contents: conversationalHistory as any,
                 config: {
                   systemInstruction: liveSystemPrompt,

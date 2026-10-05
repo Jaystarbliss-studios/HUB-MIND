@@ -4,8 +4,10 @@ import { JESS_TOOLS_DECLARATIONS } from '../lib/jessTools';
 import { jessBackgroundTasks } from './jessBackgroundTasks';
 import { getUserMemories, formatMemoriesForPrompt } from './memoryService';
 import { getCurrentUserMoodGuidance } from './sentimentService';
+import { JESS_LIVE_WS_URL } from '../lib/apiBase';
 
 export type JessState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted' | 'muted' | 'error';
+
 export interface LiveAudioCallbacks {
   onStatusChange: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
   onJessStateChange: (state: JessState) => void;
@@ -24,7 +26,7 @@ type LiveSession = {
   close: () => void;
 };
 
-const ENABLE_SERVER_WS_BRIDGE = import.meta.env.VITE_ENABLE_LIVE_WS_BRIDGE === 'true';
+const ENABLE_SERVER_WS_BRIDGE = import.meta.env.VITE_ENABLE_LIVE_WS_BRIDGE !== 'false';
 
 export class LiveAudioClient {
   private session: LiveSession | null = null;
@@ -35,6 +37,8 @@ export class LiveAudioClient {
   private inputAnalyser: AnalyserNode | null = null;
   private outputAnalyser: AnalyserNode | null = null;
   private inputGainNode: GainNode | null = null;
+  private highpassFilter: BiquadFilterNode | null = null;
+  private lowpassFilter: BiquadFilterNode | null = null;
   private outputGainNode: GainNode | null = null;
   private mediaStream: MediaStream | null = null;
   private scriptProcessor: ScriptProcessorNode | null = null;
@@ -47,7 +51,12 @@ export class LiveAudioClient {
   private isPushToTalkActive = false;
   private pushToTalkMode = false;
   private levelIntervalId: number | null = null;
+  private pingIntervalId: number | null = null;
   private connected = false;
+
+  // Adaptive noise suppression and dominant speaker tracking
+  private ambientNoiseFloor = 0.008;
+  private speechHangoverCounter = 0;
 
   constructor(callbacks: LiveAudioCallbacks) {
     this.callbacks = callbacks;
@@ -94,6 +103,18 @@ export class LiveAudioClient {
     this.inputGainNode = this.inputAudioCtx.createGain();
     this.inputGainNode.gain.value = 1.0;
 
+    // Highpass filter at 85Hz to cut table thumps, AC/fan hum, and sub-bass background noise
+    this.highpassFilter = this.inputAudioCtx.createBiquadFilter();
+    this.highpassFilter.type = 'highpass';
+    this.highpassFilter.frequency.value = 85;
+    this.highpassFilter.Q.value = 0.7;
+
+    // Lowpass filter at 7000Hz to eliminate high-frequency electronic hiss and ambient sizzle
+    this.lowpassFilter = this.inputAudioCtx.createBiquadFilter();
+    this.lowpassFilter.type = 'lowpass';
+    this.lowpassFilter.frequency.value = 7000;
+    this.lowpassFilter.Q.value = 0.7;
+
     this.outputAnalyser = this.outputAudioCtx.createAnalyser();
     this.outputAnalyser.fftSize = 256;
     this.outputGainNode = this.outputAudioCtx.createGain();
@@ -123,7 +144,10 @@ export class LiveAudioClient {
     }
 
     this.sourceNode = this.inputAudioCtx.createMediaStreamSource(this.mediaStream);
-    this.sourceNode.connect(this.inputGainNode);
+    // Audio Graph: Source -> Highpass -> Lowpass -> Gain -> Analyser -> ScriptProcessor
+    this.sourceNode.connect(this.highpassFilter);
+    this.highpassFilter.connect(this.lowpassFilter);
+    this.lowpassFilter.connect(this.inputGainNode);
     this.inputGainNode.connect(this.inputAnalyser);
 
     this.scriptProcessor = this.inputAudioCtx.createScriptProcessor(4096, 1, 1);
@@ -162,12 +186,24 @@ export class LiveAudioClient {
         'You are an intelligent, warm, concise, and capable operations assistant inside Hub-Mind.',
         'You speak naturally, professionally and confidently in live voice conversation.',
         `Address the signed-in user as ${firstName}.`,
+        'USER RECOGNITION & IDENTITY (CRITICAL RULE):',
+        `- You know exactly who is speaking with you: The signed-in user's name is "${context?.userName || firstName}".`,
+        `- Always address them by their name ("${firstName}").`,
+        `- If the user asks "Who am I?", "What is my name?", "Do you know who I am?", "Do you remember me?", or asks about their identity, immediately and confidently identify them by name: "${context?.userName || firstName}".`,
+        `- If you need to re-verify or check full profile details, you can use \`get_user_profile\` or \`get_current_user_profile\`.`,
         'PERSONA INITIALIZATION & IDENTITY RULE:',
         '- Greet the user with a neutral, professional assistant greeting (e.g. "Hello ' + firstName + ', how may I help you today?").',
         '- Do NOT proactively introduce yourself by name or say "I am Jess" or "My name is Jess" unless the user explicitly asks for your name, identity, or who you are.',
         '- Only reveal your name ("Jess") when the user specifically asks "What is your name?" or "Who are you?".',
         'SESSION DEACTIVATION & SLEEP COMMAND:',
         '- If the user says "end this session", "go to sleep", "sleep", "deactivate", "stop session", "that will be all", or asks to conclude, politely bid them goodbye (e.g. "Ending session now. Have a great day!") and call the `end_session` tool immediately to put the assistant into sleep mode.',
+        'NOISE SUPPRESSION & DOMINANT SPEAKER FOCUS:',
+        '- You only listen to the primary/highest voice speaking directly to you and ignore background noises, room murmur, TV/music audio, typing, and ambient sounds.',
+        '- If there are faint background voices or chatter in the room, strictly prioritize the dominant voice closest to the microphone.',
+        'LANGUAGE POLICY & DYNAMIC USER PREFERENCE:',
+        '- Default Language: Listen and answer in English for 90%+ of all standard conversations and operations.',
+        '- Dynamic Language Switching: If the user explicitly asks you to speak in another language (e.g. Spanish, French, Yoruba, German, Japanese, etc.), immediately switch to that language, respond naturally in that language, and save their language preference using `set_language_preference` or `save_user_memory`.',
+        '- If the user asks to switch back to English or change languages again, seamlessly adapt and update their preference.',
         'PERSONALIZED USER MEMORY & REMEMBERED CHOICES:',
         `- You remember this specific user's preferences, habits, instructions, and past choices across every session:`,
         userMemoriesSummary,
@@ -179,8 +215,13 @@ export class LiveAudioClient {
         'EMOTIONAL STATE & REAL-TIME TONE ADAPTATION:',
         getCurrentUserMoodGuidance(),
         '- Naturally modulate your energy, empathy, and speed to match the user\'s current state without explicitly announcing the mood.',
-        'RECURRING SCHEDULES & CALENDAR:',
-        '- When the user asks to add or schedule repeating events (like classes, weekly meetings, appointments, routines), use `create_recurring_schedule` with title, frequency (daily, weekly, monthly), daysOfWeek, and times.',
+        'SCHEDULES & RECURRING CALENDAR (CRITICAL RULE):',
+        '- RECURRING SCHEDULES ARE PART OF SCHEDULES: In Hub-Mind, recurring classes, weekly meetings, daily routines, and appointments are full schedules.',
+        '- Whenever the user asks for their schedule, calendar, meetings, or agenda for a particular date, time range, or period (e.g. "what\'s my schedule today?", "what are my schedules for this week?", "what do I have on Tuesday?", "what\'s between 9 AM and 2 PM?"):',
+        '  1. Call `get_schedule` or `list_meetings` with the period / date range.',
+        '  2. `get_schedule` returns BOTH one-time meetings AND all active recurring schedules and classes falling in that time range.',
+        '  3. List ALL of them chronologically with their exact times, titles, and recurring labels so the user never misses a recurring class or meeting.',
+        '- When the user asks to create or schedule recurring events (like classes, weekly meetings, appointments, routines), use `create_recurring_schedule` with title, frequency, daysOfWeek, and times.',
         '- When the user asks for single meetings or calendar items, use `create_meeting` or `create_calendar_event`.',
         'SHARING DATA, SCHEDULES, MEETINGS & RESOURCES:',
         '- You have powerful tools to share any data across Hub-Mind with colleagues or clients:',
@@ -206,17 +247,32 @@ export class LiveAudioClient {
         'SESSION SLEEP RULE: When the user asks to end the session, sleep, deactivate, or stop Jess, MUST call end_session immediately. Do not only acknowledge the request conversationally. After the tool succeeds, do not continue the conversation or request more input; the client will terminate the Live session.'
       ].filter(Boolean).join('\n');
 
+      if (ENABLE_SERVER_WS_BRIDGE) {
+        try {
+          await this.connectFallbackWebSocket(context);
+          return;
+        } catch (wsBridgeErr) {
+          console.warn('Server WebSocket bridge not available, attempting direct ephemeral token:', wsBridgeErr);
+        }
+      }
+
       let token = '';
       try {
         token = await this.getEphemeralToken();
       } catch (tokenErr) {
-        if (!ENABLE_SERVER_WS_BRIDGE) throw tokenErr;
-        console.warn('Ephemeral token error, attempting local WebSocket bridge:', tokenErr);
+        if (ENABLE_SERVER_WS_BRIDGE) {
+          await this.connectFallbackWebSocket(context);
+          return;
+        }
+        throw tokenErr;
       }
 
       if (token) {
         try {
-          const ai = new GoogleGenAI({ apiKey: token });
+          const ai = new GoogleGenAI({
+            apiKey: token,
+            httpOptions: { apiVersion: 'v1alpha' },
+          });
           const session = await ai.live.connect({
             model: 'gemini-3.8-live',
             config: {
@@ -245,7 +301,7 @@ export class LiveAudioClient {
                   if (ENABLE_SERVER_WS_BRIDGE) {
                     void this.connectFallbackWebSocket(context);
                   } else {
-                    this.callbacks.onError?.('Gemini Live connection failed. The hosted WebSocket bridge is disabled in production.');
+                    this.callbacks.onError?.('Gemini Live connection failed.');
                     this.callbacks.onStatusChange('error');
                     this.callbacks.onJessStateChange('error');
                   }
@@ -267,7 +323,8 @@ export class LiveAudioClient {
           if (this.scriptProcessor) {
             this.scriptProcessor.onaudioprocess = event => {
               if (this.isMuted || this.micPermissionDenied || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
-              const pcmBuffer = this.floatTo16BitPCM(event.inputBuffer.getChannelData(0));
+              const pcmBuffer = this.processAudioBufferWithNoiseSuppression(event.inputBuffer.getChannelData(0));
+              if (!pcmBuffer) return; // Suppressed as background noise or silence
               const base64Data = this.base64EncodeArrayBuffer(pcmBuffer);
               if (this.session && this.connected && !this.isUsingFallbackWs) {
                 try {
@@ -287,18 +344,20 @@ export class LiveAudioClient {
           }
           return;
         } catch (directErr: any) {
-          if (!ENABLE_SERVER_WS_BRIDGE) throw directErr;
-          console.warn('Direct Live API connect failed, switching to local bridge fallback:', directErr?.message || directErr);
+          if (ENABLE_SERVER_WS_BRIDGE) {
+            await this.connectFallbackWebSocket(context);
+            return;
+          }
+          throw directErr;
         }
       }
 
-      if (!ENABLE_SERVER_WS_BRIDGE) {
-        throw new Error('Jess Live could not establish the secure Gemini Live session.');
+      if (ENABLE_SERVER_WS_BRIDGE) {
+        await this.connectFallbackWebSocket(context);
+        return;
       }
 
-      // Optional local-development fallback. Netlify production does not expose
-      // the Express WebSocket bridge, so it is disabled unless explicitly opted in.
-      await this.connectFallbackWebSocket(context);
+      throw new Error('Jess Live could not establish the secure Gemini Live session.');
     } catch (error: any) {
       const msg = error?.message || 'Failed to start Jess Live.';
       if (error?.name === 'NotAllowedError' || msg.includes('Permission') || msg.includes('permission')) {
@@ -313,74 +372,117 @@ export class LiveAudioClient {
     }
   }
 
-  private async connectFallbackWebSocket(context?: { documentId?: string; documentTitle?: string }) {
-    try {
-      const isSecure = window.location.protocol === 'https:';
-      const wsProtocol = isSecure ? 'wss:' : 'ws:';
-      const docQuery = context?.documentId
-        ? `?documentId=${encodeURIComponent(context.documentId)}&documentTitle=${encodeURIComponent(context.documentTitle || '')}`
-        : '';
-      const wsUrl = `${wsProtocol}//${window.location.host}/api/live-ws${docQuery}`;
+  private async connectFallbackWebSocket(context?: {
+    page?: string;
+    documentId?: string;
+    documentTitle?: string;
+    userId?: string;
+    userName?: string;
+    userRole?: string;
+  }) {
+    const isSecure = window.location.protocol === 'https:';
+    const wsProtocol = isSecure ? 'wss:' : 'ws:';
+    const queryParams = new URLSearchParams();
+    if (context?.documentId) queryParams.set('documentId', context.documentId);
+    if (context?.documentTitle) queryParams.set('documentTitle', context.documentTitle);
+    if (context?.userId) queryParams.set('userId', context.userId);
+    if (context?.userName) queryParams.set('userName', context.userName);
+    if (context?.userRole) queryParams.set('userRole', context.userRole);
+    if (context?.page) queryParams.set('page', context.page);
 
-      const ws = new WebSocket(wsUrl);
-      this.fallbackWs = ws;
-
-      ws.onopen = () => {
-        this.connected = true;
-        this.isUsingFallbackWs = true;
-        this.callbacks.onStatusChange('connected');
-        this.callbacks.onJessStateChange(this.isMuted ? 'muted' : 'listening');
-        this.startLevelMonitor();
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'tool_call') {
-            const fcs = data.functionCalls || (data.functionCall ? [data.functionCall] : []);
-            fcs.forEach((fc: any) => this.callbacks.onFunctionCall?.(fc));
-          } else if (data.type === 'audio' && data.audio) {
-            this.callbacks.onJessStateChange('speaking');
-            this.playAudioChunk(data.audio);
-          } else if (data.type === 'input_transcription' && data.text) {
-            this.callbacks.onUserTranscript(data.text);
-          } else if (data.type === 'output_transcription' && data.text) {
-            this.callbacks.onJessTranscript(data.text);
-          } else if (data.type === 'interrupted') {
-            this.handleInterruption();
-          } else if (data.type === 'turn_complete') {
-            this.callbacks.onTurnComplete();
-            if (!this.activeSources.length) {
-              this.callbacks.onJessStateChange(this.isMuted ? 'muted' : 'listening');
-            }
-          }
-        } catch (e) {
-          console.warn('Error parsing WS message:', e);
-        }
-      };
-
-      ws.onerror = () => {
-        if (!this.connected) {
-          this.callbacks.onStatusChange('error');
-          this.callbacks.onJessStateChange('error');
-        }
-      };
-
-      ws.onclose = () => {
-        if (this.connected) {
-          this.connected = false;
-          this.callbacks.onStatusChange('disconnected');
-          this.callbacks.onJessStateChange('idle');
-        }
-      };
-    } catch (wsErr: any) {
-      console.error('Fallback WebSocket error:', wsErr);
-      this.callbacks.onStatusChange('error');
+    const docQuery = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    let wsUrl = '';
+    if (JESS_LIVE_WS_URL) {
+      const base = JESS_LIVE_WS_URL.replace(/^http/, 'ws');
+      wsUrl = `${base}/api/live-ws${docQuery}`;
+    } else {
+      wsUrl = `${wsProtocol}//${window.location.host}/api/live-ws${docQuery}`;
     }
+
+    const ws = new WebSocket(wsUrl);
+    this.fallbackWs = ws;
+
+    ws.onopen = () => {
+      this.connected = true;
+      this.isUsingFallbackWs = true;
+      this.callbacks.onStatusChange('connected');
+      this.callbacks.onJessStateChange(this.isMuted || this.micPermissionDenied ? 'muted' : 'listening');
+      this.startLevelMonitor();
+
+      if (this.scriptProcessor) {
+        this.scriptProcessor.onaudioprocess = event => {
+          if (this.isMuted || this.micPermissionDenied || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
+          const pcmBuffer = this.processAudioBufferWithNoiseSuppression(event.inputBuffer.getChannelData(0));
+          if (!pcmBuffer) return; // Suppressed background noise
+          const base64Data = this.base64EncodeArrayBuffer(pcmBuffer);
+          if (this.fallbackWs && this.fallbackWs.readyState === WebSocket.OPEN) {
+            try {
+              this.fallbackWs.send(JSON.stringify({ type: 'audio', audio: base64Data }));
+            } catch (e) {}
+          }
+        };
+      }
+
+      this.pingIntervalId = window.setInterval(() => {
+        if (this.fallbackWs && this.fallbackWs.readyState === WebSocket.OPEN) {
+          try {
+            this.fallbackWs.send(JSON.stringify({ type: 'ping' }));
+          } catch (e) {}
+        }
+      }, 15000);
+
+      if (this.micPermissionDenied) {
+        this.callbacks.onJessTranscript?.('Microphone access is unavailable or denied. Jess is active in text and suggested actions mode.');
+      }
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'tool_call') {
+          this.callbacks.onJessStateChange('thinking');
+          const fcs = data.functionCalls || (data.functionCall ? [data.functionCall] : []);
+          fcs.forEach((fc: any) => this.callbacks.onFunctionCall?.(fc));
+        } else if (data.type === 'audio' && data.audio) {
+          this.callbacks.onJessStateChange('speaking');
+          this.playAudioChunk(data.audio);
+        } else if (data.type === 'input_transcription' && data.text) {
+          this.callbacks.onUserTranscript(data.text);
+        } else if (data.type === 'output_transcription' && data.text) {
+          this.callbacks.onJessTranscript(data.text);
+        } else if (data.type === 'interrupted') {
+          this.handleInterruption();
+        } else if (data.type === 'turn_complete') {
+          this.callbacks.onTurnComplete();
+          if (this.activeSources.length === 0) {
+            this.callbacks.onJessStateChange(this.isMuted ? 'muted' : 'listening');
+          }
+        } else if (data.type === 'error') {
+          console.warn('[Jess Live Server Error]:', data.message);
+          this.callbacks.onError?.(data.message || 'Live assistant session error.');
+        }
+      } catch (e) {
+        console.warn('Error parsing WS message:', e);
+      }
+    };
+
+    ws.onerror = () => {
+      if (!this.connected) {
+        this.callbacks.onStatusChange('error');
+        this.callbacks.onJessStateChange('error');
+      }
+    };
+
+    ws.onclose = () => {
+      if (this.connected) {
+        this.connected = false;
+        this.callbacks.onStatusChange('disconnected');
+        this.callbacks.onJessStateChange('idle');
+      }
+    };
   }
 
   private handleLiveMessage(message: any) {
-    // Extract real-time user voice transcription from server content
     const inputTx =
       (message.serverContent as any)?.inputTranscription?.text ||
       (message as any).inputTranscription?.text ||
@@ -602,6 +704,11 @@ export class LiveAudioClient {
       this.levelIntervalId = null;
     }
 
+    if (this.pingIntervalId) {
+      clearInterval(this.pingIntervalId);
+      this.pingIntervalId = null;
+    }
+
     this.stopPlayback();
 
     if (this.scriptProcessor) {
@@ -647,6 +754,57 @@ export class LiveAudioClient {
       this.callbacks.onStatusChange('disconnected');
       this.callbacks.onJessStateChange('idle');
     }
+  }
+
+  private isVoiceAboveNoiseFloor(input: Float32Array): boolean {
+    let sumSquares = 0;
+    let peak = 0;
+    for (let i = 0; i < input.length; i++) {
+      const val = input[i];
+      const abs = Math.abs(val);
+      if (abs > peak) peak = abs;
+      sumSquares += val * val;
+    }
+    const rms = Math.sqrt(sumSquares / input.length);
+
+    // Smoothly track background noise floor baseline
+    if (rms < this.ambientNoiseFloor) {
+      this.ambientNoiseFloor = this.ambientNoiseFloor * 0.9 + rms * 0.1;
+    } else {
+      this.ambientNoiseFloor = this.ambientNoiseFloor * 0.999 + rms * 0.001;
+    }
+
+    if (this.ambientNoiseFloor < 0.002) this.ambientNoiseFloor = 0.002;
+    if (this.ambientNoiseFloor > 0.05) this.ambientNoiseFloor = 0.05;
+
+    // Dynamic voice threshold: Focus on the highest/dominant voice over the room noise floor
+    const dynamicThreshold = Math.max(0.010, this.ambientNoiseFloor * 2.0);
+
+    if (rms >= dynamicThreshold && peak >= 0.025) {
+      this.speechHangoverCounter = 5; // Sustain ~350ms for natural syllable phrasing
+      return true;
+    }
+
+    if (this.speechHangoverCounter > 0) {
+      this.speechHangoverCounter--;
+      return true;
+    }
+
+    return false;
+  }
+
+  private processAudioBufferWithNoiseSuppression(input: Float32Array): ArrayBuffer | null {
+    const isSpeech = this.isVoiceAboveNoiseFloor(input);
+    if (!isSpeech) {
+      return null;
+    }
+
+    const output = new DataView(new ArrayBuffer(input.length * 2));
+    for (let i = 0; i < input.length; i++) {
+      const s = Math.max(-1, Math.min(1, input[i]));
+      output.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+    return output.buffer;
   }
 
   private floatTo16BitPCM(input: Float32Array): ArrayBuffer {

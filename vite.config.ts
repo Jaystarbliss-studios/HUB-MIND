@@ -4,23 +4,37 @@ import react from '@vitejs/plugin-react';
 import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, createLogger } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
+const customLogger = createLogger();
+const origLoggerError = customLogger.error.bind(customLogger);
+const origLoggerWarn = customLogger.warn.bind(customLogger);
+const origLoggerInfo = customLogger.info.bind(customLogger);
+
+const isBenignViteNotice = (msg: unknown) => {
+  const l = String(msg || '').toLowerCase();
+  return l.includes('websocket') || l.includes('ws') || l.includes('hmr') || l.includes('[vite]');
+};
+
+customLogger.error = (msg, options) => {
+  if (isBenignViteNotice(msg)) return;
+  origLoggerError(msg, options);
+};
+customLogger.warn = (msg, options) => {
+  if (isBenignViteNotice(msg)) return;
+  origLoggerWarn(msg, options);
+};
+customLogger.info = (msg, options) => {
+  if (isBenignViteNotice(msg)) return;
+  origLoggerInfo(msg, options);
+};
+
+export default defineConfig(() => {
   return {
-    define: {
-      'import.meta.env.VITE_FIREBASE_WEB_API_KEY': JSON.stringify(env.FIREBASE_WEB_API_KEY || env.VITE_FIREBASE_WEB_API_KEY || ''),
-      'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(env.FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || ''),
-      'import.meta.env.VITE_FIRESTORE_DATABASE_ID': JSON.stringify(env.FIRESTORE_DATABASE_ID || env.VITE_FIRESTORE_DATABASE_ID || ''),
-      'import.meta.env.VITE_FIREBASE_APP_ID': JSON.stringify(env.FIREBASE_APP_ID || env.VITE_FIREBASE_APP_ID || ''),
-      'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(env.FIREBASE_AUTH_DOMAIN || env.VITE_FIREBASE_AUTH_DOMAIN || ''),
-      'import.meta.env.VITE_FIREBASE_STORAGE_BUCKET': JSON.stringify(env.FIREBASE_STORAGE_BUCKET || env.VITE_FIREBASE_STORAGE_BUCKET || ''),
-      'import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID': JSON.stringify(env.FIREBASE_MESSAGING_SENDER_ID || env.VITE_FIREBASE_MESSAGING_SENDER_ID || ''),
-    },
+    customLogger,
     plugins: [
       react(),
       tailwindcss(),
@@ -143,7 +157,6 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       hmr: false,
-      ws: false as const,
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };

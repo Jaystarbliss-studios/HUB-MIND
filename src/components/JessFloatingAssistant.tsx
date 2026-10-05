@@ -70,7 +70,7 @@ interface CurrentSpeechState {
 }
 
 export function JessFloatingAssistant() {
-  const { profile, updatePreferredName } = useAuth();
+  const { user, profile, updatePreferredName } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const clientRef = useRef<LiveAudioClient | null>(null);
@@ -282,19 +282,20 @@ export function JessFloatingAssistant() {
 
     clientRef.current = client;
     try {
-      const firstName = profile.preferredName || profile.displayName || profile.name?.split(' ')[0] || 'there';
+      const fullName = profile.preferredName || profile.displayName || profile.name || user?.displayName || (profile.email ? profile.email.split('@')[0] : 'User');
+      const firstName = profile.preferredName || profile.displayName?.split(' ')[0] || profile.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || fullName;
       const context = resolveJessContext(location.pathname);
       await client.connect({ 
         ...context, 
         userId: profile.id, 
-        userName: firstName, 
+        userName: fullName, 
         userRole: profile.role 
       });
       window.setTimeout(() => {
         if (initialPrompt) {
           client.sendText(initialPrompt);
         } else {
-          client.sendText(`Greet ${firstName} warmly and briefly ask what you can assist with today. Do NOT say "I am Jess" or introduce yourself by name unless the user asks for your name or identity.`);
+          client.sendText(`Greet ${firstName} warmly and ask what you can help with today. Do NOT introduce yourself by name unless asked.`);
         }
       }, 450);
     } catch {
