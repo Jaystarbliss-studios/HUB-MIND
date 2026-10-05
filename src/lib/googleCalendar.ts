@@ -4,7 +4,8 @@ import {
   CALENDAR_SCOPES, 
   getCachedCalendarToken, 
   setCachedCalendarToken, 
-  clearGoogleTokens, 
+  clearGoogleTokens,
+  disconnectPersistentGoogleConnection,
   requestGoogleAccessToken 
 } from './googleAuthToken';
 
@@ -81,7 +82,9 @@ export async function hydrateGoogleCalendarConnection(): Promise<boolean> {
   if (!user) return false;
   try {
     const snap = await getDoc(doc(db, 'users', user.uid));
-    const connected = snap.exists() && snap.data()?.googleCalendarConnected === true;
+    const rootConnected = snap.exists() && snap.data()?.googleCalendarConnected === true;
+    const privateConnection = await getDoc(doc(db, 'users', user.uid, 'private', 'googleConnection'));
+    const connected = rootConnected || privateConnection.exists();
     localStorage.setItem(userKey(STORAGE_CONNECTED_KEY), connected ? 'true' : 'false');
     if (connected && snap.data()?.googleCalendarEmail) {
       localStorage.setItem(userKey(STORAGE_EMAIL_KEY), String(snap.data().googleCalendarEmail));
