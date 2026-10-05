@@ -177,6 +177,10 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'open_client', description: 'Open a client on screen.', parameters: object({ clientId: { type: 'string' } }, ['clientId']) },
   { name: 'open_document', description: 'Open a document in the document editor.', parameters: object({ documentId: { type: 'string' } }, ['documentId']) },
   { name: 'navigate_app', description: 'Navigate user to a specific tab or page in Hub-Mind (e.g. /colleagues, /tasks, /calendar, /documents, /projects, /clients, /knowledge, /follow-ups, /inbox, /admin, /).', parameters: object({ path: { type: 'string', description: 'Path to open: /colleagues, /tasks, /calendar, /documents, /projects, /clients, /knowledge, /follow-ups, /inbox, /admin, /' } }, ['path']) },
+  { name: 'scroll_screen', description: 'Control the visible Hub-Mind screen without touching it. Start/stop continuous scrolling, change speed, scroll a specific amount, or jump to top/bottom.', parameters: object({ mode: { type: 'string', enum: ['start', 'stop', 'by', 'top', 'bottom'] }, direction: { type: 'string', enum: ['up', 'down'] }, speed: { type: 'string', enum: ['slow', 'normal', 'fast', 'very_fast'] }, amount: { type: 'number' } }, ['mode']) },
+  { name: 'click_screen', description: 'Click a visible Hub-Mind UI element by visible text, accessible label, title, or CSS selector.', parameters: object({ target: { type: 'string' }, selector: { type: 'string' } }) },
+  { name: 'type_screen', description: 'Type into a visible input or editor field selected by label, placeholder, name, or CSS selector.', parameters: object({ target: { type: 'string' }, text: { type: 'string' }, selector: { type: 'string' }, clearFirst: { type: 'boolean' } }, ['text']) },
+  { name: 'stop_screen_control', description: 'Immediately stop any ongoing Jess screen scrolling/control operation.', parameters: object({}) },
 
   // Google Calendar Integration
   { name: 'list_calendar_events', description: 'List Google Calendar events.', parameters: object({ timeMin: { type: 'string' }, timeMax: { type: 'string' } }) },
@@ -1951,6 +1955,18 @@ export async function executeJessTool(
         return { result: { success: true, path: '/colleagues' }, actionPayload: navigatePayload('/colleagues') };
       }
 
+      case 'scroll_screen':
+      case 'stop_screen_control':
+      case 'click_screen':
+      case 'type_screen': {
+        const payload = name === 'stop_screen_control'
+          ? { type: 'screen_control', action: 'stop' }
+          : name === 'scroll_screen'
+            ? { type: 'screen_control', action: 'scroll', mode: args.mode || 'by', direction: args.direction || 'down', speed: args.speed || 'normal', amount: Number(args.amount || 0) }
+            : { type: 'screen_control', action: name === 'click_screen' ? 'click' : 'type', target: args.target, selector: args.selector, text: args.text, clearFirst: args.clearFirst };
+        return { result: { success: true, message: 'Screen control command accepted.' }, actionPayload: payload };
+      }
+
       case 'navigate_app': {
         let path = String(args.path || '').trim();
         const lower = path.toLowerCase().replace(/^\/+/, '');
@@ -2104,34 +2120,33 @@ export async function executeJessTool(
         const taskTitle = String(args.title || 'Workspace Background Operation');
         const description = String(args.description || '');
         const taskType = (args.taskType || 'custom') as any;
-
+        const steps = Array.isArray(args.steps) ? args.steps.filter((s: any) => s && s.tool) : [];
+        if (!steps.length) {
+          return { result: { success: false, error: 'A background operation needs at least one executable tool step so progress can be measured accurately.' } };
+        }
         const bgTask = jessBackgroundTasks.enqueueTask({
           title: taskTitle,
           description,
           taskType,
           priority: 'normal',
-          customStages: [
-            { atPct: 25, stage: 'Gathering workspace records and analyzing operational context...', delayMs: 1500 },
-            { atPct: 50, stage: 'Processing records and composing content in background...', delayMs: 2200 },
-            { atPct: 75, stage: 'Applying changes and syncing cloud documents...', delayMs: 1800 },
-            { atPct: 90, stage: 'Finalizing verification and updating indexes...', delayMs: 1200 },
-          ],
-          onComplete: async () => {
-            return {
-              summary: `Completed "${taskTitle}". All workspace updates are live and saved.`,
-            };
+          userId: user.id,
+          payload: { steps },
+          onComplete: async (task) => {
+            const total = steps.length;
+            const completed: string[] = [];
+            for (let index = 0; index < total; index++) {
+              const step = steps[index];
+              const label = String(step.label || step.tool);
+              jessBackgroundTasks.updateTaskProgress(task.id, Math.max(1, Math.round((index / total) * 95)), 'Working: ' + label + ' (' + (index + 1) + '/' + total + ')');
+              const stepResult = await executeJessTool(String(step.tool), step.args || {}, user, onPreferredName, context);
+              if (!stepResult.result?.success) throw new Error(label + ' failed: ' + (stepResult.result?.error || 'tool execution failed'));
+              completed.push(label);
+              jessBackgroundTasks.updateTaskProgress(task.id, Math.round(((index + 1) / total) * 95), 'Completed: ' + label + ' (' + (index + 1) + '/' + total + ')');
+            }
+            return { summary: 'Completed ' + completed.length + '/' + total + ' background steps for "' + taskTitle + '".' };
           }
         });
-
-        return {
-          result: {
-            success: true,
-            taskId: bgTask.id,
-            progress: bgTask.progress,
-            stage: bgTask.stage,
-            message: `Started "${taskTitle}" in the background processing queue (ID: ${bgTask.id}). I am here and ready to continue talking while it works. You can ask for status or percentage at any time!`,
-          },
-        };
+        return { result: { success: true, taskId: bgTask.id, progress: bgTask.progress, stage: bgTask.stage, message: 'Started "' + taskTitle + '" as a real background workflow with ' + steps.length + ' executable steps. Progress will reflect actual completed work.' } };
       }
 
       case 'get_background_tasks_status': {
