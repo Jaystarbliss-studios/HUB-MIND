@@ -22,6 +22,26 @@
   status = 200
 
 [[redirects]]
+  from = "/api/google-oauth-start"
+  to = "/.netlify/functions/google-oauth-start"
+  status = 200
+
+[[redirects]]
+  from = "/api/google-oauth-callback"
+  to = "/.netlify/functions/google-oauth-callback"
+  status = 200
+
+[[redirects]]
+  from = "/api/google-oauth-exchange"
+  to = "/.netlify/functions/google-oauth-exchange"
+  status = 200
+
+[[redirects]]
+  from = "/api/google-token"
+  to = "/.netlify/functions/google-token"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
