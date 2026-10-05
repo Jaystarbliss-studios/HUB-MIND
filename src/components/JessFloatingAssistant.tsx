@@ -42,6 +42,20 @@ function clampViewportPosition(position: { x: number; y: number }, size: number)
 }
 
 
+
+function getJessScrollTarget(): HTMLElement | Window {
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const candidates: HTMLElement[] = [];
+  let node: HTMLElement | null = active;
+  while (node && node !== document.body) {
+    if (node.scrollHeight > node.clientHeight + 20 && ['auto','scroll'].includes(getComputedStyle(node).overflowY)) candidates.push(node);
+    node = node.parentElement;
+  }
+  const main = document.querySelector<HTMLElement>('[role="main"],main,.overflow-y-auto,.overflow-auto');
+  if (main && main.scrollHeight > main.clientHeight + 20) candidates.push(main);
+  return candidates[0] || window;
+}
+
 function findJessVisibleElement(target?: string, selector?: string): HTMLElement | null {
   if (selector) {
     try {
@@ -265,15 +279,18 @@ export function JessFloatingAssistant() {
           } else if (p.action === 'scroll') {
             if (p.mode === 'top') {
               stopScroll();
-              window.scrollTo({ top: 0, behavior: 'smooth' });
+              const target = getJessScrollTarget();
+              if (target === window) window.scrollTo({ top: 0, behavior: 'smooth' }); else target.scrollTo({ top: 0, behavior: 'smooth' });
             } else if (p.mode === 'bottom') {
               stopScroll();
-              window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+              const target = getJessScrollTarget();
+              if (target === window) window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); else target.scrollTo({ top: target.scrollHeight, behavior: 'smooth' });
             } else if (p.mode === 'by') {
               stopScroll();
               const direction = p.direction === 'up' ? -1 : 1;
               const amount = Math.max(50, Math.min(3000, Number(p.amount) || window.innerHeight * 0.75));
-              window.scrollBy({ top: direction * amount, behavior: 'smooth' });
+              const target = getJessScrollTarget();
+              if (target === window) window.scrollBy({ top: direction * amount, behavior: 'smooth' }); else target.scrollBy({ top: direction * amount, behavior: 'smooth' });
             } else {
               const speeds: Record<string, number> = { slow: 1.2, normal: 3, fast: 7, very_fast: 14 };
               control.speed = speeds[p.speed] || 3;
@@ -282,7 +299,8 @@ export function JessFloatingAssistant() {
               control.timer = window.setInterval(() => {
                 if (!control.running) return;
                 const direction = p.direction === 'up' ? -1 : 1;
-                window.scrollBy(0, direction * control.speed);
+                const target = getJessScrollTarget();
+                if (target === window) window.scrollBy(0, direction * control.speed); else target.scrollBy({ top: direction * control.speed });
               }, 16);
             }
             result.result.message = 'Screen scrolling command completed on the visible Hub-Mind screen.';
