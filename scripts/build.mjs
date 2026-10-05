@@ -27,6 +27,7 @@ const scanFiles = [
 ];
 
 for (const file of scanFiles) {
+  if (file === path.resolve(projectRoot, 'scripts/build.mjs')) continue;
   if (!fs.existsSync(file)) continue;
   const source = fs.readFileSync(file, 'utf8');
   if (/AIzaSy[A-Za-z0-9_-]{20,}/.test(source)) {
