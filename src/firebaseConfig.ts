@@ -53,7 +53,7 @@ const createFirebaseInstances = (runtimeConfig: RuntimeConfig) => {
   try {
     db = initializeFirestore(
       app,
-      { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) },
+      { experimentalAutoDetectLongPolling: true, localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) },
       FIRESTORE_DATABASE_ID === '(default)' ? undefined : FIRESTORE_DATABASE_ID
     );
   } catch {
