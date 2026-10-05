@@ -14,6 +14,7 @@ export interface JessQueuedTask {
   targetId?: string;
   targetType?: string;
   payload?: Record<string, any>;
+  userId?: string;
 }
 
 export type JessTaskStatusEventType =
@@ -23,7 +24,7 @@ export type JessTaskStatusEventType =
   | 'hubmind:jess-task-failed'
   | 'hubmind:jess-task-cancelled';
 
-const QUEUE_STORAGE_KEY = 'hubmind_jess_task_queue_v2';
+const QUEUE_STORAGE_KEY = 'hubmind_jess_task_queue_v3';
 
 class JessBackgroundProcessingQueue {
   private queue: Map<string, JessQueuedTask> = new Map();
@@ -95,7 +96,7 @@ class JessBackgroundProcessingQueue {
     priority?: JessQueuedTask['priority'];
     payload?: Record<string, any>;
     customStages?: { atPct: number; stage: string; delayMs?: number }[];
-    onComplete?: () => Promise<{ summary: string; targetId?: string; targetType?: string }>;
+    onComplete?: (task: JessQueuedTask) => Promise<{ summary: string; targetId?: string; targetType?: string }>;\n    userId?: string;
   }): JessQueuedTask {
     const now = new Date().toISOString();
     const id = `jtask_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -110,7 +111,7 @@ class JessBackgroundProcessingQueue {
       priority: params.priority || 'normal',
       startedAt: now,
       updatedAt: now,
-      payload: params.payload,
+      payload: params.payload,\n      userId: params.userId,
     };
 
     this.queue.set(id, task);
@@ -126,53 +127,26 @@ class JessBackgroundProcessingQueue {
   private async processTaskAsynchronously(
     task: JessQueuedTask,
     customStages?: { atPct: number; stage: string; delayMs?: number }[],
-    onComplete?: () => Promise<{ summary: string; targetId?: string; targetType?: string }>
+    onComplete?: (task: JessQueuedTask) => Promise<{ summary: string; targetId?: string; targetType?: string }>
   ) {
-    // Default progressive stages if not custom provided
-    const stages = customStages || [
-      { atPct: 20, stage: 'Gathering workspace context and reviewing records...', delayMs: 1200 },
-      { atPct: 45, stage: 'Processing items and executing core logic in background...', delayMs: 2200 },
-      { atPct: 75, stage: 'Formatting and validating workspace changes...', delayMs: 1800 },
-      { atPct: 90, stage: 'Saving records and syncing cloud state...', delayMs: 1400 },
-    ];
-
-    setTimeout(() => {
-      if (this.queue.get(task.id)?.status === 'queued') {
-        this.updateTaskProgress(task.id, 10, 'Started background execution.');
-      }
-    }, 400);
-
-    let cumulativeDelay = 600;
-    for (const step of stages) {
-      cumulativeDelay += (step.delayMs || 1500);
-      setTimeout(() => {
-        const current = this.queue.get(task.id);
-        if (current && (current.status === 'in_progress' || current.status === 'queued')) {
-          this.updateTaskProgress(task.id, step.atPct, step.stage);
-        }
-      }, cumulativeDelay);
+    // Progress is never simulated. A background task is only allowed to report
+    // progress when its executor has actually completed a measurable step.
+    if (!onComplete) {
+      this.updateTaskProgress(task.id, 5, 'Waiting for an executable background plan.');
+      return;
     }
 
-    setTimeout(async () => {
+    this.updateTaskProgress(task.id, 1, 'Background task accepted; starting execution.');
+    try {
+      const result = await onComplete(task);
       const current = this.queue.get(task.id);
       if (!current || current.status === 'cancelled' || current.status === 'failed') return;
-
-      try {
-        let result: { summary: string; targetId?: string; targetType?: string } = {
-          summary: `Completed "${task.title}". All workspace records have been updated.`,
-        };
-
-        if (onComplete) {
-          result = await onComplete();
-        }
-
-        current.targetId = result.targetId;
-        current.targetType = result.targetType;
-        this.updateTaskProgress(task.id, 100, 'Completed successfully.', result.summary);
-      } catch (err: any) {
-        this.failTask(task.id, err?.message || 'Task failed during final step.');
-      }
-    }, cumulativeDelay + 1200);
+      current.targetId = result.targetId;
+      current.targetType = result.targetType;
+      this.updateTaskProgress(task.id, 100, 'Completed successfully.', result.summary);
+    } catch (err: any) {
+      this.failTask(task.id, err?.message || 'Task failed during execution.');
+    }
   }
 
   public updateTaskProgress(id: string, progress: number, stage?: string, resultSummary?: string) {
