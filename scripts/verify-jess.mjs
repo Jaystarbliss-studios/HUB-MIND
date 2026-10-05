@@ -67,6 +67,10 @@ for (const contract of ['sessionEndingRef', 'JSON.parse(toolArgs)', 'sendFunctio
 }
 if (!floating.includes('}, 100);')) failures.push('JessFloatingAssistant.tsx: end_session does not immediately terminate the Live session');
 if (!floating.includes('startJessWorkspaceCache')) failures.push('JessFloatingAssistant.tsx: workspace cache is not started with the signed-in user');
+if (!floating.includes('screen_control') || !floating.includes('getJessScrollTarget')) failures.push('JessFloatingAssistant.tsx: direct screen control bridge is missing');
+if (!tools.includes('scroll_screen') || !tools.includes('click_screen') || !tools.includes('type_screen')) failures.push('jessTools.ts: direct screen control tools are missing');
+if (!tools.includes('save_activity_report')) failures.push('jessTools.ts: activity report tool is missing');
+if (!tools.includes('steps') || !tools.includes('Progress will reflect actual completed work')) failures.push('jessTools.ts: executable background workflow contract is missing');
 
 for (const contract of ['onPointerDown','onPointerMove','onPointerUp','localStorage','DOUBLE_TAP_MS','touch-none']) {
   if (!floating.includes(contract)) failures.push(`JessFloatingAssistant.tsx: interaction contract ${contract} is missing`);
