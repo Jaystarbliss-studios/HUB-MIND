@@ -144,7 +144,8 @@ class JessBackgroundProcessingQueue {
     priority?: JessQueuedTask['priority'];
     payload?: Record<string, any>;
     customStages?: { atPct: number; stage: string; delayMs?: number }[];
-    onComplete?: (task: JessQueuedTask) => Promise<{ summary: string; targetId?: string; targetType?: string }>;\n    userId?: string;
+    onComplete?: (task: JessQueuedTask) => Promise<{ summary: string; targetId?: string; targetType?: string }>;
+    userId?: string;
   }): JessQueuedTask {
     const now = new Date().toISOString();
     const id = `jtask_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -159,7 +160,8 @@ class JessBackgroundProcessingQueue {
       priority: params.priority || 'normal',
       startedAt: now,
       updatedAt: now,
-      payload: params.payload,\n      userId: params.userId,
+      payload: params.payload,
+      userId: params.userId,
     };
 
     this.queue.set(id, task);
