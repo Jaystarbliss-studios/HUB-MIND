@@ -101,7 +101,7 @@ export function getGoogleCalendarConnectionInfo(): {
   expiresAt: number;
 } {
   try {
-    const isConn = localStorage.getItem(STORAGE_CONNECTED_KEY) === 'true';
+    const isConn = localStorage.getItem(userKey(STORAGE_CONNECTED_KEY)) === 'true';
     const savedExp = Number(localStorage.getItem(userKey(STORAGE_EXP_KEY))) || 0;
     const email = localStorage.getItem(userKey(STORAGE_EMAIL_KEY)) || auth.currentUser?.email || null;
     const isValid = isConn;
