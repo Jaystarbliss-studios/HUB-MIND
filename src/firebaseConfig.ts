@@ -8,62 +8,68 @@ import {
   persistentMultipleTabManager, Firestore
 } from 'firebase/firestore';
 
-const getEnv = (key: string): string => {
-  if (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.[key]) {
-    return (import.meta as any).env[key] || '';
-  }
-  if (typeof process !== 'undefined' && process?.env?.[key]) {
-    return process.env[key] || '';
-  }
-  return '';
+type RuntimeConfig = {
+  firebase: {
+    apiKey: string;
+    projectId: string;
+    appId: string;
+    authDomain: string;
+    storageBucket: string;
+    messagingSenderId: string;
+    firestoreDatabaseId?: string;
+  };
+  googleClientId?: string;
 };
 
 const isBrowser = typeof window !== 'undefined';
 
-// Node-based unit/security tests import this module without a browser env. Keep
-// those imports side-effect safe while requiring complete configuration in the browser.
-const projectId = getEnv('VITE_FIREBASE_PROJECT_ID') || getEnv('FIREBASE_PROJECT_ID') || (!isBrowser ? 'test-project' : '');
-const apiKey = getEnv('VITE_FIREBASE_WEB_API_KEY') || getEnv('FIREBASE_WEB_API_KEY') || (!isBrowser ? 'test-api-key' : '');
-const appId = getEnv('VITE_FIREBASE_APP_ID') || getEnv('FIREBASE_APP_ID') || (!isBrowser ? 'test-app-id' : '');
-const authDomain =
-  getEnv('VITE_FIREBASE_AUTH_DOMAIN') ||
-  getEnv('FIREBASE_AUTH_DOMAIN') ||
-  (projectId ? `${projectId}.firebaseapp.com` : '');
-const storageBucket =
-  getEnv('VITE_FIREBASE_STORAGE_BUCKET') ||
-  getEnv('FIREBASE_STORAGE_BUCKET') ||
-  (projectId ? `${projectId}.firebasestorage.app` : '');
-const messagingSenderId =
-  getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') ||
-  getEnv('FIREBASE_MESSAGING_SENDER_ID') ||
-  (!isBrowser ? 'test-sender-id' : '');
+const loadRuntimeConfig = async (): Promise<RuntimeConfig> => {
+  if (!isBrowser) {
+    return {
+      firebase: {
+        apiKey: 'test-api-key',
+        projectId: 'test-project',
+        appId: 'test-app-id',
+        authDomain: 'test-project.firebaseapp.com',
+        storageBucket: 'test-project.firebasestorage.app',
+        messagingSenderId: 'test-sender-id',
+        firestoreDatabaseId: '(default)',
+      },
+      googleClientId: '',
+    };
+  }
 
-export const FIRESTORE_DATABASE_ID =
-  getEnv('VITE_FIRESTORE_DATABASE_ID') ||
-  getEnv('FIRESTORE_DATABASE_ID') ||
-  '(default)';
+  const response = await fetch('/api/config', {
+    method: 'GET',
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+  });
 
-const firebaseConfig = {
-  apiKey,
-  projectId,
-  appId,
-  authDomain,
-  storageBucket,
-  messagingSenderId,
+  if (!response.ok) {
+    throw new Error('Hub-Mind could not load its secure runtime configuration. Please refresh and try again.');
+  }
+
+  const data = await response.json();
+  const firebase = data?.firebase;
+
+  const missing = ['apiKey', 'projectId', 'appId', 'messagingSenderId']
+    .filter((key) => !firebase?.[key]);
+
+  if (missing.length) {
+    throw new Error(`Hub-Mind runtime configuration is incomplete: ${missing.join(', ')}`);
+  }
+
+  return data as RuntimeConfig;
 };
 
-const missing = Object.entries({
-  VITE_FIREBASE_WEB_API_KEY: apiKey,
-  VITE_FIREBASE_PROJECT_ID: projectId,
-  VITE_FIREBASE_APP_ID: appId,
-  VITE_FIREBASE_MESSAGING_SENDER_ID: messagingSenderId,
-}).filter(([, value]) => !value).map(([key]) => key);
+// Firebase browser configuration is intentionally loaded at runtime.
+// It is never injected by Vite into the static JavaScript bundle.
+const runtimeConfig = await loadRuntimeConfig();
+const firebaseConfig = runtimeConfig.firebase;
 
-if (isBrowser && missing.length) {
-  throw new Error(`Firebase configuration is incomplete. Missing: ${missing.join(', ')}`);
-}
-
-export const FIREBASE_PROJECT_ID = projectId;
+export const FIRESTORE_DATABASE_ID = firebaseConfig.firestoreDatabaseId || '(default)';
+export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
+export const GOOGLE_CLIENT_ID = runtimeConfig.googleClientId || '';
 
 export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
