@@ -1,17 +1,6 @@
-const FIREBASE_WEB_API_KEY =
-  process.env.FIREBASE_WEB_API_KEY ||
-  process.env.VITE_FIREBASE_API_KEY ||
-  '';
-
-const FIREBASE_PROJECT_ID =
-  process.env.FIREBASE_PROJECT_ID ||
-  process.env.VITE_FIREBASE_PROJECT_ID ||
-  'gen-lang-client-0197530608';
-
-const FIRESTORE_DATABASE_ID =
-  process.env.FIRESTORE_DATABASE_ID ||
-  process.env.VITE_FIRESTORE_DATABASE_ID ||
-  'ai-studio-hubmind-4cac2024-c6eb-4208-80cf-928714dfd430';
+const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY || '';
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || '';
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || '(default)';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -110,11 +99,6 @@ export default async function handler(req) {
           uses: 1,
           expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
           newSessionExpireTime: new Date(Date.now() + 60 * 1000).toISOString(),
-          bidiGenerateContentSetup: {
-            model: 'models/gemini-3.8-live',
-            generationConfig: {
-              responseModalities: ['AUDIO'],
-            },
             sessionResumption: {},
           },
         }),
