@@ -160,7 +160,7 @@ export class LiveAudioClient {
       numberOfInputs: 1,
       numberOfOutputs: 1,
       channelCount: 1,
-      processorOptions: { targetFrames: 1024 },
+      processorOptions: { targetFrames: 640 },
     });
 
     this.inputAnalyser.connect(this.audioWorkletNode);
@@ -176,9 +176,10 @@ export class LiveAudioClient {
 
       try {
         const base64Data = this.base64EncodeArrayBuffer(pcmBuffer);
+        // Send every 40 ms PCM frame. Do not locally drop silence: Gemini's
+        // realtime VAD needs the continuous stream to detect the end of speech.
         this.session.sendRealtimeInput({
           audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
-          media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
         });
       } catch (e) {
         console.warn('Live input error:', e);
@@ -322,6 +323,13 @@ export class LiveAudioClient {
               inputAudioTranscription: {},
               outputAudioTranscription: {},
               sessionResumption: {},
+              realtimeInputConfig: {
+                automaticActivityDetection: {
+                  disabled: false,
+                  prefixPaddingMs: 40,
+                  silenceDurationMs: 500,
+                },
+              },
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
               systemInstruction: { parts: [{ text: systemInstruction }] },
               tools: [{ functionDeclarations: JESS_TOOLS_DECLARATIONS as any }],
@@ -658,12 +666,10 @@ export class LiveAudioClient {
     return false;
   }
 
-  private processAudioBufferWithNoiseSuppression(input: Float32Array): ArrayBuffer | null {
-    const isSpeech = this.isVoiceAboveNoiseFloor(input);
-    if (!isSpeech) {
-      return null;
-    }
-
+  private processAudioBufferWithNoiseSuppression(input: Float32Array): ArrayBuffer {
+    // Keep the PCM stream continuous. Browser-level echo/noise suppression and
+    // Gemini's realtime VAD handle speech boundaries. Dropping silence locally
+    // prevents the server from seeing the end of an utterance and adds latency.
     const output = new DataView(new ArrayBuffer(input.length * 2));
     for (let i = 0; i < input.length; i++) {
       const s = Math.max(-1, Math.min(1, input[i]));

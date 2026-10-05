@@ -62,6 +62,10 @@ if (!live.includes('connectPromise') || !live.includes('connectInternal')) failu
 if (!live.includes('AudioWorkletNode') || !live.includes("/jess-capture-processor.js")) failures.push('liveAudioClient.ts: AudioWorklet microphone pipeline is missing');
 if (live.includes('ScriptProcessorNode') || live.includes('createScriptProcessor') || live.includes('audioprocess')) failures.push('liveAudioClient.ts: deprecated ScriptProcessor audio pipeline remains');
 if (!existsSync(resolve(root, 'public/jess-capture-processor.js'))) failures.push('public/jess-capture-processor.js: AudioWorklet processor is missing');
+if (!live.includes('targetFrames: 640')) failures.push('liveAudioClient.ts: capture chunks must remain 40ms for low-latency streaming');
+if (!live.includes('realtimeInputConfig') || !live.includes('automaticActivityDetection') || !live.includes('silenceDurationMs: 500')) failures.push('liveAudioClient.ts: low-latency realtime VAD configuration is missing');
+if (live.includes("media: { data: base64Data")) failures.push('liveAudioClient.ts: duplicate media payload must not be sent with audio');
+if (!live.includes('Keep the PCM stream continuous')) failures.push('liveAudioClient.ts: continuous PCM/VAD contract is missing');
 const wake = readFileSync(resolve(root, 'src/services/jessWakeListener.ts'), 'utf8');
 if (!wake.includes('isJessPcWakeSupported') || !wake.includes('extractJessWakeCommand') || !wake.includes('SpeechRecognition') || !wake.includes('webkitSpeechRecognition')) failures.push('jessWakeListener.ts: PC voice wake implementation is incomplete');
 if (!wake.includes('MOBILE_UA') || !wake.includes("pointer: fine")) failures.push('jessWakeListener.ts: PC-only device gating is missing');
