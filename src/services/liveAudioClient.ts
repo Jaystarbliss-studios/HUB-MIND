@@ -4,7 +4,6 @@ import { JESS_TOOLS_DECLARATIONS } from '../lib/jessTools';
 import { jessBackgroundTasks } from './jessBackgroundTasks';
 import { getUserMemories, formatMemoriesForPrompt } from './memoryService';
 import { getCurrentUserMoodGuidance } from './sentimentService';
-import { JESS_LIVE_WS_URL } from '../lib/apiBase';
 
 export type JessState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted' | 'muted' | 'error';
 
@@ -26,12 +25,8 @@ type LiveSession = {
   close: () => void;
 };
 
-const ENABLE_SERVER_WS_BRIDGE = import.meta.env.VITE_ENABLE_LIVE_WS_BRIDGE !== 'false';
-
 export class LiveAudioClient {
   private session: LiveSession | null = null;
-  private fallbackWs: WebSocket | null = null;
-  private isUsingFallbackWs = false;
   private inputAudioCtx: AudioContext | null = null;
   private outputAudioCtx: AudioContext | null = null;
   private inputAnalyser: AnalyserNode | null = null;
@@ -247,23 +242,10 @@ export class LiveAudioClient {
         'SESSION SLEEP RULE: When the user asks to end the session, sleep, deactivate, or stop Jess, MUST call end_session immediately. Do not only acknowledge the request conversationally. After the tool succeeds, do not continue the conversation or request more input; the client will terminate the Live session.'
       ].filter(Boolean).join('\n');
 
-      if (ENABLE_SERVER_WS_BRIDGE) {
-        try {
-          await this.connectFallbackWebSocket(context);
-          return;
-        } catch (wsBridgeErr) {
-          console.warn('Server WebSocket bridge not available, attempting direct ephemeral token:', wsBridgeErr);
-        }
-      }
-
       let token = '';
       try {
         token = await this.getEphemeralToken();
       } catch (tokenErr) {
-        if (ENABLE_SERVER_WS_BRIDGE) {
-          await this.connectFallbackWebSocket(context);
-          return;
-        }
         throw tokenErr;
       }
 
@@ -287,7 +269,6 @@ export class LiveAudioClient {
             callbacks: {
               onopen: () => {
                 this.connected = true;
-                this.isUsingFallbackWs = false;
                 this.callbacks.onStatusChange('connected');
                 this.callbacks.onJessStateChange(this.isMuted || this.micPermissionDenied ? 'muted' : 'listening');
                 if (this.micPermissionDenied) {
@@ -298,9 +279,10 @@ export class LiveAudioClient {
               onerror: (event: any) => {
                 console.warn('Live API event warning:', event);
                 if (!this.connected) {
-                  if (ENABLE_SERVER_WS_BRIDGE) {
-                    void this.connectFallbackWebSocket(context);
-                  } else {
+                  this.callbacks.onError?.('Gemini Live connection failed.');
+                  this.callbacks.onStatusChange('error');
+                  this.callbacks.onJessStateChange('error');
+                } else {
                     this.callbacks.onError?.('Gemini Live connection failed.');
                     this.callbacks.onStatusChange('error');
                     this.callbacks.onJessStateChange('error');
@@ -326,7 +308,7 @@ export class LiveAudioClient {
               const pcmBuffer = this.processAudioBufferWithNoiseSuppression(event.inputBuffer.getChannelData(0));
               if (!pcmBuffer) return; // Suppressed as background noise or silence
               const base64Data = this.base64EncodeArrayBuffer(pcmBuffer);
-              if (this.session && this.connected && !this.isUsingFallbackWs) {
+              if (this.session && this.connected) {
                 try {
                   this.session.sendRealtimeInput({
                     audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
@@ -335,10 +317,6 @@ export class LiveAudioClient {
                 } catch (e) {
                   console.warn('Live input error:', e);
                 }
-              } else if (this.fallbackWs && this.fallbackWs.readyState === WebSocket.OPEN) {
-                try {
-                  this.fallbackWs.send(JSON.stringify({ type: 'audio', audio: base64Data }));
-                } catch (e) {}
               }
             };
           }
@@ -350,11 +328,6 @@ export class LiveAudioClient {
           }
           throw directErr;
         }
-      }
-
-      if (ENABLE_SERVER_WS_BRIDGE) {
-        await this.connectFallbackWebSocket(context);
-        return;
       }
 
       throw new Error('Jess Live could not establish the secure Gemini Live session.');
@@ -370,116 +343,6 @@ export class LiveAudioClient {
       this.callbacks.onJessStateChange('error');
       await this.disconnect(false);
     }
-  }
-
-  private async connectFallbackWebSocket(context?: {
-    page?: string;
-    documentId?: string;
-    documentTitle?: string;
-    userId?: string;
-    userName?: string;
-    userRole?: string;
-  }) {
-    const isSecure = window.location.protocol === 'https:';
-    const wsProtocol = isSecure ? 'wss:' : 'ws:';
-    const queryParams = new URLSearchParams();
-    if (context?.documentId) queryParams.set('documentId', context.documentId);
-    if (context?.documentTitle) queryParams.set('documentTitle', context.documentTitle);
-    if (context?.userId) queryParams.set('userId', context.userId);
-    if (context?.userName) queryParams.set('userName', context.userName);
-    if (context?.userRole) queryParams.set('userRole', context.userRole);
-    if (context?.page) queryParams.set('page', context.page);
-
-    const docQuery = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    let wsUrl = '';
-    if (JESS_LIVE_WS_URL) {
-      const base = JESS_LIVE_WS_URL.replace(/^http/, 'ws');
-      wsUrl = `${base}/api/live-ws${docQuery}`;
-    } else {
-      wsUrl = `${wsProtocol}//${window.location.host}/api/live-ws${docQuery}`;
-    }
-
-    const ws = new WebSocket(wsUrl);
-    this.fallbackWs = ws;
-
-    ws.onopen = () => {
-      this.connected = true;
-      this.isUsingFallbackWs = true;
-      this.callbacks.onStatusChange('connected');
-      this.callbacks.onJessStateChange(this.isMuted || this.micPermissionDenied ? 'muted' : 'listening');
-      this.startLevelMonitor();
-
-      if (this.scriptProcessor) {
-        this.scriptProcessor.onaudioprocess = event => {
-          if (this.isMuted || this.micPermissionDenied || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
-          const pcmBuffer = this.processAudioBufferWithNoiseSuppression(event.inputBuffer.getChannelData(0));
-          if (!pcmBuffer) return; // Suppressed background noise
-          const base64Data = this.base64EncodeArrayBuffer(pcmBuffer);
-          if (this.fallbackWs && this.fallbackWs.readyState === WebSocket.OPEN) {
-            try {
-              this.fallbackWs.send(JSON.stringify({ type: 'audio', audio: base64Data }));
-            } catch (e) {}
-          }
-        };
-      }
-
-      this.pingIntervalId = window.setInterval(() => {
-        if (this.fallbackWs && this.fallbackWs.readyState === WebSocket.OPEN) {
-          try {
-            this.fallbackWs.send(JSON.stringify({ type: 'ping' }));
-          } catch (e) {}
-        }
-      }, 15000);
-
-      if (this.micPermissionDenied) {
-        this.callbacks.onJessTranscript?.('Microphone access is unavailable or denied. Jess is active in text and suggested actions mode.');
-      }
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'tool_call') {
-          this.callbacks.onJessStateChange('thinking');
-          const fcs = data.functionCalls || (data.functionCall ? [data.functionCall] : []);
-          fcs.forEach((fc: any) => this.callbacks.onFunctionCall?.(fc));
-        } else if (data.type === 'audio' && data.audio) {
-          this.callbacks.onJessStateChange('speaking');
-          this.playAudioChunk(data.audio);
-        } else if (data.type === 'input_transcription' && data.text) {
-          this.callbacks.onUserTranscript(data.text);
-        } else if (data.type === 'output_transcription' && data.text) {
-          this.callbacks.onJessTranscript(data.text);
-        } else if (data.type === 'interrupted') {
-          this.handleInterruption();
-        } else if (data.type === 'turn_complete') {
-          this.callbacks.onTurnComplete();
-          if (this.activeSources.length === 0) {
-            this.callbacks.onJessStateChange(this.isMuted ? 'muted' : 'listening');
-          }
-        } else if (data.type === 'error') {
-          console.warn('[Jess Live Server Error]:', data.message);
-          this.callbacks.onError?.(data.message || 'Live assistant session error.');
-        }
-      } catch (e) {
-        console.warn('Error parsing WS message:', e);
-      }
-    };
-
-    ws.onerror = () => {
-      if (!this.connected) {
-        this.callbacks.onStatusChange('error');
-        this.callbacks.onJessStateChange('error');
-      }
-    };
-
-    ws.onclose = () => {
-      if (this.connected) {
-        this.connected = false;
-        this.callbacks.onStatusChange('disconnected');
-        this.callbacks.onJessStateChange('idle');
-      }
-    };
   }
 
   private handleLiveMessage(message: any) {
@@ -636,20 +499,7 @@ export class LiveAudioClient {
       } catch (err) {
         console.warn('Failed to send tool response to Live API:', err);
       }
-    } else if (this.fallbackWs && this.fallbackWs.readyState === WebSocket.OPEN) {
-      try {
-        this.fallbackWs.send(
-          JSON.stringify({
-            type: 'function_response',
-            name: response.name,
-            id: response.id,
-            response: response.response,
-          })
-        );
-      } catch (err) {
-        console.warn('Failed to send tool response to WS bridge:', err);
-      }
-    }
+
   }
 
   public sendText(text: string) {
@@ -742,13 +592,7 @@ export class LiveAudioClient {
       this.session = null;
     }
 
-    if (this.fallbackWs) {
-      try { this.fallbackWs.close(); } catch {}
-      this.fallbackWs = null;
-    }
-
     this.connected = false;
-    this.isUsingFallbackWs = false;
 
     if (notify) {
       this.callbacks.onStatusChange('disconnected');
