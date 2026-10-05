@@ -208,7 +208,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
 
   // Google Calendar Integration
   { name: 'list_calendar_events', description: 'List Google Calendar events.', parameters: object({ timeMin: { type: 'string' }, timeMax: { type: 'string' } }) },
-  { name: 'create_calendar_event', description: 'Create a Google Calendar event (supports single and recurring events via recurrenceRule).', parameters: object({ title: { type: 'string' }, startDateTime: { type: 'string' }, endDateTime: { type: 'string' }, reminderMinutes: { type: 'number' }, location: { type: 'string' }, description: { type: 'string' }, recurrenceRule: { type: 'string', description: 'Optional recurrence rule e.g. RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR' } }, ['title', 'startDateTime']) },
+  { name: 'create_calendar_event', description: 'Create a Google Calendar event (supports single and recurring events via recurrenceRule).', parameters: object({ title: { type: 'string' }, startDateTime: { type: 'string' }, endDateTime: { type: 'string' }, reminderMinutes: { type: 'array', items: { type: 'number' }, description: 'Optional reminder times in minutes before the event, e.g. [1440, 60, 10].' }, location: { type: 'string' }, description: { type: 'string' }, recurrenceRule: { type: 'string', description: 'Optional recurrence rule e.g. RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR' } }, ['title', 'startDateTime']) },
   { name: 'connect_google_calendar', description: 'Perform one-time Google Calendar connection to link the users account once for permanent sync.', parameters: object({}) },
   { name: 'get_google_calendar_status', description: 'Check whether Google Calendar is currently connected.', parameters: object({}) },
   
