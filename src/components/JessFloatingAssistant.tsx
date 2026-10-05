@@ -53,6 +53,8 @@ function getJessScrollTarget(): HTMLElement | Window {
   }
   const main = document.querySelector<HTMLElement>('[role="main"],main,.overflow-y-auto,.overflow-auto');
   if (main && main.scrollHeight > main.clientHeight + 20) candidates.push(main);
+  const mainTarget = document.querySelector<HTMLElement>('[role="main"],main');
+  if (mainTarget && mainTarget.scrollHeight > mainTarget.clientHeight + 20) return mainTarget;
   return candidates[0] || window;
 }
 
@@ -540,6 +542,11 @@ export function JessFloatingAssistant() {
     const now = Date.now();
     // Once Jess is active, a single tap is an explicit microphone mute/unmute.
     // When Jess is idle, the established double-tap gesture still activates her.
+    if (connection === 'error') {
+      p.lastTap = 0;
+      activate();
+      return;
+    }
     if (active) {
       p.lastTap = 0;
       clientRef.current?.toggleMute();
