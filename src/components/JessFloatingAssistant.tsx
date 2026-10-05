@@ -13,6 +13,7 @@ import { trackAndPersistSentiment } from '../services/sentimentService';
 import { scanCurrentPageContext, ContextActionSuggestion } from '../services/contextScannerService';
 import { startJessWorkspaceCache } from '../services/jessWorkspaceCache';
 import { hydrateGoogleCalendarConnection, isGoogleCalendarConnected, refreshGoogleCalendarEvents } from '../lib/googleCalendar';
+import { JessPcWakeListener, isJessPcWakeSupported } from '../services/jessWakeListener';
 import { 
   Activity, 
   Lightbulb, 
@@ -433,6 +434,9 @@ export function JessFloatingAssistant() {
         if (
           lower === 'end this session' ||
           lower.includes('end this session') ||
+          lower.includes('end session jess') ||
+          lower.includes('end jess session') ||
+          lower.includes('stop jess') ||
           lower === 'go to sleep' ||
           lower === 'sleep jess' ||
           lower === 'put ai on sleep' ||
@@ -472,6 +476,26 @@ export function JessFloatingAssistant() {
     if (connection === 'connected' || connection === 'connecting') void stop();
     else void start();
   }, [connection, start, stop]);
+
+
+  // PC-only passive voice wake. The passive listener is deliberately separate
+  // from Gemini Live so the full microphone session is not held open while Jess
+  // is asleep. Phones/tablets remain tap-only.
+  useEffect(() => {
+    if (!profile || active) return;
+    if (!isJessPcWakeSupported()) return;
+
+    const wakeListener = new JessPcWakeListener({
+      onWake: (command) => {
+        // Give the user the same subtle acknowledgement as manual activation.
+        wakeTone();
+        void start(command || undefined);
+      },
+    });
+
+    wakeListener.start();
+    return () => wakeListener.stop();
+  }, [profile?.id, active, start]);
 
   const handleConfirmDeletion = async () => {
     if (!pendingDelete) return;
