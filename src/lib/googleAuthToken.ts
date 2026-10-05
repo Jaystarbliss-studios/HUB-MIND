@@ -15,38 +15,29 @@ export const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
 ];
 
-const STORAGE_CALENDAR_TOKEN = 'hubmind_gcal_token';
-const STORAGE_CALENDAR_EXP = 'hubmind_gcal_token_exp';
+const STORAGE_CALENDAR_TOKEN = 'hubmind_gcal_token_v2';
+const STORAGE_CALENDAR_EXP = 'hubmind_gcal_token_exp_v2';
+function userStorageKey(base: string) { return `${base}_${auth.currentUser?.uid || 'anonymous'}`; }
 const STORAGE_DRIVE_TOKEN = 'hubmind_gdrive_token';
 
 let cachedCalendarToken: string | null = null;
 let calendarTokenExpiry = 0;
 
-try {
-  const savedToken = localStorage.getItem(STORAGE_CALENDAR_TOKEN);
-  const savedExp = Number(localStorage.getItem(STORAGE_CALENDAR_EXP)) || 0;
-  if (savedToken && Date.now() < savedExp - 60000) {
-    cachedCalendarToken = savedToken;
-    calendarTokenExpiry = savedExp;
-  }
-} catch {}
-
 export function setCachedCalendarToken(token: string, expiresInSeconds = 3500) {
   cachedCalendarToken = token;
   calendarTokenExpiry = Date.now() + expiresInSeconds * 1000;
   try {
-    localStorage.setItem(STORAGE_CALENDAR_TOKEN, token);
-    localStorage.setItem(STORAGE_CALENDAR_EXP, String(calendarTokenExpiry));
+    localStorage.setItem(userStorageKey(STORAGE_CALENDAR_TOKEN), token);
+    localStorage.setItem(userStorageKey(STORAGE_CALENDAR_EXP), String(calendarTokenExpiry));
   } catch {}
 }
 
 export function getCachedCalendarToken(): string | null {
-  if (cachedCalendarToken && Date.now() < calendarTokenExpiry - 60000) {
-    return cachedCalendarToken;
-  }
+  if (!auth.currentUser) return null;
+  if (cachedCalendarToken && Date.now() < calendarTokenExpiry - 60000) return cachedCalendarToken;
   try {
-    const savedToken = localStorage.getItem(STORAGE_CALENDAR_TOKEN);
-    const savedExp = Number(localStorage.getItem(STORAGE_CALENDAR_EXP)) || 0;
+    const savedToken = localStorage.getItem(userStorageKey(STORAGE_CALENDAR_TOKEN));
+    const savedExp = Number(localStorage.getItem(userStorageKey(STORAGE_CALENDAR_EXP))) || 0;
     if (savedToken && Date.now() < savedExp - 60000) {
       cachedCalendarToken = savedToken;
       calendarTokenExpiry = savedExp;
@@ -60,9 +51,14 @@ export function clearGoogleTokens() {
   cachedCalendarToken = null;
   calendarTokenExpiry = 0;
   try {
-    localStorage.removeItem(STORAGE_CALENDAR_TOKEN);
-    localStorage.removeItem(STORAGE_CALENDAR_EXP);
-    localStorage.removeItem(STORAGE_DRIVE_TOKEN);
+    localStorage.removeItem(userStorageKey(STORAGE_CALENDAR_TOKEN));
+    localStorage.removeItem(userStorageKey(STORAGE_CALENDAR_EXP));
+    localStorage.removeItem(userStorageKey(STORAGE_DRIVE_TOKEN));
+    localStorage.removeItem(userStorageKey('hubmind_gcal_connected'));
+    localStorage.removeItem(userStorageKey('hubmind_gcal_email'));
+    // Remove the old unscoped keys from previous builds.
+    localStorage.removeItem('hubmind_gcal_token');
+    localStorage.removeItem('hubmind_gcal_token_exp');
     localStorage.removeItem('hubmind_gcal_connected');
     localStorage.removeItem('hubmind_gcal_email');
   } catch {}
