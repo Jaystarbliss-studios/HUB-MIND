@@ -1,13 +1,16 @@
-/** Runtime API base for the Hub-Mind backend. */
-export const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-
 /**
- * Optional explicit WebSocket endpoint for Jess Live. This is useful when
- * Netlify hosts the PWA while the long-lived Node WebSocket server runs on a
- * separate service. Falls back to the HTTP API base/current origin.
+ * Runtime API base for the Hub-Mind backend.
+ *
+ * Hub-Mind is deployed with its API functions on the same origin, so the
+ * browser must not consume Vite environment variables here. Keeping this
+ * module environment-free prevents Netlify build-time configuration values
+ * from ever entering the client bundle.
  */
-export const JESS_LIVE_WS_URL = String(import.meta.env.VITE_JESS_LIVE_WS_URL || '').replace(/\/$/, '');
-export const LIVE_WS_URL = JESS_LIVE_WS_URL;
+export const API_BASE_URL = '';
+
+/** Jess Live uses the same-origin HTTP token endpoint in production. */
+export const JESS_LIVE_WS_URL = '';
+export const LIVE_WS_URL = '';
 
 export const apiUrl = (path: string) => {
   if (!API_BASE_URL) return path;
