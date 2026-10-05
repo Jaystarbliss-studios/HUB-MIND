@@ -1,4 +1,4 @@
-import { doc, setDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, limit, query, setDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 export interface JessQueuedTask {
   id: string;
@@ -81,6 +81,46 @@ class JessBackgroundProcessingQueue {
     this.subscribers.add(fn);
     fn(this.getAllTasks());
     return () => this.subscribers.delete(fn);
+  }
+
+  public async hydrateUserTasks(userId: string) {
+    try {
+      const snap = await getDocs(query(collection(db, 'users', userId, 'jessTasks'), limit(50)));
+      snap.docs.forEach(d => {
+        const remote = d.data() as JessQueuedTask;
+        const local = this.queue.get(remote.id);
+        if (!local || new Date(remote.updatedAt).getTime() > new Date(local.updatedAt).getTime()) {
+          this.queue.set(remote.id, remote);
+        }
+      });
+      this.persistQueue();
+      return this.getAllTasks();
+    } catch {
+      return this.getAllTasks();
+    }
+  }
+
+  public async resumePersistedTasks(
+    userId: string,
+    executor: (task: JessQueuedTask, step: any, index: number, total: number) => Promise<void>
+  ) {
+    const tasks = await this.hydrateUserTasks(userId);
+    for (const task of tasks.filter(t => t.userId === userId && t.status === 'in_progress' && Array.isArray(t.payload?.steps))) {
+      const steps = task.payload!.steps as any[];
+      const completed = Math.min(
+        steps.length,
+        Math.max(0, Math.floor(((task.progress || 1) / 95) * steps.length))
+      );
+      try {
+        for (let i = completed; i < steps.length; i++) {
+          await executor(task, steps[i], i, steps.length);
+          this.updateTaskProgress(task.id, Math.round(((i + 1) / steps.length) * 95), 'Completed: ' + String(steps[i].label || steps[i].tool) + ' (' + (i + 1) + '/' + steps.length + ')');
+        }
+        this.updateTaskProgress(task.id, 100, 'Completed successfully.', 'Resumed and completed all persisted background steps.');
+      } catch (err: any) {
+        this.failTask(task.id, err?.message || 'Persisted background task failed while resuming.');
+      }
+    }
   }
 
   public getAllTasks(): JessQueuedTask[] {
