@@ -147,7 +147,7 @@ export async function getCalendarAccessToken(forcePrompt = false): Promise<strin
       await updateDoc(doc(db, 'users', user.uid), {
         googleCalendarConnected: true,
         googleCalendarConnectedAt: new Date().toISOString(),
-        googleCalendarEmail: primaryEmail || auth.currentUser?.email || null,
+        googleCalendarEmail: auth.currentUser?.email || null,
       });
     } catch (e) {
       console.warn('Could not sync gcal connection to user doc:', e);
