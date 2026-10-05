@@ -8,7 +8,9 @@ import {
   listGoogleCalendarEvents, 
   connectGoogleCalendarOnce, 
   isGoogleCalendarConnected, 
-  getGoogleCalendarConnectionInfo 
+  getGoogleCalendarConnectionInfo,
+  getCachedGoogleCalendarEvents,
+  refreshGoogleCalendarEvents 
 } from './googleCalendar';
 import { globalSearch } from './globalSearch';
 import { queueJessDocumentEdit } from './jessDocumentBridge';
