@@ -26,6 +26,8 @@ service cloud.firestore {
       match /memories/{id} { allow read, write: if signedIn() && (request.auth.uid == userId || admin() || isBootstrappedAdmin()); }
       match /private/{document=**} { allow read, write: if self(userId) || admin(); }
       match /dailyReports/{id} { allow read, write: if self(userId) || admin(); }
+      match /weeklyReports/{id} { allow read, write: if self(userId) || admin(); }
+      match /jessTasks/{id} { allow read, write: if self(userId) || admin(); }
     }
     match /invitations/{id} {
       allow get: if admin() || (signedIn() && resource.data.email == request.auth.token.email);
