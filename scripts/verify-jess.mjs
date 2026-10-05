@@ -72,6 +72,18 @@ if (!tools.includes('scroll_screen') || !tools.includes('click_screen') || !tool
 if (!tools.includes('save_activity_report')) failures.push('jessTools.ts: activity report tool is missing');
 if (!tools.includes('steps') || !tools.includes('Progress must reflect completed executable steps')) failures.push('jessTools.ts: executable background workflow contract is missing');
 if (!tools.includes("behavior: 'NON_BLOCKING'") || !tools.includes('start_background_operation')) failures.push('jessTools.ts: background workflow is not declared NON_BLOCKING');
+const queue = readFileSync(resolve(root, 'src/services/jessBackgroundTasks.ts'), 'utf8');
+if (!queue.includes('executeWithRetries') || !queue.includes('currentStep') || !queue.includes('executionLog')) failures.push('jessBackgroundTasks.ts: persistent retry/progress execution state is incomplete');
+if (!queue.includes('getTasksForUser') || !queue.includes('getActiveTasksForUser')) failures.push('jessBackgroundTasks.ts: user-scoped task visibility is missing');
+const search = readFileSync(resolve(root, 'src/lib/globalSearch.ts'), 'utf8');
+if (!search.includes('editSimilarity') || !search.includes('tokenize')) failures.push('globalSearch.ts: conversational fuzzy relevance matching is missing');
+const calendarAuth = readFileSync(resolve(root, 'src/lib/googleAuthToken.ts'), 'utf8');
+if (!calendarAuth.includes('userStorageKey') || !calendarAuth.includes('STORAGE_CALENDAR_TOKEN')) failures.push('googleAuthToken.ts: Calendar credential storage is not user-scoped');
+const calendar = readFileSync(resolve(root, 'src/lib/googleCalendar.ts'), 'utf8');
+if (!calendar.includes('hydrateGoogleCalendarConnection') || !calendar.includes('googleCalendarConnected')) failures.push('googleCalendar.ts: persistent connection hydration is missing');
+const prompt = readFileSync(resolve(root, 'src/ai/prompts/adapters.ts'), 'utf8');
+if (/sharp, quick-witted young boy/i.test(prompt)) failures.push('adapters.ts: outdated male-child Jess persona remains');
+if (!/professor-partner/i.test(prompt)) failures.push('adapters.ts: professor-partner persona contract is missing');
 
 for (const contract of ['onPointerDown','onPointerMove','onPointerUp','localStorage','DOUBLE_TAP_MS','touch-none']) {
   if (!floating.includes(contract)) failures.push(`JessFloatingAssistant.tsx: interaction contract ${contract} is missing`);
