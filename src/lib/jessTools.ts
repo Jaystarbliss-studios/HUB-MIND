@@ -1442,6 +1442,40 @@ export async function executeJessTool(
           .map((d: any) => ({ id: d.id, ...(d.data || d) } as RecurringMeetingTemplate))
           .filter((template: any) => template.active !== false && (user.role === 'admin' || template.ownerId === user.id));
 
+        // Merge Google Calendar into the same schedule response. Cached events are instant;
+        // a background refresh keeps them current without making every voice request wait.
+        if (isGoogleCalendarConnected()) {
+          const cachedGoogleEvents = getCachedGoogleCalendarEvents(queryStart.toISOString(), queryEnd.toISOString());
+          const googleEvents = cachedGoogleEvents.length > 0
+            ? cachedGoogleEvents
+            : await Promise.race([
+                refreshGoogleCalendarEvents(queryStart.toISOString(), queryEnd.toISOString()),
+                new Promise<any[]>(resolve => setTimeout(() => resolve([]), 2500)),
+              ]).catch(() => []);
+          if (cachedGoogleEvents.length > 0) {
+            void refreshGoogleCalendarEvents(queryStart.toISOString(), queryEnd.toISOString()).catch(() => {});
+          }
+          for (const event of googleEvents) {
+            const eventDate = new Date(event.start?.dateTime || event.start?.date || '');
+            if (isNaN(eventDate.getTime()) || eventDate < queryStart || eventDate > queryEnd) continue;
+            if (allMeetings.some(item => item.googleCalendarId === event.id)) continue;
+            allMeetings.push({
+              id: `google-${event.id}`,
+              googleCalendarId: event.id,
+              title: event.summary || 'Google Calendar event',
+              date: eventDate.toISOString(),
+              time: format(eventDate, 'h:mm a'),
+              startTime: format(eventDate, 'HH:mm'),
+              endTime: event.end?.dateTime ? format(new Date(event.end.dateTime), 'HH:mm') : undefined,
+              location: undefined,
+              status: 'scheduled',
+              isRecurring: !!event.recurrence,
+              type: 'google_calendar',
+              attendees: [],
+            });
+          }
+        }
+
         // Evaluate recurring templates within queryStart .. queryEnd
         const dayDifference = Math.min(90, Math.max(1, Math.ceil((queryEnd.getTime() - queryStart.getTime()) / (1000 * 60 * 60 * 24))));
         for (const template of templates) {
