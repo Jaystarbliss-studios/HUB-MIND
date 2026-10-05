@@ -1,5 +1,5 @@
 import { db, auth } from '../firebaseConfig';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { 
   CALENDAR_SCOPES, 
   getCachedCalendarToken, 
@@ -30,6 +30,7 @@ export interface GoogleCalendarEvent {
 
 
 const CALENDAR_EVENTS_CACHE_PREFIX = 'hubmind_gcal_events_v2_';
+function userKey(base: string) { return `${base}_${auth.currentUser?.uid || 'anonymous'}`; }
 function calendarEventsCacheKey() { return `${CALENDAR_EVENTS_CACHE_PREFIX}${auth.currentUser?.uid || 'anonymous'}`; }
 
 export function getCachedGoogleCalendarEvents(timeMin?: string, timeMax?: string): GoogleCalendarEvent[] {
@@ -68,10 +69,26 @@ const STORAGE_EXP_KEY = 'hubmind_gcal_token_exp';
 
 export function isGoogleCalendarConnected(): boolean {
   try {
-    const isConn = localStorage.getItem(STORAGE_CONNECTED_KEY) === 'true';
+    const isConn = localStorage.getItem(userKey(STORAGE_CONNECTED_KEY)) === 'true';
     return isConn;
   } catch {
     return !!getCachedCalendarToken();
+  }
+}
+
+export async function hydrateGoogleCalendarConnection(): Promise<boolean> {
+  const user = auth.currentUser;
+  if (!user) return false;
+  try {
+    const snap = await getDoc(doc(db, 'users', user.uid));
+    const connected = snap.exists() && snap.data()?.googleCalendarConnected === true;
+    localStorage.setItem(userKey(STORAGE_CONNECTED_KEY), connected ? 'true' : 'false');
+    if (connected && snap.data()?.googleCalendarEmail) {
+      localStorage.setItem(userKey(STORAGE_EMAIL_KEY), String(snap.data().googleCalendarEmail));
+    }
+    return connected;
+  } catch {
+    return isGoogleCalendarConnected();
   }
 }
 
@@ -82,8 +99,8 @@ export function getGoogleCalendarConnectionInfo(): {
 } {
   try {
     const isConn = localStorage.getItem(STORAGE_CONNECTED_KEY) === 'true';
-    const savedExp = Number(localStorage.getItem(STORAGE_EXP_KEY)) || 0;
-    const email = localStorage.getItem(STORAGE_EMAIL_KEY) || auth.currentUser?.email || null;
+    const savedExp = Number(localStorage.getItem(userKey(STORAGE_EXP_KEY))) || 0;
+    const email = localStorage.getItem(userKey(STORAGE_EMAIL_KEY)) || auth.currentUser?.email || null;
     const isValid = isConn;
     return { connected: isValid, email: isValid ? email : null, expiresAt: savedExp };
   } catch {
@@ -118,9 +135,9 @@ export async function getCalendarAccessToken(forcePrompt = false): Promise<strin
   }
 
   try {
-    localStorage.setItem(STORAGE_CONNECTED_KEY, 'true');
+    localStorage.setItem(userKey(STORAGE_CONNECTED_KEY), 'true');
     if (auth.currentUser?.email) {
-      localStorage.setItem(STORAGE_EMAIL_KEY, auth.currentUser.email);
+      localStorage.setItem(userKey(STORAGE_EMAIL_KEY), auth.currentUser.email);
     }
   } catch {}
 
@@ -130,6 +147,7 @@ export async function getCalendarAccessToken(forcePrompt = false): Promise<strin
       await updateDoc(doc(db, 'users', user.uid), {
         googleCalendarConnected: true,
         googleCalendarConnectedAt: new Date().toISOString(),
+        googleCalendarEmail: primaryEmail || auth.currentUser?.email || null,
       });
     } catch (e) {
       console.warn('Could not sync gcal connection to user doc:', e);
@@ -161,7 +179,7 @@ export async function connectGoogleCalendarOnce(): Promise<{
       if (calData.id) {
         primaryEmail = calData.id;
         try {
-          localStorage.setItem(STORAGE_EMAIL_KEY, primaryEmail);
+          localStorage.setItem(userKey(STORAGE_EMAIL_KEY), primaryEmail);
         } catch {}
       }
     }
