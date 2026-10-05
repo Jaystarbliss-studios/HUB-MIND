@@ -30,6 +30,7 @@ import {
 } from '../services/memoryService';
 import { getAllUsers } from '../services/userService';
 import { getShareUrl } from './shareLinks';
+import { sendEmail } from './googleApi';
 
 export interface JessToolDefinition {
   name: string;
@@ -334,6 +335,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'create_calendar_event', description: 'Create a Google Calendar event (supports single and recurring events via recurrenceRule).', parameters: object({ title: { type: 'string' }, startDateTime: { type: 'string' }, endDateTime: { type: 'string' }, reminderMinutes: { type: 'array', items: { type: 'number' }, description: 'Optional reminder times in minutes before the event, e.g. [1440, 60, 10].' }, location: { type: 'string' }, description: { type: 'string' }, recurrenceRule: { type: 'string', description: 'Optional recurrence rule e.g. RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR' } }, ['title', 'startDateTime']) },
   { name: 'connect_google_calendar', description: 'Perform one-time Google Calendar connection to link the users account once for permanent sync.', parameters: object({}) },
   { name: 'get_google_calendar_status', description: 'Check whether Google Calendar is currently connected.', parameters: object({}) },
+  { name: 'send_email', description: 'Send an email through the user\'s permanently connected Google account. Use for schedule notices, meeting follow-ups, reminders, and other requested email communication.', parameters: object({ to: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' } }, ['to', 'subject', 'body']) },
   { name: 'save_activity_report', description: 'Write a daily or weekly activity report into the signed-in user\'s Today/report area and also save it as a workspace document. Use this for end-of-day reports, weekly activity summaries, and requested written operational reports.', parameters: object({ period: { type: 'string', enum: ['daily', 'weekly'] }, dateKey: { type: 'string', description: 'Optional YYYY-MM-DD date for daily reports.' }, title: { type: 'string' }, report: { type: 'string' }, snapshot: { type: 'object' } }, ['period', 'report']) },
   
   // Personalization, User Memory & Background Operations
@@ -2063,6 +2065,15 @@ export async function executeJessTool(
         return item
           ? { result: { success: true, client: { id: item.id, ...item.data }, message: `Opening client "${item.data.name || 'Client'}" on screen.` }, actionPayload: navigatePayload(`/clients/${clientId}`) }
           : { result: { success: false, error: `Client "${clientId || ''}" not found or access denied.` } };
+      }
+
+      case 'send_email': {
+        const to = String(args.to || '').trim();
+        const subject = String(args.subject || '').trim();
+        const body = String(args.body || '').trim();
+        if (!to || !subject || !body) return { result: { success: false, error: 'Email recipient, subject, and body are required.' } };
+        const sent = await sendEmail(to, subject, body);
+        return { result: { success: true, message: `Email sent to ${to} with subject "${subject}".`, messageId: sent?.id || sent?.message?.id || null } };
       }
 
       case 'list_calendar_events': {
