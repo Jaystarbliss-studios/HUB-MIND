@@ -191,7 +191,7 @@ export class LiveAudioClient {
       await this.setupAudioNodes();
 
       const firstName = context?.userName || 'there';
-      const bgTasksSummary = jessBackgroundTasks.getQueueSummaryForPrompt();
+      const bgTasksSummary = jessBackgroundTasks.getQueueSummaryForPrompt(context?.userId || '');
       
       let userMemoriesSummary = 'No stored memories yet.';
       if (context?.userId) {
