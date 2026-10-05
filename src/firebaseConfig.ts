@@ -18,9 +18,13 @@ const getEnv = (key: string): string => {
   return '';
 };
 
-const projectId = getEnv('VITE_FIREBASE_PROJECT_ID') || getEnv('FIREBASE_PROJECT_ID');
-const apiKey = getEnv('VITE_FIREBASE_WEB_API_KEY') || getEnv('FIREBASE_WEB_API_KEY');
-const appId = getEnv('VITE_FIREBASE_APP_ID') || getEnv('FIREBASE_APP_ID');
+const isBrowser = typeof window !== 'undefined';
+
+// Node-based unit/security tests import this module without a browser env. Keep
+// those imports side-effect safe while requiring complete configuration in the browser.
+const projectId = getEnv('VITE_FIREBASE_PROJECT_ID') || getEnv('FIREBASE_PROJECT_ID') || (!isBrowser ? 'test-project' : '');
+const apiKey = getEnv('VITE_FIREBASE_WEB_API_KEY') || getEnv('FIREBASE_WEB_API_KEY') || (!isBrowser ? 'test-api-key' : '');
+const appId = getEnv('VITE_FIREBASE_APP_ID') || getEnv('FIREBASE_APP_ID') || (!isBrowser ? 'test-app-id' : '');
 const authDomain =
   getEnv('VITE_FIREBASE_AUTH_DOMAIN') ||
   getEnv('FIREBASE_AUTH_DOMAIN') ||
@@ -31,7 +35,8 @@ const storageBucket =
   (projectId ? `${projectId}.firebasestorage.app` : '');
 const messagingSenderId =
   getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') ||
-  getEnv('FIREBASE_MESSAGING_SENDER_ID');
+  getEnv('FIREBASE_MESSAGING_SENDER_ID') ||
+  (!isBrowser ? 'test-sender-id' : '');
 
 export const FIRESTORE_DATABASE_ID =
   getEnv('VITE_FIRESTORE_DATABASE_ID') ||
@@ -54,7 +59,7 @@ const missing = Object.entries({
   VITE_FIREBASE_MESSAGING_SENDER_ID: messagingSenderId,
 }).filter(([, value]) => !value).map(([key]) => key);
 
-if (missing.length) {
+if (isBrowser && missing.length) {
   throw new Error(`Firebase configuration is incomplete. Missing: ${missing.join(', ')}`);
 }
 
