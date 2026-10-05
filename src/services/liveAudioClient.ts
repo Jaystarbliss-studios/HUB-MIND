@@ -46,7 +46,6 @@ export class LiveAudioClient {
   private isPushToTalkActive = false;
   private pushToTalkMode = false;
   private levelIntervalId: number | null = null;
-  private pingIntervalId: number | null = null;
   private connected = false;
 
   // Adaptive noise suppression and dominant speaker tracking
@@ -476,52 +475,40 @@ export class LiveAudioClient {
   }
 
   public sendFunctionResponse(response: { name: string; id: string; response: any }) {
-    if (this.session && !this.isUsingFallbackWs) {
-      try {
-        this.session.sendToolResponse({
-          functionResponses: [
-            {
-              name: response.name,
-              id: response.id,
-              response: response.response,
-            },
-          ],
-        });
-      } catch (err) {
-        console.warn('Failed to send tool response to Live API:', err);
-      }
-
+    if (!this.session) return;
+    try {
+      this.session.sendToolResponse({
+        functionResponses: [
+          {
+            name: response.name,
+            id: response.id,
+            response: response.response,
+          },
+        ],
+      });
+    } catch (err) {
+      console.warn('Failed to send tool response to Live API:', err);
+    }
   }
 
   public sendText(text: string) {
-    if (!text.trim()) return;
-    if (this.session && !this.isUsingFallbackWs) {
-      try {
-        if (typeof this.session.sendClientContent === 'function') {
-          this.session.sendClientContent({
-            turns: [
-              {
-                role: 'user',
-                parts: [{ text }],
-              },
-            ],
+    if (!text.trim() || !this.session) return;
+    try {
+      if (typeof this.session.sendClientContent === 'function') {
+        this.session.sendClientContent({
+          turns: [{ role: 'user', parts: [{ text }] }],
+          turnComplete: true,
+        });
+      } else {
+        this.session.sendRealtimeInput({
+          clientContent: {
+            turns: [{ role: 'user', parts: [{ text }] }],
             turnComplete: true,
-          });
-        } else {
-          this.session.sendRealtimeInput({
-            clientContent: {
-              turns: [{ role: 'user', parts: [{ text }] }],
-              turnComplete: true,
-            },
-          });
-        }
-      } catch (e) {
-        console.warn('Error sending text to Live session:', e);
+          },
+        });
       }
-    } else if (this.fallbackWs && this.fallbackWs.readyState === WebSocket.OPEN) {
-      try {
-        this.fallbackWs.send(JSON.stringify({ type: 'text', text }));
-      } catch (e) {}
+    } catch (e) {
+      console.warn('Error sending text to Live session:', e);
     }
   }
 
@@ -543,11 +530,6 @@ export class LiveAudioClient {
     if (this.levelIntervalId) {
       clearInterval(this.levelIntervalId);
       this.levelIntervalId = null;
-    }
-
-    if (this.pingIntervalId) {
-      clearInterval(this.pingIntervalId);
-      this.pingIntervalId = null;
     }
 
     this.stopPlayback();
