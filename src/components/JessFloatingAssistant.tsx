@@ -288,7 +288,20 @@ export function JessFloatingAssistant() {
         if (typeof toolArgs === 'string') {
           try { toolArgs = JSON.parse(toolArgs); } catch { toolArgs = {}; }
         }
-        const result = await executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context);
+        let result: any;
+        try {
+          result = await executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context);
+        } catch (error: any) {
+          // A tool failure must become a tool response, not an unhandled promise.
+          // Returning the failure to Gemini lets Jess recover conversationally and
+          // keeps the Live session usable for the next command.
+          result = {
+            result: {
+              success: false,
+              error: error?.message || 'The requested Hub-Mind action failed unexpectedly.',
+            },
+          };
+        }
 
         // Screen-control actions are executed by the signed-in browser, not merely
         // acknowledged. This gives Jess direct, visible control of the Hub-Mind UI.
