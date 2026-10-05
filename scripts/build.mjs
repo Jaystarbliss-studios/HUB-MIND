@@ -47,11 +47,8 @@ const clientSourceFiles = scanFiles.filter((file) => {
 for (const file of clientSourceFiles) {
   if (!fs.existsSync(file)) continue;
   const source = fs.readFileSync(file, 'utf8');
-  if (/import\.meta\.env\.VITE_FIREBASE_|process\.env\.VITE_FIREBASE_/.test(source)) {
-    throw new Error(`Client Firebase environment injection detected in source: ${path.relative(projectRoot, file)}`);
-  }
-  if (/import\.meta\.env\.VITE_GOOGLE_CLIENT_ID|process\.env\.VITE_GOOGLE_CLIENT_ID/.test(source)) {
-    throw new Error(`Client Google OAuth environment injection detected in source: ${path.relative(projectRoot, file)}`);
+  if (/import\\.meta\\.env|process\\.env/.test(source)) {
+    throw new Error(`Client build-time environment access detected in source: ${path.relative(projectRoot, file)}. Client runtime configuration must come from server endpoints.`);
   }
 }
 
