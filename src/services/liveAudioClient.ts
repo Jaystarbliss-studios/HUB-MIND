@@ -304,11 +304,13 @@ export class LiveAudioClient {
               onmessage: (message: any) => this.handleLiveMessage(message),
               onerror: (event: any) => {
                 console.warn('Live API event warning:', event);
-                if (!this.connected) {
-                  this.callbacks.onError?.('Gemini Live connection failed.');
-                  this.callbacks.onStatusChange('error');
-                  this.callbacks.onJessStateChange('error');
-                }
+                // Treat provider/network errors as recoverable. Tear down the broken
+                // session cleanly so the floating assistant remains activatable.
+                this.connected = false;
+                this.callbacks.onError?.('Jess encountered a temporary Live connection error. Jess is ready to reconnect.');
+                this.callbacks.onStatusChange('error');
+                this.callbacks.onJessStateChange('error');
+                try { this.session?.close(); } catch {}
               },
               onclose: (event: any) => {
                 if (this.connected) {
