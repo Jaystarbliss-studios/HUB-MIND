@@ -41,6 +41,23 @@ function clampViewportPosition(position: { x: number; y: number }, size: number)
   return { x: clamp(position.x, halfX, 1 - halfX), y: clamp(position.y, halfY, 1 - halfY) };
 }
 
+
+function findJessVisibleElement(target?: string, selector?: string): HTMLElement | null {
+  if (selector) {
+    try {
+      const found = document.querySelector(selector);
+      if (found instanceof HTMLElement) return found;
+    } catch {}
+  }
+  const needle = String(target || '').trim().toLowerCase();
+  if (!needle) return null;
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>('button,a,[role="button"],input,textarea,[contenteditable="true"],[title],[aria-label]'));
+  return candidates
+    .map(el => ({ el, text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || (el as HTMLInputElement).placeholder || '').trim().toLowerCase() }))
+    .filter(x => x.text && (x.text === needle || x.text.includes(needle) || needle.includes(x.text)))
+    .sort((a,b) => Math.abs(a.text.length - needle.length) - Math.abs(b.text.length - needle.length))[0]?.el || null;
+}
+
 function wakeTone() {
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -77,6 +94,7 @@ export function JessFloatingAssistant() {
   const navigate = useNavigate();
   const clientRef = useRef<LiveAudioClient | null>(null);
   const sessionEndingRef = useRef(false);
+  const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number }>({ timer: null, running: false, speed: 3 });
   const pointerRef = useRef({ dragging: false, moved: false, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0 });
   const [position, setPosition] = useState(DEFAULT_POSITION);
   const [connection, setConnection] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
@@ -223,15 +241,82 @@ export function JessFloatingAssistant() {
         const context = resolveJessContext(location.pathname);
         let toolArgs = fc.args;
         if (typeof toolArgs === 'string') {
-          try {
-            toolArgs = JSON.parse(toolArgs);
-          } catch {
-            toolArgs = {};
-          }
+          try { toolArgs = JSON.parse(toolArgs); } catch { toolArgs = {}; }
         }
         const result = await executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context);
-        // Return the tool result to Gemini before changing the React route so the
-        // Live session receives a definitive acknowledgement of the action.
+
+        // Screen-control actions are executed by the signed-in browser, not merely
+        // acknowledged. This gives Jess direct, visible control of the Hub-Mind UI.
+        if (result.actionPayload?.type === 'screen_control') {
+          const p = result.actionPayload;
+          const control = screenControlRef.current;
+          const stopScroll = () => {
+            if (control.timer !== null) window.clearInterval(control.timer);
+            control.timer = null;
+            control.running = false;
+          };
+          if (p.action === 'stop' || p.mode === 'stop') {
+            stopScroll();
+            result.result.message = 'Stopped screen control.';
+          } else if (p.action === 'scroll') {
+            if (p.mode === 'top') {
+              stopScroll();
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else if (p.mode === 'bottom') {
+              stopScroll();
+              window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+            } else if (p.mode === 'by') {
+              stopScroll();
+              const direction = p.direction === 'up' ? -1 : 1;
+              const amount = Math.max(50, Math.min(3000, Number(p.amount) || window.innerHeight * 0.75));
+              window.scrollBy({ top: direction * amount, behavior: 'smooth' });
+            } else {
+              const speeds: Record<string, number> = { slow: 1.2, normal: 3, fast: 7, very_fast: 14 };
+              control.speed = speeds[p.speed] || 3;
+              stopScroll();
+              control.running = true;
+              control.timer = window.setInterval(() => {
+                if (!control.running) return;
+                const direction = p.direction === 'up' ? -1 : 1;
+                window.scrollBy(0, direction * control.speed);
+              }, 16);
+            }
+            result.result.message = 'Screen scrolling command completed on the visible Hub-Mind screen.';
+          } else if (p.action === 'click') {
+            const el = findJessVisibleElement(p.target, p.selector);
+            if (!el) {
+              result.result = { success: false, error: 'I could not find a visible screen element matching that target.' };
+            } else {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              window.setTimeout(() => el.click(), 120);
+              result.result.message = 'Clicked the visible screen element: ' + (p.target || p.selector || el.innerText || el.getAttribute('aria-label') || 'target');
+            }
+          } else if (p.action === 'type') {
+            const el = findJessVisibleElement(p.target, p.selector);
+            if (!el) {
+              result.result = { success: false, error: 'I could not find a visible input or editor field matching that target.' };
+            } else {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              el.focus();
+              if (p.clearFirst) {
+                if ('value' in el) (el as HTMLInputElement).value = '';
+                else if (el.isContentEditable) el.textContent = '';
+              }
+              if ('value' in el) {
+                const input = el as HTMLInputElement;
+                const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+                setter?.call(input, String(p.text || ''));
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              } else if (el.isContentEditable) {
+                el.textContent = String(p.text || '');
+                el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: String(p.text || '') }));
+              }
+              result.result.message = 'Typed into the visible screen field.';
+            }
+          }
+        }
+
         client.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
         if (result.actionPayload?.type === 'navigate' && result.actionPayload.path) {
           navigate(result.actionPayload.path);
@@ -254,12 +339,7 @@ export function JessFloatingAssistant() {
 
         if (fc.name === 'end_session' || result.actionPayload?.type === 'sleep') {
           sessionEndingRef.current = true;
-          // Acknowledge the tool call first, then immediately tear down the Live
-          // session. The previous 1.8s delay allowed Jess to remain listening
-          // and sometimes continue the conversation after a sleep request.
-          window.setTimeout(() => {
-            void stop();
-          }, 100);
+          window.setTimeout(() => { void stop(); }, 100);
         }
       },
       onUserTranscript: (text) => {
