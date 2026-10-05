@@ -35,6 +35,31 @@ export interface JessToolDefinition {
   name: string;
   description: string;
   parameters: { type: string; properties: Record<string, any>; required?: string[] };
+  behavior?: 'NON_BLOCKING';
+}
+
+
+function normalizeSearchText(value: any): string {
+  return String(value || '').toLowerCase().replace(/<[^>]+>/g, ' ').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function fuzzyRelevance(queryText: string, record: any): number {
+  const queryTokens = normalizeSearchText(queryText).split(' ').filter(t => t.length >= 2);
+  if (!queryTokens.length) return 0;
+  const fields = [record.title, record.name, record.description, record.category, record.content, record.notes, record.tags].map(normalizeSearchText);
+  const title = fields[0] || '';
+  const haystack = fields.join(' ');
+  let score = 0;
+  for (const token of queryTokens) {
+    if (title.includes(token)) score += 8;
+    else if (haystack.includes(token)) score += 4;
+    else {
+      const first = token[0];
+      if (first && haystack.split(' ').some((word: string) => word.startsWith(first) && word.length >= 4 && Math.abs(word.length - token.length) <= 2)) score += 1;
+    }
+  }
+  const phrase = normalizeSearchText(queryText);
+  if (phrase && title.includes(phrase)) score += 12;
+  return score;
 }
 
 const object = (properties: Record<string, any>, required?: string[]): JessToolDefinition['parameters'] => ({
@@ -177,12 +202,17 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'open_client', description: 'Open a client on screen.', parameters: object({ clientId: { type: 'string' } }, ['clientId']) },
   { name: 'open_document', description: 'Open a document in the document editor.', parameters: object({ documentId: { type: 'string' } }, ['documentId']) },
   { name: 'navigate_app', description: 'Navigate user to a specific tab or page in Hub-Mind (e.g. /colleagues, /tasks, /calendar, /documents, /projects, /clients, /knowledge, /follow-ups, /inbox, /admin, /).', parameters: object({ path: { type: 'string', description: 'Path to open: /colleagues, /tasks, /calendar, /documents, /projects, /clients, /knowledge, /follow-ups, /inbox, /admin, /' } }, ['path']) },
+  { name: 'scroll_screen', description: 'Control the visible Hub-Mind screen without touching it. Start/stop continuous scrolling, change speed, scroll a specific amount, or jump to top/bottom.', parameters: object({ mode: { type: 'string', enum: ['start', 'stop', 'by', 'top', 'bottom'] }, direction: { type: 'string', enum: ['up', 'down'] }, speed: { type: 'string', enum: ['slow', 'normal', 'fast', 'very_fast'] }, amount: { type: 'number' } }, ['mode']) },
+  { name: 'click_screen', description: 'Click a visible Hub-Mind UI element by visible text, accessible label, title, or CSS selector.', parameters: object({ target: { type: 'string' }, selector: { type: 'string' } }) },
+  { name: 'type_screen', description: 'Type into a visible input or editor field selected by label, placeholder, name, or CSS selector.', parameters: object({ target: { type: 'string' }, text: { type: 'string' }, selector: { type: 'string' }, clearFirst: { type: 'boolean' } }, ['text']) },
+  { name: 'stop_screen_control', description: 'Immediately stop any ongoing Jess screen scrolling/control operation.', parameters: object({}) },
 
   // Google Calendar Integration
   { name: 'list_calendar_events', description: 'List Google Calendar events.', parameters: object({ timeMin: { type: 'string' }, timeMax: { type: 'string' } }) },
-  { name: 'create_calendar_event', description: 'Create a Google Calendar event (supports single and recurring events via recurrenceRule).', parameters: object({ title: { type: 'string' }, startDateTime: { type: 'string' }, endDateTime: { type: 'string' }, reminderMinutes: { type: 'number' }, location: { type: 'string' }, description: { type: 'string' }, recurrenceRule: { type: 'string', description: 'Optional recurrence rule e.g. RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR' } }, ['title', 'startDateTime']) },
+  { name: 'create_calendar_event', description: 'Create a Google Calendar event (supports single and recurring events via recurrenceRule).', parameters: object({ title: { type: 'string' }, startDateTime: { type: 'string' }, endDateTime: { type: 'string' }, reminderMinutes: { type: 'array', items: { type: 'number' }, description: 'Optional reminder times in minutes before the event, e.g. [1440, 60, 10].' }, location: { type: 'string' }, description: { type: 'string' }, recurrenceRule: { type: 'string', description: 'Optional recurrence rule e.g. RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR' } }, ['title', 'startDateTime']) },
   { name: 'connect_google_calendar', description: 'Perform one-time Google Calendar connection to link the users account once for permanent sync.', parameters: object({}) },
   { name: 'get_google_calendar_status', description: 'Check whether Google Calendar is currently connected.', parameters: object({}) },
+  { name: 'save_activity_report', description: 'Write a daily or weekly activity report into the signed-in user\'s Today/report area and also save it as a workspace document. Use this for end-of-day reports, weekly activity summaries, and requested written operational reports.', parameters: object({ period: { type: 'string', enum: ['daily', 'weekly'] }, dateKey: { type: 'string', description: 'Optional YYYY-MM-DD date for daily reports.' }, title: { type: 'string' }, report: { type: 'string' }, snapshot: { type: 'object' } }, ['period', 'report']) },
   
   // Personalization, User Memory & Background Operations
   { name: 'set_preferred_name', description: 'Save the name the signed-in user wants to be addressed with.', parameters: object({ preferredName: { type: 'string' } }, ['preferredName']) },
@@ -225,7 +255,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
       keyOrMemoryId: { type: 'string', description: 'Key name or ID of the memory to remove' } 
     }, ['keyOrMemoryId']) 
   },
-  { name: 'start_background_operation', description: 'Start a long-running task in the background (e.g. document drafting, audit, batch organization, research). Jess can continue conversing while it runs.', parameters: object({ title: { type: 'string' }, description: { type: 'string' }, taskType: { type: 'string' } }, ['title']) },
+  { behavior: 'NON_BLOCKING', name: 'start_background_operation', description: 'Start a real multi-step background workflow. Jess can continue conversing while it runs. Progress must reflect completed executable steps, never simulated waiting.', parameters: object({ title: { type: 'string' }, description: { type: 'string' }, taskType: { type: 'string' }, steps: { type: 'array', description: 'Ordered executable tool steps.', items: { type: 'object', properties: { tool: { type: 'string' }, args: { type: 'object' }, label: { type: 'string' } }, required: ['tool'] } } }, ['title', 'steps']) },
   { name: 'get_background_tasks_status', description: 'Check the real-time progress percentage and stage of background tasks.', parameters: object({ taskId: { type: 'string' } }) },
   { name: 'end_session', description: 'Put the AI assistant to sleep or end the current live voice session when the user says "end this session", "go to sleep", "sleep", "deactivate", or wants to conclude.', parameters: object({ reason: { type: 'string' } }) },
 ];
@@ -1010,8 +1040,11 @@ export async function executeJessTool(
         const allDocs = await fetchAllDocumentsForUser(user);
         let filtered = allDocs;
         if (args.query) {
-          const q = String(args.query).toLowerCase();
-          filtered = allDocs.filter(d => (d.title || '').toLowerCase().includes(q) || (d.content || '').toLowerCase().includes(q));
+          filtered = allDocs
+            .map(d => ({ doc: d, score: fuzzyRelevance(String(args.query), d) }))
+            .filter(x => x.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .map(x => x.doc);
         }
         return {
           result: {
@@ -1029,18 +1062,21 @@ export async function executeJessTool(
       }
 
       case 'find_document': {
-        const term = String(args.title || '').toLowerCase().trim();
+        const term = String(args.title || '').trim();
         const allDocs = await fetchAllDocumentsForUser(user);
-        const matches = allDocs.filter(d => (d.title || '').toLowerCase().includes(term));
-        if (matches.length === 0) {
-          return { result: { success: false, message: `No document matching "${args.title}" was found.` } };
-        }
-        const top = matches[0];
+        const ranked = allDocs
+          .map(d => ({ doc: d, score: fuzzyRelevance(term, d) }))
+          .filter(x => x.score > 0)
+          .sort((a, b) => b.score - a.score || new Date(b.doc.updatedAt || b.doc.createdAt || 0).getTime() - new Date(a.doc.updatedAt || a.doc.createdAt || 0).getTime());
+        if (!ranked.length) return { result: { success: false, message: `No document or workspace record related to "${args.title}" was found.` } };
+        const top = ranked[0].doc;
         return {
           result: {
             success: true,
             document: { id: top.id, title: top.title, content: top.content || '', category: top.category },
-            otherMatches: matches.slice(1, 5).map(d => ({ id: d.id, title: d.title })),
+            relevance: ranked[0].score,
+            otherMatches: ranked.slice(1, 6).map(x => ({ id: x.doc.id, title: x.doc.title, relevance: x.score })),
+            message: ranked[0].score >= 8 ? `Found the most relevant document: "${top.title}".` : `I found the closest relevant document, "${top.title}", based on your wording and its content.`,
           },
           actionPayload: navigatePayload(`/documents/${top.id}`),
         };
@@ -1935,6 +1971,47 @@ export async function executeJessTool(
         return { result: res };
       }
 
+      case 'save_activity_report': {
+        const period = args.period === 'weekly' ? 'weekly' : 'daily';
+        const now = new Date();
+        const dateKey = String(args.dateKey || format(now, 'yyyy-MM-dd'));
+        const title = String(args.title || (period === 'weekly' ? 'Weekly Activity Report' : 'Daily Report — ' + format(now, 'dd MMMM yyyy')));
+        const report = String(args.report || '').trim();
+        if (!report) return { result: { success: false, error: 'Report content is required.' } };
+        const collectionName = period === 'weekly' ? 'weeklyReports' : 'dailyReports';
+        await setDoc(doc(db, 'users', user.id, collectionName, dateKey), {
+          date: dateKey,
+          authorId: user.id,
+          authorName: user.displayName || user.preferredName || user.name || user.username,
+          report,
+          updatedAt: now.toISOString(),
+          snapshot: args.snapshot || {},
+        }, { merge: true });
+
+        const htmlContent = report.split('\n').map((line: string) => {
+          const trimmed = line.trim();
+          if (!trimmed) return '<br/>';
+          if (trimmed.startsWith('•')) return '<li>' + trimmed.substring(1).trim() + '</li>';
+          if (trimmed.endsWith(':') || /REPORT/i.test(trimmed)) return '<h3><strong>' + trimmed + '</strong></h3>';
+          return '<p>' + trimmed.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>';
+        }).join('');
+        const docRef = await addDoc(collection(db, 'documents'), {
+          title,
+          content: htmlContent,
+          category: 'report',
+          ownerId: user.id,
+          createdBy: user.id,
+          visibility: 'workspace',
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+          lastEditedAt: now.toISOString(),
+          lastSavedAt: now.toISOString(),
+          version: 1,
+          type: 'internal',
+        });
+        return { result: { success: true, reportId: dateKey, documentId: docRef.id, title, message: title + ' saved to the ' + period + ' reports and workspace Documents.' } };
+      }
+
       case 'get_google_calendar_status': {
         const info = getGoogleCalendarConnectionInfo();
         return {
@@ -1949,6 +2026,18 @@ export async function executeJessTool(
       case 'open_colleagues':
       case 'open_people': {
         return { result: { success: true, path: '/colleagues' }, actionPayload: navigatePayload('/colleagues') };
+      }
+
+      case 'scroll_screen':
+      case 'stop_screen_control':
+      case 'click_screen':
+      case 'type_screen': {
+        const payload = name === 'stop_screen_control'
+          ? { type: 'screen_control', action: 'stop' }
+          : name === 'scroll_screen'
+            ? { type: 'screen_control', action: 'scroll', mode: args.mode || 'by', direction: args.direction || 'down', speed: args.speed || 'normal', amount: Number(args.amount || 0) }
+            : { type: 'screen_control', action: name === 'click_screen' ? 'click' : 'type', target: args.target, selector: args.selector, text: args.text, clearFirst: args.clearFirst };
+        return { result: { success: true, message: 'Screen control command accepted.' }, actionPayload: payload };
       }
 
       case 'navigate_app': {
@@ -2104,34 +2193,41 @@ export async function executeJessTool(
         const taskTitle = String(args.title || 'Workspace Background Operation');
         const description = String(args.description || '');
         const taskType = (args.taskType || 'custom') as any;
-
+        const steps = Array.isArray(args.steps) ? args.steps.filter((s: any) => s && s.tool) : [];
+        if (!steps.length) {
+          return { result: { success: false, error: 'A background operation needs at least one executable tool step so progress can be measured accurately.' } };
+        }
         const bgTask = jessBackgroundTasks.enqueueTask({
           title: taskTitle,
           description,
           taskType,
           priority: 'normal',
-          customStages: [
-            { atPct: 25, stage: 'Gathering workspace records and analyzing operational context...', delayMs: 1500 },
-            { atPct: 50, stage: 'Processing records and composing content in background...', delayMs: 2200 },
-            { atPct: 75, stage: 'Applying changes and syncing cloud documents...', delayMs: 1800 },
-            { atPct: 90, stage: 'Finalizing verification and updating indexes...', delayMs: 1200 },
-          ],
-          onComplete: async () => {
-            return {
-              summary: `Completed "${taskTitle}". All workspace updates are live and saved.`,
-            };
+          userId: user.id,
+          payload: { steps },
+          onComplete: async (task) => {
+            const total = steps.length;
+            const completed: string[] = [];
+            for (let index = 0; index < total; index++) {
+              const step = steps[index];
+              const label = String(step.label || step.tool);
+              jessBackgroundTasks.updateTaskProgress(task.id, Math.max(1, Math.round((index / total) * 95)), 'Working: ' + label + ' (' + (index + 1) + '/' + total + ')');
+              let stepResult: any = null;
+              let lastError = 'tool execution failed';
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                stepResult = await executeJessTool(String(step.tool), step.args || {}, user, onPreferredName, context);
+                if (stepResult.result?.success) break;
+                lastError = stepResult.result?.error || 'tool execution failed';
+                jessBackgroundTasks.updateTaskProgress(task.id, Math.max(1, Math.round((index / total) * 95)), 'Retrying: ' + label + ' (attempt ' + (attempt + 1) + '/3)');
+                await new Promise(resolve => setTimeout(resolve, Math.min(1500 * attempt, 4000)));
+              }
+              if (!stepResult?.result?.success) throw new Error(label + ' failed after retries: ' + lastError);
+              completed.push(label);
+              jessBackgroundTasks.updateTaskProgress(task.id, Math.round(((index + 1) / total) * 95), 'Completed: ' + label + ' (' + (index + 1) + '/' + total + ')');
+            }
+            return { summary: 'Completed ' + completed.length + '/' + total + ' background steps for "' + taskTitle + '".' };
           }
         });
-
-        return {
-          result: {
-            success: true,
-            taskId: bgTask.id,
-            progress: bgTask.progress,
-            stage: bgTask.stage,
-            message: `Started "${taskTitle}" in the background processing queue (ID: ${bgTask.id}). I am here and ready to continue talking while it works. You can ask for status or percentage at any time!`,
-          },
-        };
+        return { result: { success: true, taskId: bgTask.id, progress: bgTask.progress, stage: bgTask.stage, message: 'Started "' + taskTitle + '" as a real background workflow with ' + steps.length + ' executable steps. Progress will reflect actual completed work.' } };
       }
 
       case 'get_background_tasks_status': {

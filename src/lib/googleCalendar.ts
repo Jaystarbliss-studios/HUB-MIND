@@ -13,7 +13,7 @@ export interface CalendarEventPayload {
   description?: string;
   startDateTime: string; // ISO string or YYYY-MM-DDTHH:mm:ss
   endDateTime?: string;   // ISO string or YYYY-MM-DDTHH:mm:ss
-  reminderMinutes?: number;
+  reminderMinutes?: number | number[];
   location?: string;
   recurrenceRule?: string; // e.g. 'RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR' or 'RRULE:FREQ=DAILY'
 }
@@ -69,8 +69,7 @@ const STORAGE_EXP_KEY = 'hubmind_gcal_token_exp';
 export function isGoogleCalendarConnected(): boolean {
   try {
     const isConn = localStorage.getItem(STORAGE_CONNECTED_KEY) === 'true';
-    const hasToken = !!getCachedCalendarToken();
-    return isConn && hasToken;
+    return isConn;
   } catch {
     return !!getCachedCalendarToken();
   }
@@ -83,10 +82,9 @@ export function getGoogleCalendarConnectionInfo(): {
 } {
   try {
     const isConn = localStorage.getItem(STORAGE_CONNECTED_KEY) === 'true';
-    const hasToken = !!getCachedCalendarToken();
     const savedExp = Number(localStorage.getItem(STORAGE_EXP_KEY)) || 0;
     const email = localStorage.getItem(STORAGE_EMAIL_KEY) || auth.currentUser?.email || null;
-    const isValid = isConn && hasToken;
+    const isValid = isConn;
     return { connected: isValid, email: isValid ? email : null, expiresAt: savedExp };
   } catch {
     return { connected: false, email: null, expiresAt: 0 };
@@ -114,7 +112,7 @@ export async function getCalendarAccessToken(forcePrompt = false): Promise<strin
     if (existing) return existing;
   }
 
-  const token = await requestGoogleAccessToken(CALENDAR_SCOPES);
+  const token = await requestGoogleAccessToken(CALENDAR_SCOPES, forcePrompt);
   if (!token) {
     throw new Error('Google Calendar access token could not be obtained.');
   }
@@ -200,6 +198,7 @@ export async function createGoogleCalendarEvent(payload: CalendarEventPayload): 
   }
 
   const reminderMinutes = payload.reminderMinutes !== undefined ? payload.reminderMinutes : 15;
+  const reminderList = Array.isArray(reminderMinutes) ? reminderMinutes : [reminderMinutes];
 
   const eventBody: any = {
     summary: payload.summary,
@@ -214,8 +213,10 @@ export async function createGoogleCalendarEvent(payload: CalendarEventPayload): 
     reminders: {
       useDefault: false,
       overrides: [
-        { method: 'popup', minutes: reminderMinutes },
-        { method: 'email', minutes: reminderMinutes },
+        ...reminderList.filter((m: any) => Number.isFinite(Number(m)) && Number(m) >= 0).slice(0, 5).flatMap((minutes: any) => [
+          { method: 'popup', minutes: Number(minutes) },
+          { method: 'email', minutes: Number(minutes) },
+        ]),
       ],
     },
   };
@@ -253,9 +254,12 @@ export async function createGoogleCalendarEvent(payload: CalendarEventPayload): 
 }
 
 export async function listGoogleCalendarEvents(timeMin?: string, timeMax?: string): Promise<GoogleCalendarEvent[]> {
-  const token = getCachedCalendarToken();
-  if (!token) {
-    // If not connected, return empty list instead of throwing an unprompted popup error
+  let token: string;
+  try {
+    token = await getCalendarAccessToken(false);
+  } catch {
+    // A previously connected account may have an expired token or revoked grant.
+    // Never open an interactive popup from a background schedule read.
     return [];
   }
 
