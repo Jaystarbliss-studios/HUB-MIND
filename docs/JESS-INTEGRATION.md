@@ -37,3 +37,16 @@ Jess can navigate to tasks, projects, documents, calendar, clients and other exi
 ## Legacy removal
 
 The legacy Shawn assistant components, assistant-specific authorization/tool files, wake-word detector, live voice control panel, transcript/settings/calibration/dictation UI and standalone assistant drawers have been removed from the integration branch. Jess is the only embedded live assistant surface.
+
+## Live audio performance architecture
+
+The live microphone path is deliberately split into two browser threads:
+
+1. `AudioWorklet` captures mono 16 kHz microphone frames with deterministic timing.
+2. A dedicated `Web Worker` performs client-side VAD, Float32-to-16-bit-PCM conversion, and Base64 encoding so those loops never run on the React/UI thread.
+3. Only speech-positive frames are forwarded to the Gemini Live session.
+4. The Google GenAI Live SDK maintains the stateful WebSocket connection to Gemini. Jess does not create a second parallel socket or proxy the audio through Netlify.
+
+Gemini Live expects raw 16-bit PCM at 16 kHz for input and returns 24 kHz PCM audio for output. The current client-to-server architecture therefore keeps the audio stream direct from the browser to Gemini after the authenticated short-lived token is provisioned. This minimizes latency and avoids sending realtime audio through the application backend. 
+
+The UI-level audio meter is sampled at 10 Hz because it is visual feedback rather than part of the transport path. The worker is terminated with the Live session so no background audio-processing thread survives deactivation.
