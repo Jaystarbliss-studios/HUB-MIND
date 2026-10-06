@@ -37,6 +37,7 @@ export class LiveAudioClient {
   private outputGainNode: GainNode | null = null;
   private mediaStream: MediaStream | null = null;
   private audioWorkletNode: AudioWorkletNode | null = null;
+  private audioProcessingWorker: Worker | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private nextStartTime = 0;
   private activeSources: AudioBufferSourceNode[] = [];
@@ -168,20 +169,43 @@ export class LiveAudioClient {
     // routing microphone audio back to the user's speakers.
     this.audioWorkletNode.connect(this.inputAudioCtx.destination);
 
-    this.audioWorkletNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
+    try {
+      this.audioProcessingWorker = new Worker('/jess-audio-worker.js');
+    } catch {
+      throw new Error('Jess audio processing worker could not be started.');
+    }
+
+    this.audioProcessingWorker.onmessage = (event: MessageEvent) => {
+      if (this.isMuted || this.micPermissionDenied || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
+      if (!this.session || !this.connected) return;
+      const message = event.data;
+      if (message?.type === 'error') {
+        console.warn('[Jess AudioWorker]', message.message);
+        return;
+      }
+      if (message?.type !== 'audio' || !message.data) return;
+      try {
+        // GoogleGenAI Live already uses its real-time WebSocket transport.
+        // Send one canonical audio payload rather than duplicating the same PCM.
+        this.session.sendRealtimeInput({
+          audio: { data: message.data, mimeType: message.mimeType || 'audio/pcm;rate=16000' },
+        });
+      } catch (error) {
+        console.warn('Live input error:', error);
+      }
+    };
+
+    this.audioWorkletNode.port.onmessage = (event: MessageEvent<Float32Array | ArrayBuffer>) => {
       if (this.isMuted || this.micPermissionDenied || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
       const input = event.data instanceof Float32Array ? event.data : new Float32Array(event.data);
-      const pcmBuffer = this.processAudioBufferWithNoiseSuppression(input);
-      if (!pcmBuffer || !this.session || !this.connected) return;
-
+      const buffer = input.buffer;
       try {
-        const base64Data = this.base64EncodeArrayBuffer(pcmBuffer);
-        this.session.sendRealtimeInput({
-          audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
-          media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
-        });
-      } catch (e) {
-        console.warn('Live input error:', e);
+        this.audioProcessingWorker?.postMessage(
+          { type: 'process', buffer, sampleRate: this.inputAudioCtx?.sampleRate || 16000 },
+          [buffer],
+        );
+      } catch (error) {
+        console.warn('[Jess AudioWorker] Could not enqueue audio frame:', error);
       }
     };
   }
@@ -519,7 +543,7 @@ export class LiveAudioClient {
       }
 
       this.callbacks.onAudioLevel?.(inAvg, outAvg);
-    }, 50);
+    }, 100);
   }
 
   public sendFunctionResponse(response: { name: string; id: string; response: any }) {
@@ -588,6 +612,12 @@ export class LiveAudioClient {
       this.audioWorkletNode = null;
     }
 
+    if (this.audioProcessingWorker) {
+      this.audioProcessingWorker.onmessage = null;
+      this.audioProcessingWorker.terminate();
+      this.audioProcessingWorker = null;
+    }
+
     if (this.sourceNode) {
       this.sourceNode.disconnect();
       this.sourceNode = null;
@@ -621,73 +651,4 @@ export class LiveAudioClient {
     }
   }
 
-  private isVoiceAboveNoiseFloor(input: Float32Array): boolean {
-    let sumSquares = 0;
-    let peak = 0;
-    for (let i = 0; i < input.length; i++) {
-      const val = input[i];
-      const abs = Math.abs(val);
-      if (abs > peak) peak = abs;
-      sumSquares += val * val;
-    }
-    const rms = Math.sqrt(sumSquares / input.length);
-
-    // Smoothly track background noise floor baseline
-    if (rms < this.ambientNoiseFloor) {
-      this.ambientNoiseFloor = this.ambientNoiseFloor * 0.9 + rms * 0.1;
-    } else {
-      this.ambientNoiseFloor = this.ambientNoiseFloor * 0.999 + rms * 0.001;
-    }
-
-    if (this.ambientNoiseFloor < 0.002) this.ambientNoiseFloor = 0.002;
-    if (this.ambientNoiseFloor > 0.05) this.ambientNoiseFloor = 0.05;
-
-    // Dynamic voice threshold: Focus on the highest/dominant voice over the room noise floor
-    const dynamicThreshold = Math.max(0.010, this.ambientNoiseFloor * 2.0);
-
-    if (rms >= dynamicThreshold && peak >= 0.025) {
-      this.speechHangoverCounter = 5; // Sustain ~350ms for natural syllable phrasing
-      return true;
-    }
-
-    if (this.speechHangoverCounter > 0) {
-      this.speechHangoverCounter--;
-      return true;
-    }
-
-    return false;
-  }
-
-  private processAudioBufferWithNoiseSuppression(input: Float32Array): ArrayBuffer | null {
-    const isSpeech = this.isVoiceAboveNoiseFloor(input);
-    if (!isSpeech) {
-      return null;
-    }
-
-    const output = new DataView(new ArrayBuffer(input.length * 2));
-    for (let i = 0; i < input.length; i++) {
-      const s = Math.max(-1, Math.min(1, input[i]));
-      output.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-    }
-    return output.buffer;
-  }
-
-  private floatTo16BitPCM(input: Float32Array): ArrayBuffer {
-    const output = new DataView(new ArrayBuffer(input.length * 2));
-    for (let i = 0; i < input.length; i++) {
-      const s = Math.max(-1, Math.min(1, input[i]));
-      output.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-    }
-    return output.buffer;
-  }
-
-  private base64EncodeArrayBuffer(buffer: ArrayBuffer): string {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
-  }
 }
