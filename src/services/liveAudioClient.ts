@@ -333,7 +333,7 @@ export class LiveAudioClient {
         try {
           const ai = new GoogleGenAI({
             apiKey: token,
-            httpOptions: { apiVersion: 'v1alpha' },
+            httpOptions: { apiVersion: 'v1beta' },
           });
           const session = await ai.live.connect({
             model: 'gemini-3.8-live',
