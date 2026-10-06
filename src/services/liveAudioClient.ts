@@ -51,10 +51,6 @@ export class LiveAudioClient {
   private connectPromise: Promise<void> | null = null;
   private connectionGeneration = 0;
 
-  // Adaptive noise suppression and dominant speaker tracking
-  private ambientNoiseFloor = 0.008;
-  private speechHangoverCounter = 0;
-
   constructor(callbacks: LiveAudioCallbacks) {
     this.callbacks = callbacks;
   }
