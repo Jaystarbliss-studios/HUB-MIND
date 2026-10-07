@@ -114,7 +114,7 @@ export class JessPcWakeListener {
   private createRecognition(Recognition: SpeechRecognitionConstructor): void {
     const recognition = new Recognition();
     recognition.continuous = true;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.lang = 'en-NG';
     recognition.maxAlternatives = 3;
 
