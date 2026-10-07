@@ -63,7 +63,7 @@ export class LiveAudioClient {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (user) {
       try {
-        const idToken = await user.getIdToken(true);
+        const idToken = await user.getIdToken(false);
         headers['Authorization'] = `Bearer ${idToken}`;
       } catch (e) {
         console.warn('Could not refresh Firebase ID token:', e);
@@ -291,25 +291,43 @@ export class LiveAudioClient {
     this.callbacks.onStatusChange('connecting');
     this.callbacks.onJessStateChange('thinking');
     try {
-      await this.disconnect(false);
+      await this.disconnect(false, false);
       if (generation !== this.connectionGeneration) return;
-      await this.setupAudioNodes(generation);
+      const firstName = context?.userName || 'there';
+      const bgTasksSummary = jessBackgroundTasks.getQueueSummaryForPrompt(context?.userId || '');
+
+      // These are independent network/device operations. Run them together so
+      // token minting, microphone permission, and audio initialization overlap.
+      const audioSetupPromise = this.setupAudioNodes(generation);
+      const tokenPromise = this.getEphemeralToken();
+
+      let userMemoriesSummary = 'No stored memories yet.';
+      const memoriesPromise = context?.userId
+        ? getUserMemories(context.userId)
+            .then(memories => formatMemoriesForPrompt(memories))
+            .catch(memErr => {
+              console.warn('[LiveClient] Failed to load user memories:', memErr);
+              return 'No stored memories yet.';
+            })
+        : Promise.resolve('No stored memories yet.');
+
+      let token = '';
+      try {
+        [token, userMemoriesSummary] = await Promise.all([
+          tokenPromise,
+          memoriesPromise,
+          audioSetupPromise,
+        ]).then(([mintedToken, memories]) => [mintedToken, memories] as [string, string]);
+      } catch (initError) {
+        // Make sure a partially initialized microphone/audio graph is not left
+        // running when one of the parallel startup operations fails.
+        await audioSetupPromise.catch(() => {});
+        throw initError;
+      }
+
       if (generation !== this.connectionGeneration) {
         await this.disconnect(false, false);
         return;
-      }
-
-      const firstName = context?.userName || 'there';
-      const bgTasksSummary = jessBackgroundTasks.getQueueSummaryForPrompt(context?.userId || '');
-      
-      let userMemoriesSummary = 'No stored memories yet.';
-      if (context?.userId) {
-        try {
-          const memories = await getUserMemories(context.userId);
-          userMemoriesSummary = formatMemoriesForPrompt(memories);
-        } catch (memErr) {
-          console.warn('[LiveClient] Failed to load user memories:', memErr);
-        }
       }
 
       const systemInstruction = [
@@ -382,18 +400,6 @@ export class LiveAudioClient {
         'For visible UI control, use scroll_screen, click_screen, type_screen, and stop_screen_control. If the user says scroll down/up, use continuous scrolling and keep it running until they say stop or another screen-control command changes it. "Faster", "slower", "much faster", and "slow it down" are speed-control requests. Use visible text/labels/context to locate a target and only report a click/type as successful after the browser tool result confirms it. Do not claim to control pixels outside the Hub-Mind page.',
         'SESSION SLEEP RULE: When the user asks to end the session, sleep, deactivate, or stop Jess, MUST call end_session immediately. Do not only acknowledge the request conversationally. After the tool succeeds, do not continue the conversation or request more input; the client will terminate the Live session.'
       ].filter(Boolean).join('\n');
-
-      let token = '';
-      try {
-        token = await this.getEphemeralToken();
-      } catch (tokenErr) {
-        throw tokenErr;
-      }
-
-      if (generation !== this.connectionGeneration) {
-        await this.disconnect(false, false);
-        return;
-      }
 
       if (token) {
         try {

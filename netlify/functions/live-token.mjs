@@ -13,7 +13,7 @@ function json(body, status = 200) {
 }
 
 async function verifyFirebaseUser(idToken) {
-  const identityResponse = await fetch(
+  const identityPromise = fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(FIREBASE_WEB_API_KEY)}`,
     {
       method: 'POST',
@@ -21,6 +21,8 @@ async function verifyFirebaseUser(idToken) {
       body: JSON.stringify({ idToken }),
     },
   );
+
+  const identityResponse = await identityPromise;
 
   if (!identityResponse.ok) {
     throw new Error('Your Hub-Mind session is no longer valid. Please sign in again.');
@@ -35,6 +37,9 @@ async function verifyFirebaseUser(idToken) {
 
   let role = 'staff';
   try {
+    // The profile check remains non-fatal, but it is deliberately kept after
+    // Firebase identity validation so invalid sessions never trigger a profile
+    // lookup. This is the only additional request required for suspension checks.
     const profileResponse = await fetch(
       `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/databases/${encodeURIComponent(FIRESTORE_DATABASE_ID)}/documents/users/${encodeURIComponent(user.localId)}`,
       {
