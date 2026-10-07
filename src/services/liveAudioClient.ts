@@ -52,7 +52,7 @@ export class LiveAudioClient {
   private connectionGeneration = 0;
   private workerPendingFrames = 0;
   private workerSequence = 0;
-  private readonly maxPendingWorkerFrames = 4;
+  private readonly maxPendingWorkerFrames = 12;
 
   constructor(callbacks: LiveAudioCallbacks) {
     this.callbacks = callbacks;
@@ -426,6 +426,12 @@ export class LiveAudioClient {
               inputAudioTranscription: {},
               outputAudioTranscription: {},
               sessionResumption: {},
+              realtimeInputConfig: {
+                automaticActivityDetection: {
+                  silenceDurationMs: 300,
+                  prefixPaddingMs: 80,
+                },
+              },
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
               systemInstruction: { parts: [{ text: systemInstruction }] },
               tools: [{ functionDeclarations: JESS_TOOLS_DECLARATIONS as any }],
