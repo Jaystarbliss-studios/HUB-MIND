@@ -33,7 +33,7 @@ let previousSourceSample = null;
 
 let ambientNoiseFloor = 0.008;
 let calibrationSamples = 0;
-let calibrationRmsTotal = 0;
+let calibrationRmsValues = [];
 let speechActive = false;
 let speechStartSamples = 0;
 let silenceSamples = 0;
@@ -51,7 +51,7 @@ function resetState(nextGeneration, sampleRate) {
   previousSourceSample = null;
   ambientNoiseFloor = 0.008;
   calibrationSamples = 0;
-  calibrationRmsTotal = 0;
+  calibrationRmsValues = [];
   speechActive = false;
   speechStartSamples = 0;
   silenceSamples = 0;
@@ -129,9 +129,17 @@ function updateNoiseFloor(rms, sampleCount) {
   // making the initial room/microphone noise threshold depend on one frame.
   if (calibrationSamples < TARGET_SAMPLE_RATE * 0.25) {
     calibrationSamples += sampleCount;
-    calibrationRmsTotal += rms * sampleCount;
-    const average = calibrationRmsTotal / Math.max(1, calibrationSamples);
-    ambientNoiseFloor = Math.max(MIN_NOISE_FLOOR, Math.min(MAX_NOISE_FLOOR, average * 1.25));
+    calibrationRmsValues.push(rms);
+
+    // Use a low percentile rather than an average. If the user starts talking
+    // immediately, speech must not become the noise floor and suppress itself.
+    const sorted = calibrationRmsValues.slice().sort((a, b) => a - b);
+    const percentileIndex = Math.floor((sorted.length - 1) * 0.3);
+    const baseline = sorted[Math.max(0, percentileIndex)] || MIN_NOISE_FLOOR;
+    ambientNoiseFloor = Math.max(
+      MIN_NOISE_FLOOR,
+      Math.min(0.025, baseline * 1.5),
+    );
     return;
   }
 
