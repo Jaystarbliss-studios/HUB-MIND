@@ -113,7 +113,7 @@ export function JessFloatingAssistant() {
   const sessionEndingRef = useRef(false);
   const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number }>({ timer: null, running: false, speed: 3, direction: 1 });
   const backgroundHydratedUserRef = useRef<string | null>(null);
-  const pointerRef = useRef({ dragging: false, moved: false, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0 });
+  const pointerRef = useRef({ dragging: false, moved: false, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0, tapTimer: null as number | null });
   const [position, setPosition] = useState(DEFAULT_POSITION);
   const [connection, setConnection] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [state, setState] = useState<JessState>('idle');
@@ -208,6 +208,8 @@ export function JessFloatingAssistant() {
     return () => {
       if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
       const control = screenControlRef.current;
+      if (pointerRef.current.tapTimer !== null) window.clearTimeout(pointerRef.current.tapTimer);
+      pointerRef.current.tapTimer = null;
       if (control.timer !== null) window.clearInterval(control.timer);
       control.timer = null;
       control.running = false;
@@ -467,8 +469,20 @@ export function JessFloatingAssistant() {
       if (initialPrompt) {
         client.sendText(initialPrompt);
       }
-    } catch {
+    } catch (error: any) {
+      const raw = error?.message ? String(error.message) : 'Unable to connect to Jess.';
+      const lower = raw.toLowerCase();
+      const userMessage =
+        lower.includes('429') || lower.includes('resource_exhausted') || lower.includes('quota')
+          ? 'Gemini is currently rejecting Jess because of an API rate or quota limit. Check your Gemini API usage/billing before trying again.'
+          : lower.includes('503') || lower.includes('unavailable')
+            ? 'Gemini Live is temporarily unavailable. Jess will need another connection attempt.'
+            : raw;
       await stop();
+      setSpeechState({ text: userMessage, speaker: 'jess', visible: true });
+      setConnection('error');
+      setState('error');
+      scheduleFade(10000);
     }
   }, [connection, location.pathname, navigate, profile, stop, updatePreferredName, scheduleFade]);
 
@@ -581,15 +595,38 @@ export function JessFloatingAssistant() {
     // When Jess is idle, the established double-tap gesture still activates her.
     if (connection === 'error') {
       p.lastTap = 0;
+      if (p.tapTimer !== null) window.clearTimeout(p.tapTimer);
+      p.tapTimer = null;
       activate();
       return;
     }
+
+    // Gesture contract:
+    // - Idle: double-tap activates Jess.
+    // - Active: single tap mutes/unmutes; double-tap deactivates Jess.
+    // Delay the active single-tap action briefly so the second tap can claim the
+    // gesture as a deactivation instead of causing two mute toggles.
     if (active) {
-      p.lastTap = 0;
-      clientRef.current?.toggleMute();
+      if (now - p.lastTap <= DOUBLE_TAP_MS) {
+        if (p.tapTimer !== null) window.clearTimeout(p.tapTimer);
+        p.tapTimer = null;
+        p.lastTap = 0;
+        void stop();
+      } else {
+        p.lastTap = now;
+        if (p.tapTimer !== null) window.clearTimeout(p.tapTimer);
+        p.tapTimer = window.setTimeout(() => {
+          p.tapTimer = null;
+          p.lastTap = 0;
+          clientRef.current?.toggleMute();
+        }, DOUBLE_TAP_MS);
+      }
       return;
     }
+
     if (now - p.lastTap <= DOUBLE_TAP_MS) {
+      if (p.tapTimer !== null) window.clearTimeout(p.tapTimer);
+      p.tapTimer = null;
       p.lastTap = 0;
       activate();
     } else {
@@ -726,6 +763,7 @@ export function JessFloatingAssistant() {
           top: `${renderedPosition.y * 100}%`,
           width: '0px',
           height: '0px',
+          transform: `translate(${isRightHalf ? '-56px' : '24px'}, ${isBottomHalf ? '-56px' : '24px'})`,
           pointerEvents: 'none',
           zIndex: 9999,
         }}
