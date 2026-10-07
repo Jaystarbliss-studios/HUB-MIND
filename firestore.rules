@@ -8,16 +8,17 @@ service cloud.firestore {
     function member(){ return (hasUser() && me().status == 'active') || isBootstrappedAdmin(); }
     function admin(){ return isBootstrappedAdmin() || (hasUser() && me().status == 'active' && me().role == 'admin'); }
     function self(uid){ return signedIn() && request.auth.uid == uid; }
-    function sharedRead(){ return resource.data.visibility == 'shared' && (
-      (('sharedWith' in resource.data) && request.auth.uid in resource.data.sharedWith) ||
-      (('permissions' in resource.data) && request.auth.uid in resource.data.permissions && resource.data.permissions[request.auth.uid] in ['read','write'])
+    function sharedReadData(data){ return data.visibility == 'shared' && (
+      (('sharedWith' in data) && data.sharedWith is list && request.auth.uid in data.sharedWith) ||
+      (('sharedWith' in data) && data.sharedWith is map && request.auth.uid in data.sharedWith && data.sharedWith[request.auth.uid] in ['read','write']) ||
+      (('permissions' in data) && data.permissions is map && request.auth.uid in data.permissions && data.permissions[request.auth.uid] in ['read','write'])
     ); }
-    function sharedWrite(){ return resource.data.visibility == 'shared' && (
-      (('permissions' in resource.data) && request.auth.uid in resource.data.permissions && resource.data.permissions[request.auth.uid] == 'write') ||
-      (('sharedWith' in resource.data) && request.auth.uid in resource.data.sharedWith && (
-        !('permissions' in resource.data) || !(request.auth.uid in resource.data.permissions) || resource.data.permissions[request.auth.uid] == 'write'
-      ))
+    function sharedWriteData(data){ return data.visibility == 'shared' && (
+      (('sharedWith' in data) && data.sharedWith is map && request.auth.uid in data.sharedWith && data.sharedWith[request.auth.uid] == 'write') ||
+      (('permissions' in data) && data.permissions is map && request.auth.uid in data.permissions && data.permissions[request.auth.uid] == 'write')
     ); }
+    function sharedRead(){ return sharedReadData(resource.data); }
+    function sharedWrite(){ return sharedWriteData(resource.data); }
     function readable(){ return member() && (admin() || resource.data.ownerId == request.auth.uid || resource.data.createdBy == request.auth.uid || resource.data.visibility == 'workspace' || sharedRead()); }
     function writable(){ return member() && (admin() || resource.data.ownerId == request.auth.uid || resource.data.createdBy == request.auth.uid || sharedWrite() || resource.data.visibility == 'workspace'); }
     function newOwner(){ return member() && (admin() || request.resource.data.ownerId == request.auth.uid); }
@@ -70,10 +71,7 @@ service cloud.firestore {
         get(/databases/$(database)/documents/documents/$(documentId)).data.visibility == 'workspace' ||
         (
           get(/databases/$(database)/documents/documents/$(documentId)).data.visibility == 'shared' &&
-          (
-            (('sharedWith' in get(/databases/$(database)/documents/documents/$(documentId)).data) && request.auth.uid in get(/databases/$(database)/documents/documents/$(documentId)).data.sharedWith) ||
-            (('permissions' in get(/databases/$(database)/documents/documents/$(documentId)).data) && request.auth.uid in get(/databases/$(database)/documents/documents/$(documentId)).data.permissions)
-          )
+          sharedReadData(get(/databases/$(database)/documents/documents/$(documentId)).data)
         )
       );
       allow create: if member() && (
