@@ -355,7 +355,7 @@ export function Documents() {
   const fetchData = async () => {
     try {
       const documentQueries = profile?.role === 'admin'
-        ? [query(collection(db, 'documents'), orderBy('updatedAt', 'desc'))]
+        ? [query(collection(db, 'documents')('updatedAt', 'desc'))]
         : profile
           ? [
               query(collection(db, 'documents'), where('ownerId', '==', profile.id)),
