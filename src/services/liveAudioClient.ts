@@ -52,7 +52,7 @@ export class LiveAudioClient {
   private connectionGeneration = 0;
   private workerPendingFrames = 0;
   private workerSequence = 0;
-  private readonly maxPendingWorkerFrames = 4;
+  private readonly maxPendingWorkerFrames = 12;
 
   constructor(callbacks: LiveAudioCallbacks) {
     this.callbacks = callbacks;
@@ -204,6 +204,18 @@ export class LiveAudioClient {
       if (message.type === 'error') {
         console.warn('[Jess AudioWorker]', message.message);
         this.callbacks.onError?.('Jess audio processing encountered a recoverable error.');
+        return;
+      }
+
+      if (message.type === 'audio-stream-end') {
+        try {
+          // Hybrid VAD: flush the server-side Live turn immediately after the
+          // client VAD has detected end-of-speech. The next audio frame can
+          // reopen the realtime audio stream automatically.
+          this.session.sendRealtimeInput({ audioStreamEnd: true });
+        } catch (error) {
+          console.warn('Live audio stream end error:', error);
+        }
         return;
       }
 
@@ -414,6 +426,12 @@ export class LiveAudioClient {
               inputAudioTranscription: {},
               outputAudioTranscription: {},
               sessionResumption: {},
+              realtimeInputConfig: {
+                automaticActivityDetection: {
+                  silenceDurationMs: 300,
+                  prefixPaddingMs: 80,
+                },
+              },
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
               systemInstruction: { parts: [{ text: systemInstruction }] },
               tools: [{ functionDeclarations: JESS_TOOLS_DECLARATIONS as any }],

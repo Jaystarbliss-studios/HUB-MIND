@@ -15,10 +15,7 @@ const sandbox = {
   Error,
   btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
   console,
-  self: {
-    postMessage: (message) => messages.push(message),
-    onmessage: null,
-  },
+  self: { postMessage: (message) => messages.push(message), onmessage: null },
 };
 
 vm.runInNewContext(workerSource, sandbox, { filename: 'jess-audio-worker.js' });
@@ -32,47 +29,29 @@ function frame(value, length = 1024) {
 
 function process(buffer, sequence, sampleRate = 48000) {
   sandbox.self.onmessage({
-    data: {
-      type: 'process',
-      buffer,
-      sampleRate,
-      generation: 7,
-      sequence,
-    },
+    data: { type: 'process', buffer, sampleRate, generation: 7, sequence },
   });
 }
 
-sandbox.self.onmessage({
-  data: { type: 'reset', generation: 7, sampleRate: 48000 },
-});
+sandbox.self.onmessage({ data: { type: 'reset', generation: 7, sampleRate: 48000 } });
 
-// ~256 ms of quiet room noise establishes the baseline without producing audio.
 for (let i = 0; i < 12; i += 1) process(frame(0.001), i);
-
-const baselineMessages = messages.length;
-assert.ok(baselineMessages >= 1);
-assert.ok(messages.every((message) => message.generation === 7));
-
-// Sustained speech should eventually trigger a speech-start payload.
 for (let i = 12; i < 20; i += 1) process(frame(0.12), i);
 
 const audioMessages = messages.filter((message) => message.type === 'audio');
-assert.ok(audioMessages.length > 0, 'expected speech audio to be emitted');
-assert.ok(audioMessages.some((message) => message.vadState === 'start'), 'expected a VAD start transition');
+assert.ok(audioMessages.length > 0, 'expected continuous audio to be emitted');
+assert.ok(audioMessages.every((message) => message.generation === 7));
 assert.ok(audioMessages.every((message) => message.mimeType === 'audio/pcm;rate=16000'));
 assert.ok(audioMessages.every((message) => typeof message.data === 'string' && message.data.length > 0));
+assert.ok(audioMessages.every((message) => message.vadState === undefined), 'worker must not gate audio behind client VAD');
 
-// A 48 kHz input chunk must be downsampled before encoding. 1024 source
-// frames should become roughly 341 target frames, i.e. 682 PCM bytes.
-const startMessage = audioMessages.find((message) => message.vadState === 'start');
-assert.ok(startMessage);
-const decodedLength = Buffer.from(startMessage.data, 'base64').byteLength;
-assert.ok(decodedLength >= 5600 && decodedLength <= 6000, `unexpected PCM size: ${decodedLength}`);
+const firstAudio = audioMessages[0];
+const decodedLength = Buffer.from(firstAudio.data, 'base64').byteLength;
+assert.ok(decodedLength >= 650 && decodedLength <= 720, `unexpected PCM size: ${decodedLength}`);
 
-// Enough silence should end the VAD state rather than leaving it permanently active.
-for (let i = 20; i < 40; i += 1) process(frame(0.0005), i);
-assert.ok(messages.some((message) => message.type === 'audio' && message.vadState === 'end'), 'expected a VAD end transition');
+const beforeSilence = messages.filter((message) => message.type === 'audio').length;
+process(frame(0.0005), 20);
+assert.ok(messages.filter((message) => message.type === 'audio').length > beforeSilence, 'silence must continue to Gemini for server-side VAD');
 
-// Malformed input must not crash the worker.
 sandbox.self.onmessage({ data: { type: 'process', generation: 7, sequence: 999 } });
 assert.equal(messages.some((message) => message.type === 'error' && message.sequence === 999), false);
