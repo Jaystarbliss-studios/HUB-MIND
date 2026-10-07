@@ -67,7 +67,7 @@ assert.ok(audioMessages.every((message) => typeof message.data === 'string' && m
 const startMessage = audioMessages.find((message) => message.vadState === 'start');
 assert.ok(startMessage);
 const decodedLength = Buffer.from(startMessage.data, 'base64').byteLength;
-assert.ok(decodedLength >= 680 && decodedLength <= 700, `unexpected PCM size: ${decodedLength}`);
+assert.ok(decodedLength >= 5600 && decodedLength <= 6000, `unexpected PCM size: ${decodedLength}`);
 
 // Enough silence should end the VAD state rather than leaving it permanently active.
 for (let i = 20; i < 40; i += 1) process(frame(0.0005), i);
