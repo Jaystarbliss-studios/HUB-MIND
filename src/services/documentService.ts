@@ -14,7 +14,6 @@ import {
 import { db } from '../firebaseConfig';
 import { DocumentInfo, DocumentVersion, ResourceVisibility, User } from '../types';
 import { logActivity } from './activityService';
-import { isSharedWith } from '../lib/rbac';
 
 export async function createDocument(params: {
   title: string;
