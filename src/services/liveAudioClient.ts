@@ -527,7 +527,7 @@ export class LiveAudioClient {
       this.callbacks.onError?.(msg);
       this.callbacks.onStatusChange('error');
       this.callbacks.onJessStateChange('error');
-      await this.disconnect(false);
+      await this.disconnect(false, resumeHandle === null);
     }
   }
 
