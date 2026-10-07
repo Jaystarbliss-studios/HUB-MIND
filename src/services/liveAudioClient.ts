@@ -50,6 +50,17 @@ export class LiveAudioClient {
   private connected = false;
   private connectPromise: Promise<void> | null = null;
   private connectionGeneration = 0;
+  private lastConnectContext: {
+    page?: string;
+    documentId?: string;
+    documentTitle?: string;
+    userId?: string;
+    userName?: string;
+    userRole?: string;
+  } | undefined;
+  private sessionResumptionHandle: string | null = null;
+  private sessionReconnectTimer: number | null = null;
+  private sessionReconnectInFlight = false;
   private workerPendingFrames = 0;
   private workerSequence = 0;
   private readonly maxPendingWorkerFrames = 4;
@@ -273,6 +284,13 @@ export class LiveAudioClient {
     userRole?: string;
   }) {
     if (this.connectPromise) return this.connectPromise;
+    this.lastConnectContext = context;
+    this.sessionResumptionHandle = null;
+    if (this.sessionReconnectTimer !== null) {
+      window.clearTimeout(this.sessionReconnectTimer);
+      this.sessionReconnectTimer = null;
+    }
+    this.sessionReconnectInFlight = false;
     const generation = ++this.connectionGeneration;
     this.connectPromise = this.connectInternal(context, generation).finally(() => {
       this.connectPromise = null;
@@ -287,7 +305,7 @@ export class LiveAudioClient {
     userId?: string;
     userName?: string;
     userRole?: string;
-  }, generation = this.connectionGeneration) {
+  }, generation = this.connectionGeneration, resumeHandle: string | null = null) {
     this.callbacks.onStatusChange('connecting');
     this.callbacks.onJessStateChange('thinking');
     try {
@@ -413,7 +431,8 @@ export class LiveAudioClient {
               responseModalities: ['AUDIO'] as any,
               inputAudioTranscription: {},
               outputAudioTranscription: {},
-              sessionResumption: {},
+              contextWindowCompression: { slidingWindow: {} },
+              sessionResumption: { handle: resumeHandle || undefined },
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
               systemInstruction: { parts: [{ text: systemInstruction }] },
               tools: [{ functionDeclarations: JESS_TOOLS_DECLARATIONS as any }],
@@ -430,6 +449,21 @@ export class LiveAudioClient {
               },
               onmessage: (message: any) => {
                 if (generation !== this.connectionGeneration) return;
+
+                const resumptionUpdate =
+                  (message as any)?.sessionResumptionUpdate ||
+                  (message as any)?.session_resumption_update;
+
+                if (resumptionUpdate?.resumable && resumptionUpdate?.newHandle) {
+                  this.sessionResumptionHandle = String(resumptionUpdate.newHandle);
+                }
+
+                const goAway = (message as any)?.goAway || (message as any)?.go_away;
+                if (goAway) {
+                  console.info('[Jess Live] Server requested connection rollover:', goAway.timeLeft);
+                  this.scheduleSessionResume(generation, goAway.timeLeft);
+                }
+
                 this.handleLiveMessage(message);
               },
               onerror: (event: any) => {
@@ -444,13 +478,23 @@ export class LiveAudioClient {
                 this.stopPlayback();
 
                 try { failedSession?.close(); } catch {}
-                this.callbacks.onError?.('Jess encountered a temporary Live connection error. Jess is ready to reconnect.');
-                this.callbacks.onStatusChange('error');
-                this.callbacks.onJessStateChange('error');
+                this.callbacks.onError?.('Jess encountered a temporary Live connection error. Jess is reconnecting.');
+                this.callbacks.onStatusChange('connecting');
+                this.callbacks.onJessStateChange('thinking');
+                this.scheduleSessionResume(generation);
               },
               onclose: (event: any) => {
                 if (generation !== this.connectionGeneration) return;
                 this.connected = false;
+
+                if (this.sessionResumptionHandle && !this.sessionReconnectInFlight) {
+                  console.info('[Jess Live] Live connection closed; resuming session.');
+                  this.callbacks.onStatusChange('connecting');
+                  this.callbacks.onJessStateChange('thinking');
+                  this.scheduleSessionResume(generation);
+                  return;
+                }
+
                 this.callbacks.onStatusChange('disconnected');
                 this.callbacks.onJessStateChange('idle');
               },
@@ -483,7 +527,69 @@ export class LiveAudioClient {
       this.callbacks.onError?.(msg);
       this.callbacks.onStatusChange('error');
       this.callbacks.onJessStateChange('error');
-      await this.disconnect(false);
+      await this.disconnect(false, resumeHandle === null);
+    }
+  }
+
+  private scheduleSessionResume(generation: number, timeLeft?: any) {
+    if (generation !== this.connectionGeneration || !this.sessionResumptionHandle) return;
+    if (this.sessionReconnectInFlight) return;
+
+    if (this.sessionReconnectTimer !== null) {
+      window.clearTimeout(this.sessionReconnectTimer);
+      this.sessionReconnectTimer = null;
+    }
+
+    const rawTimeLeft = timeLeft?.milliseconds ?? timeLeft?.ms ?? timeLeft;
+    const parsed = typeof rawTimeLeft === 'number'
+      ? rawTimeLeft
+      : Number.parseInt(String(rawTimeLeft || ''), 10);
+    const delay = Number.isFinite(parsed)
+      ? Math.max(0, Math.min(parsed - 500, 5000))
+      : 250;
+
+    this.sessionReconnectTimer = window.setTimeout(() => {
+      this.sessionReconnectTimer = null;
+      void this.resumeLiveSession(generation);
+    }, delay);
+  }
+
+  private async resumeLiveSession(previousGeneration: number) {
+    const handle = this.sessionResumptionHandle;
+    const context = this.lastConnectContext;
+
+    if (
+      !handle ||
+      previousGeneration !== this.connectionGeneration ||
+      this.sessionReconnectInFlight ||
+      !context
+    ) return;
+
+    this.sessionReconnectInFlight = true;
+    const generation = ++this.connectionGeneration;
+
+    try {
+      await this.disconnect(false, false);
+      await this.connectInternal(context, generation, handle);
+
+      if (generation === this.connectionGeneration) {
+        console.info('[Jess Live] Session resumed successfully.');
+        this.callbacks.onStatusChange(this.connected ? 'connected' : 'connecting');
+      }
+    } catch (error) {
+      console.warn('[Jess Live] Session resume failed:', error);
+      if (generation === this.connectionGeneration) {
+        this.callbacks.onError?.('Jess is reconnecting to the live session.');
+        this.callbacks.onStatusChange('connecting');
+        this.callbacks.onJessStateChange('thinking');
+
+        this.sessionReconnectTimer = window.setTimeout(() => {
+          this.sessionReconnectTimer = null;
+          void this.resumeLiveSession(generation);
+        }, 1000);
+      }
+    } finally {
+      this.sessionReconnectInFlight = false;
     }
   }
 
@@ -680,7 +786,16 @@ export class LiveAudioClient {
   }
 
   public async disconnect(notify = true, invalidate = true) {
-    if (invalidate) this.connectionGeneration += 1;
+    if (invalidate) {
+      this.connectionGeneration += 1;
+      this.sessionResumptionHandle = null;
+      this.lastConnectContext = undefined;
+      this.sessionReconnectInFlight = false;
+      if (this.sessionReconnectTimer !== null) {
+        window.clearTimeout(this.sessionReconnectTimer);
+        this.sessionReconnectTimer = null;
+      }
+    }
     if (this.levelIntervalId) {
       clearInterval(this.levelIntervalId);
       this.levelIntervalId = null;
