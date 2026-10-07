@@ -207,6 +207,18 @@ export class LiveAudioClient {
         return;
       }
 
+      if (message.type === 'audio-stream-end') {
+        try {
+          // Hybrid VAD: flush the server-side Live turn immediately after the
+          // client VAD has detected end-of-speech. The next audio frame can
+          // reopen the realtime audio stream automatically.
+          this.session.sendRealtimeInput({ audioStreamEnd: true });
+        } catch (error) {
+          console.warn('Live audio stream end error:', error);
+        }
+        return;
+      }
+
       if (message.type !== 'audio' || !message.data) return;
 
       try {
