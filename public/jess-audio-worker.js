@@ -1,40 +1,303 @@
-/* Jess audio processing worker. Keeps PCM conversion, VAD, and Base64 encoding off the UI thread. */
+/* Jess audio processing worker.
+ * Responsibilities:
+ *  - streaming resample to 16 kHz mono
+ *  - adaptive energy VAD with hysteresis + hangover
+ *  - short pre-roll so the first phoneme is not clipped
+ *  - Float32 -> little-endian PCM16
+ *  - Base64 encoding off the main thread
+ *
+ * The file is intentionally plain JavaScript because it is loaded directly
+ * with new Worker('/jess-audio-worker.js').
+ */
 
-type ProcessMessage = { type: 'process'; buffer: ArrayBuffer; sampleRate?: number };
+const TARGET_SAMPLE_RATE = 16000;
+const MIN_SAMPLE_RATE = 8000;
+const MAX_SAMPLE_RATE = 96000;
+const PRE_ROLL_MS = 160;
+const START_HOLD_MS = 80;
+const STOP_HOLD_MS = 320;
+const MIN_NOISE_FLOOR = 0.002;
+const MAX_NOISE_FLOOR = 0.08;
+const START_MULTIPLIER = 2.2;
+const STOP_MULTIPLIER = 1.55;
+const ABSOLUTE_START_RMS = 0.008;
+const ABSOLUTE_START_PEAK = 0.018;
+const MAX_PENDING_WORKER_STATE = 1;
+
+let generation = 0;
+let sequence = -1;
+let sourceSampleRate = TARGET_SAMPLE_RATE;
+let resampleStep = 1;
+let resamplePhase = 0;
+let previousSourceSample = null;
+
 let ambientNoiseFloor = 0.008;
-let speechHangoverCounter = 0;
-function isVoiceAboveNoiseFloor(input: Float32Array): boolean {
-  if (!input.length) return false;
-  let sumSquares = 0, peak = 0;
-  for (let i = 0; i < input.length; i++) { const value = input[i]; const abs = Math.abs(value); if (abs > peak) peak = abs; sumSquares += value * value; }
-  const rms = Math.sqrt(sumSquares / input.length);
-  if (rms < ambientNoiseFloor) ambientNoiseFloor = ambientNoiseFloor * 0.9 + rms * 0.1;
-  else ambientNoiseFloor = ambientNoiseFloor * 0.999 + rms * 0.001;
-  ambientNoiseFloor = Math.max(0.002, Math.min(0.05, ambientNoiseFloor));
-  const threshold = Math.max(0.01, ambientNoiseFloor * 2.0);
-  if (rms >= threshold && peak >= 0.025) { speechHangoverCounter = 5; return true; }
-  if (speechHangoverCounter > 0) { speechHangoverCounter--; return true; }
-  return false;
+let calibrationSamples = 0;
+let calibrationRmsTotal = 0;
+let speechActive = false;
+let speechStartSamples = 0;
+let silenceSamples = 0;
+
+let preRoll = new Float32Array(0);
+
+function resetState(nextGeneration, sampleRate) {
+  generation = Number.isFinite(nextGeneration) ? nextGeneration : 0;
+  sequence = -1;
+  sourceSampleRate = sampleRate >= MIN_SAMPLE_RATE && sampleRate <= MAX_SAMPLE_RATE
+    ? sampleRate
+    : TARGET_SAMPLE_RATE;
+  resampleStep = sourceSampleRate / TARGET_SAMPLE_RATE;
+  resamplePhase = 0;
+  previousSourceSample = null;
+  ambientNoiseFloor = 0.008;
+  calibrationSamples = 0;
+  calibrationRmsTotal = 0;
+  speechActive = false;
+  speechStartSamples = 0;
+  silenceSamples = 0;
+  preRoll = new Float32Array(0);
 }
-function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
-  const output = new ArrayBuffer(input.length * 2), view = new DataView(output);
-  for (let i = 0; i < input.length; i++) { const sample = Math.max(-1, Math.min(1, input[i])); view.setInt16(i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true); }
+
+function calculateRmsAndPeak(input) {
+  let sumSquares = 0;
+  let peak = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    const value = input[i];
+    const abs = Math.abs(value);
+    if (abs > peak) peak = abs;
+    sumSquares += value * value;
+  }
+  return {
+    rms: input.length ? Math.sqrt(sumSquares / input.length) : 0,
+    peak,
+  };
+}
+
+function appendPreRoll(samples) {
+  if (!samples.length) return;
+  const maxSamples = Math.round(TARGET_SAMPLE_RATE * PRE_ROLL_MS / 1000);
+  const combined = new Float32Array(Math.min(maxSamples, preRoll.length + samples.length));
+  const skip = Math.max(0, preRoll.length + samples.length - maxSamples);
+
+  let write = 0;
+  if (skip < preRoll.length) {
+    const sourceStart = skip;
+    const copyLength = preRoll.length - sourceStart;
+    combined.set(preRoll.subarray(sourceStart), write);
+    write += copyLength;
+  }
+
+  const sampleStart = Math.max(0, skip - preRoll.length);
+  combined.set(samples.subarray(sampleStart), write);
+  preRoll = combined;
+}
+
+function streamResample(input) {
+  if (!input.length) return new Float32Array(0);
+
+  let buffer;
+  if (previousSourceSample === null) {
+    buffer = input;
+  } else {
+    buffer = new Float32Array(input.length + 1);
+    buffer[0] = previousSourceSample;
+    buffer.set(input, 1);
+  }
+
+  const output = [];
+  let position = resamplePhase;
+
+  while (position + 1 < buffer.length) {
+    const index = Math.floor(position);
+    const fraction = position - index;
+    const a = buffer[index];
+    const b = buffer[index + 1];
+    output.push(a + (b - a) * fraction);
+    position += resampleStep;
+  }
+
+  resamplePhase = position - (buffer.length - 1);
+  previousSourceSample = input[input.length - 1];
+
+  return Float32Array.from(output);
+}
+
+function updateNoiseFloor(rms, sampleCount) {
+  if (!sampleCount) return;
+
+  // During the first ~250 ms, establish a conservative baseline. This avoids
+  // making the initial room/microphone noise threshold depend on one frame.
+  if (calibrationSamples < TARGET_SAMPLE_RATE * 0.25) {
+    calibrationSamples += sampleCount;
+    calibrationRmsTotal += rms * sampleCount;
+    const average = calibrationRmsTotal / Math.max(1, calibrationSamples);
+    ambientNoiseFloor = Math.max(MIN_NOISE_FLOOR, Math.min(MAX_NOISE_FLOOR, average * 1.25));
+    return;
+  }
+
+  // Only adapt quickly when we are not speaking. During speech, adaptation is
+  // deliberately slow so a loud speaker cannot raise the floor underneath them.
+  const alpha = speechActive ? 0.002 : 0.05;
+  ambientNoiseFloor = ambientNoiseFloor * (1 - alpha) + rms * alpha;
+  ambientNoiseFloor = Math.max(MIN_NOISE_FLOOR, Math.min(MAX_NOISE_FLOOR, ambientNoiseFloor));
+}
+
+function detectSpeech(input) {
+  const metrics = calculateRmsAndPeak(input);
+  const rms = metrics.rms;
+  const peak = metrics.peak;
+  updateNoiseFloor(rms, input.length);
+
+  const startThreshold = Math.max(ABSOLUTE_START_RMS, ambientNoiseFloor * START_MULTIPLIER);
+  const stopThreshold = Math.max(ABSOLUTE_START_RMS * 0.65, ambientNoiseFloor * STOP_MULTIPLIER);
+  const aboveStart = rms >= startThreshold && peak >= ABSOLUTE_START_PEAK;
+  const aboveStop = rms >= stopThreshold;
+
+  if (!speechActive) {
+    if (aboveStart) {
+      speechStartSamples += input.length;
+      if (speechStartSamples >= TARGET_SAMPLE_RATE * START_HOLD_MS / 1000) {
+        speechActive = true;
+        speechStartSamples = 0;
+        silenceSamples = 0;
+        return 'start';
+      }
+    } else {
+      speechStartSamples = 0;
+    }
+    return 'silence';
+  }
+
+  if (aboveStop) {
+    silenceSamples = 0;
+    return 'speech';
+  }
+
+  silenceSamples += input.length;
+  if (silenceSamples >= TARGET_SAMPLE_RATE * STOP_HOLD_MS / 1000) {
+    speechActive = false;
+    silenceSamples = 0;
+    speechStartSamples = 0;
+    return 'end';
+  }
+
+  return 'speech';
+}
+
+function concatFloat32(a, b) {
+  if (!a.length) return new Float32Array(b);
+  if (!b.length) return new Float32Array(a);
+  const result = new Float32Array(a.length + b.length);
+  result.set(a, 0);
+  result.set(b, a.length);
+  return result;
+}
+
+function floatTo16BitPCM(input) {
+  const output = new ArrayBuffer(input.length * 2);
+  const view = new DataView(output);
+  for (let i = 0; i < input.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, input[i]));
+    const pcm = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+    view.setInt16(i * 2, pcm, true);
+  }
   return output;
 }
-function base64Encode(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer), chunkSize = 0x8000; let binary = '';
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
+
+function base64Encode(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(
+      ...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)),
+    );
+  }
   return btoa(binary);
 }
-self.onmessage = (event: MessageEvent<ProcessMessage>) => {
-  const message = event.data;
-  if (!message || message.type !== 'process') return;
+
+function emitAudio(samples, message, vadState) {
+  if (!samples.length) {
+    self.postMessage({
+      type: 'vad',
+      generation: message.generation,
+      sequence: message.sequence,
+      state: vadState,
+    });
+    return;
+  }
+
+  const pcm = floatTo16BitPCM(samples);
+  self.postMessage({
+    type: 'audio',
+    generation: message.generation,
+    sequence: message.sequence,
+    data: base64Encode(pcm),
+    mimeType: 'audio/pcm;rate=16000',
+    vadState,
+  });
+}
+
+self.onmessage = function(event) {
+  const message = event && event.data;
+  if (!message || !message.type) return;
+
   try {
+    if (message.type === 'reset') {
+      resetState(message.generation, message.sampleRate);
+      return;
+    }
+
+    if (message.type !== 'process' || !(message.buffer instanceof ArrayBuffer)) return;
+
+    const messageGeneration = Number.isFinite(message.generation) ? message.generation : 0;
+    const messageSequence = Number.isFinite(message.sequence) ? message.sequence : 0;
+    const sampleRate = Number(message.sampleRate) || TARGET_SAMPLE_RATE;
+
+    if (messageGeneration !== generation || sampleRate !== sourceSampleRate) {
+      resetState(messageGeneration, sampleRate);
+    }
+
     const input = new Float32Array(message.buffer);
-    if (!isVoiceAboveNoiseFloor(input)) { self.postMessage({ type: 'silence' }); return; }
-    const pcm = floatTo16BitPCM(input);
-    self.postMessage({ type: 'audio', data: base64Encode(pcm), mimeType: 'audio/pcm;rate=' + (message.sampleRate || 16000) });
+    if (!input.length) return;
+
+    const resampled = streamResample(input);
+    if (!resampled.length) return;
+
+    const vadState = detectSpeech(resampled);
+
+    if (vadState === 'start') {
+      // Include the recent pre-roll plus the current speech frame. Clear the
+      // ring before emitting so the same samples are never emitted twice.
+      const firstSpeech = concatFloat32(preRoll, resampled);
+      preRoll = new Float32Array(0);
+      emitAudio(firstSpeech, message, 'start');
+      return;
+    }
+
+    if (speechActive && (vadState === 'speech' || vadState === 'end')) {
+      emitAudio(resampled, message, vadState);
+    } else {
+      appendPreRoll(resampled);
+      self.postMessage({
+        type: 'silence',
+        generation: messageGeneration,
+        sequence: messageSequence,
+        vadState,
+      });
+    }
+
+    if (vadState === 'end') {
+      // Keep a small amount of post-speech audio out of the next utterance but
+      // retain the latest samples as pre-roll for the next activation.
+      appendPreRoll(resampled);
+    }
   } catch (error) {
-    self.postMessage({ type: 'error', message: error instanceof Error ? error.message : 'Audio processing failed.' });
+    self.postMessage({
+      type: 'error',
+      generation: event?.data?.generation,
+      sequence: event?.data?.sequence,
+      message: error instanceof Error ? error.message : 'Audio processing failed.',
+    });
   }
 };
