@@ -285,6 +285,18 @@ self.onmessage = function(event) {
 
     if (vadState === 'start' || vadState === 'speech' || vadState === 'end') {
       emitAudio(resampled, message, vadState);
+
+      // Hybrid VAD: the server keeps automatic VAD enabled for robust speech
+      // detection, while the client explicitly flushes the turn as soon as local
+      // VAD detects the end of speech. This avoids waiting for server-side
+      // silence detection when the client has already observed the turn end.
+      if (vadState === 'end') {
+        self.postMessage({
+          type: 'audio-stream-end',
+          generation: messageGeneration,
+          sequence: messageSequence,
+        });
+      }
     } else {
       appendPreRoll(resampled);
       self.postMessage({
