@@ -37,6 +37,7 @@ export class LiveAudioClient {
   private outputGainNode: GainNode | null = null;
   private mediaStream: MediaStream | null = null;
   private audioWorkletNode: AudioWorkletNode | null = null;
+  private audioProcessingWorker: Worker | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private nextStartTime = 0;
   private activeSources: AudioBufferSourceNode[] = [];
@@ -49,10 +50,9 @@ export class LiveAudioClient {
   private connected = false;
   private connectPromise: Promise<void> | null = null;
   private connectionGeneration = 0;
-
-  // Adaptive noise suppression and dominant speaker tracking
-  private ambientNoiseFloor = 0.008;
-  private speechHangoverCounter = 0;
+  private workerPendingFrames = 0;
+  private workerSequence = 0;
+  private readonly maxPendingWorkerFrames = 4;
 
   constructor(callbacks: LiveAudioCallbacks) {
     this.callbacks = callbacks;
@@ -84,7 +84,7 @@ export class LiveAudioClient {
     return data.token;
   }
 
-  private async setupAudioNodes() {
+  private async setupAudioNodes(generation: number) {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) throw new Error('Web Audio API is not supported in this browser.');
 
@@ -168,20 +168,98 @@ export class LiveAudioClient {
     // routing microphone audio back to the user's speakers.
     this.audioWorkletNode.connect(this.inputAudioCtx.destination);
 
-    this.audioWorkletNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
+    try {
+      this.audioProcessingWorker = new Worker('/jess-audio-worker.js');
+    } catch {
+      throw new Error('Jess audio processing worker could not be started.');
+    }
+
+    const worker = this.audioProcessingWorker;
+    this.workerPendingFrames = 0;
+    this.workerSequence = 0;
+
+    worker.onerror = (event) => {
+      console.error('[Jess AudioWorker] Worker failure:', event);
+      if (generation !== this.connectionGeneration) return;
+      this.callbacks.onError?.('Jess audio processing stopped unexpectedly. Please reconnect Jess.');
+      this.callbacks.onStatusChange('error');
+      this.callbacks.onJessStateChange('error');
+    };
+
+    worker.onmessageerror = (event) => {
+      console.error('[Jess AudioWorker] Message delivery failure:', event);
+      if (generation !== this.connectionGeneration) return;
+      this.callbacks.onError?.('Jess audio processing could not deliver a microphone frame.');
+    };
+
+    worker.onmessage = (event: MessageEvent) => {
+      this.workerPendingFrames = Math.max(0, this.workerPendingFrames - 1);
+
+      const message = event.data;
+      if (!message || message.generation !== generation) return;
+      if (generation !== this.connectionGeneration) return;
       if (this.isMuted || this.micPermissionDenied || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
-      const input = event.data instanceof Float32Array ? event.data : new Float32Array(event.data);
-      const pcmBuffer = this.processAudioBufferWithNoiseSuppression(input);
-      if (!pcmBuffer || !this.session || !this.connected) return;
+      if (!this.session || !this.connected) return;
+
+      if (message.type === 'error') {
+        console.warn('[Jess AudioWorker]', message.message);
+        this.callbacks.onError?.('Jess audio processing encountered a recoverable error.');
+        return;
+      }
+
+      if (message.type !== 'audio' || !message.data) return;
 
       try {
-        const base64Data = this.base64EncodeArrayBuffer(pcmBuffer);
+        // GoogleGenAI Live already owns the real-time WebSocket transport.
+        // Send exactly one canonical PCM payload per processed speech frame.
         this.session.sendRealtimeInput({
-          audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
-          media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
+          audio: { data: message.data, mimeType: 'audio/pcm;rate=16000' },
         });
-      } catch (e) {
-        console.warn('Live input error:', e);
+      } catch (error) {
+        console.warn('Live input error:', error);
+      }
+    };
+
+    worker.postMessage({
+      type: 'reset',
+      generation,
+      sampleRate: this.inputAudioCtx?.sampleRate || 16000,
+    });
+
+    this.audioWorkletNode.port.onmessage = (event: MessageEvent<Float32Array | ArrayBuffer>) => {
+      if (generation !== this.connectionGeneration) return;
+      if (this.isMuted || this.micPermissionDenied || (this.pushToTalkMode && !this.isPushToTalkActive)) return;
+      if (!this.audioProcessingWorker) return;
+      if (this.workerPendingFrames >= this.maxPendingWorkerFrames) {
+        // Drop newest audio rather than allowing a queue to grow and add latency.
+        return;
+      }
+
+      const input = event.data instanceof Float32Array
+        ? event.data
+        : new Float32Array(event.data);
+
+      if (!input.length) return;
+
+      // AudioWorklet currently sends an exact transferred Float32Array. Keep the
+      // ownership contract explicit so future subarray views cannot detach a
+      // larger shared buffer unexpectedly.
+      const buffer = input.byteOffset === 0 && input.byteLength === input.buffer.byteLength
+        ? input.buffer
+        : input.slice().buffer;
+
+      const sequence = ++this.workerSequence;
+      const sampleRate = this.inputAudioCtx?.sampleRate || 16000;
+
+      try {
+        this.workerPendingFrames += 1;
+        this.audioProcessingWorker.postMessage(
+          { type: 'process', buffer, sampleRate, generation, sequence },
+          [buffer],
+        );
+      } catch (error) {
+        this.workerPendingFrames = Math.max(0, this.workerPendingFrames - 1);
+        console.warn('[Jess AudioWorker] Could not enqueue audio frame:', error);
       }
     };
   }
@@ -215,8 +293,11 @@ export class LiveAudioClient {
     try {
       await this.disconnect(false);
       if (generation !== this.connectionGeneration) return;
-      await this.setupAudioNodes();
-      if (generation !== this.connectionGeneration) return;
+      await this.setupAudioNodes(generation);
+      if (generation !== this.connectionGeneration) {
+        await this.disconnect(false, false);
+        return;
+      }
 
       const firstName = context?.userName || 'there';
       const bgTasksSummary = jessBackgroundTasks.getQueueSummaryForPrompt(context?.userId || '');
@@ -309,11 +390,16 @@ export class LiveAudioClient {
         throw tokenErr;
       }
 
+      if (generation !== this.connectionGeneration) {
+        await this.disconnect(false, false);
+        return;
+      }
+
       if (token) {
         try {
           const ai = new GoogleGenAI({
             apiKey: token,
-            httpOptions: { apiVersion: 'v1alpha' },
+            httpOptions: { apiVersion: 'v1beta' },
           });
           const session = await ai.live.connect({
             model: 'gemini-3.8-live',
@@ -328,6 +414,7 @@ export class LiveAudioClient {
             } as any,
             callbacks: {
               onopen: () => {
+                if (generation !== this.connectionGeneration) return;
                 this.connected = true;
                 this.callbacks.onStatusChange('connected');
                 this.callbacks.onJessStateChange(this.isMuted || this.micPermissionDenied ? 'muted' : 'listening');
@@ -335,28 +422,40 @@ export class LiveAudioClient {
                   this.callbacks.onJessTranscript?.('Microphone access is unavailable or denied. Jess is active in text and suggested actions mode.');
                 }
               },
-              onmessage: (message: any) => this.handleLiveMessage(message),
+              onmessage: (message: any) => {
+                if (generation !== this.connectionGeneration) return;
+                this.handleLiveMessage(message);
+              },
               onerror: (event: any) => {
                 console.warn('Live API event warning:', event);
-                // Treat provider/network errors as recoverable. Tear down the broken
-                // session cleanly so the floating assistant remains activatable.
+                if (generation !== this.connectionGeneration) return;
+
+                // Keep a local reference: clearing this.session first would make
+                // the subsequent close a no-op and leak the provider connection.
+                const failedSession = this.session;
                 this.connected = false;
-                this.session = null;
+                if (this.session === failedSession) this.session = null;
                 this.stopPlayback();
+
+                try { failedSession?.close(); } catch {}
                 this.callbacks.onError?.('Jess encountered a temporary Live connection error. Jess is ready to reconnect.');
                 this.callbacks.onStatusChange('error');
                 this.callbacks.onJessStateChange('error');
-                try { this.session?.close(); } catch {}
               },
               onclose: (event: any) => {
-                if (this.connected) {
-                  this.connected = false;
-                  this.callbacks.onStatusChange('disconnected');
-                  this.callbacks.onJessStateChange('idle');
-                }
+                if (generation !== this.connectionGeneration) return;
+                this.connected = false;
+                this.callbacks.onStatusChange('disconnected');
+                this.callbacks.onJessStateChange('idle');
               },
             },
           });
+
+          if (generation !== this.connectionGeneration) {
+            try { (session as unknown as LiveSession).close(); } catch {}
+            await this.disconnect(false, false);
+            return;
+          }
 
           this.session = session as unknown as LiveSession;
           this.startLevelMonitor();
@@ -519,7 +618,7 @@ export class LiveAudioClient {
       }
 
       this.callbacks.onAudioLevel?.(inAvg, outAvg);
-    }, 50);
+    }, 100);
   }
 
   public sendFunctionResponse(response: { name: string; id: string; response: any }) {
@@ -574,7 +673,8 @@ export class LiveAudioClient {
     this.isPushToTalkActive = active;
   }
 
-  public async disconnect(notify = true) {
+  public async disconnect(notify = true, invalidate = true) {
+    if (invalidate) this.connectionGeneration += 1;
     if (this.levelIntervalId) {
       clearInterval(this.levelIntervalId);
       this.levelIntervalId = null;
@@ -587,6 +687,16 @@ export class LiveAudioClient {
       try { this.audioWorkletNode.disconnect(); } catch {}
       this.audioWorkletNode = null;
     }
+
+    if (this.audioProcessingWorker) {
+      this.audioProcessingWorker.onmessage = null;
+      this.audioProcessingWorker.onerror = null;
+      this.audioProcessingWorker.onmessageerror = null;
+      this.audioProcessingWorker.terminate();
+      this.audioProcessingWorker = null;
+    }
+    this.workerPendingFrames = 0;
+    this.workerSequence = 0;
 
     if (this.sourceNode) {
       this.sourceNode.disconnect();
@@ -621,73 +731,4 @@ export class LiveAudioClient {
     }
   }
 
-  private isVoiceAboveNoiseFloor(input: Float32Array): boolean {
-    let sumSquares = 0;
-    let peak = 0;
-    for (let i = 0; i < input.length; i++) {
-      const val = input[i];
-      const abs = Math.abs(val);
-      if (abs > peak) peak = abs;
-      sumSquares += val * val;
-    }
-    const rms = Math.sqrt(sumSquares / input.length);
-
-    // Smoothly track background noise floor baseline
-    if (rms < this.ambientNoiseFloor) {
-      this.ambientNoiseFloor = this.ambientNoiseFloor * 0.9 + rms * 0.1;
-    } else {
-      this.ambientNoiseFloor = this.ambientNoiseFloor * 0.999 + rms * 0.001;
-    }
-
-    if (this.ambientNoiseFloor < 0.002) this.ambientNoiseFloor = 0.002;
-    if (this.ambientNoiseFloor > 0.05) this.ambientNoiseFloor = 0.05;
-
-    // Dynamic voice threshold: Focus on the highest/dominant voice over the room noise floor
-    const dynamicThreshold = Math.max(0.010, this.ambientNoiseFloor * 2.0);
-
-    if (rms >= dynamicThreshold && peak >= 0.025) {
-      this.speechHangoverCounter = 5; // Sustain ~350ms for natural syllable phrasing
-      return true;
-    }
-
-    if (this.speechHangoverCounter > 0) {
-      this.speechHangoverCounter--;
-      return true;
-    }
-
-    return false;
-  }
-
-  private processAudioBufferWithNoiseSuppression(input: Float32Array): ArrayBuffer | null {
-    const isSpeech = this.isVoiceAboveNoiseFloor(input);
-    if (!isSpeech) {
-      return null;
-    }
-
-    const output = new DataView(new ArrayBuffer(input.length * 2));
-    for (let i = 0; i < input.length; i++) {
-      const s = Math.max(-1, Math.min(1, input[i]));
-      output.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-    }
-    return output.buffer;
-  }
-
-  private floatTo16BitPCM(input: Float32Array): ArrayBuffer {
-    const output = new DataView(new ArrayBuffer(input.length * 2));
-    for (let i = 0; i < input.length; i++) {
-      const s = Math.max(-1, Math.min(1, input[i]));
-      output.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-    }
-    return output.buffer;
-  }
-
-  private base64EncodeArrayBuffer(buffer: ArrayBuffer): string {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
-  }
 }
