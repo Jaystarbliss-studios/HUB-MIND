@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, getDocs, addDoc, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, addDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { DocumentInfo, Client } from '../types';
 import { isSharedWith } from '../lib/rbac';
@@ -289,7 +289,7 @@ export function Documents() {
       // soon as it encounters a private document they cannot read. Subscribe to
       // four rule-safe slices instead and merge them locally.
       const documentQueries = profile.role === 'admin'
-        ? [query(collection(db, 'documents'), orderBy('updatedAt', 'desc'))]
+        ? [query(collection(db, 'documents'))]
         : [
             query(collection(db, 'documents'), where('ownerId', '==', profile.id)),
             query(collection(db, 'documents'), where('createdBy', '==', profile.id)),
