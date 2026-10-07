@@ -460,13 +460,13 @@ export function JessFloatingAssistant() {
         userName: fullName, 
         userRole: profile.role 
       });
-      window.setTimeout(() => {
-        if (initialPrompt) {
-          client.sendText(initialPrompt);
-        } else {
-          client.sendText(`Greet ${firstName} warmly and ask what you can help with today. Do NOT introduce yourself by name unless asked.`);
-        }
-      }, 450);
+      // Manual activation should enter a clean listening state immediately.
+      // Do not make Jess speak a startup greeting: it adds latency and can occupy
+      // the Live turn just as the user is trying to speak. Passive wake commands
+      // still get delivered immediately once the Live session is ready.
+      if (initialPrompt) {
+        client.sendText(initialPrompt);
+      }
     } catch {
       await stop();
     }
