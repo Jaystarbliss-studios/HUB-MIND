@@ -469,8 +469,20 @@ export function JessFloatingAssistant() {
       if (initialPrompt) {
         client.sendText(initialPrompt);
       }
-    } catch {
+    } catch (error: any) {
+      const raw = error?.message ? String(error.message) : 'Unable to connect to Jess.';
+      const lower = raw.toLowerCase();
+      const userMessage =
+        lower.includes('429') || lower.includes('resource_exhausted') || lower.includes('quota')
+          ? 'Gemini is currently rejecting Jess because of an API rate or quota limit. Check your Gemini API usage/billing before trying again.'
+          : lower.includes('503') || lower.includes('unavailable')
+            ? 'Gemini Live is temporarily unavailable. Jess will need another connection attempt.'
+            : raw;
       await stop();
+      setSpeechState({ text: userMessage, speaker: 'jess', visible: true });
+      setConnection('error');
+      setState('error');
+      scheduleFade(10000);
     }
   }, [connection, location.pathname, navigate, profile, stop, updatePreferredName, scheduleFade]);
 
