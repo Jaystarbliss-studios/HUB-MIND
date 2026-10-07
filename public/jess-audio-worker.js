@@ -275,7 +275,7 @@ self.onmessage = function(event) {
       return;
     }
 
-    if (speechActive && (vadState === 'speech' || vadState === 'end')) {
+    if (vadState === 'start' || vadState === 'speech' || vadState === 'end') {
       emitAudio(resampled, message, vadState);
     } else {
       appendPreRoll(resampled);
@@ -285,12 +285,6 @@ self.onmessage = function(event) {
         sequence: messageSequence,
         vadState,
       });
-    }
-
-    if (vadState === 'end') {
-      // Keep a small amount of post-speech audio out of the next utterance but
-      // retain the latest samples as pre-roll for the next activation.
-      appendPreRoll(resampled);
     }
   } catch (error) {
     self.postMessage({
