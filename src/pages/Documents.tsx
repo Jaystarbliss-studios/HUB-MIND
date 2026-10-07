@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../lib/auth';
-import { collection, getDocs, addDoc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, addDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { DocumentInfo, Client } from '../types';
 import { isSharedWith } from '../lib/rbac';
@@ -284,20 +284,52 @@ export function Documents() {
     };
 
     try {
-      unsubDocs = onSnapshot(
-        collection(db, 'documents'),
-        snapshot => {
-          applyCloudDocuments(snapshot.docs);
-        },
-        error => {
-          console.error('[HubMind] Documents listener failed:', error);
-          if (cancelled) return;
-          setDataError(error instanceof Error ? error.message : 'Could not load documents from Firebase.');
-          // Only use the browser cache when the device is genuinely offline.
-          setDocsList(typeof navigator !== 'undefined' && !navigator.onLine ? localDocsForOfflineDisplay() : []);
-          setLoading(false);
-        }
+      // Firestore evaluates security rules against every document returned by a
+      // query. A staff user's old collection-wide listener therefore fails as
+      // soon as it encounters a private document they cannot read. Subscribe to
+      // four rule-safe slices instead and merge them locally.
+      const documentQueries = profile.role === 'admin'
+        ? [query(collection(db, 'documents'))]
+        : [
+            query(collection(db, 'documents'), where('ownerId', '==', profile.id)),
+            query(collection(db, 'documents'), where('createdBy', '==', profile.id)),
+            query(collection(db, 'documents'), where('visibility', '==', 'workspace')),
+            query(
+              collection(db, 'documents'),
+              where('visibility', '==', 'shared'),
+              where('sharedWith', 'array-contains', profile.id),
+            ),
+          ];
+
+      const querySnapshots = new Map<number, any[]>();
+      const refreshMergedDocuments = () => {
+        const uniqueDocs = new Map<string, any>();
+        querySnapshots.forEach(docs => {
+          docs.forEach(snapshotDoc => uniqueDocs.set(snapshotDoc.id, snapshotDoc));
+        });
+        applyCloudDocuments(Array.from(uniqueDocs.values()));
+      };
+
+      const unsubs = documentQueries.map((documentQuery, index) =>
+        onSnapshot(
+          documentQuery,
+          snapshot => {
+            querySnapshots.set(index, snapshot.docs);
+            refreshMergedDocuments();
+          },
+          error => {
+            console.error('[HubMind] Documents query failed:', error);
+            if (cancelled) return;
+            setDataError(error instanceof Error ? error.message : 'Could not load documents from Firebase.');
+            if (typeof navigator !== 'undefined' && !navigator.onLine) {
+              setDocsList(localDocsForOfflineDisplay());
+            }
+            setLoading(false);
+          },
+        ),
       );
+
+      unsubDocs = () => unsubs.forEach(unsub => unsub());
     } catch (error) {
       console.error('[HubMind] Failed to subscribe to documents:', error);
       setDataError(error instanceof Error ? error.message : 'Could not connect to Firebase.');
@@ -322,14 +354,34 @@ export function Documents() {
 
   const fetchData = async () => {
     try {
-      const [docsSnap, clientsSnap] = await Promise.all([
-        getDocs(collection(db, 'documents')),
-        getDocs(collection(db, 'clients'))
+      const documentQueries = profile?.role === 'admin'
+        ? [query(collection(db, 'documents'))]
+        : profile
+          ? [
+              query(collection(db, 'documents'), where('ownerId', '==', profile.id)),
+              query(collection(db, 'documents'), where('createdBy', '==', profile.id)),
+              query(collection(db, 'documents'), where('visibility', '==', 'workspace')),
+              query(
+                collection(db, 'documents'),
+                where('visibility', '==', 'shared'),
+                where('sharedWith', 'array-contains', profile.id),
+              ),
+            ]
+          : [];
+
+      const [docSnapshots, clientsSnap] = await Promise.all([
+        Promise.all(documentQueries.map(documentQuery => getDocs(documentQuery))),
+        getDocs(collection(db, 'clients')),
       ]);
-      const docsData = docsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as DocumentInfo));
-      const clientsData = clientsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Client));
-      const filtered = docsData.filter(d => !isLegacyDemoDocumentId(d.id));
-      setDocsList(sortDocuments(filtered));
+      const uniqueDocs = new Map<string, DocumentInfo>();
+      docSnapshots.forEach(snap => {
+        snap.docs.forEach(documentSnap => {
+          uniqueDocs.set(documentSnap.id, { id: documentSnap.id, ...(documentSnap.data() as any) } as DocumentInfo);
+        });
+      });
+      const docsData = Array.from(uniqueDocs.values()).filter(d => !isLegacyDemoDocumentId(d.id));
+      const clientsData = clientsSnap.docs.map(documentSnap => ({ id: documentSnap.id, ...(documentSnap.data() as any) } as Client));
+      setDocsList(sortDocuments(docsData));
       setClients(clientsData.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
       setLoading(false);
     } catch (error) {

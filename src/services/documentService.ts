@@ -14,7 +14,6 @@ import {
 import { db } from '../firebaseConfig';
 import { DocumentInfo, DocumentVersion, ResourceVisibility, User } from '../types';
 import { logActivity } from './activityService';
-import { isSharedWith } from '../lib/rbac';
 
 export async function createDocument(params: {
   title: string;
@@ -206,27 +205,38 @@ export function subscribeToDocuments(
   callback: (docs: DocumentInfo[]) => void,
   projectId?: string
 ): () => void {
-  const q = query(collection(db, 'documents'), orderBy('updatedAt', 'desc'));
+  const documentQueries = currentUser.role === 'admin'
+    ? [query(collection(db, 'documents'), orderBy('updatedAt', 'desc'))]
+    : [
+        query(collection(db, 'documents'), where('ownerId', '==', currentUser.id)),
+        query(collection(db, 'documents'), where('createdBy', '==', currentUser.id)),
+        query(collection(db, 'documents'), where('visibility', '==', 'workspace')),
+        query(
+          collection(db, 'documents'),
+          where('visibility', '==', 'shared'),
+          where('sharedWith', 'array-contains', currentUser.id),
+        ),
+      ];
 
-  return onSnapshot(q, (snap) => {
-    let docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentInfo));
-    
-    // Privacy filter
-    if (currentUser.role !== 'admin') {
-      docs = docs.filter(doc => {
-        if (doc.ownerId === currentUser.id || doc.createdBy === currentUser.id) return true;
-        if (doc.visibility === 'workspace') return true;
-        if (doc.visibility === 'shared' && isSharedWith(doc.sharedWith, currentUser.id)) return true;
-        return false;
-      });
-    }
+  const querySnapshots = new Map<number, any[]>();
+  const refresh = () => {
+    const uniqueDocs = new Map<string, DocumentInfo>();
+    querySnapshots.forEach(snapshotDocs => {
+      snapshotDocs.forEach(d => uniqueDocs.set(d.id, { id: d.id, ...d.data() } as DocumentInfo));
+    });
 
-    if (projectId) {
-      docs = docs.filter(d => d.projectId === projectId);
-    }
-
+    let docs = Array.from(uniqueDocs.values()).filter(d => !d.id.startsWith('doc-seed-'));
+    if (projectId) docs = docs.filter(d => d.projectId === projectId);
+    docs.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
     callback(docs);
-  }, (err) => {
-    console.warn('Documents subscription warning:', err);
-  });
+  };
+
+  const unsubs = documentQueries.map((documentQuery, index) =>
+    onSnapshot(documentQuery, snap => {
+      querySnapshots.set(index, snap.docs);
+      refresh();
+    }, err => console.warn('Documents subscription warning:', err))
+  );
+
+  return () => unsubs.forEach(unsub => unsub());
 }
