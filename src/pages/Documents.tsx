@@ -118,7 +118,7 @@ export function Documents() {
         ownerId: profile.id,
         createdBy: profile.id,
       });
-      navigate('/documents/' + newDocRef.id);
+      navigate('/documents/' + newDocRef.id, { state: { document: { id: newDocRef.id, ...docData, title: `${docData.title || 'Untitled Document'} (Copy)`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ownerId: profile.id, createdBy: profile.id } } });
     } catch (error) {
       console.error('Error duplicating doc:', error);
     }
@@ -198,7 +198,7 @@ export function Documents() {
       setLocalDocsMap(localDocs);
 
       setShowTemplates(false);
-      navigate('/documents/' + newDocRef.id);
+      navigate('/documents/' + newDocRef.id, { state: { document: { id: newDocRef.id, ...newDocPayload } } });
     } catch (error) {
       console.error('Error creating document:', error);
     }
