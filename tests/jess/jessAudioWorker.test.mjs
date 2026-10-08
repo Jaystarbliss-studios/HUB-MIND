@@ -46,33 +46,37 @@ sandbox.self.onmessage({
   data: { type: 'reset', generation: 7, sampleRate: 48000 },
 });
 
-// ~256 ms of quiet room noise establishes the baseline without producing audio.
-for (let i = 0; i < 12; i += 1) process(frame(0.001), i);
-
-const baselineMessages = messages.length;
-assert.ok(baselineMessages >= 1);
-assert.ok(messages.every((message) => message.generation === 7));
-
-// Sustained speech should eventually trigger a speech-start payload.
-for (let i = 12; i < 20; i += 1) process(frame(0.12), i);
+// Continuous streaming is intentional: silence must still be forwarded so
+// Gemini Live's server-side activity detection can own turn boundaries.
+for (let i = 0; i < 12; i += 1) process(frame(i % 2 ? 0.001 : 0), i);
 
 const audioMessages = messages.filter((message) => message.type === 'audio');
-assert.ok(audioMessages.length > 0, 'expected speech audio to be emitted');
-assert.ok(audioMessages.some((message) => message.vadState === 'start'), 'expected a VAD start transition');
+assert.equal(audioMessages.length, 12, 'every input frame should produce a PCM frame');
+assert.ok(audioMessages.every((message) => message.generation === 7));
 assert.ok(audioMessages.every((message) => message.mimeType === 'audio/pcm;rate=16000'));
 assert.ok(audioMessages.every((message) => typeof message.data === 'string' && message.data.length > 0));
+assert.ok(audioMessages.every((message) => !('vadState' in message)), 'client VAD must not gate audio');
 
-// A 48 kHz input chunk must be downsampled before encoding. 1024 source
-// frames should become roughly 341 target frames, i.e. 682 PCM bytes.
-const startMessage = audioMessages.find((message) => message.vadState === 'start');
-assert.ok(startMessage);
-const decodedLength = Buffer.from(startMessage.data, 'base64').byteLength;
-assert.ok(decodedLength >= 5600 && decodedLength <= 6000, `unexpected PCM size: ${decodedLength}`);
+const firstPcmBytes = Buffer.from(audioMessages[0].data, 'base64').byteLength;
+// 1024 source frames at 48 kHz become roughly 341 frames at 16 kHz.
+assert.ok(firstPcmBytes >= 600 && firstPcmBytes <= 800, `unexpected PCM size: ${firstPcmBytes}`);
 
-// Enough silence should end the VAD state rather than leaving it permanently active.
-for (let i = 20; i < 40; i += 1) process(frame(0.0005), i);
-assert.ok(messages.some((message) => message.type === 'audio' && message.vadState === 'end'), 'expected a VAD end transition');
+// A generation reset must clear the streaming resampler state.
+sandbox.self.onmessage({
+  data: { type: 'reset', generation: 8, sampleRate: 48000 },
+});
+messages.length = 0;
+sandbox.self.onmessage({
+  data: {
+    type: 'process',
+    buffer: frame(0.05),
+    sampleRate: 48000,
+    generation: 8,
+    sequence: 0,
+  },
+});
+assert.equal(messages.length, 1);
+assert.equal(messages[0].generation, 8);
 
-// Malformed input must not crash the worker.
-sandbox.self.onmessage({ data: { type: 'process', generation: 7, sequence: 999 } });
-assert.equal(messages.some((message) => message.type === 'error' && message.sequence === 999), false);
+sandbox.self.onmessage({ data: { type: 'process', generation: 8, sequence: 1 } });
+assert.equal(messages.some((message) => message.type === 'error' && message.sequence === 1), false);
