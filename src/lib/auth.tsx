@@ -140,6 +140,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      const inviteId = new URLSearchParams(window.location.search).get('invite');
+
       // Existing Firebase Auth accounts are allowed to sign in without a
       // fresh invitation. The login screen marks a successful, pre-existing
       // Auth account before we reach this branch. A genuinely new Google
