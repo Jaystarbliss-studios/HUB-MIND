@@ -30,7 +30,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow get, list: if member() || admin() || self(userId);
       allow create: if (isBootstrappedAdmin() && request.resource.data.id == request.auth.uid && request.resource.data.role == 'admin' && request.resource.data.status == 'active' && request.resource.data.email == request.auth.token.email) ||
-                       (validAcceptedInvitation(request.resource.data.invitationId) && request.resource.data.id == request.auth.uid && request.resource.data.role == 'staff' && request.resource.data.status == 'active' && request.resource.data.email == request.auth.token.email);
+                       (validAcceptedInvitation(request.resource.data.invitationId) && request.resource.data.id == request.auth.uid && request.resource.data.role == 'staff' && request.resource.data.status == 'active' && request.resource.data.email == request.auth.token.email) ||
+                       (request.resource.data.registrationSource == 'existing-auth' && request.resource.data.id == request.auth.uid && request.resource.data.role == 'staff' && request.resource.data.status == 'active' && request.resource.data.email == request.auth.token.email);
       allow update: if admin() || (self(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName','photoUrl','name','phone','lastSeenAt','displayName']));
       allow delete: if admin();
       match /conversations/{id} { allow read, write: if self(userId) || admin(); }

@@ -41,6 +41,29 @@ if (!hasEmulator) {
     const db = env.authenticatedContext('suspended', { email: 'suspended@example.com' }).firestore();
     await assertFails(db.collection('documents').doc('doc1').get());
   });
+  test('an authenticated existing account can create its own Hub-Mind profile', async () => {
+    const db = env.authenticatedContext('existing-auth-user', { email: 'existing@example.com' }).firestore();
+    await assertSucceeds(db.collection('users').doc('existing-auth-user').set({
+      id: 'existing-auth-user',
+      email: 'existing@example.com',
+      role: 'staff',
+      status: 'active',
+      registrationSource: 'existing-auth',
+      username: 'existing_auth_user',
+    }));
+  });
+
+  test('a self-created profile without the existing-auth marker is rejected', async () => {
+    const db = env.authenticatedContext('unregistered-user', { email: 'unregistered@example.com' }).firestore();
+    await assertFails(db.collection('users').doc('unregistered-user').set({
+      id: 'unregistered-user',
+      email: 'unregistered@example.com',
+      role: 'staff',
+      status: 'active',
+      username: 'unregistered',
+    }));
+  });
+
   test('unauthenticated users cannot read resources', async () => {
     const db = env.unauthenticatedContext().firestore();
     await assertFails(db.collection('documents').doc('doc1').get());
