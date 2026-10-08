@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { shareHubMindItem, copyShareUrl } from '../lib/shareLinks';
 import { useEditor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
@@ -1078,16 +1078,30 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
 export function DocumentEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [docData, setDocData] = useState<any>(null);
+  const location = useLocation();
+  const routeDocument = (location.state as { document?: any } | null)?.document;
+  const hasRouteDocument = Boolean(routeDocument && routeDocument.id === id);
+  const [loading, setLoading] = useState(!hasRouteDocument);
+  const [docData, setDocData] = useState<any>(hasRouteDocument ? routeDocument : null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
-    setLoading(true);
 
     if (!id) {
-      navigate('/documents');
+      navigate('/documents', { replace: true });
       return;
+    }
+
+    // A document selected from the live list (or just created) already has a
+    // server-authoritative snapshot. Render it immediately instead of forcing
+    // the user through a second blocking fetch before the editor can open.
+    if (routeDocument && routeDocument.id === id) {
+      setDocData(routeDocument);
+      setLoading(false);
+      setLoadError(null);
+    } else {
+      setLoading(true);
     }
 
     const fetchDoc = async () => {
@@ -1098,38 +1112,58 @@ export function DocumentEditor() {
         if (data) {
           setDocData(data);
           setLoading(false);
+          setLoadError(null);
         } else {
-          navigate('/documents');
+          // Firestore explicitly confirmed that the document no longer exists.
+          navigate('/documents', { replace: true });
         }
       } catch (error) {
-        console.error('Error fetching document:', error);
-        if (isMounted) {
-          navigate('/documents');
+        console.error('[DocumentEditor] Firestore refresh failed:', error);
+        if (!isMounted) return;
+
+        // Keep a valid route snapshot visible. This is intentionally NOT a
+        // stale-cache fallback: the snapshot came from the live document list
+        // or the just-completed create operation in this navigation.
+        if (routeDocument && routeDocument.id === id) {
+          setDocData(routeDocument);
+          setLoading(false);
+          setLoadError('Live document refresh failed. You can keep working; changes will still use the normal Firebase save path.');
+        } else {
+          setLoading(false);
+          setLoadError(error instanceof Error ? error.message : 'Could not load this document from Firebase.');
         }
       }
     };
 
-    fetchDoc();
+    void fetchDoc();
 
     return () => {
       isMounted = false;
     };
-  }, [id, navigate]);
+  }, [id, navigate, routeDocument]);
 
   if (loading || !docData || !id) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-slate-950 text-slate-400 gap-3">
         <Loader2 className="w-8 h-8 animate-spin text-accent" />
         <p className="text-xs sm:text-sm font-medium text-slate-400 select-none">Loading document...</p>
+        {loadError && <p className="max-w-md text-center text-xs text-rose-400">{loadError}</p>}
       </div>
     );
   }
 
   return (
-    <DocumentEditorWorkspace
-      key={docData.id || id}
-      initialDoc={docData}
-      docId={id}
-    />
+    <>
+      {loadError && (
+        <div className="fixed top-3 left-1/2 z-[1000] -translate-x-1/2 max-w-xl rounded-xl border border-amber-500/30 bg-slate-950/95 px-4 py-2 text-xs text-amber-200 shadow-xl backdrop-blur">
+          {loadError}
+        </div>
+      )}
+      <DocumentEditorWorkspace
+        key={docData.id || id}
+        initialDoc={docData}
+        docId={id}
+      />
+    </>
   );
 }
