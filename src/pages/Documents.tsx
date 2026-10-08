@@ -110,15 +110,16 @@ export function Documents() {
     if (!profile) return;
     try {
       const { id: _ignoredId, ...docData } = docToDuplicate as any;
-      const newDocRef = await addDoc(collection(db, 'documents'), {
+      const newDocPayload = {
         ...docData,
         title: `${docData.title || 'Untitled Document'} (Copy)`,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         ownerId: profile.id,
         createdBy: profile.id,
-      });
-      navigate('/documents/' + newDocRef.id, { state: { document: { id: newDocRef.id, ...docData, title: `${docData.title || 'Untitled Document'} (Copy)`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ownerId: profile.id, createdBy: profile.id } } });
+      };
+      const newDocRef = await addDoc(collection(db, 'documents'), newDocPayload);
+      navigate('/documents/' + newDocRef.id, { state: { document: { id: newDocRef.id, ...newDocPayload } } });
     } catch (error) {
       console.error('Error duplicating doc:', error);
     }
@@ -427,7 +428,7 @@ export function Documents() {
       !!(doc as any).templateId;
 
     if (isEditorDocument || !(doc as any).fileRef) {
-      navigate('/documents/' + doc.id);
+      navigate('/documents/' + doc.id, { state: { document: doc } });
       return;
     }
 
