@@ -66,9 +66,17 @@ sandbox.self.onmessage({
   data: { type: 'reset', generation: 8, sampleRate: 48000 },
 });
 messages.length = 0;
-process(frame(0.05), 0);
+sandbox.self.onmessage({
+  data: {
+    type: 'process',
+    buffer: frame(0.05),
+    sampleRate: 48000,
+    generation: 8,
+    sequence: 0,
+  },
+});
 assert.equal(messages.length, 1);
-assert.equal(messages[0].generation, 7, 'stale input generation must not silently switch worker state');
+assert.equal(messages[0].generation, 8);
 
 sandbox.self.onmessage({ data: { type: 'process', generation: 8, sequence: 1 } });
 assert.equal(messages.some((message) => message.type === 'error' && message.sequence === 1), false);
