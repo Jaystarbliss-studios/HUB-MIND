@@ -763,7 +763,9 @@ export function JessFloatingAssistant() {
           top: `${renderedPosition.y * 100}%`,
           width: '0px',
           height: '0px',
-          transform: `translate(${isRightHalf ? '-56px' : '24px'}, ${isBottomHalf ? '-56px' : '24px'})`,
+          // Keep the orbit center exactly on Jess. The satellite itself carries the
+          // circular animation; offsetting this parent shifts the entire orbit off-center.
+          transform: 'translate(0, 0)',
           pointerEvents: 'none',
           zIndex: 9999,
         }}
