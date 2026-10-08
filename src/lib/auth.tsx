@@ -140,8 +140,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      // Existing Firebase Auth accounts are allowed to sign in without a
+      // fresh invitation. The login screen marks a successful, pre-existing
+      // Auth account before we reach this branch. A genuinely new Google
+      // account is rejected by Login.tsx unless it has an invitation.
+      const existingAuthLogin = typeof window !== 'undefined'
+        && window.sessionStorage.getItem('hubmind_existing_auth_login') === firebaseUser.uid;
+
+      if (!inviteId && existingAuthLogin) {
+        const now = new Date().toISOString();
+        const emailLocal = extractHandleFromEmail(userEmail, firebaseUser.displayName || undefined);
+        const safeSuffix = firebaseUser.uid.slice(0, 6).toLowerCase();
+        const usernameBase = `${emailLocal}_${safeSuffix}`.slice(0, 30);
+
+        const existingAuthProfile: User = {
+          id: firebaseUser.uid,
+          username: usernameBase,
+          name: firebaseUser.displayName || emailLocal,
+          displayName: firebaseUser.displayName || emailLocal,
+          email: userEmail,
+          role: 'staff',
+          status: 'active',
+          photoUrl: firebaseUser.photoURL || undefined,
+          createdAt: now,
+          approvedAt: now,
+          defaultVisibility: 'workspace',
+          registrationSource: 'existing-auth',
+        } as User;
+
+        try {
+          await setDoc(profileRef, existingAuthProfile);
+          if (typeof window !== 'undefined') {
+            window.sessionStorage.removeItem('hubmind_existing_auth_login');
+          }
+          setProfile(existingAuthProfile);
+          setLoading(false);
+          return;
+        } catch (err: any) {
+          console.error('[AuthProvider] Failed to provision existing Firebase Auth profile:', err);
+          setAuthorizationError(`Your Firebase account is registered, but Hub-Mind could not initialize its workspace profile: ${err?.message || 'database permission error'}`);
+          setLoading(false);
+          return;
+        }
+      }
+
       // Check for invitation link
-      const inviteId = new URLSearchParams(window.location.search).get('invite');
       if (!inviteId) {
         setAuthorizationError('This Google account has not been authorized for Hub-Mind. Ask an administrator for an invitation.');
         setLoading(false);
@@ -175,58 +218,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAuthorizationError(error?.message || 'Unable to validate your Hub-Mind invitation.');
         setLoading(false);
       }
-    });
 
-    return () => {
-      disposed = true;
-      stopProfile?.();
-      stopAuth();
-    };
-  }, []);
-
-  const updatePreferredName = async (preferredName: string) => {
-    const clean = preferredName.trim();
-    if (!profile || !clean) return;
-    try {
-      await setDoc(doc(db, 'users', profile.id), { preferredName: clean }, { merge: true });
-      setProfile((p) => (p ? { ...p, preferredName: clean } : null));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `users/${profile.id}`);
-    }
-  };
-
-  const updateProfileData = async (data: Partial<User>) => {
-    if (!profile) return;
-    try {
-      await setDoc(doc(db, 'users', profile.id), data, { merge: true });
-      setProfile((p) => (p ? ({ ...p, ...data } as User) : null));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `users/${profile.id}`);
-    }
-  };
-
-  const logout = async () => {
-    await signOut(auth);
-    setUser(null);
-    setProfile(null);
-    setAuthorizationError(null);
-  };
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        profile,
-        loading,
-        authorizationError,
-        updatePreferredName,
-        updateProfileData,
-        logout,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-}
-
-export const useAuth = () => useContext(AuthContext);
