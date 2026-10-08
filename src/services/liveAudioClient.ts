@@ -555,7 +555,7 @@ export class LiveAudioClient {
         parsed = seconds * 1000 + (Number.isFinite(nanos) ? nanos / 1_000_000 : 0);
       }
     } else if (typeof rawTimeLeft === 'string') {
-      const match = rawTimeLeft.trim().match(/^([0-9]+(?:\\.[0-9]+)?)\\s*(ms|s)?$/i);
+      const match = rawTimeLeft.trim().match(/^([0-9]+(?:\.[0-9]+)?)\s*(ms|s)?$/i);
       if (match) {
         const value = Number(match[1]);
         parsed = match[2]?.toLowerCase() === 's' ? value * 1000 : value;
