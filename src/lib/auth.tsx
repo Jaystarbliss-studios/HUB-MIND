@@ -221,3 +221,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
       }
 
+    });
+  }, []);
+
+  const updatePreferredName = async (preferredName: string) => {
+    const clean = preferredName.trim();
+    if (!profile || !clean) return;
+    try {
+      await setDoc(doc(db, 'users', profile.id), { preferredName: clean }, { merge: true });
+      setProfile((p) => (p ? { ...p, preferredName: clean } : null));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `users/${profile.id}`);
+    }
+  };
+
+  const updateProfileData = async (data: Partial<User>) => {
+    if (!profile) return;
+    try {
+      await setDoc(doc(db, 'users', profile.id), data, { merge: true });
+      setProfile((p) => (p ? ({ ...p, ...data } as User) : null));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `users/${profile.id}`);
+    }
+  };
+
+  const logout = async () => {
+    await signOut(auth);
+    setUser(null);
+    setProfile(null);
+    setAuthorizationError(null);
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        loading,
+        authorizationError,
+        updatePreferredName,
+        updateProfileData,
+        logout,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export const useAuth = () => useContext(AuthContext);
