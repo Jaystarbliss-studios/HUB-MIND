@@ -63,7 +63,7 @@ export class LiveAudioClient {
   private sessionReconnectInFlight = false;
   private workerPendingFrames = 0;
   private workerSequence = 0;
-  private readonly maxPendingWorkerFrames = 4;
+  private readonly maxPendingWorkerFrames = 12;
 
   constructor(callbacks: LiveAudioCallbacks) {
     this.callbacks = callbacks;
@@ -540,12 +540,32 @@ export class LiveAudioClient {
       this.sessionReconnectTimer = null;
     }
 
-    const rawTimeLeft = timeLeft?.milliseconds ?? timeLeft?.ms ?? timeLeft;
-    const parsed = typeof rawTimeLeft === 'number'
-      ? rawTimeLeft
-      : Number.parseInt(String(rawTimeLeft || ''), 10);
+    const rawTimeLeft = timeLeft?.milliseconds ?? timeLeft?.millisecondsRemaining ?? timeLeft?.ms ?? timeLeft;
+    let parsed = Number.NaN;
+
+    if (typeof rawTimeLeft === 'number') {
+      parsed = rawTimeLeft;
+    } else if (rawTimeLeft && typeof rawTimeLeft === 'object') {
+      const seconds = Number(rawTimeLeft.seconds ?? rawTimeLeft.sec);
+      const nanos = Number(rawTimeLeft.nanos ?? rawTimeLeft.nanoseconds ?? 0);
+      const milliseconds = Number(rawTimeLeft.milliseconds ?? rawTimeLeft.ms);
+      if (Number.isFinite(milliseconds)) {
+        parsed = milliseconds;
+      } else if (Number.isFinite(seconds)) {
+        parsed = seconds * 1000 + (Number.isFinite(nanos) ? nanos / 1_000_000 : 0);
+      }
+    } else if (typeof rawTimeLeft === 'string') {
+      const match = rawTimeLeft.trim().match(/^([0-9]+(?:\\.[0-9]+)?)\\s*(ms|s)?$/i);
+      if (match) {
+        const value = Number(match[1]);
+        parsed = match[2]?.toLowerCase() === 's' ? value * 1000 : value;
+      }
+    }
+
+    // Reconnect shortly before the server's stated deadline. Do not cap this
+    // to five seconds: an early GoAway can provide substantially more runway.
     const delay = Number.isFinite(parsed)
-      ? Math.max(0, Math.min(parsed - 500, 5000))
+      ? Math.max(0, parsed - 1000)
       : 250;
 
     this.sessionReconnectTimer = window.setTimeout(() => {
