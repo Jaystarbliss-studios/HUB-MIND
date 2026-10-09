@@ -1316,14 +1316,14 @@ export async function executeJessTool(
         else if (format === 'docx') ok = await exportDocumentAsDOCX(title, html, data.pageSize || 'a4', data.orientation || 'portrait', data.marginOption || 'normal');
         else if (format === 'html') ok = exportDocumentAsHTML(title, html, data.pageSize || 'a4', data.orientation || 'portrait', data.marginOption || 'normal');
         else {
-          const plain = html.replace(/<\/(p|h[1-6]|li|div|tr)>/gi, '\\n').replace(/<br\\s*\\/?\\s*>/gi, '\\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\\s+\\n/g, '\\n').trim();
+          const plain = html.replace(/<\/(p|h[1-6]|li|div|tr)>/gi, '\\n').replace(/<br\s*\/?\s*>/gi, '\\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+\\n/g, '\\n').trim();
           if (format === 'txt') ok = exportDocumentAsTXT(title, plain);
           else if (format === 'md' || format === 'markdown') {
             const markdown = plain;
             const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = title.replace(/[^a-z0-9_\\-\\s]/gi, '_').trim() + '.md';
+            a.href = url; a.download = title.replace(/[^a-z0-9_\-\s]/gi, '_').trim() + '.md';
             document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); ok = true;
           } else return { result: { success: false, error: 'Unsupported format. Use PDF, DOCX, HTML, TXT, or Markdown.' } };
         }
