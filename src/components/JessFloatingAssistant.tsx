@@ -333,8 +333,8 @@ export function JessFloatingAssistant() {
             if (p.mode === 'left' || p.mode === 'right') {
               stopScroll();
               const target = getJessHorizontalScrollTarget();
-              const max = target === window ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth : target.scrollWidth - target.clientWidth;
-              const pos = target === window ? window.scrollX : target.scrollLeft;
+              const max = target === window ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth : (target as HTMLElement).scrollWidth - (target as HTMLElement).clientWidth;
+              const pos = target === window ? window.scrollX : (target as HTMLElement).scrollLeft;
               if ((p.mode === 'left' && pos <= 1) || (p.mode === 'right' && pos >= max - 1)) {
                 result.result.message = 'I have reached the end of this horizontal area; there is no more room to scroll in that direction.';
               } else {
@@ -345,7 +345,7 @@ export function JessFloatingAssistant() {
             } else if (p.mode === 'top') {
               stopScroll();
               const target = getJessScrollTarget();
-              const pos = target === window ? window.scrollY : target.scrollTop;
+              const pos = target === window ? window.scrollY : (target as HTMLElement).scrollTop;
               if (pos <= 1) result.result.message = 'I am already at the top of this scrollable area.';
               else if (target === window) window.scrollTo({ top: 0, behavior: 'smooth' }); else target.scrollTo({ top: 0, behavior: 'smooth' });
             } else if (p.mode === 'bottom') {
@@ -361,7 +361,7 @@ export function JessFloatingAssistant() {
               const pos = target === window ? (horizontal ? window.scrollX : window.scrollY) : (horizontal ? target.scrollLeft : target.scrollTop);
               const max = horizontal
                 ? (target === window ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth : target.scrollWidth - target.clientWidth)
-                : (target === window ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - window.innerHeight : target.scrollHeight - target.clientHeight);
+                : (target === window ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - window.innerHeight : (target as HTMLElement).scrollHeight - (target as HTMLElement).clientHeight);
               if ((direction < 0 && pos <= 1) || (direction > 0 && pos >= max - 1)) result.result.message = 'I have reached the end of this scrollable area in that direction.';
               else if (horizontal && target === window) window.scrollBy({ left: direction * amount, behavior: 'smooth' });
               else if (horizontal) target.scrollBy({ left: direction * amount, behavior: 'smooth' });
