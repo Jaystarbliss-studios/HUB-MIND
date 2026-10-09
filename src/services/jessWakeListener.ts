@@ -139,8 +139,9 @@ export class JessPcWakeListener {
       for (let index = event.resultIndex; index < event.results.length; index++) {
         const result = event.results[index];
         const transcript = String(result?.[0]?.transcript || '').replace(/\s+/g, ' ').trim();
-        if (!transcript || !/\bjess\b/i.test(transcript)) continue;
+        if (!transcript) continue;
         const command = extractJessWakeCommand(transcript);
+        if (command === null) continue;
 
         // Browser speech recognition can take a long time to mark a short wake
         // phrase final. For installed apps, accept a stable interim transcript
