@@ -345,106 +345,69 @@ export function JessFloatingAssistant() {
         if (result.actionPayload?.type === 'screen_control') {
           const p = result.actionPayload;
           const control = screenControlRef.current;
-          const stopScroll = () => {
-            if (control.timer !== null) window.clearInterval(control.timer);
-            control.timer = null;
-            control.running = false;
+          const stopScroll = () => { if (control.timer !== null) window.clearInterval(control.timer); control.timer = null; control.running = false; };
+          const mode = String(p.mode || 'by').toLowerCase();
+          const direction = String(p.direction || (mode === 'left' || mode === 'right' ? mode : 'down')).toLowerCase();
+          const horizontal = ['left', 'right'].includes(direction) || ['left', 'right'].includes(mode);
+          const target = horizontal ? getJessHorizontalScrollTarget(String(p.target || '')) : getJessScrollTarget('y', String(p.target || ''));
+          const isWindow = target === window;
+          const metrics = () => {
+            const el = isWindow ? document.scrollingElement as HTMLElement | null : target as HTMLElement;
+            const position = horizontal ? (isWindow ? window.scrollX : (el?.scrollLeft || 0)) : (isWindow ? window.scrollY : (el?.scrollTop || 0));
+            const extent = horizontal ? (isWindow ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth : (el?.scrollWidth || 0) - (el?.clientWidth || 0)) : (isWindow ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - window.innerHeight : (el?.scrollHeight || 0) - (el?.clientHeight || 0));
+            return { position, max: Math.max(0, extent) };
           };
-          if (p.action === 'stop' || p.mode === 'stop') {
-            stopScroll();
-            result.result.message = 'Stopped screen control.';
-          } else if (p.action === 'scroll') {
-            if (p.mode === 'left' || p.mode === 'right') {
+          const scrollToEdge = (value: number) => {
+            if (horizontal) { if (isWindow) window.scrollTo({ left: value, behavior: 'smooth' }); else (target as HTMLElement).scrollTo({ left: value, behavior: 'smooth' }); }
+            else { if (isWindow) window.scrollTo({ top: value, behavior: 'smooth' }); else (target as HTMLElement).scrollTo({ top: value, behavior: 'smooth' }); }
+          };
+          const scrollByAmount = (amount: number) => {
+            if (horizontal) { if (isWindow) window.scrollBy({ left: amount, behavior: 'smooth' }); else (target as HTMLElement).scrollBy({ left: amount, behavior: 'smooth' }); }
+            else { if (isWindow) window.scrollBy({ top: amount, behavior: 'smooth' }); else (target as HTMLElement).scrollBy({ top: amount, behavior: 'smooth' }); }
+          };
+          if (p.action === 'stop' || mode === 'stop') { stopScroll(); result.result.message = 'Stopped scrolling.'; }
+          else if (p.action === 'scroll') {
+            const m = metrics(); const atStart = m.position <= 2; const atEnd = m.position >= m.max - 2;
+            if (mode === 'top' || mode === 'left') {
               stopScroll();
-              const target = getJessHorizontalScrollTarget();
-              const max = target === window ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth : (target as HTMLElement).scrollWidth - (target as HTMLElement).clientWidth;
-              const pos = target === window ? window.scrollX : (target as HTMLElement).scrollLeft;
-              if ((p.mode === 'left' && pos <= 1) || (p.mode === 'right' && pos >= max - 1)) {
-                result.result.message = 'I have reached the end of this horizontal area; there is no more room to scroll in that direction.';
-              } else {
-                const left = p.mode === 'left' ? 0 : Math.max(0, max);
-                if (target === window) window.scrollTo({ left, behavior: 'smooth' }); else target.scrollTo({ left, behavior: 'smooth' });
-                result.result.message = 'Scrolled horizontally to the requested edge.';
-              }
-            } else if (p.mode === 'top') {
+              if (atStart) result.result.message = 'This area is already at its start edge; there is no more room to scroll that way.';
+              else { scrollToEdge(0); result.result.message = 'Scrolled to the start of the selected area.'; }
+            } else if (mode === 'bottom' || mode === 'right') {
               stopScroll();
-              const target = getJessScrollTarget();
-              const pos = target === window ? window.scrollY : (target as HTMLElement).scrollTop;
-              if (pos <= 1) result.result.message = 'I am already at the top of this scrollable area.';
-              else if (target === window) window.scrollTo({ top: 0, behavior: 'smooth' }); else target.scrollTo({ top: 0, behavior: 'smooth' });
-            } else if (p.mode === 'bottom') {
-              stopScroll();
-              const target = getJessScrollTarget();
-              if (target === window) window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); else target.scrollTo({ top: (target as HTMLElement).scrollHeight, behavior: 'smooth' });
-            } else if (p.mode === 'by') {
-              stopScroll();
-              const horizontal = p.direction === 'left' || p.direction === 'right';
-              const direction = (p.direction === 'up' || p.direction === 'left') ? -1 : 1;
-              const amount = Math.max(50, Math.min(3000, Number(p.amount) || (horizontal ? window.innerWidth : window.innerHeight) * 0.75));
-              const target = horizontal ? getJessHorizontalScrollTarget() : getJessScrollTarget();
-              const pos = target === window ? (horizontal ? window.scrollX : window.scrollY) : (horizontal ? target.scrollLeft : target.scrollTop);
-              const max = horizontal
-                ? (target === window ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth : target.scrollWidth - target.clientWidth)
-                : (target === window ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - window.innerHeight : (target as HTMLElement).scrollHeight - (target as HTMLElement).clientHeight);
-              if ((direction < 0 && pos <= 1) || (direction > 0 && pos >= max - 1)) result.result.message = 'I have reached the end of this scrollable area in that direction.';
-              else if (horizontal && target === window) window.scrollBy({ left: direction * amount, behavior: 'smooth' });
-              else if (horizontal) target.scrollBy({ left: direction * amount, behavior: 'smooth' });
-              else if (target === window) window.scrollBy({ top: direction * amount, behavior: 'smooth' });
-              else target.scrollBy({ top: direction * amount, behavior: 'smooth' });
+              if (atEnd) result.result.message = 'This area is already at its end edge; there is no more room to scroll that way.';
+              else { scrollToEdge(m.max); result.result.message = 'Scrolled to the end of the selected area.'; }
+            } else if (mode === 'by') {
+              stopScroll(); const sign = ['up', 'left'].includes(direction) ? -1 : 1;
+              if ((sign < 0 && atStart) || (sign > 0 && atEnd)) result.result.message = 'I have reached the end of this scrollable area in that direction.';
+              else { const amount = Math.max(50, Math.min(3000, Number(p.amount) || (horizontal ? window.innerWidth : window.innerHeight) * 0.72)); scrollByAmount(sign * amount); result.result.message = 'Scrolled the selected area.'; }
             } else {
               const speeds: Record<string, number> = { slow: 1.2, normal: 3, fast: 7, very_fast: 14 };
-              control.speed = speeds[p.speed] || 3;
-              stopScroll();
-              control.running = true;
+              control.speed = speeds[p.speed] || 3; control.axis = horizontal ? 'x' : 'y'; control.direction = ['up', 'left'].includes(direction) ? -1 : 1;
+              stopScroll(); control.running = true;
               control.timer = window.setInterval(() => {
                 if (!control.running) return;
-                const horizontal = p.direction === 'left' || p.direction === 'right';
-                const direction = (p.direction === 'up' || p.direction === 'left') ? -1 : 1;
-                const target = horizontal ? getJessHorizontalScrollTarget() : getJessScrollTarget();
-                if (horizontal && target === window) window.scrollBy(direction * control.speed, 0);
-                else if (horizontal) target.scrollBy({ left: direction * control.speed });
-                else if (target === window) window.scrollBy(0, direction * control.speed);
-                else target.scrollBy({ top: direction * control.speed });
+                const m = metrics();
+                if ((control.direction < 0 && m.position <= 1) || (control.direction > 0 && m.position >= m.max - 1)) { stopScroll(); return; }
+                scrollByAmount(control.direction * control.speed);
               }, 16);
+              result.result.message = 'Started scrolling. I will stop automatically at the edge.';
             }
-            result.result.message = 'Screen scrolling command completed on the visible Hub-Mind screen.';
           } else if (p.action === 'click') {
             const el = findJessVisibleElement(p.target, p.selector);
-            if (!el) {
-              result.result = { success: false, error: 'I could not find a visible screen element matching that target.' };
-            } else {
-              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              window.setTimeout(() => el.click(), 120);
-              result.result.message = 'Clicked the visible screen element: ' + (p.target || p.selector || el.innerText || el.getAttribute('aria-label') || 'target');
-            }
+            if (!el) result.result = { success: false, error: 'I could not find a visible screen element matching that target.' };
+            else { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); window.setTimeout(() => el.click(), 120); result.result.message = 'Clicked the visible screen element: ' + (p.target || p.selector || el.innerText || el.getAttribute('aria-label') || 'target'); }
           } else if (p.action === 'type') {
             const el = findJessVisibleElement(p.target, p.selector);
-            if (!el) {
-              result.result = { success: false, error: 'I could not find a visible input or editor field matching that target.' };
-            } else {
-              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              el.focus();
-              if (p.clearFirst) {
-                if ('value' in el) (el as HTMLInputElement).value = '';
-                else if (el.isContentEditable) el.textContent = '';
-              }
-              if ('value' in el) {
-                const input = el as HTMLInputElement;
-                const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-                setter?.call(input, String(p.text || ''));
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-              } else if (el.isContentEditable) {
-                el.textContent = String(p.text || '');
-                el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: String(p.text || '') }));
-              }
+            if (!el) result.result = { success: false, error: 'I could not find a visible input or editor field matching that target.' };
+            else {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus();
+              if (p.clearFirst) { if ('value' in el) (el as HTMLInputElement).value = ''; else if (el.isContentEditable) el.textContent = ''; }
+              if ('value' in el) { const input = el as HTMLInputElement; const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set; setter?.call(input, String(p.text || '')); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
+              else if (el.isContentEditable) { el.textContent = String(p.text || ''); el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: String(p.text || '') })); }
               result.result.message = 'Typed into the visible screen field.';
             }
           }
-        }
-
-        client.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
-        if (result.actionPayload?.type === 'navigate' && result.actionPayload.path) {
+        }if (result.actionPayload?.type === 'navigate' && result.actionPayload.path) {
           navigate(result.actionPayload.path);
         }
 
