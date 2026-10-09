@@ -670,7 +670,7 @@ export async function executeJessTool(
         }
         if (!item) return { result: { success: false, error: 'I could not find that document among the documents you can access. Please check the title or your read permission.' } };
         try {
-          const versions = await fetchDocumentVersionHistory(item.id);
+          const versions = await fetchDocumentVersionHistory(item.id, { throwOnRemoteError: true });
           const sorted = [...versions].sort((a: any, b: any) => new Date(b.createdAt || b.savedAt || 0).getTime() - new Date(a.createdAt || a.savedAt || 0).getTime()).slice(0, safeLimit(args.limit, 20));
           return { result: {
             success: true,
