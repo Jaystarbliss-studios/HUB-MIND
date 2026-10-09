@@ -148,6 +148,8 @@ export function JessFloatingAssistant() {
   const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number; axis: 'x' | 'y' }>({ timer: null, running: false, speed: 3, direction: 1, axis: 'y' });
   const screenShareRef = useRef<{ stream: MediaStream | null; timer: number | null; video: HTMLVideoElement | null; nativePlugin: any; nativeListener: any }>({ stream: null, timer: null, video: null, nativePlugin: null, nativeListener: null });
   const [screenSharingActive, setScreenSharingActive] = useState(false);
+  const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedAudioInputId, setSelectedAudioInputId] = useState(() => { try { return localStorage.getItem('hubmind.jess.audioInputDeviceId') || ''; } catch { return ''; } });
   const backgroundHydratedUserRef = useRef<string | null>(null);
   const pointerRef = useRef({ dragging: false, moved: false, longPressed: false, holdTimer: null as number | null, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0, tapTimer: null as number | null });
   const [position, setPosition] = useState(DEFAULT_POSITION);
@@ -242,6 +244,21 @@ export function JessFloatingAssistant() {
 
   const jessSpeechAccumulatorRef = useRef<string>('');
   const fadeTimerRef = useRef<number | null>(null);
+
+  // Refresh available audio inputs after permission is granted and when devices change.
+  useEffect(() => {
+    let disposed = false;
+    const refreshAudioInputs = async () => {
+      if (!navigator.mediaDevices?.enumerateDevices) return;
+      try {
+        const devices = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === 'audioinput');
+        if (!disposed) setAudioInputDevices(devices);
+      } catch (error) { console.warn('[Jess] Could not enumerate audio inputs:', error); }
+    };
+    void refreshAudioInputs();
+    navigator.mediaDevices?.addEventListener?.('devicechange', refreshAudioInputs);
+    return () => { disposed = true; navigator.mediaDevices?.removeEventListener?.('devicechange', refreshAudioInputs); };
+  }, []);
 
   // Rescan context when route changes
   useEffect(() => {
@@ -361,6 +378,7 @@ export function JessFloatingAssistant() {
     wakeTone();
     jessSpeechAccumulatorRef.current = '';
 
+    const preferredInputDeviceId = selectedAudioInputId || (() => { try { return localStorage.getItem('hubmind.jess.audioInputDeviceId') || ''; } catch { return ''; } })();
     const client = new LiveAudioClient({
       onStatusChange: setConnection,
       onJessStateChange: setState,
@@ -609,7 +627,7 @@ export function JessFloatingAssistant() {
           }, 1500);
         }
       },
-    });
+    }, preferredInputDeviceId || null);
 
     clientRef.current = client;
     try {
@@ -932,6 +950,22 @@ export function JessFloatingAssistant() {
             >
               <X className="w-3.5 h-3.5" />
             </button>
+          </div>
+
+          <div className="rounded-2xl border border-teal-500/20 bg-slate-900/70 p-2.5">
+            <label htmlFor="jess-audio-input" className="mb-1.5 block text-[11px] font-semibold text-teal-300">Microphone input</label>
+            <select id="jess-audio-input" value={selectedAudioInputId} onChange={event => {
+              const deviceId = event.target.value;
+              setSelectedAudioInputId(deviceId);
+              try { if (deviceId) localStorage.setItem('hubmind.jess.audioInputDeviceId', deviceId); else localStorage.removeItem('hubmind.jess.audioInputDeviceId'); } catch {}
+              if (connection === 'connected' || connection === 'connecting') {
+                void stop().then(() => start()).then(() => setSpeechState({ text: 'Audio input changed. Jess is reconnecting with the selected microphone.', speaker: 'jess', visible: true }));
+              }
+            }} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-100 outline-none focus:border-teal-400">
+              <option value="">System default microphone</option>
+              {audioInputDevices.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
+            </select>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">Choose your laptop mic, headset mic, or another connected input. Switching reconnects Jess.</p>
           </div>
 
           {/* Action List */}
