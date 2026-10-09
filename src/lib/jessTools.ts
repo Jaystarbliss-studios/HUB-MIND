@@ -560,6 +560,73 @@ export async function executeJessTool(
           },
         };
 
+      case 'create_quick_capture': {
+        const capturedText = String(args.text || args.content || args.note || '').trim();
+        if (!capturedText) return { result: { success: false, error: 'The quick capture is empty.' } };
+        const now = new Date().toISOString();
+        const ref = await addDoc(collection(db, 'inbox'), {
+          text: capturedText, createdBy: user.id, ownerId: user.id, userId: user.id,
+          createdAt: now, updatedAt: now, status: 'unprocessed', convertedTo: null,
+          source: 'jess-quick-capture',
+        });
+        return {
+          result: { success: true, inboxItemId: ref.id, text: capturedText, message: 'Saved that thought to your Inbox as an unprocessed quick capture.' },
+          actionPayload: navigatePayload('/inbox'),
+        };
+      }
+
+      case 'list_pending_colleague_requests':
+      case 'list_colleague_connections': {
+        const snap = await getDocs(query(collection(db, 'connections'), limit(200)));
+        const users = await getAllUsers().catch(() => []);
+        const labelFor = (id: string) => {
+          const match: any = (users as any[]).find(u => u.id === id || u.uid === id);
+          return match?.preferredName || match?.displayName || match?.name || match?.username || match?.email || id;
+        };
+        let rows = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+          .filter((x: any) => x.requesterId === user.id || x.recipientId === user.id);
+        if (name === 'list_pending_colleague_requests') {
+          const direction = String(args.direction || 'both');
+          rows = rows.filter((x: any) => x.status === 'pending'
+            && (direction === 'both' || (direction === 'incoming' && x.recipientId === user.id) || (direction === 'outgoing' && x.requesterId === user.id)));
+        } else {
+          rows = rows.filter((x: any) => x.status === 'accepted');
+          const q = String(args.query || '').toLowerCase().trim();
+          if (q) rows = rows.filter((x: any) => labelFor(x.requesterId === user.id ? x.recipientId : x.requesterId).toLowerCase().includes(q));
+          rows = rows.slice(0, safeLimit(args.limit, 30));
+        }
+        const entries = rows.map((x: any) => {
+          const otherId = x.requesterId === user.id ? x.recipientId : x.requesterId;
+          return { id: x.id, userId: otherId, name: labelFor(otherId), direction: x.recipientId === user.id ? 'incoming' : 'outgoing', status: x.status, createdAt: x.createdAt || null, updatedAt: x.updatedAt || null };
+        });
+        return { result: { success: true, total: entries.length, requests: entries, connections: entries, message: entries.length ? 'Retrieved current connection records.' : 'No matching connection records were found.' } };
+      }
+
+      case 'get_document_revision_history': {
+        const term = String(args.documentId || args.title || '').trim();
+        let item = await readResource('documents', term, user);
+        if (!item) {
+          const docs = await fetchAllDocumentsForUser(user);
+          const matches = docs.filter((d: any) => d.id === term || String(d.title || '').toLowerCase().includes(term.toLowerCase()));
+          if (matches.length > 1) return { result: { success: false, needsClarification: true, matches: matches.slice(0, 8).map((d: any) => ({ id: d.id, title: d.title })), message: 'More than one document matches. Please choose one.' } };
+          if (matches[0]) item = { id: matches[0].id, data: matches[0] };
+        }
+        if (!item) return { result: { success: false, error: 'I could not access that document. It may not exist or you may not have read permission.' } };
+        let versions: any[] = [];
+        try {
+          const snap = await getDocs(query(collection(db, 'documents', item.id, 'versions'), orderBy('versionNumber', 'desc'), limit(safeLimit(args.limit, 20))));
+          versions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (firstError) {
+          try {
+            const snap = await getDocs(query(collection(db, 'documents', item.id, 'versions'), limit(safeLimit(args.limit, 20))));
+            versions = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => Number(b.versionNumber || b.version || 0) - Number(a.versionNumber || a.version || 0));
+          } catch (error: any) {
+            return { result: { success: false, error: 'The document is readable, but revision history could not be retrieved. Check document version permissions.', details: error?.message || String(error) } };
+          }
+        }
+        return { result: { success: true, documentId: item.id, title: item.data.title || 'Untitled Document', total: versions.length, versions: versions.map(v => ({ id: v.id, version: v.versionNumber || v.version || null, title: v.title || item.data.title || 'Untitled Document', savedAt: v.savedAt || v.createdAt || null, savedBy: v.savedByUsername || v.savedByName || v.savedBy || v.createdByName || v.createdBy || null, changeSummary: v.changeSummary || null, contentAvailable: typeof v.content === 'string' && v.content.length > 0 })), message: versions.length ? 'Retrieved saved document revisions.' : 'No saved revisions were found for this document.' } };
+      }
+
       case 'get_workspace_overview': {
         const docs = await fetchAllDocumentsForUser(user);
         let tasks = getCachedCollection<any>('tasks');
