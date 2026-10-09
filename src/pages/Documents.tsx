@@ -480,16 +480,25 @@ export function Documents() {
       });
     }
 
-    // Apply sort order
-    return [...list].sort((a, b) => {
+    // Keep the user's selected ordering within each section. Admins see their
+    // own documents first, followed by documents created by other workspace users.
+    const sorted = [...list].sort((a, b) => {
       const aTime = new Date(a.lastEditedAt || a.lastSavedAt || a.updatedAt || a.createdAt || 0).getTime();
       const bTime = new Date(b.lastEditedAt || b.lastSavedAt || b.updatedAt || b.createdAt || 0).getTime();
       if (sortBy === 'oldest') return aTime - bTime;
       if (sortBy === 'az') return (a.title || '').localeCompare(b.title || '');
       if (sortBy === 'za') return (b.title || '').localeCompare(a.title || '');
-      return bTime - aTime; // 'newest', '2weeks', '1month', 'older1month'
+      return bTime - aTime;
     });
-  }, [docsList, search, sortBy]);
+    if (profile?.role === 'admin') {
+      sorted.sort((a, b) => {
+        const aOwn = a.createdBy === profile.id || a.ownerId === profile.id;
+        const bOwn = b.createdBy === profile.id || b.ownerId === profile.id;
+        return Number(bOwn) - Number(aOwn);
+      });
+    }
+    return sorted;
+  }, [docsList, search, sortBy, profile?.id, profile?.role]);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 flex flex-col h-full min-h-0 pb-20 md:pb-0">
