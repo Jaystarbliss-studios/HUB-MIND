@@ -14,6 +14,6 @@ test('Jess exposes connected audio input devices and remembers the selected micr
 });
 
 test('Jess retries the system default input if a selected microphone is unavailable', () => {
-  assert.match(client, /try a remembered device was unplugged/i);
+  assert.match(client, /If a remembered device was unplugged/i);
   assert.match(client, /this\.preferredInputDeviceId = null/);
 });
