@@ -65,8 +65,11 @@ export class LiveAudioClient {
   private workerSequence = 0;
   private readonly maxPendingWorkerFrames = 12;
 
-  constructor(callbacks: LiveAudioCallbacks) {
+  private preferredInputDeviceId: string | null = null;
+
+  constructor(callbacks: LiveAudioCallbacks, inputDeviceId?: string | null) {
     this.callbacks = callbacks;
+    this.preferredInputDeviceId = inputDeviceId || null;
   }
 
   private async getEphemeralToken(): Promise<string> {
@@ -135,6 +138,7 @@ export class LiveAudioClient {
       if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
         this.mediaStream = await navigator.mediaDevices.getUserMedia({
           audio: {
+            ...(this.preferredInputDeviceId ? { deviceId: { exact: this.preferredInputDeviceId } } : {}),
             channelCount: 1,
             sampleRate: 16000,
             echoCancellation: true,
