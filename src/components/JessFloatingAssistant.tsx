@@ -147,7 +147,7 @@ export function JessFloatingAssistant() {
   const sessionEndingRef = useRef(false);
   const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number; axis: 'x' | 'y' }>({ timer: null, running: false, speed: 3, direction: 1, axis: 'y' });
   const backgroundHydratedUserRef = useRef<string | null>(null);
-  const pointerRef = useRef({ dragging: false, moved: false, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0, tapTimer: null as number | null });
+  const pointerRef = useRef({ dragging: false, moved: false, longPressed: false, holdTimer: null as number | null, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0, tapTimer: null as number | null });
   const [position, setPosition] = useState(DEFAULT_POSITION);
   const [connection, setConnection] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [state, setState] = useState<JessState>('idle');
@@ -165,6 +165,8 @@ export function JessFloatingAssistant() {
 
   // Context-aware Page/Document Scanner Menu
   const [showContextMenu, setShowContextMenu] = useState(false);
+  const [showOrbDismiss, setShowOrbDismiss] = useState(false);
+  const [orbDismissed, setOrbDismissed] = useState(false);
   const [contextActions, setContextActions] = useState<ContextActionSuggestion[]>([]);
 
   // Assistant Deletion Confirmation Modal State
@@ -579,6 +581,13 @@ export function JessFloatingAssistant() {
     const p = pointerRef.current;
     p.dragging = true;
     p.moved = false;
+    p.longPressed = false;
+    if (p.holdTimer !== null) window.clearTimeout(p.holdTimer);
+    p.holdTimer = window.setTimeout(() => {
+      p.longPressed = true;
+      setShowOrbDismiss(true);
+      try { if ('vibrate' in navigator) navigator.vibrate(18); } catch {}
+    }, 750);
     p.startX = e.clientX;
     p.startY = e.clientY;
     p.originX = position.x;
@@ -591,7 +600,11 @@ export function JessFloatingAssistant() {
     if (!p.dragging) return;
     const dx = e.clientX - p.startX;
     const dy = e.clientY - p.startY;
-    if (Math.hypot(dx, dy) > DRAG_THRESHOLD) p.moved = true;
+    if (Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+      p.moved = true;
+      if (p.holdTimer !== null) window.clearTimeout(p.holdTimer);
+      p.holdTimer = null;
+    }
     if (!p.moved) return;
     const next = clampViewportPosition(
       { x: p.originX + dx / Math.max(window.innerWidth, 1), y: p.originY + dy / Math.max(window.innerHeight, 1) },
@@ -608,12 +621,14 @@ export function JessFloatingAssistant() {
   const onPointerEnd = (e: React.PointerEvent<HTMLButtonElement>) => {
     const p = pointerRef.current;
     p.dragging = false;
+    if (p.holdTimer !== null) window.clearTimeout(p.holdTimer);
+    p.holdTimer = null;
     try {
       e.currentTarget.releasePointerCapture?.(e.pointerId);
     } catch {
       /* already released */
     }
-    if (p.moved) return;
+    if (p.moved || p.longPressed) { p.longPressed = false; return; }
     const now = Date.now();
     // Once Jess is active, a single tap is an explicit microphone mute/unmute.
     // When Jess is idle, the established double-tap gesture still activates her.
@@ -779,36 +794,9 @@ export function JessFloatingAssistant() {
         </div>
       )}
 
-      {/* Planetary Orbiting Quick Suggestions Satellite Button (Pure Lightbulb Icon) */}
-      <div
-        style={{
-          position: 'fixed',
-          left: `${renderedPosition.x * 100}%`,
-          top: `${renderedPosition.y * 100}%`,
-          width: '0px',
-          height: '0px',
-          // Keep the orbit center exactly on Jess. The satellite itself carries the
-          // circular animation; offsetting this parent shifts the entire orbit off-center.
-          transform: 'translate(0, 0)',
-          pointerEvents: 'none',
-          zIndex: 9999,
-        }}
-        className="flex items-center justify-center"
-      >
-        <button
-          type="button"
-          onClick={() => setShowContextMenu(v => !v)}
-          className={`pointer-events-auto group w-[32px] h-[32px] min-w-[32px] min-h-[32px] max-w-[32px] max-h-[32px] aspect-square rounded-full p-0 flex items-center justify-center shrink-0 overflow-hidden box-border bg-slate-950/95 hover:bg-slate-900 border border-teal-400/60 hover:border-teal-300 text-teal-300 shadow-[0_0_12px_rgba(20,184,166,0.35)] backdrop-blur-md ring-1 ring-teal-400/30 transition-all duration-200 cursor-pointer ${
-            showContextMenu ? 'bg-slate-900 ring-2 ring-teal-300 border-teal-300 scale-110 shadow-[0_0_16px_rgba(45,212,191,0.5)]' : 'animate-jess-orbit'
-          }`}
-          title="Quick Suggestions"
-        >
-          <Lightbulb className="w-4 h-4 text-teal-300 group-hover:scale-110 transition-transform shrink-0" />
-        </button>
-      </div>
-
       {/* Floating Assistant Orb Button */}
-      <button
+      {!orbDismissed && <button
+        data-jess-orb="true"
         type="button"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -836,7 +824,18 @@ export function JessFloatingAssistant() {
             <span>{activeBgTasks[0].progress}%</span>
           </div>
         )}
-      </button>
+      </button>}
+      {showOrbDismiss && !orbDismissed && (
+        <button
+          type="button"
+          aria-label="Remove Jess orb from this screen"
+          title="Remove Jess from this screen"
+          onPointerDown={e => e.stopPropagation()}
+          onClick={() => { setOrbDismissed(true); setShowOrbDismiss(false); setShowContextMenu(false); try { if ('vibrate' in navigator) navigator.vibrate([18, 35, 18]); } catch {} }}
+          style={{ position: 'fixed', left: `${Math.min(96, Math.max(4, renderedPosition.x * 100 + 4))}%`, top: `${Math.max(4, renderedPosition.y * 100 - 4)}%`, zIndex: 10001 }}
+          className="w-7 h-7 rounded-full bg-red-600 hover:bg-red-500 border border-red-300 text-white shadow-lg flex items-center justify-center"
+        ><X className="w-4 h-4" /></button>
+      )}
 
       {/* Delete Confirmation Modal (User has the final say) */}
       {pendingDelete && (
