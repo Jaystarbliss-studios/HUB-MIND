@@ -41,6 +41,14 @@ function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   return typeof Recognition === 'function' ? Recognition as SpeechRecognitionConstructor : null;
 }
 
+export function isJessInstalledApp(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const native = (window as any).Capacitor?.isNativePlatform?.() === true;
+  const standalone = window.matchMedia?.('(display-mode: standalone)').matches === true
+    || (navigator as any).standalone === true;
+  return native || standalone;
+}
+
 export function isJessPcWakeSupported(): boolean {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
   if (MOBILE_UA.test(navigator.userAgent)) return false;
@@ -69,6 +77,8 @@ export class JessPcWakeListener {
   private running = false;
   private restarting = false;
   private restartTimer: number | null = null;
+  private interimWakeTimer: number | null = null;
+  private interimWakeTranscript = '';
 
   constructor(private readonly options: JessWakeListenerOptions) {}
 
@@ -86,6 +96,12 @@ export class JessPcWakeListener {
   stop(): void {
     this.running = false;
     this.restarting = false;
+
+    if (this.interimWakeTimer !== null && typeof window !== 'undefined') {
+      window.clearTimeout(this.interimWakeTimer);
+      this.interimWakeTimer = null;
+    }
+    this.interimWakeTranscript = '';
 
     if (this.restartTimer !== null && typeof window !== 'undefined') {
       window.clearTimeout(this.restartTimer);
@@ -128,22 +144,24 @@ export class JessPcWakeListener {
 
       for (let index = event.resultIndex; index < event.results.length; index++) {
         const result = event.results[index];
-        if (!result?.isFinal) continue;
-
-        const transcript = String(result[0]?.transcript || '').trim();
+        const transcript = String(result?.[0]?.transcript || '').replace(/\s+/g, ' ').trim();
+        if (!transcript || !/\bjess\b/i.test(transcript)) continue;
         const command = extractJessWakeCommand(transcript);
-        if (!command && !/\bjess\b/i.test(transcript)) continue;
 
-        this.running = false;
-        try {
-          recognition.abort?.();
-          recognition.stop();
-        } catch {
-          // Ignore browser race conditions during shutdown.
+        // Browser speech recognition can take a long time to mark a short wake
+        // phrase final. For installed apps, accept a stable interim transcript
+        // after a short debounce; final transcripts still wake immediately.
+        if (!result.isFinal) {
+          this.interimWakeTranscript = transcript;
+          if (this.interimWakeTimer !== null) window.clearTimeout(this.interimWakeTimer);
+          this.interimWakeTimer = window.setTimeout(() => {
+            this.interimWakeTimer = null;
+            if (!this.running || this.interimWakeTranscript !== transcript) return;
+            this.triggerWake(recognition, command || '');
+          }, 280);
+          continue;
         }
-
-        this.options.onStateChange?.(false);
-        this.options.onWake(command || '');
+        this.triggerWake(recognition, command || '');
         return;
       }
     };
@@ -167,6 +185,16 @@ export class JessPcWakeListener {
     };
 
     this.recognition = recognition;
+  }
+
+  private triggerWake(recognition: SpeechRecognitionLike, command: string): void {
+    if (!this.running) return;
+    this.running = false;
+    if (this.interimWakeTimer !== null && typeof window !== 'undefined') window.clearTimeout(this.interimWakeTimer);
+    this.interimWakeTimer = null;
+    try { recognition.abort?.(); recognition.stop(); } catch { /* ignore shutdown races */ }
+    this.options.onStateChange?.(false);
+    this.options.onWake(command);
   }
 
   private beginRecognition(): void {
