@@ -147,6 +147,7 @@ export function JessFloatingAssistant() {
   const sessionEndingRef = useRef(false);
   const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number; axis: 'x' | 'y' }>({ timer: null, running: false, speed: 3, direction: 1, axis: 'y' });
   const screenShareRef = useRef<{ stream: MediaStream | null; timer: number | null; video: HTMLVideoElement | null; nativePlugin: any; nativeListener: any }>({ stream: null, timer: null, video: null, nativePlugin: null, nativeListener: null });
+  const [screenSharingActive, setScreenSharingActive] = useState(false);
   const backgroundHydratedUserRef = useRef<string | null>(null);
   const pointerRef = useRef({ dragging: false, moved: false, longPressed: false, holdTimer: null as number | null, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0, tapTimer: null as number | null });
   const [position, setPosition] = useState(DEFAULT_POSITION);
@@ -181,6 +182,22 @@ export function JessFloatingAssistant() {
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const stopScreenSharing = useCallback(async (announce = false) => {
+    const share = screenShareRef.current;
+    if (share.timer !== null) window.clearInterval(share.timer);
+    share.timer = null;
+    if (share.stream) share.stream.getTracks().forEach(track => track.stop());
+    share.stream = null;
+    if (share.video) { share.video.pause(); share.video.srcObject = null; }
+    share.video = null;
+    if (share.nativeListener?.remove) await share.nativeListener.remove().catch(() => undefined);
+    share.nativeListener = null;
+    if (share.nativePlugin?.stopSharing) await share.nativePlugin.stopSharing().catch(() => undefined);
+    share.nativePlugin = null;
+    setScreenSharingActive(false);
+    if (announce) setSpeechState({ text: 'Screen sharing has stopped.', speaker: 'jess', visible: true });
+  }, []);
+
   const beginDesktopScreenShare = useCallback(async () => {
     setScreenSharePrompt(false);
     const share = screenShareRef.current;
@@ -208,13 +225,12 @@ export function JessFloatingAssistant() {
       };
       sendFrame();
       share.timer = window.setInterval(sendFrame, 1200);
+      setScreenSharingActive(true);
+      clientRef.current?.sendText('SCREEN SHARE STATUS: Screen sharing is now active. You may receive periodic screen frames. Only describe what is visible in received frames; frames are snapshots, not continuous video.');
       share.stream.getVideoTracks()[0]?.addEventListener('ended', () => {
-        if (share.timer !== null) window.clearInterval(share.timer);
-        share.timer = null;
-        share.stream = null;
-        share.video = null;
+        void stopScreenSharing(false);
         setSpeechState({ text: 'Screen sharing has ended.', speaker: 'jess', visible: true });
-      });
+      }, { once: true });
       setSpeechState({ text: 'Screen sharing is active. Say “stop screen sharing” when you are done.', speaker: 'jess', visible: true });
     } catch (error: any) {
       if (share.stream) share.stream.getTracks().forEach(track => track.stop());
@@ -222,7 +238,7 @@ export function JessFloatingAssistant() {
       share.video = null;
       setSpeechState({ text: error?.message || 'Screen sharing was cancelled or permission was denied.', speaker: 'jess', visible: true });
     }
-  }, []);
+  }, [stopScreenSharing]);
 
   const jessSpeechAccumulatorRef = useRef<string>('');
   const fadeTimerRef = useRef<number | null>(null);
@@ -294,6 +310,17 @@ export function JessFloatingAssistant() {
       if (control.timer !== null) window.clearInterval(control.timer);
       control.timer = null;
       control.running = false;
+      const share = screenShareRef.current;
+      if (share.timer !== null) window.clearInterval(share.timer);
+      share.timer = null;
+      if (share.stream) share.stream.getTracks().forEach(track => track.stop());
+      share.stream = null;
+      if (share.video) { share.video.pause(); share.video.srcObject = null; }
+      share.video = null;
+      if (share.nativeListener?.remove) void share.nativeListener.remove().catch(() => undefined);
+      share.nativeListener = null;
+      if (share.nativePlugin?.stopSharing) void share.nativePlugin.stopSharing().catch(() => undefined);
+      share.nativePlugin = null;
       void clientRef.current?.disconnect();
       clientRef.current = null;
     };
@@ -308,6 +335,7 @@ export function JessFloatingAssistant() {
 
   const stop = useCallback(async () => {
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    await stopScreenSharing(false);
     await clientRef.current?.disconnect();
     clientRef.current = null;
     setConnection('disconnected');
@@ -316,7 +344,7 @@ export function JessFloatingAssistant() {
     setOutputLevel(0);
     setSpeechState({ text: '', speaker: 'user', visible: false });
     setShowContextMenu(false);
-  }, []);
+  }, [stopScreenSharing]);
 
   const start = useCallback(async (initialPrompt?: string) => {
     if (!profile) return;
@@ -404,6 +432,7 @@ export function JessFloatingAssistant() {
           };
           if (p.action === 'stop') {
             await stopShare();
+            setScreenSharingActive(false);
             result.result.message = 'Screen sharing has stopped.';
           } else if (!isJessInstalledApp()) {
             result.result = { success: false, error: 'Screen sharing is available only in the installed Hub-Mind app, not in a normal browser tab.' };
@@ -418,6 +447,8 @@ export function JessFloatingAssistant() {
                   if (frame) clientRef.current?.sendScreenFrame(frame);
                 });
                 await nativeCapture.startSharing({ frameRate: 1, maxWidth: 1280, imageQuality: 0.65 });
+                setScreenSharingActive(true);
+                clientRef.current?.sendText('SCREEN SHARE STATUS: Screen sharing is now active. You may receive periodic screen frames. Only describe what is visible in received frames; frames are snapshots, not continuous video.');
                 result.result.message = 'Screen sharing is active. Jess will receive periodic screen frames while the operating system allows capture.';
               } catch (error: any) {
                 await stopShare();
@@ -535,6 +566,10 @@ export function JessFloatingAssistant() {
       onUserTranscript: (text) => {
         if (sessionEndingRef.current || !text) return;
         if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+        const stopShareCommand = /\b(stop|end|turn off|finish|cancel)\s+(?:the\s+)?(?:screen\s*sharing|screen share|sharing my screen)\b/i.test(text);
+        if (stopShareCommand && (screenShareRef.current.stream || screenShareRef.current.nativePlugin || screenShareRef.current.timer !== null)) {
+          void stopScreenSharing(true);
+        }
         jessSpeechAccumulatorRef.current = '';
         setSpeechState({
           text,
@@ -609,7 +644,7 @@ export function JessFloatingAssistant() {
       setState('error');
       scheduleFade(10000);
     }
-  }, [connection, location.pathname, navigate, profile, stop, updatePreferredName, scheduleFade]);
+  }, [connection, location.pathname, navigate, profile, stop, stopScreenSharing, updatePreferredName, scheduleFade]);
 
   const activate = useCallback(() => {
     if (connection === 'connected' || connection === 'connecting') void stop();
@@ -830,7 +865,7 @@ export function JessFloatingAssistant() {
       <div
         aria-live="polite"
         className={`fixed z-[9998] pointer-events-none transition-all duration-300 ease-out flex flex-col items-center justify-end ${
-          speechState.visible && speechState.text
+          (active || speechState.visible) && speechState.text
             ? 'opacity-100 translate-y-0'
             : 'opacity-0 translate-y-2'
         }`}
@@ -852,6 +887,11 @@ export function JessFloatingAssistant() {
         {/* Minimalist 70% Transparent Subtitle Box matching Gemini Live & Hub-Mind theme */}
         {speechState.text && (
           <div className="w-full bg-slate-950/75 backdrop-blur-md rounded-2xl px-5 py-3.5 shadow-2xl border border-teal-500/20 text-slate-100 text-sm sm:text-base font-normal leading-relaxed text-left select-none animate-in fade-in duration-200">
+            <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-teal-300">
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${active ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+              {speechState.speaker === 'user' ? 'You' : 'Jess'}{active ? ' · Live transcript' : ''}
+              {screenSharingActive && <span className="ml-auto text-amber-300">Screen sharing</span>}
+            </div>
             {speechState.text}
           </div>
         )}
