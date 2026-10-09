@@ -673,12 +673,12 @@ export async function executeJessTool(
         } catch (firstError) {
           try {
             const snap = await getDocs(query(collection(db, 'documents', item.id, 'versions'), limit(safeLimit(args.limit, 20))));
-            versions = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => Number(b.versionNumber || b.version || 0) - Number(a.versionNumber || a.version || 0));
+            versions = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => Number(b.versionNumber || b.version || 0) - Number(a.versionNumber || a.version || 0));
           } catch (error: any) {
             return { result: { success: false, error: 'The document is readable, but revision history could not be retrieved. Check document version permissions.', details: error?.message || String(error) } };
           }
         }
-        return { result: { success: true, documentId: item.id, title: item.data.title || 'Untitled Document', total: versions.length, versions: versions.map(v => ({ id: v.id, version: v.versionNumber || v.version || null, title: v.title || item.data.title || 'Untitled Document', savedAt: v.savedAt || v.createdAt || null, savedBy: v.savedByUsername || v.savedByName || v.savedBy || v.createdByName || v.createdBy || null, changeSummary: v.changeSummary || null, contentAvailable: typeof v.content === 'string' && v.content.length > 0 })), message: versions.length ? 'Retrieved saved document revisions.' : 'No saved revisions were found for this document.' } };
+        return { result: { success: true, documentId: item.id, title: item.data.title || 'Untitled Document', total: versions.length, versions: versions.map((v: any) => ({ id: v.id, version: v.versionNumber || v.version || null, title: v.title || item.data.title || 'Untitled Document', savedAt: v.savedAt || v.createdAt || null, savedBy: v.savedByUsername || v.savedByName || v.savedBy || v.createdByName || v.createdBy || null, changeSummary: v.changeSummary || null, contentAvailable: typeof v.content === 'string' && v.content.length > 0 })), message: versions.length ? 'Retrieved saved document revisions.' : 'No saved revisions were found for this document.' } };
       }
 
       case 'get_workspace_overview': {
