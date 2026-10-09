@@ -201,6 +201,16 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   
   // Workspace Users & Directory
   { name: 'list_workspace_users', description: 'List and search colleagues, team members, and users in the Hub-Mind workspace to find usernames, roles, and contacts for sharing resources, assigning tasks, and sending schedules.', parameters: object({ query: { type: 'string', description: 'Optional search query by name, username, or email' }, limit: { type: 'number' } }) },
+  { name: 'create_quick_capture', description: 'Save a thought or scratch note directly into the signed-in user Inbox as an unprocessed item for later conversion into a task, meeting, or knowledge record.', parameters: object({ text: { type: 'string', description: 'The thought or note to save' } }, ['text']) },
+  { name: 'list_inbox_items', description: 'List quick captures in the signed-in user Inbox, filtered to unprocessed or archived items.', parameters: object({ status: { type: 'string', enum: ['unprocessed', 'processed', 'all'] }, limit: { type: 'number' } }) },
+  { name: 'archive_inbox_item', description: 'Archive a quick capture in Inbox by item ID or matching note text.', parameters: object({ itemId: { type: 'string' }, query: { type: 'string' } }) },
+
+  { name: 'list_pending_colleague_requests', description: 'Check current incoming and outgoing pending colleague connection requests for the signed-in user.', parameters: object({ direction: { type: 'string', enum: ['incoming', 'outgoing', 'both'] } }) },
+  { name: 'get_startup_workspace_checks', description: 'Run the lightweight startup check for the signed-in user: pending colleague requests, accepted connections, and unread notifications. Use at the beginning of a fresh Jess session and report only actionable items.', parameters: object({}) },
+
+  { name: 'list_colleague_connections', description: 'List accepted colleague connections and verify their current status.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }) },
+  { name: 'get_document_revision_history', description: 'Retrieve saved revisions for a document by ID or title, newest first, and distinguish empty history from retrieval errors.', parameters: object({ documentId: { type: 'string' }, limit: { type: 'number' } }, ['documentId']) },
+
 
   // Sharing & Direct Info Distribution Tools
   {
@@ -329,7 +339,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'open_client', description: 'Open a client on screen.', parameters: object({ clientId: { type: 'string' } }, ['clientId']) },
   { name: 'open_document', description: 'Open a document in the document editor.', parameters: object({ documentId: { type: 'string' } }, ['documentId']) },
   { name: 'navigate_app', description: 'Navigate user to a specific tab or page in Hub-Mind (e.g. /colleagues, /tasks, /calendar, /documents, /projects, /clients, /knowledge, /follow-ups, /inbox, /admin, /).', parameters: object({ path: { type: 'string', description: 'Path to open: /colleagues, /tasks, /calendar, /documents, /projects, /clients, /knowledge, /follow-ups, /inbox, /admin, /' } }, ['path']) },
-  { name: 'scroll_screen', description: 'Control the visible Hub-Mind screen without touching it. Start/stop continuous scrolling, change speed, scroll a specific amount, or jump to top/bottom.', parameters: object({ mode: { type: 'string', enum: ['start', 'stop', 'by', 'top', 'bottom'] }, direction: { type: 'string', enum: ['up', 'down'] }, speed: { type: 'string', enum: ['slow', 'normal', 'fast', 'very_fast'] }, amount: { type: 'number' } }, ['mode']) },
+  { name: 'scroll_screen', description: 'Scroll the current visible page, panel, document, or horizontally scrollable tool region. Supports up/down/left/right, continuous scrolling, a specific amount, and edge jumps.', parameters: object({ mode: { type: 'string', enum: ['start', 'stop', 'by', 'top', 'bottom', 'left', 'right'] }, direction: { type: 'string', enum: ['up', 'down', 'left', 'right'] }, speed: { type: 'string', enum: ['slow', 'normal', 'fast', 'very_fast'] }, amount: { type: 'number' } }, ['mode']) },
   { name: 'click_screen', description: 'Click a visible Hub-Mind UI element by visible text, accessible label, title, or CSS selector.', parameters: object({ target: { type: 'string' }, selector: { type: 'string' } }) },
   { name: 'type_screen', description: 'Type into a visible input or editor field selected by label, placeholder, name, or CSS selector.', parameters: object({ target: { type: 'string' }, text: { type: 'string' }, selector: { type: 'string' }, clearFirst: { type: 'boolean' } }, ['text']) },
   { name: 'stop_screen_control', description: 'Immediately stop any ongoing Jess screen scrolling/control operation.', parameters: object({}) },
@@ -554,6 +564,122 @@ export async function executeJessTool(
             backgroundTasksSummary: jessBackgroundTasks.getActiveTasksSummary(),
           },
         };
+
+      case 'list_inbox_items': {
+        const status = String(args.status || 'unprocessed');
+        const snap = await getDocs(query(collection(db, 'inbox'), limit(250)));
+        let items = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+          .filter((x: any) => user.role === 'admin' || x.createdBy === user.id || x.ownerId === user.id || x.userId === user.id);
+        if (status !== 'all') items = items.filter((x: any) => (x.status || 'unprocessed') === status);
+        items.sort((a: any, b: any) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        items = items.slice(0, safeLimit(args.limit, 30));
+        return { result: { success: true, total: items.length, items: items.map((x: any) => ({ id: x.id, text: x.text || '', status: x.status || 'unprocessed', createdAt: x.createdAt || null, convertedTo: x.convertedTo || null })), message: items.length ? 'Retrieved Inbox quick captures.' : 'No matching Inbox quick captures were found.' } };
+      }
+
+      case 'archive_inbox_item': {
+        const term = String(args.itemId || args.query || '').trim();
+        if (!term) return { result: { success: false, error: 'Provide an Inbox item ID or text to identify the capture.' } };
+        let itemId = args.itemId ? term : '';
+        let itemData: any = null;
+        if (itemId) {
+          const snap = await getDoc(doc(db, 'inbox', itemId));
+          if (snap.exists()) itemData = snap.data();
+        } else {
+          const snap = await getDocs(query(collection(db, 'inbox'), limit(250)));
+          const matches = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+            .filter((x: any) => (x.createdBy === user.id || x.ownerId === user.id || x.userId === user.id || user.role === 'admin') && String(x.text || '').toLowerCase().includes(term.toLowerCase()));
+          if (matches.length > 1) return { result: { success: false, needsClarification: true, matches: matches.slice(0, 8).map((x: any) => ({ id: x.id, text: x.text })), message: 'Several Inbox items match that text. Choose the one to archive.' } };
+          if (matches[0]) { itemId = matches[0].id; itemData = matches[0]; }
+        }
+        if (!itemData) return { result: { success: false, error: 'Inbox item not found or unavailable.' } };
+        if (user.role !== 'admin' && ![itemData.createdBy, itemData.ownerId, itemData.userId].includes(user.id)) return { result: { success: false, error: 'You can only archive your own Inbox items.' } };
+        await updateDoc(doc(db, 'inbox', itemId), { status: 'processed', convertedTo: { type: 'archived', id: '' }, updatedAt: new Date().toISOString() });
+        return { result: { success: true, itemId, message: 'Archived the quick capture in Inbox.' }, actionPayload: navigatePayload('/inbox') };
+      }
+
+      case 'create_quick_capture': {
+        const capturedText = String(args.text || args.content || args.note || '').trim();
+        if (!capturedText) return { result: { success: false, error: 'The quick capture is empty.' } };
+        const now = new Date().toISOString();
+        const ref = await addDoc(collection(db, 'inbox'), {
+          text: capturedText, createdBy: user.id, ownerId: user.id, userId: user.id,
+          createdAt: now, updatedAt: now, status: 'unprocessed', convertedTo: null,
+          source: 'jess-quick-capture',
+        });
+        return {
+          result: { success: true, inboxItemId: ref.id, text: capturedText, message: 'Saved that thought to your Inbox as an unprocessed quick capture.' },
+          actionPayload: navigatePayload('/inbox'),
+        };
+      }
+
+      case 'get_startup_workspace_checks': {
+        const [connectionSnap, notificationSnap] = await Promise.all([
+          getDocs(query(collection(db, 'connections'), limit(250))),
+          getDocs(query(collection(db, 'notifications'), where('userId', '==', user.id), limit(100))).catch(() => null),
+        ]);
+        const relevant = connectionSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+          .filter((x: any) => x.requesterId === user.id || x.recipientId === user.id);
+        const pending = relevant.filter((x: any) => x.status === 'pending').map((x: any) => ({
+          id: x.id, direction: x.recipientId === user.id ? 'incoming' : 'outgoing',
+          otherUserId: x.requesterId === user.id ? x.recipientId : x.requesterId,
+          createdAt: x.createdAt || null,
+        }));
+        const acceptedCount = relevant.filter((x: any) => x.status === 'accepted').length;
+        const unread = notificationSnap ? notificationSnap.docs.map(d => ({ id: d.id, ...d.data() } as any)).filter((x: any) => x.read !== true).slice(0, 10).map((x: any) => ({ id: x.id, title: x.title || 'Notification', message: x.message || '', createdAt: x.createdAt || null, actionUrl: x.actionUrl || null })) : [];
+        return { result: { success: true, checkedAt: new Date().toISOString(), pendingRequests: pending, pendingCount: pending.length, acceptedConnectionCount: acceptedCount, unreadNotifications: unread, unreadCount: unread.length, notificationCheckAvailable: Boolean(notificationSnap), message: pending.length || unread.length ? 'Startup check found items that may need attention.' : 'Startup check complete; no pending colleague requests or unread notifications were found.' } };
+      }
+
+      case 'list_pending_colleague_requests':
+      case 'list_colleague_connections': {
+        const snap = await getDocs(query(collection(db, 'connections'), limit(200)));
+        const users = await getAllUsers().catch(() => []);
+        const labelFor = (id: string) => {
+          const match: any = (users as any[]).find(u => u.id === id || u.uid === id);
+          return match?.preferredName || match?.displayName || match?.name || match?.username || match?.email || id;
+        };
+        let rows = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+          .filter((x: any) => x.requesterId === user.id || x.recipientId === user.id);
+        if (name === 'list_pending_colleague_requests') {
+          const direction = String(args.direction || 'both');
+          rows = rows.filter((x: any) => x.status === 'pending'
+            && (direction === 'both' || (direction === 'incoming' && x.recipientId === user.id) || (direction === 'outgoing' && x.requesterId === user.id)));
+        } else {
+          rows = rows.filter((x: any) => x.status === 'accepted');
+          const q = String(args.query || '').toLowerCase().trim();
+          if (q) rows = rows.filter((x: any) => labelFor(x.requesterId === user.id ? x.recipientId : x.requesterId).toLowerCase().includes(q));
+          rows = rows.slice(0, safeLimit(args.limit, 30));
+        }
+        const entries = rows.map((x: any) => {
+          const otherId = x.requesterId === user.id ? x.recipientId : x.requesterId;
+          return { id: x.id, userId: otherId, name: labelFor(otherId), direction: x.recipientId === user.id ? 'incoming' : 'outgoing', status: x.status, createdAt: x.createdAt || null, updatedAt: x.updatedAt || null };
+        });
+        return { result: { success: true, total: entries.length, requests: entries, connections: entries, message: entries.length ? 'Retrieved current connection records.' : 'No matching connection records were found.' } };
+      }
+
+      case 'get_document_revision_history': {
+        const term = String(args.documentId || args.title || '').trim();
+        let item = await readResource('documents', term, user);
+        if (!item) {
+          const docs = await fetchAllDocumentsForUser(user);
+          const matches = docs.filter((d: any) => d.id === term || String(d.title || '').toLowerCase().includes(term.toLowerCase()));
+          if (matches.length > 1) return { result: { success: false, needsClarification: true, matches: matches.slice(0, 8).map((d: any) => ({ id: d.id, title: d.title })), message: 'More than one document matches. Please choose one.' } };
+          if (matches[0]) item = { id: matches[0].id, data: matches[0] };
+        }
+        if (!item) return { result: { success: false, error: 'I could not access that document. It may not exist or you may not have read permission.' } };
+        let versions: any[] = [];
+        try {
+          const snap = await getDocs(query(collection(db, 'documents', item.id, 'versions'), orderBy('versionNumber', 'desc'), limit(safeLimit(args.limit, 20))));
+          versions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (firstError) {
+          try {
+            const snap = await getDocs(query(collection(db, 'documents', item.id, 'versions'), limit(safeLimit(args.limit, 20))));
+            versions = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => Number(b.versionNumber || b.version || 0) - Number(a.versionNumber || a.version || 0));
+          } catch (error: any) {
+            return { result: { success: false, error: 'The document is readable, but revision history could not be retrieved. Check document version permissions.', details: error?.message || String(error) } };
+          }
+        }
+        return { result: { success: true, documentId: item.id, title: item.data.title || 'Untitled Document', total: versions.length, versions: versions.map((v: any) => ({ id: v.id, version: v.versionNumber || v.version || null, title: v.title || item.data.title || 'Untitled Document', savedAt: v.savedAt || v.createdAt || null, savedBy: v.savedByUsername || v.savedByName || v.savedBy || v.createdByName || v.createdBy || null, changeSummary: v.changeSummary || null, contentAvailable: typeof v.content === 'string' && v.content.length > 0 })), message: versions.length ? 'Retrieved saved document revisions.' : 'No saved revisions were found for this document.' } };
+      }
 
       case 'get_workspace_overview': {
         const docs = await fetchAllDocumentsForUser(user);
