@@ -146,6 +146,7 @@ export function JessFloatingAssistant() {
   const clientRef = useRef<LiveAudioClient | null>(null);
   const sessionEndingRef = useRef(false);
   const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number; axis: 'x' | 'y' }>({ timer: null, running: false, speed: 3, direction: 1, axis: 'y' });
+  const screenShareRef = useRef<{ stream: MediaStream | null; timer: number | null; video: HTMLVideoElement | null; nativePlugin: any; nativeListener: any }>({ stream: null, timer: null, video: null, nativePlugin: null, nativeListener: null });
   const backgroundHydratedUserRef = useRef<string | null>(null);
   const pointerRef = useRef({ dragging: false, moved: false, longPressed: false, holdTimer: null as number | null, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0, tapTimer: null as number | null });
   const [position, setPosition] = useState(DEFAULT_POSITION);
@@ -340,6 +341,78 @@ export function JessFloatingAssistant() {
               error: error?.message || 'The requested Hub-Mind action failed unexpectedly.',
             },
           };
+        }
+
+        if (result.actionPayload?.type === 'screen_share') {
+          const p = result.actionPayload;
+          const share = screenShareRef.current;
+          const stopShare = async () => {
+            if (share.timer !== null) window.clearInterval(share.timer);
+            share.timer = null;
+            if (share.stream) share.stream.getTracks().forEach(track => track.stop());
+            share.stream = null;
+            if (share.video) { share.video.pause(); share.video.srcObject = null; }
+            share.video = null;
+            if (share.nativeListener?.remove) await share.nativeListener.remove().catch(() => undefined);
+            share.nativeListener = null;
+            if (share.nativePlugin?.stopSharing) await share.nativePlugin.stopSharing().catch(() => undefined);
+            share.nativePlugin = null;
+          };
+          if (p.action === 'stop') {
+            await stopShare();
+            result.result.message = 'Screen sharing has stopped.';
+          } else if (!isJessInstalledApp()) {
+            result.result = { success: false, error: 'Screen sharing is available only in the installed Hub-Mind app, not in a normal browser tab.' };
+          } else {
+            await stopShare();
+            const nativeCapture = (window as any).Capacitor?.Plugins?.JessScreenCapture;
+            if (nativeCapture?.startSharing && nativeCapture?.addListener) {
+              try {
+                share.nativePlugin = nativeCapture;
+                share.nativeListener = await nativeCapture.addListener('frame', (event: any) => {
+                  const frame = event?.dataUrl || (event?.data ? 'data:image/jpeg;base64,' + event.data : '');
+                  if (frame) clientRef.current?.sendScreenFrame(frame);
+                });
+                await nativeCapture.startSharing({ frameRate: 1, maxWidth: 1280, imageQuality: 0.65 });
+                result.result.message = 'Screen sharing is active. Jess will receive periodic screen frames while the operating system allows capture.';
+              } catch (error: any) {
+                await stopShare();
+                result.result = { success: false, error: error?.message || 'Native screen sharing could not start. Check screen-capture permission.' };
+              }
+            } else {
+              const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator as any).userAgentData?.mobile === true;
+              if (mobile) {
+                result.result = { success: false, error: 'This installed mobile web app does not yet have its native screen-capture bridge. Mobile cross-app sharing requires the native Android/iOS app and system capture permission.' };
+              } else if (!navigator.mediaDevices?.getDisplayMedia) {
+                result.result = { success: false, error: 'This installed app environment does not support screen capture. Use a supported installed desktop app build.' };
+              } else {
+                try {
+                  share.stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 1 }, audio: false });
+                  share.video = document.createElement('video');
+                  share.video.muted = true;
+                  share.video.playsInline = true;
+                  share.video.srcObject = share.stream;
+                  await share.video.play();
+                  const canvas = document.createElement('canvas');
+                  const ctx = canvas.getContext('2d');
+                  canvas.width = 960;
+                  canvas.height = 540;
+                  const sendFrame = () => {
+                    if (!share.video || !ctx || share.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+                    ctx.drawImage(share.video, 0, 0, canvas.width, canvas.height);
+                    clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.62));
+                  };
+                  sendFrame();
+                  share.timer = window.setInterval(sendFrame, 1200);
+                  share.stream.getVideoTracks()[0]?.addEventListener('ended', () => { void stopShare(); });
+                  result.result.message = 'Screen sharing is active in the installed desktop app. Say “stop screen sharing” when you are done.';
+                } catch (error: any) {
+                  await stopShare();
+                  result.result = { success: false, error: error?.message || 'Screen sharing was cancelled or permission was denied.' };
+                }
+              }
+            }
+          }
         }
 
         // Screen-control actions are executed by the signed-in browser, not merely
