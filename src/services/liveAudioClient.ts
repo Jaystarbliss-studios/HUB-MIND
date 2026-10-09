@@ -65,8 +65,11 @@ export class LiveAudioClient {
   private workerSequence = 0;
   private readonly maxPendingWorkerFrames = 12;
 
-  constructor(callbacks: LiveAudioCallbacks) {
+  private preferredInputDeviceId: string | null = null;
+
+  constructor(callbacks: LiveAudioCallbacks, inputDeviceId?: string | null) {
     this.callbacks = callbacks;
+    this.preferredInputDeviceId = inputDeviceId || null;
   }
 
   private async getEphemeralToken(): Promise<string> {
@@ -135,6 +138,7 @@ export class LiveAudioClient {
       if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
         this.mediaStream = await navigator.mediaDevices.getUserMedia({
           audio: {
+            ...(this.preferredInputDeviceId ? { deviceId: { exact: this.preferredInputDeviceId } } : {}),
             channelCount: 1,
             sampleRate: 16000,
             echoCancellation: true,
@@ -147,10 +151,24 @@ export class LiveAudioClient {
         throw new Error('Microphone audio input is not supported in this browser context.');
       }
     } catch (micErr: any) {
-      console.warn('[Jess Live] Microphone access unavailable or permission denied, using silent input stream fallback:', micErr?.message || micErr);
-      this.micPermissionDenied = true;
-      const silentDestination = this.inputAudioCtx.createMediaStreamDestination();
-      this.mediaStream = silentDestination.stream;
+      // If a remembered device was unplugged, try the system default before falling back to silence.
+      if (this.preferredInputDeviceId && typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        try {
+          this.mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          });
+          this.preferredInputDeviceId = null;
+          this.micPermissionDenied = false;
+        } catch {
+          this.mediaStream = null;
+        }
+      }
+      if (!this.mediaStream) {
+        console.warn('[Jess Live] Microphone access unavailable or permission denied, using silent input stream fallback:', micErr?.message || micErr);
+        this.micPermissionDenied = true;
+        const silentDestination = this.inputAudioCtx.createMediaStreamDestination();
+        this.mediaStream = silentDestination.stream;
+      }
     }
 
     if (!this.inputAudioCtx || !this.mediaStream) {
