@@ -310,6 +310,17 @@ export function JessFloatingAssistant() {
       if (control.timer !== null) window.clearInterval(control.timer);
       control.timer = null;
       control.running = false;
+      const share = screenShareRef.current;
+      if (share.timer !== null) window.clearInterval(share.timer);
+      share.timer = null;
+      if (share.stream) share.stream.getTracks().forEach(track => track.stop());
+      share.stream = null;
+      if (share.video) { share.video.pause(); share.video.srcObject = null; }
+      share.video = null;
+      if (share.nativeListener?.remove) void share.nativeListener.remove().catch(() => undefined);
+      share.nativeListener = null;
+      if (share.nativePlugin?.stopSharing) void share.nativePlugin.stopSharing().catch(() => undefined);
+      share.nativePlugin = null;
       void clientRef.current?.disconnect();
       clientRef.current = null;
     };
