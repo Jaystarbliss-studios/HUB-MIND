@@ -59,17 +59,11 @@ export function isJessPcWakeSupported(): boolean {
 
 export function extractJessWakeCommand(transcript: string): string | null {
   const text = String(transcript || '').replace(/\s+/g, ' ').trim();
-  const wakeMatch = text.match(WAKE_PATTERN);
-  if (!wakeMatch || wakeMatch.index === undefined) return null;
-
-  let command = text.slice(wakeMatch.index + wakeMatch[0].length)
-    .replace(/^[\s,:;.!?\-]+/, '')
-    .trim();
-
-  for (let i = 0; i < 3; i++) {
-    command = command.replace(/^jess[\s,:;.!?\-]*/i, '').trim();
-  }
-  return command;
+  // Only activate when Jess is addressed at the start of the utterance. This
+  // avoids false activation from phrases such as "what do you think, Jess?"
+  const wakeMatch = text.match(/^(?:(?:hey|hello|hi|okay|ok|yo|what(?:'s| is) up)[\s,.:;!?-]+)?jess\b/i);
+  if (!wakeMatch) return null;
+  return text.slice(wakeMatch[0].length).replace(/^[\s,:;.!?\-]+/, '').trim();
 }
 
 export class JessPcWakeListener {
