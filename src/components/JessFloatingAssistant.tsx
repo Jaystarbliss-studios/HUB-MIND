@@ -482,7 +482,11 @@ export function JessFloatingAssistant() {
               result.result.message = 'Typed into the visible screen field.';
             }
           }
-        }if (result.actionPayload?.type === 'navigate' && result.actionPayload.path) {
+        }
+
+        clientRef.current?.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
+
+        if (result.actionPayload?.type === 'navigate' && result.actionPayload.path) {
           navigate(result.actionPayload.path);
         }
 
@@ -598,7 +602,7 @@ export function JessFloatingAssistant() {
     if (!profile || connection === 'connected' || connection === 'connecting' || !isJessInstalledApp()) return;
     let disposed = false;
     let nativeListener: { remove: () => Promise<void> } | null = null;
-    const nativeWake = (window as any).Capacitor?.Plugins?.JessWakeWord;
+    const nativeWake = (window as any).Capacitor?.Plugins?.JessVoiceActivation;
 
     if (nativeWake?.addListener && nativeWake?.startListening) {
       void (async () => {
@@ -610,7 +614,7 @@ export function JessFloatingAssistant() {
           });
           await nativeWake.startListening({ phrases: ['hey jess', 'hello jess', "what's up jess"] });
         } catch (error) {
-          console.warn('[Jess] Native wake-word listener unavailable:', error);
+          console.warn('[Jess] Native voice activation listener unavailable:', error);
         }
       })();
       return () => {
