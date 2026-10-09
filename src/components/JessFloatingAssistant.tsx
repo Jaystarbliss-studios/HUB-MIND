@@ -620,7 +620,7 @@ export function JessFloatingAssistant() {
       return () => {
         disposed = true;
         void nativeListener?.remove();
-        void nativeWake.stopListening?.().catch?.(() => undefined);
+        void Promise.resolve(nativeWake.stopListening?.()).catch(() => undefined);
       };
     }
 
