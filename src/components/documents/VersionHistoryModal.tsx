@@ -45,7 +45,7 @@ export function VersionHistoryModal({
 
     async function loadVersions() {
       try {
-        const history = await fetchDocumentVersionHistory(documentId);
+        const history = await fetchDocumentVersionHistory(documentId, { throwOnRemoteError: true });
         if (isMounted) {
           setVersions(history);
           if (history.length > 0) {
@@ -222,7 +222,7 @@ export function VersionHistoryModal({
                   <AlertCircle className="w-7 h-7 mx-auto mb-2 opacity-80" />
                   <p className="font-semibold">Could not load revision history</p>
                   <p className="mt-2 text-rose-200/80 break-words">{historyError}</p>
-                  <button type="button" onClick={() => { setHistoryError(null); setLoading(true); void fetchDocumentVersionHistory(documentId).then(items => { setVersions(items); setLoading(false); }).catch(err => { setHistoryError(err?.message || 'Revision history could not be loaded.'); setLoading(false); }); }} className="mt-3 px-3 py-2 rounded-lg border border-rose-400/30 hover:bg-rose-500/10">Try again</button>
+                  <button type="button" onClick={() => { setHistoryError(null); setLoading(true); void fetchDocumentVersionHistory(documentId, { throwOnRemoteError: true }).then(items => { setVersions(items); setLoading(false); }).catch(err => { setHistoryError(err?.message || 'Revision history could not be loaded.'); setLoading(false); }); }} className="mt-3 px-3 py-2 rounded-lg border border-rose-400/30 hover:bg-rose-500/10">Try again</button>
                 </div>
               ) : versions.length === 0 ? (
                 <div className="p-8 text-center text-slate-500 text-xs">
