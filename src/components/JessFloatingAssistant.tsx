@@ -773,8 +773,12 @@ export function JessFloatingAssistant() {
   };
 
   const onPointerCancel = () => {
-    pointerRef.current.dragging = false;
-    pointerRef.current.moved = false;
+    const p = pointerRef.current;
+    p.dragging = false;
+    p.moved = false;
+    p.longPressed = false;
+    if (p.holdTimer !== null) window.clearTimeout(p.holdTimer);
+    p.holdTimer = null;
   };
 
   if (!profile) return null;
