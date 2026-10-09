@@ -44,33 +44,54 @@ function clampViewportPosition(position: { x: number; y: number }, size: number)
 
 
 
-function getJessScrollTarget(): HTMLElement | Window {
-  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const candidates: HTMLElement[] = [];
-  let node: HTMLElement | null = active;
-  while (node && node !== document.body) {
-    if (node.scrollHeight > node.clientHeight + 20 && ['auto','scroll'].includes(getComputedStyle(node).overflowY)) candidates.push(node);
-    node = node.parentElement;
-  }
-  const main = document.querySelector<HTMLElement>('[role="main"],main,.overflow-y-auto,.overflow-auto');
-  if (main && main.scrollHeight > main.clientHeight + 20) candidates.push(main);
-  const mainTarget = document.querySelector<HTMLElement>('[role="main"],main');
-  // Prefer the nearest scrollable ancestor of the active control/editor so
-  // Jess scrolls the document pane or side panel the user is working in.
-  if (candidates[0]) return candidates[0];
-  if (mainTarget && mainTarget.scrollHeight > mainTarget.clientHeight + 20) return mainTarget;
-  return window;
-}
-function getJessHorizontalScrollTarget(): HTMLElement | Window {
-  let node = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  while (node && node !== document.body) {
-    if (node.scrollWidth > node.clientWidth + 8 && ['auto', 'scroll'].includes(getComputedStyle(node).overflowX)) return node;
-    node = node.parentElement;
-  }
-  return Array.from(document.querySelectorAll<HTMLElement>('main,[role="main"],.overflow-x-auto,.overflow-auto,[data-jess-scrollable]'))
-    .find(el => el.scrollWidth > el.clientWidth + 8) || window;
+function isJessScrollable(el: HTMLElement, axis: 'x' | 'y'): boolean {
+  const style = getComputedStyle(el);
+  const overflow = axis === 'x' ? style.overflowX : style.overflowY;
+  const extent = axis === 'x' ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight;
+  return extent > 12 && (overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay');
 }
 
+function getJessScrollTarget(axis: 'x' | 'y' = 'y', requestedTarget = ''): HTMLElement | Window {
+  const needle = requestedTarget.toLowerCase().trim();
+  const isVisible = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+      && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth;
+  };
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>('main, [role="main"], aside, [role="complementary"], section, article, [class*="overflow-"], [data-jess-scrollable], [role="dialog"]'))
+    .filter(el => isVisible(el) && isJessScrollable(el, axis) && !el.closest('[data-jess-orb], [data-jess-satellite]'))
+    .map(el => {
+      const text = [el.getAttribute('aria-label'), el.getAttribute('title'), el.id, typeof el.className === 'string' ? el.className : '', el.innerText?.slice(0, 160)]
+        .filter(Boolean).join(' ').toLowerCase();
+      const rect = el.getBoundingClientRect();
+      let score = Math.min(100, (axis === 'x' ? el.scrollWidth / Math.max(el.clientWidth, 1) : el.scrollHeight / Math.max(el.clientHeight, 1)) * 10);
+      if (el.matches('main, [role="main"]')) score += 18;
+      if (el.matches('aside, [role="complementary"]')) score += 8;
+      if (needle && text.includes(needle)) score += 100;
+      return { el, score, rect };
+    });
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  if (active) {
+    let node: HTMLElement | null = active;
+    while (node && node !== document.body) {
+      if (isJessScrollable(node, axis) && isVisible(node) && !node.closest('[data-jess-orb], [data-jess-satellite]')) return node;
+      node = node.parentElement;
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  if (candidates[0]) return candidates[0].el;
+  const root = document.scrollingElement as HTMLElement | null;
+  if (root) {
+    const extent = axis === 'x' ? root.scrollWidth - window.innerWidth : root.scrollHeight - window.innerHeight;
+    if (extent > 12) return window;
+  }
+  return window;
+}
+
+function getJessHorizontalScrollTarget(requestedTarget = ''): HTMLElement | Window {
+  return getJessScrollTarget('x', requestedTarget);
+}
 
 function findJessVisibleElement(target?: string, selector?: string): HTMLElement | null {
   if (selector) {
@@ -124,7 +145,7 @@ export function JessFloatingAssistant() {
   const navigate = useNavigate();
   const clientRef = useRef<LiveAudioClient | null>(null);
   const sessionEndingRef = useRef(false);
-  const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number }>({ timer: null, running: false, speed: 3, direction: 1 });
+  const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number; axis: 'x' | 'y' }>({ timer: null, running: false, speed: 3, direction: 1, axis: 'y' });
   const backgroundHydratedUserRef = useRef<string | null>(null);
   const pointerRef = useRef({ dragging: false, moved: false, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0, tapTimer: null as number | null });
   const [position, setPosition] = useState(DEFAULT_POSITION);
