@@ -13,7 +13,7 @@ import { trackAndPersistSentiment } from '../services/sentimentService';
 import { scanCurrentPageContext, ContextActionSuggestion } from '../services/contextScannerService';
 import { startJessWorkspaceCache } from '../services/jessWorkspaceCache';
 import { hydrateGoogleCalendarConnection, isGoogleCalendarConnected, refreshGoogleCalendarEvents } from '../lib/googleCalendar';
-import { JessPcWakeListener, isJessPcWakeSupported } from '../services/jessWakeListener';
+import { JessPcWakeListener, isJessPcWakeSupported, isJessInstalledApp } from '../services/jessWakeListener';
 import { 
   Activity, 
   Lightbulb, 
@@ -44,33 +44,54 @@ function clampViewportPosition(position: { x: number; y: number }, size: number)
 
 
 
-function getJessScrollTarget(): HTMLElement | Window {
-  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const candidates: HTMLElement[] = [];
-  let node: HTMLElement | null = active;
-  while (node && node !== document.body) {
-    if (node.scrollHeight > node.clientHeight + 20 && ['auto','scroll'].includes(getComputedStyle(node).overflowY)) candidates.push(node);
-    node = node.parentElement;
-  }
-  const main = document.querySelector<HTMLElement>('[role="main"],main,.overflow-y-auto,.overflow-auto');
-  if (main && main.scrollHeight > main.clientHeight + 20) candidates.push(main);
-  const mainTarget = document.querySelector<HTMLElement>('[role="main"],main');
-  // Prefer the nearest scrollable ancestor of the active control/editor so
-  // Jess scrolls the document pane or side panel the user is working in.
-  if (candidates[0]) return candidates[0];
-  if (mainTarget && mainTarget.scrollHeight > mainTarget.clientHeight + 20) return mainTarget;
-  return window;
-}
-function getJessHorizontalScrollTarget(): HTMLElement | Window {
-  let node = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  while (node && node !== document.body) {
-    if (node.scrollWidth > node.clientWidth + 8 && ['auto', 'scroll'].includes(getComputedStyle(node).overflowX)) return node;
-    node = node.parentElement;
-  }
-  return Array.from(document.querySelectorAll<HTMLElement>('main,[role="main"],.overflow-x-auto,.overflow-auto,[data-jess-scrollable]'))
-    .find(el => el.scrollWidth > el.clientWidth + 8) || window;
+function isJessScrollable(el: HTMLElement, axis: 'x' | 'y'): boolean {
+  const style = getComputedStyle(el);
+  const overflow = axis === 'x' ? style.overflowX : style.overflowY;
+  const extent = axis === 'x' ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight;
+  return extent > 12 && (overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay');
 }
 
+function getJessScrollTarget(axis: 'x' | 'y' = 'y', requestedTarget = ''): HTMLElement | Window {
+  const needle = requestedTarget.toLowerCase().trim();
+  const isVisible = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+      && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth;
+  };
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>('main, [role="main"], aside, [role="complementary"], section, article, [class*="overflow-"], [data-jess-scrollable], [role="dialog"]'))
+    .filter(el => isVisible(el) && isJessScrollable(el, axis) && !el.closest('[data-jess-orb], [data-jess-satellite]'))
+    .map(el => {
+      const text = [el.getAttribute('aria-label'), el.getAttribute('title'), el.id, typeof el.className === 'string' ? el.className : '', el.innerText?.slice(0, 160)]
+        .filter(Boolean).join(' ').toLowerCase();
+      const rect = el.getBoundingClientRect();
+      let score = Math.min(100, (axis === 'x' ? el.scrollWidth / Math.max(el.clientWidth, 1) : el.scrollHeight / Math.max(el.clientHeight, 1)) * 10);
+      if (el.matches('main, [role="main"]')) score += 18;
+      if (el.matches('aside, [role="complementary"]')) score += 8;
+      if (needle && text.includes(needle)) score += 100;
+      return { el, score, rect };
+    });
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  if (active) {
+    let node: HTMLElement | null = active;
+    while (node && node !== document.body) {
+      if (isJessScrollable(node, axis) && isVisible(node) && !node.closest('[data-jess-orb], [data-jess-satellite]')) return node;
+      node = node.parentElement;
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  if (candidates[0]) return candidates[0].el;
+  const root = document.scrollingElement as HTMLElement | null;
+  if (root) {
+    const extent = axis === 'x' ? root.scrollWidth - window.innerWidth : root.scrollHeight - window.innerHeight;
+    if (extent > 12) return window;
+  }
+  return window;
+}
+
+function getJessHorizontalScrollTarget(requestedTarget = ''): HTMLElement | Window {
+  return getJessScrollTarget('x', requestedTarget);
+}
 
 function findJessVisibleElement(target?: string, selector?: string): HTMLElement | null {
   if (selector) {
@@ -124,9 +145,10 @@ export function JessFloatingAssistant() {
   const navigate = useNavigate();
   const clientRef = useRef<LiveAudioClient | null>(null);
   const sessionEndingRef = useRef(false);
-  const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number }>({ timer: null, running: false, speed: 3, direction: 1 });
+  const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number; axis: 'x' | 'y' }>({ timer: null, running: false, speed: 3, direction: 1, axis: 'y' });
+  const screenShareRef = useRef<{ stream: MediaStream | null; timer: number | null; video: HTMLVideoElement | null; nativePlugin: any; nativeListener: any }>({ stream: null, timer: null, video: null, nativePlugin: null, nativeListener: null });
   const backgroundHydratedUserRef = useRef<string | null>(null);
-  const pointerRef = useRef({ dragging: false, moved: false, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0, tapTimer: null as number | null });
+  const pointerRef = useRef({ dragging: false, moved: false, longPressed: false, holdTimer: null as number | null, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0, tapTimer: null as number | null });
   const [position, setPosition] = useState(DEFAULT_POSITION);
   const [connection, setConnection] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [state, setState] = useState<JessState>('idle');
@@ -144,6 +166,9 @@ export function JessFloatingAssistant() {
 
   // Context-aware Page/Document Scanner Menu
   const [showContextMenu, setShowContextMenu] = useState(false);
+  const [showOrbDismiss, setShowOrbDismiss] = useState(false);
+  const [screenSharePrompt, setScreenSharePrompt] = useState(false);
+  const [orbDismissed, setOrbDismissed] = useState(false);
   const [contextActions, setContextActions] = useState<ContextActionSuggestion[]>([]);
 
   // Assistant Deletion Confirmation Modal State
@@ -155,6 +180,49 @@ export function JessFloatingAssistant() {
     message?: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const beginDesktopScreenShare = useCallback(async () => {
+    setScreenSharePrompt(false);
+    const share = screenShareRef.current;
+    try {
+      if (!isJessInstalledApp() || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
+        throw new Error('This screen-sharing option is only available in the installed desktop app. Mobile cross-app sharing requires the native app.');
+      }
+      if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Screen capture is not supported by this installed app environment.');
+      if (share.stream) share.stream.getTracks().forEach(track => track.stop());
+      if (share.timer !== null) window.clearInterval(share.timer);
+      share.stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 1 }, audio: false });
+      share.video = document.createElement('video');
+      share.video.muted = true;
+      share.video.playsInline = true;
+      share.video.srcObject = share.stream;
+      await share.video.play();
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = 960;
+      canvas.height = 540;
+      const sendFrame = () => {
+        if (!share.video || !ctx || share.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+        ctx.drawImage(share.video, 0, 0, canvas.width, canvas.height);
+        clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.62));
+      };
+      sendFrame();
+      share.timer = window.setInterval(sendFrame, 1200);
+      share.stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        if (share.timer !== null) window.clearInterval(share.timer);
+        share.timer = null;
+        share.stream = null;
+        share.video = null;
+        setSpeechState({ text: 'Screen sharing has ended.', speaker: 'jess', visible: true });
+      });
+      setSpeechState({ text: 'Screen sharing is active. Say “stop screen sharing” when you are done.', speaker: 'jess', visible: true });
+    } catch (error: any) {
+      if (share.stream) share.stream.getTracks().forEach(track => track.stop());
+      share.stream = null;
+      share.video = null;
+      setSpeechState({ text: error?.message || 'Screen sharing was cancelled or permission was denied.', speaker: 'jess', visible: true });
+    }
+  }, []);
 
   const jessSpeechAccumulatorRef = useRef<string>('');
   const fadeTimerRef = useRef<number | null>(null);
@@ -319,110 +387,127 @@ export function JessFloatingAssistant() {
           };
         }
 
+        if (result.actionPayload?.type === 'screen_share') {
+          const p = result.actionPayload;
+          const share = screenShareRef.current;
+          const stopShare = async () => {
+            if (share.timer !== null) window.clearInterval(share.timer);
+            share.timer = null;
+            if (share.stream) share.stream.getTracks().forEach(track => track.stop());
+            share.stream = null;
+            if (share.video) { share.video.pause(); share.video.srcObject = null; }
+            share.video = null;
+            if (share.nativeListener?.remove) await share.nativeListener.remove().catch(() => undefined);
+            share.nativeListener = null;
+            if (share.nativePlugin?.stopSharing) await share.nativePlugin.stopSharing().catch(() => undefined);
+            share.nativePlugin = null;
+          };
+          if (p.action === 'stop') {
+            await stopShare();
+            result.result.message = 'Screen sharing has stopped.';
+          } else if (!isJessInstalledApp()) {
+            result.result = { success: false, error: 'Screen sharing is available only in the installed Hub-Mind app, not in a normal browser tab.' };
+          } else {
+            await stopShare();
+            const nativeCapture = (window as any).Capacitor?.Plugins?.JessScreenCapture;
+            if (nativeCapture?.startSharing && nativeCapture?.addListener) {
+              try {
+                share.nativePlugin = nativeCapture;
+                share.nativeListener = await nativeCapture.addListener('frame', (event: any) => {
+                  const frame = event?.dataUrl || (event?.data ? 'data:image/jpeg;base64,' + event.data : '');
+                  if (frame) clientRef.current?.sendScreenFrame(frame);
+                });
+                await nativeCapture.startSharing({ frameRate: 1, maxWidth: 1280, imageQuality: 0.65 });
+                result.result.message = 'Screen sharing is active. Jess will receive periodic screen frames while the operating system allows capture.';
+              } catch (error: any) {
+                await stopShare();
+                result.result = { success: false, error: error?.message || 'Native screen sharing could not start. Check screen-capture permission.' };
+              }
+            } else {
+              const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator as any).userAgentData?.mobile === true;
+              if (mobile) {
+                result.result = { success: false, error: 'This installed mobile web app does not yet have its native screen-capture bridge. Mobile cross-app sharing requires the native Android/iOS app and system capture permission.' };
+              } else if (!navigator.mediaDevices?.getDisplayMedia) {
+                result.result = { success: false, error: 'This installed app environment does not support screen capture. Use a supported installed desktop app build.' };
+              } else {
+                setScreenSharePrompt(true);
+                result.result.message = 'I have opened the screen-sharing confirmation. Tap “Share screen” to choose what I can see.';
+              }
+            }
+          }
+        }
+
         // Screen-control actions are executed by the signed-in browser, not merely
         // acknowledged. This gives Jess direct, visible control of the Hub-Mind UI.
         if (result.actionPayload?.type === 'screen_control') {
           const p = result.actionPayload;
           const control = screenControlRef.current;
-          const stopScroll = () => {
-            if (control.timer !== null) window.clearInterval(control.timer);
-            control.timer = null;
-            control.running = false;
+          const stopScroll = () => { if (control.timer !== null) window.clearInterval(control.timer); control.timer = null; control.running = false; };
+          const mode = String(p.mode || 'by').toLowerCase();
+          const direction = String(p.direction || (mode === 'left' || mode === 'right' ? mode : 'down')).toLowerCase();
+          const horizontal = ['left', 'right'].includes(direction) || ['left', 'right'].includes(mode);
+          const target = horizontal ? getJessHorizontalScrollTarget(String(p.target || '')) : getJessScrollTarget('y', String(p.target || ''));
+          const isWindow = target === window;
+          const metrics = () => {
+            const el = isWindow ? document.scrollingElement as HTMLElement | null : target as HTMLElement;
+            const position = horizontal ? (isWindow ? window.scrollX : (el?.scrollLeft || 0)) : (isWindow ? window.scrollY : (el?.scrollTop || 0));
+            const extent = horizontal ? (isWindow ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth : (el?.scrollWidth || 0) - (el?.clientWidth || 0)) : (isWindow ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - window.innerHeight : (el?.scrollHeight || 0) - (el?.clientHeight || 0));
+            return { position, max: Math.max(0, extent) };
           };
-          if (p.action === 'stop' || p.mode === 'stop') {
-            stopScroll();
-            result.result.message = 'Stopped screen control.';
-          } else if (p.action === 'scroll') {
-            if (p.mode === 'left' || p.mode === 'right') {
+          const scrollToEdge = (value: number) => {
+            if (horizontal) { if (isWindow) window.scrollTo({ left: value, behavior: 'smooth' }); else (target as HTMLElement).scrollTo({ left: value, behavior: 'smooth' }); }
+            else { if (isWindow) window.scrollTo({ top: value, behavior: 'smooth' }); else (target as HTMLElement).scrollTo({ top: value, behavior: 'smooth' }); }
+          };
+          const scrollByAmount = (amount: number) => {
+            if (horizontal) { if (isWindow) window.scrollBy({ left: amount, behavior: 'smooth' }); else (target as HTMLElement).scrollBy({ left: amount, behavior: 'smooth' }); }
+            else { if (isWindow) window.scrollBy({ top: amount, behavior: 'smooth' }); else (target as HTMLElement).scrollBy({ top: amount, behavior: 'smooth' }); }
+          };
+          if (p.action === 'stop' || mode === 'stop') { stopScroll(); result.result.message = 'Stopped scrolling.'; }
+          else if (p.action === 'scroll') {
+            const m = metrics(); const atStart = m.position <= 2; const atEnd = m.position >= m.max - 2;
+            if (mode === 'top' || mode === 'left') {
               stopScroll();
-              const target = getJessHorizontalScrollTarget();
-              const max = target === window ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth : (target as HTMLElement).scrollWidth - (target as HTMLElement).clientWidth;
-              const pos = target === window ? window.scrollX : (target as HTMLElement).scrollLeft;
-              if ((p.mode === 'left' && pos <= 1) || (p.mode === 'right' && pos >= max - 1)) {
-                result.result.message = 'I have reached the end of this horizontal area; there is no more room to scroll in that direction.';
-              } else {
-                const left = p.mode === 'left' ? 0 : Math.max(0, max);
-                if (target === window) window.scrollTo({ left, behavior: 'smooth' }); else target.scrollTo({ left, behavior: 'smooth' });
-                result.result.message = 'Scrolled horizontally to the requested edge.';
-              }
-            } else if (p.mode === 'top') {
+              if (atStart) result.result.message = 'This area is already at its start edge; there is no more room to scroll that way.';
+              else { scrollToEdge(0); result.result.message = 'Scrolled to the start of the selected area.'; }
+            } else if (mode === 'bottom' || mode === 'right') {
               stopScroll();
-              const target = getJessScrollTarget();
-              const pos = target === window ? window.scrollY : (target as HTMLElement).scrollTop;
-              if (pos <= 1) result.result.message = 'I am already at the top of this scrollable area.';
-              else if (target === window) window.scrollTo({ top: 0, behavior: 'smooth' }); else target.scrollTo({ top: 0, behavior: 'smooth' });
-            } else if (p.mode === 'bottom') {
-              stopScroll();
-              const target = getJessScrollTarget();
-              if (target === window) window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); else target.scrollTo({ top: (target as HTMLElement).scrollHeight, behavior: 'smooth' });
-            } else if (p.mode === 'by') {
-              stopScroll();
-              const horizontal = p.direction === 'left' || p.direction === 'right';
-              const direction = (p.direction === 'up' || p.direction === 'left') ? -1 : 1;
-              const amount = Math.max(50, Math.min(3000, Number(p.amount) || (horizontal ? window.innerWidth : window.innerHeight) * 0.75));
-              const target = horizontal ? getJessHorizontalScrollTarget() : getJessScrollTarget();
-              const pos = target === window ? (horizontal ? window.scrollX : window.scrollY) : (horizontal ? target.scrollLeft : target.scrollTop);
-              const max = horizontal
-                ? (target === window ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth : target.scrollWidth - target.clientWidth)
-                : (target === window ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - window.innerHeight : (target as HTMLElement).scrollHeight - (target as HTMLElement).clientHeight);
-              if ((direction < 0 && pos <= 1) || (direction > 0 && pos >= max - 1)) result.result.message = 'I have reached the end of this scrollable area in that direction.';
-              else if (horizontal && target === window) window.scrollBy({ left: direction * amount, behavior: 'smooth' });
-              else if (horizontal) target.scrollBy({ left: direction * amount, behavior: 'smooth' });
-              else if (target === window) window.scrollBy({ top: direction * amount, behavior: 'smooth' });
-              else target.scrollBy({ top: direction * amount, behavior: 'smooth' });
+              if (atEnd) result.result.message = 'This area is already at its end edge; there is no more room to scroll that way.';
+              else { scrollToEdge(m.max); result.result.message = 'Scrolled to the end of the selected area.'; }
+            } else if (mode === 'by') {
+              stopScroll(); const sign = ['up', 'left'].includes(direction) ? -1 : 1;
+              if ((sign < 0 && atStart) || (sign > 0 && atEnd)) result.result.message = 'I have reached the end of this scrollable area in that direction.';
+              else { const amount = Math.max(50, Math.min(3000, Number(p.amount) || (horizontal ? window.innerWidth : window.innerHeight) * 0.72)); scrollByAmount(sign * amount); result.result.message = 'Scrolled the selected area.'; }
             } else {
               const speeds: Record<string, number> = { slow: 1.2, normal: 3, fast: 7, very_fast: 14 };
-              control.speed = speeds[p.speed] || 3;
-              stopScroll();
-              control.running = true;
+              control.speed = speeds[p.speed] || 3; control.axis = horizontal ? 'x' : 'y'; control.direction = ['up', 'left'].includes(direction) ? -1 : 1;
+              stopScroll(); control.running = true;
               control.timer = window.setInterval(() => {
                 if (!control.running) return;
-                const horizontal = p.direction === 'left' || p.direction === 'right';
-                const direction = (p.direction === 'up' || p.direction === 'left') ? -1 : 1;
-                const target = horizontal ? getJessHorizontalScrollTarget() : getJessScrollTarget();
-                if (horizontal && target === window) window.scrollBy(direction * control.speed, 0);
-                else if (horizontal) target.scrollBy({ left: direction * control.speed });
-                else if (target === window) window.scrollBy(0, direction * control.speed);
-                else target.scrollBy({ top: direction * control.speed });
+                const m = metrics();
+                if ((control.direction < 0 && m.position <= 1) || (control.direction > 0 && m.position >= m.max - 1)) { stopScroll(); return; }
+                scrollByAmount(control.direction * control.speed);
               }, 16);
+              result.result.message = 'Started scrolling. I will stop automatically at the edge.';
             }
-            result.result.message = 'Screen scrolling command completed on the visible Hub-Mind screen.';
           } else if (p.action === 'click') {
             const el = findJessVisibleElement(p.target, p.selector);
-            if (!el) {
-              result.result = { success: false, error: 'I could not find a visible screen element matching that target.' };
-            } else {
-              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              window.setTimeout(() => el.click(), 120);
-              result.result.message = 'Clicked the visible screen element: ' + (p.target || p.selector || el.innerText || el.getAttribute('aria-label') || 'target');
-            }
+            if (!el) result.result = { success: false, error: 'I could not find a visible screen element matching that target.' };
+            else { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); window.setTimeout(() => el.click(), 120); result.result.message = 'Clicked the visible screen element: ' + (p.target || p.selector || el.innerText || el.getAttribute('aria-label') || 'target'); }
           } else if (p.action === 'type') {
             const el = findJessVisibleElement(p.target, p.selector);
-            if (!el) {
-              result.result = { success: false, error: 'I could not find a visible input or editor field matching that target.' };
-            } else {
-              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              el.focus();
-              if (p.clearFirst) {
-                if ('value' in el) (el as HTMLInputElement).value = '';
-                else if (el.isContentEditable) el.textContent = '';
-              }
-              if ('value' in el) {
-                const input = el as HTMLInputElement;
-                const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-                setter?.call(input, String(p.text || ''));
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-              } else if (el.isContentEditable) {
-                el.textContent = String(p.text || '');
-                el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: String(p.text || '') }));
-              }
+            if (!el) result.result = { success: false, error: 'I could not find a visible input or editor field matching that target.' };
+            else {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus();
+              if (p.clearFirst) { if ('value' in el) (el as HTMLInputElement).value = ''; else if (el.isContentEditable) el.textContent = ''; }
+              if ('value' in el) { const input = el as HTMLInputElement; const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set; setter?.call(input, String(p.text || '')); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
+              else if (el.isContentEditable) { el.textContent = String(p.text || ''); el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: String(p.text || '') })); }
               result.result.message = 'Typed into the visible screen field.';
             }
           }
         }
 
-        client.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
+        clientRef.current?.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
+
         if (result.actionPayload?.type === 'navigate' && result.actionPayload.path) {
           navigate(result.actionPayload.path);
         }
@@ -532,23 +617,45 @@ export function JessFloatingAssistant() {
   }, [connection, start, stop]);
 
 
-  // PC-only passive voice wake. The passive listener is deliberately separate
-  // from Gemini Live so the full microphone session is not held open while Jess
-  // is asleep. Phones/tablets remain tap-only.
+  // Passive wake is strictly app-only. Normal browser tabs must never leave a
+  // background microphone listener running. Native shells can provide a native
+  // wake plugin; installed desktop PWAs use browser recognition as a fallback.
   useEffect(() => {
-    if (!profile || connection === 'connected' || connection === 'connecting') return;
-    if (!isJessPcWakeSupported()) return;
+    if (!profile || connection === 'connected' || connection === 'connecting' || !isJessInstalledApp()) return;
+    let disposed = false;
+    let nativeListener: { remove: () => Promise<void> } | null = null;
+    const nativeWake = (window as any).Capacitor?.Plugins?.JessVoiceActivation;
 
+    if (nativeWake?.addListener && nativeWake?.startListening) {
+      void (async () => {
+        try {
+          nativeListener = await nativeWake.addListener('wake', (event: { prompt?: string }) => {
+            if (disposed) return;
+            wakeTone();
+            void start(String(event?.prompt || '').trim() || undefined);
+          });
+          await nativeWake.startListening({ phrases: ['hey jess', 'hello jess', "what's up jess"] });
+        } catch (error) {
+          console.warn('[Jess] Native voice activation listener unavailable:', error);
+        }
+      })();
+      return () => {
+        disposed = true;
+        void nativeListener?.remove();
+        void Promise.resolve(nativeWake.stopListening?.()).catch(() => undefined);
+      };
+    }
+
+    if (!isJessPcWakeSupported()) return;
     const wakeListener = new JessPcWakeListener({
-      onWake: (command) => {
-        // Give the user the same subtle acknowledgement as manual activation.
+      onWake: command => {
+        if (disposed) return;
         wakeTone();
         void start(command || undefined);
       },
     });
-
     wakeListener.start();
-    return () => wakeListener.stop();
+    return () => { disposed = true; wakeListener.stop(); };
   }, [profile?.id, connection, start]);
 
   const handleConfirmDeletion = async () => {
@@ -595,6 +702,13 @@ export function JessFloatingAssistant() {
     const p = pointerRef.current;
     p.dragging = true;
     p.moved = false;
+    p.longPressed = false;
+    if (p.holdTimer !== null) window.clearTimeout(p.holdTimer);
+    p.holdTimer = window.setTimeout(() => {
+      p.longPressed = true;
+      setShowOrbDismiss(true);
+      try { if ('vibrate' in navigator) navigator.vibrate(18); } catch {}
+    }, 750);
     p.startX = e.clientX;
     p.startY = e.clientY;
     p.originX = position.x;
@@ -607,7 +721,11 @@ export function JessFloatingAssistant() {
     if (!p.dragging) return;
     const dx = e.clientX - p.startX;
     const dy = e.clientY - p.startY;
-    if (Math.hypot(dx, dy) > DRAG_THRESHOLD) p.moved = true;
+    if (Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+      p.moved = true;
+      if (p.holdTimer !== null) window.clearTimeout(p.holdTimer);
+      p.holdTimer = null;
+    }
     if (!p.moved) return;
     const next = clampViewportPosition(
       { x: p.originX + dx / Math.max(window.innerWidth, 1), y: p.originY + dy / Math.max(window.innerHeight, 1) },
@@ -624,12 +742,14 @@ export function JessFloatingAssistant() {
   const onPointerEnd = (e: React.PointerEvent<HTMLButtonElement>) => {
     const p = pointerRef.current;
     p.dragging = false;
+    if (p.holdTimer !== null) window.clearTimeout(p.holdTimer);
+    p.holdTimer = null;
     try {
       e.currentTarget.releasePointerCapture?.(e.pointerId);
     } catch {
       /* already released */
     }
-    if (p.moved) return;
+    if (p.moved || p.longPressed) { p.longPressed = false; return; }
     const now = Date.now();
     // Once Jess is active, a single tap is an explicit microphone mute/unmute.
     // When Jess is idle, the established double-tap gesture still activates her.
@@ -675,8 +795,12 @@ export function JessFloatingAssistant() {
   };
 
   const onPointerCancel = () => {
-    pointerRef.current.dragging = false;
-    pointerRef.current.moved = false;
+    const p = pointerRef.current;
+    p.dragging = false;
+    p.moved = false;
+    p.longPressed = false;
+    if (p.holdTimer !== null) window.clearTimeout(p.holdTimer);
+    p.holdTimer = null;
   };
 
   if (!profile) return null;
@@ -795,36 +919,9 @@ export function JessFloatingAssistant() {
         </div>
       )}
 
-      {/* Planetary Orbiting Quick Suggestions Satellite Button (Pure Lightbulb Icon) */}
-      <div
-        style={{
-          position: 'fixed',
-          left: `${renderedPosition.x * 100}%`,
-          top: `${renderedPosition.y * 100}%`,
-          width: '0px',
-          height: '0px',
-          // Keep the orbit center exactly on Jess. The satellite itself carries the
-          // circular animation; offsetting this parent shifts the entire orbit off-center.
-          transform: 'translate(0, 0)',
-          pointerEvents: 'none',
-          zIndex: 9999,
-        }}
-        className="flex items-center justify-center"
-      >
-        <button
-          type="button"
-          onClick={() => setShowContextMenu(v => !v)}
-          className={`pointer-events-auto group w-[32px] h-[32px] min-w-[32px] min-h-[32px] max-w-[32px] max-h-[32px] aspect-square rounded-full p-0 flex items-center justify-center shrink-0 overflow-hidden box-border bg-slate-950/95 hover:bg-slate-900 border border-teal-400/60 hover:border-teal-300 text-teal-300 shadow-[0_0_12px_rgba(20,184,166,0.35)] backdrop-blur-md ring-1 ring-teal-400/30 transition-all duration-200 cursor-pointer ${
-            showContextMenu ? 'bg-slate-900 ring-2 ring-teal-300 border-teal-300 scale-110 shadow-[0_0_16px_rgba(45,212,191,0.5)]' : 'animate-jess-orbit'
-          }`}
-          title="Quick Suggestions"
-        >
-          <Lightbulb className="w-4 h-4 text-teal-300 group-hover:scale-110 transition-transform shrink-0" />
-        </button>
-      </div>
-
       {/* Floating Assistant Orb Button */}
-      <button
+      {!orbDismissed && <button
+        data-jess-orb="true"
         type="button"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -852,7 +949,31 @@ export function JessFloatingAssistant() {
             <span>{activeBgTasks[0].progress}%</span>
           </div>
         )}
-      </button>
+      </button>}
+      {showOrbDismiss && !orbDismissed && (
+        <button
+          type="button"
+          aria-label="Remove Jess orb from this screen"
+          title="Remove Jess from this screen"
+          onPointerDown={e => e.stopPropagation()}
+          onClick={() => { setOrbDismissed(true); setShowOrbDismiss(false); setShowContextMenu(false); try { if ('vibrate' in navigator) navigator.vibrate([18, 35, 18]); } catch {} }}
+          style={{ position: 'fixed', left: `${Math.min(96, Math.max(4, renderedPosition.x * 100 + 4))}%`, top: `${Math.max(4, renderedPosition.y * 100 - 4)}%`, zIndex: 10001 }}
+          className="w-7 h-7 rounded-full bg-red-600 hover:bg-red-500 border border-red-300 text-white shadow-lg flex items-center justify-center"
+        ><X className="w-4 h-4" /></button>
+      )}
+
+      {screenSharePrompt && (
+        <div className="fixed inset-0 z-[10002] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="jess-screen-share-title" className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 text-slate-100 shadow-2xl">
+            <h3 id="jess-screen-share-title" className="text-base font-semibold">Share your screen with Jess?</h3>
+            <p className="mt-2 text-sm text-slate-400">Choose a screen or window in the system prompt. Jess will receive occasional frames while sharing is active. You can stop at any time.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setScreenSharePrompt(false)} className="rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
+              <button type="button" onClick={() => void beginDesktopScreenShare()} className="rounded-lg bg-teal-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-teal-400">Share screen</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal (User has the final say) */}
       {pendingDelete && (

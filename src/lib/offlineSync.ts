@@ -448,7 +448,7 @@ export async function processOfflineSyncQueue(): Promise<{ syncedCount: number; 
   return { syncedCount, errors };
 }
 
-export async function fetchDocumentVersionHistory(docId: string): Promise<DocumentVersion[]> {
+export async function fetchDocumentVersionHistory(docId: string, options: { throwOnRemoteError?: boolean } = {}): Promise<DocumentVersion[]> {
   const versionMap = new Map<string, DocumentVersion>();
   if (isDocumentDeleted(docId)) return [];
   getLocalVersions(docId).forEach(v => versionMap.set(v.id, v));
@@ -459,7 +459,12 @@ export async function fetchDocumentVersionHistory(docId: string): Promise<Docume
         const data = versionDoc.data() as DocumentVersion;
         versionMap.set(versionDoc.id || data.id, { ...data, id: versionDoc.id || data.id });
       });
-    } catch (err) { console.warn('[HubMind] Could not query document versions:', err); }
+    } catch (err) {
+      console.warn('[HubMind] Could not query document versions:', err);
+      if (options.throwOnRemoteError && versionMap.size === 0) {
+        throw new Error(`Remote revision history could not be read${err instanceof Error ? `: ${err.message}` : '.'}`);
+      }
+    }
   }
   return Array.from(versionMap.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }

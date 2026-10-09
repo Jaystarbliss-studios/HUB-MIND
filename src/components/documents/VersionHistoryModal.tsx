@@ -28,6 +28,7 @@ export function VersionHistoryModal({
 }: VersionHistoryModalProps) {
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
   const [checkpointNameInput, setCheckpointNameInput] = useState('');
@@ -40,18 +41,20 @@ export function VersionHistoryModal({
 
     let isMounted = true;
     setLoading(true);
+    setHistoryError(null);
 
     async function loadVersions() {
       try {
-        const history = await fetchDocumentVersionHistory(documentId);
+        const history = await fetchDocumentVersionHistory(documentId, { throwOnRemoteError: true });
         if (isMounted) {
           setVersions(history);
           if (history.length > 0) {
             setSelectedVersionId(history[0].id);
           }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to load version history', err);
+        if (isMounted) setHistoryError(err?.message || 'Revision history could not be loaded. Check your document permissions and connection.');
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -214,11 +217,18 @@ export function VersionHistoryModal({
                   <Loader2 className="w-6 h-6 animate-spin text-teal-400" />
                   <span className="text-xs">Loading revisions...</span>
                 </div>
+              ) : historyError ? (
+                <div role="alert" className="p-5 text-center text-rose-300 text-xs">
+                  <AlertCircle className="w-7 h-7 mx-auto mb-2 opacity-80" />
+                  <p className="font-semibold">Could not load revision history</p>
+                  <p className="mt-2 text-rose-200/80 break-words">{historyError}</p>
+                  <button type="button" onClick={() => { setHistoryError(null); setLoading(true); void fetchDocumentVersionHistory(documentId, { throwOnRemoteError: true }).then(items => { setVersions(items); setLoading(false); }).catch(err => { setHistoryError(err?.message || 'Revision history could not be loaded.'); setLoading(false); }); }} className="mt-3 px-3 py-2 rounded-lg border border-rose-400/30 hover:bg-rose-500/10">Try again</button>
+                </div>
               ) : versions.length === 0 ? (
                 <div className="p-8 text-center text-slate-500 text-xs">
                   <History className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
                   <p className="font-semibold text-slate-400">No revisions yet</p>
-                  <p className="mt-1 text-slate-500">Revisions are automatically captured as you edit and save documents.</p>
+                  <p className="mt-1 text-slate-500">No saved revisions were found on this device or in the cloud.</p>
                 </div>
               ) : (
                 versions.map((ver, idx) => {
