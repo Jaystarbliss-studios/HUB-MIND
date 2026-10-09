@@ -374,9 +374,13 @@ export function JessFloatingAssistant() {
               control.running = true;
               control.timer = window.setInterval(() => {
                 if (!control.running) return;
-                const direction = p.direction === 'up' ? -1 : 1;
-                const target = getJessScrollTarget();
-                if (target === window) window.scrollBy(0, direction * control.speed); else target.scrollBy({ top: direction * control.speed });
+                const horizontal = p.direction === 'left' || p.direction === 'right';
+                const direction = (p.direction === 'up' || p.direction === 'left') ? -1 : 1;
+                const target = horizontal ? getJessHorizontalScrollTarget() : getJessScrollTarget();
+                if (horizontal && target === window) window.scrollBy(direction * control.speed, 0);
+                else if (horizontal) target.scrollBy({ left: direction * control.speed });
+                else if (target === window) window.scrollBy(0, direction * control.speed);
+                else target.scrollBy({ top: direction * control.speed });
               }, 16);
             }
             result.result.message = 'Screen scrolling command completed on the visible Hub-Mind screen.';
