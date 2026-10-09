@@ -55,8 +55,11 @@ function getJessScrollTarget(): HTMLElement | Window {
   const main = document.querySelector<HTMLElement>('[role="main"],main,.overflow-y-auto,.overflow-auto');
   if (main && main.scrollHeight > main.clientHeight + 20) candidates.push(main);
   const mainTarget = document.querySelector<HTMLElement>('[role="main"],main');
+  // Prefer the nearest scrollable ancestor of the active control/editor so
+  // Jess scrolls the document pane or side panel the user is working in.
+  if (candidates[0]) return candidates[0];
   if (mainTarget && mainTarget.scrollHeight > mainTarget.clientHeight + 20) return mainTarget;
-  return candidates[0] || window;
+  return window;
 }
 function getJessHorizontalScrollTarget(): HTMLElement | Window {
   let node = document.activeElement instanceof HTMLElement ? document.activeElement : null;
