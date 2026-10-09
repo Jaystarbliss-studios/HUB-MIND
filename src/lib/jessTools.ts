@@ -201,6 +201,11 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   
   // Workspace Users & Directory
   { name: 'list_workspace_users', description: 'List and search colleagues, team members, and users in the Hub-Mind workspace to find usernames, roles, and contacts for sharing resources, assigning tasks, and sending schedules.', parameters: object({ query: { type: 'string', description: 'Optional search query by name, username, or email' }, limit: { type: 'number' } }) },
+  { name: 'create_quick_capture', description: 'Save a thought or scratch note directly into the signed-in user Inbox as an unprocessed item for later conversion into a task, meeting, or knowledge record.', parameters: object({ text: { type: 'string', description: 'The thought or note to save' } }, ['text']) },
+  { name: 'list_pending_colleague_requests', description: 'Check current incoming and outgoing pending colleague connection requests for the signed-in user.', parameters: object({ direction: { type: 'string', enum: ['incoming', 'outgoing', 'both'] } }) },
+  { name: 'list_colleague_connections', description: 'List accepted colleague connections and verify their current status.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }) },
+  { name: 'get_document_revision_history', description: 'Retrieve saved revisions for a document by ID or title, newest first, and distinguish empty history from retrieval errors.', parameters: object({ documentId: { type: 'string' }, limit: { type: 'number' } }, ['documentId']) },
+
 
   // Sharing & Direct Info Distribution Tools
   {
