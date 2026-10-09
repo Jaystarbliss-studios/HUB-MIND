@@ -206,6 +206,8 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'archive_inbox_item', description: 'Archive a quick capture in Inbox by item ID or matching note text.', parameters: object({ itemId: { type: 'string' }, query: { type: 'string' } }) },
 
   { name: 'list_pending_colleague_requests', description: 'Check current incoming and outgoing pending colleague connection requests for the signed-in user.', parameters: object({ direction: { type: 'string', enum: ['incoming', 'outgoing', 'both'] } }) },
+  { name: 'get_startup_workspace_checks', description: 'Run the lightweight startup check for the signed-in user: pending colleague requests, accepted connections, and unread notifications. Use at the beginning of a fresh Jess session and report only actionable items.', parameters: object({}) },
+
   { name: 'list_colleague_connections', description: 'List accepted colleague connections and verify their current status.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }) },
   { name: 'get_document_revision_history', description: 'Retrieve saved revisions for a document by ID or title, newest first, and distinguish empty history from retrieval errors.', parameters: object({ documentId: { type: 'string' }, limit: { type: 'number' } }, ['documentId']) },
 
@@ -608,6 +610,23 @@ export async function executeJessTool(
           result: { success: true, inboxItemId: ref.id, text: capturedText, message: 'Saved that thought to your Inbox as an unprocessed quick capture.' },
           actionPayload: navigatePayload('/inbox'),
         };
+      }
+
+      case 'get_startup_workspace_checks': {
+        const [connectionSnap, notificationSnap] = await Promise.all([
+          getDocs(query(collection(db, 'connections'), limit(250))),
+          getDocs(query(collection(db, 'notifications'), where('userId', '==', user.id), limit(100))).catch(() => null),
+        ]);
+        const relevant = connectionSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+          .filter((x: any) => x.requesterId === user.id || x.recipientId === user.id);
+        const pending = relevant.filter((x: any) => x.status === 'pending').map((x: any) => ({
+          id: x.id, direction: x.recipientId === user.id ? 'incoming' : 'outgoing',
+          otherUserId: x.requesterId === user.id ? x.recipientId : x.requesterId,
+          createdAt: x.createdAt || null,
+        }));
+        const acceptedCount = relevant.filter((x: any) => x.status === 'accepted').length;
+        const unread = notificationSnap ? notificationSnap.docs.map(d => ({ id: d.id, ...d.data() } as any)).filter((x: any) => x.read !== true).slice(0, 10).map((x: any) => ({ id: x.id, title: x.title || 'Notification', message: x.message || '', createdAt: x.createdAt || null, actionUrl: x.actionUrl || null })) : [];
+        return { result: { success: true, checkedAt: new Date().toISOString(), pendingRequests: pending, pendingCount: pending.length, acceptedConnectionCount: acceptedCount, unreadNotifications: unread, unreadCount: unread.length, notificationCheckAvailable: Boolean(notificationSnap), message: pending.length || unread.length ? 'Startup check found items that may need attention.' : 'Startup check complete; no pending colleague requests or unread notifications were found.' } };
       }
 
       case 'list_pending_colleague_requests':
