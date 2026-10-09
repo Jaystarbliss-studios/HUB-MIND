@@ -135,7 +135,6 @@ function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId
     profile.role === 'admin'
     || initialDoc?.ownerId === profile.id
     || initialDoc?.createdBy === profile.id
-    || !initialDoc?.visibility
     || initialDoc?.visibility === 'workspace'
     || (initialDoc?.visibility === 'shared' && sharedPermission === 'write')
   ));
