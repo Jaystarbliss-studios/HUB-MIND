@@ -804,7 +804,7 @@ export class LiveAudioClient {
 
   public sendScreenFrame(dataUrl: string): boolean {
     if (!this.connected || !this.session || !dataUrl) return false;
-    const match = String(dataUrl).match(/^data:(image\\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    const match = String(dataUrl).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
     if (!match) return false;
     try {
       this.session.sendRealtimeInput({
