@@ -31,6 +31,7 @@ import {
 import { getAllUsers } from '../services/userService';
 import { getShareUrl } from './shareLinks';
 import { sendEmail } from './googleApi';
+import { exportDocumentAsPDF, exportDocumentAsDOCX, exportDocumentAsHTML, exportDocumentAsTXT } from './documentExporter';
 
 export interface JessToolDefinition {
   name: string;
@@ -270,6 +271,9 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'list_documents', description: 'List recent documents in the workspace, sorted with newest first.', parameters: object({ limit: { type: 'number' }, query: { type: 'string' } }) },
   { name: 'find_document', description: 'Find a document by searching title or content.', parameters: object({ title: { type: 'string' } }, ['title']) },
   { name: 'get_document_content', description: 'Read a document content by ID or title.', parameters: object({ documentId: { type: 'string' } }, ['documentId']) },
+  { name: 'link_document_to_project', description: 'Link an existing document to an existing project, or remove the project link. Does not create duplicate records.', parameters: object({ documentId: { type: 'string', description: 'Document ID or title' }, projectId: { type: 'string', description: 'Project ID or project name; use empty string to unlink' } }, ['documentId', 'projectId']) },
+  { name: 'get_resource_sharing', description: 'Inspect who a document or project is shared with and their read/write permissions. Reports workspace visibility separately.', parameters: object({ resourceType: { type: 'string', enum: ['document', 'project'] }, resourceId: { type: 'string', description: 'Resource ID or title/name' } }, ['resourceType', 'resourceId']) },
+  { name: 'export_document', description: 'Download an accessible Hub-Mind document in PDF, DOCX, HTML, TXT, or Markdown format.', parameters: object({ documentId: { type: 'string', description: 'Document ID or title' }, format: { type: 'string', enum: ['pdf', 'docx', 'html', 'txt', 'md', 'markdown'] } }, ['documentId', 'format']) },
   { name: 'create_document', description: 'Create a new document with title and content in Hub-Mind.', parameters: object({ title: { type: 'string' }, content: { type: 'string' }, projectId: { type: 'string' }, category: { type: 'string' } }, ['title']) },
   { name: 'update_document', description: 'Update an existing document content or title.', parameters: object({ documentId: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' } }, ['documentId']) },
   { name: 'delete_document', description: 'Delete a document from Hub-Mind. Opens the confirmation modal so the user has the final say.', parameters: object({ documentId: { type: 'string' }, confirmed: { type: 'boolean' } }, ['documentId']) },
@@ -1234,6 +1238,96 @@ export async function executeJessTool(
             },
           },
         };
+      }
+
+      case 'link_document_to_project': {
+        const searchTerm = String(args.documentId || '').trim().toLowerCase();
+        const allDocs = await fetchAllDocumentsForUser(user);
+        let target = allDocs.find(d => d.id === args.documentId);
+        if (!target) {
+          const matches = allDocs.filter(d => String(d.title || '').toLowerCase().includes(searchTerm));
+          if (matches.length > 1) return { result: { success: false, needsClarification: true, matches: matches.slice(0, 8).map(d => ({ id: d.id, title: d.title })), message: 'More than one document matches. Choose the correct document.' } };
+          target = matches[0];
+        }
+        if (!target) return { result: { success: false, error: 'Document not found or access denied.' } };
+        if (!(await canWrite('documents', target.id, user))) return { result: { success: false, error: 'You do not have permission to change this document.' } };
+        const projectTerm = String(args.projectId || '').trim();
+        let projectId: string | null = null;
+        let projectName = '';
+        if (projectTerm) {
+          let project = await readResource('projects', projectTerm, user);
+          if (!project) {
+            const snap = await getDocs(query(collection(db, 'projects'), limit(100)));
+            const matches = snap.docs.filter(d => String(d.data().name || '').toLowerCase().includes(projectTerm.toLowerCase()));
+            if (matches.length > 1) return { result: { success: false, needsClarification: true, matches: matches.slice(0, 8).map(d => ({ id: d.id, name: d.data().name })), message: 'More than one project matches. Choose the correct project.' } };
+            if (matches[0]) project = { id: matches[0].id, data: matches[0].data() };
+          }
+          if (!project) return { result: { success: false, error: 'Project not found or access denied.' } };
+          projectId = project.id;
+          projectName = project.data.name || project.id;
+        }
+        await updateDoc(doc(db, 'documents', target.id), { projectId, updatedAt: new Date().toISOString(), updatedBy: user.id });
+        return { result: { success: true, documentId: target.id, documentTitle: target.title, projectId, projectName: projectName || null, message: projectId ? 'Existing document linked to project "' + projectName + '".' : 'Document unlinked from its project.' } };
+      }
+
+      case 'get_resource_sharing': {
+        const resourceType = args.resourceType === 'project' ? 'projects' : 'documents';
+        const term = String(args.resourceId || '').trim();
+        let item = await readResource(resourceType, term, user);
+        if (!item) {
+          const snap = await getDocs(query(collection(db, resourceType), limit(100)));
+          const nameField = resourceType === 'projects' ? 'name' : 'title';
+          const matches = snap.docs.filter(d => String(d.data()[nameField] || '').toLowerCase().includes(term.toLowerCase()));
+          if (matches.length > 1) return { result: { success: false, needsClarification: true, matches: matches.slice(0, 8).map(d => ({ id: d.id, name: d.data()[nameField] })), message: 'More than one resource matches. Choose the correct one.' } };
+          if (matches[0]) item = { id: matches[0].id, data: matches[0].data() };
+        }
+        if (!item) return { result: { success: false, error: 'Resource not found or access denied.' } };
+        const data = item.data || {};
+        const sharedIds = new Set<string>();
+        if (Array.isArray(data.sharedWith)) data.sharedWith.forEach((id: string) => sharedIds.add(id));
+        else if (data.sharedWith && typeof data.sharedWith === 'object') Object.keys(data.sharedWith).forEach(id => sharedIds.add(id));
+        if (data.permissions && typeof data.permissions === 'object') Object.keys(data.permissions).forEach(id => sharedIds.add(id));
+        const users = await getAllUsers().catch(() => []);
+        const people = Array.from(sharedIds).map(id => {
+          const person: any = (users as any[]).find(u => u.id === id || u.uid === id);
+          const permission = data.permissions?.[id] || (Array.isArray(data.sharedWith) ? 'read' : data.sharedWith?.[id]) || 'read';
+          return { userId: id, name: person?.preferredName || person?.displayName || person?.name || person?.username || person?.email || id, email: person?.email || null, permission: permission === 'write' ? 'write' : 'read' };
+        });
+        return { result: { success: true, resourceType: args.resourceType, resourceId: item.id, title: data.title || data.name || 'Untitled', visibility: data.visibility || 'workspace', ownerId: data.ownerId || data.createdBy || null, sharedWith: people, sharedCount: people.length, message: people.length ? 'Found ' + people.length + ' explicitly shared user(s).' : 'No explicit individual shares found. Visibility is ' + (data.visibility || 'workspace') + '.' } };
+      }
+
+      case 'export_document': {
+        const term = String(args.documentId || '').trim();
+        let item = await readResource('documents', term, user);
+        let docId = term;
+        if (!item) {
+          const allDocs = await fetchAllDocumentsForUser(user);
+          const matches = allDocs.filter(d => d.id === term || String(d.title || '').toLowerCase().includes(term.toLowerCase()));
+          if (matches.length > 1) return { result: { success: false, needsClarification: true, matches: matches.slice(0, 8).map(d => ({ id: d.id, title: d.title })), message: 'More than one document matches. Choose the document to export.' } };
+          if (matches[0]) { item = { id: matches[0].id, data: matches[0] }; docId = matches[0].id; }
+        }
+        if (!item) return { result: { success: false, error: 'Document not found or access denied.' } };
+        const data = item.data || {};
+        const title = String(data.title || 'Document');
+        const html = String(data.content || '<p></p>');
+        const format = String(args.format || 'pdf').toLowerCase();
+        let ok = false;
+        if (format === 'pdf') ok = await exportDocumentAsPDF(title, html, data.pageSize || 'a4', data.orientation || 'portrait', data.marginOption || 'normal');
+        else if (format === 'docx') ok = await exportDocumentAsDOCX(title, html, data.pageSize || 'a4', data.orientation || 'portrait', data.marginOption || 'normal');
+        else if (format === 'html') ok = exportDocumentAsHTML(title, html, data.pageSize || 'a4', data.orientation || 'portrait', data.marginOption || 'normal');
+        else {
+          const plain = html.replace(/<\/(p|h[1-6]|li|div|tr)>/gi, '\\n').replace(/<br\s*\/?\s*>/gi, '\\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+\\n/g, '\\n').trim();
+          if (format === 'txt') ok = exportDocumentAsTXT(title, plain);
+          else if (format === 'md' || format === 'markdown') {
+            const markdown = plain;
+            const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = title.replace(/[^a-z0-9_\-\s]/gi, '_').trim() + '.md';
+            document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); ok = true;
+          } else return { result: { success: false, error: 'Unsupported format. Use PDF, DOCX, HTML, TXT, or Markdown.' } };
+        }
+        return { result: { success: ok, documentId: docId, title, format, downloaded: ok, message: ok ? 'Download started: "' + title + '" as ' + format.toUpperCase() + '.' : 'The export failed. Please try again from the document editor.' } };
       }
 
       case 'create_document': {
