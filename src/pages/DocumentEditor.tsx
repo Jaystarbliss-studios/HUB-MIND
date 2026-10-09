@@ -128,7 +128,20 @@ function resolveInitialEditorContent(data: any): any {
 function DocumentEditorWorkspace({ initialDoc, docId }: { initialDoc: any; docId: string }) {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const isSharedView = new URLSearchParams(window.location.search).get('shared') === '1';
+  const requestedSharedView = new URLSearchParams(window.location.search).get('shared') === '1';
+  const sharedPermission = initialDoc?.permissions?.[profile?.id]
+    || (initialDoc?.sharedWith && !Array.isArray(initialDoc.sharedWith) ? initialDoc.sharedWith[profile?.id] : undefined);
+  const canEditDocument = Boolean(profile && (
+    profile.role === 'admin'
+    || initialDoc?.ownerId === profile.id
+    || initialDoc?.createdBy === profile.id
+    || !initialDoc?.visibility
+    || initialDoc?.visibility === 'workspace'
+    || (initialDoc?.visibility === 'shared' && sharedPermission === 'write')
+  ));
+  // Read permission opens the document in the same page-like surface, but with
+  // editing and autosave disabled. Explicit shared links remain read-only.
+  const isSharedView = requestedSharedView || !canEditDocument;
 
   const [docMeta, setDocMeta] = useState<any>(initialDoc);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
