@@ -258,7 +258,7 @@ export function JessFloatingAssistant() {
     void refreshAudioInputs();
     navigator.mediaDevices?.addEventListener?.('devicechange', refreshAudioInputs);
     return () => { disposed = true; navigator.mediaDevices?.removeEventListener?.('devicechange', refreshAudioInputs); };
-  }, []);
+  }, [connection]);
 
   // Rescan context when route changes
   useEffect(() => {
@@ -378,7 +378,7 @@ export function JessFloatingAssistant() {
     wakeTone();
     jessSpeechAccumulatorRef.current = '';
 
-    const preferredInputDeviceId = selectedAudioInputId || (() => { try { return localStorage.getItem('hubmind.jess.audioInputDeviceId') || ''; } catch { return ''; } })();
+    const preferredInputDeviceId = (() => { try { return localStorage.getItem('hubmind.jess.audioInputDeviceId') || selectedAudioInputId; } catch { return selectedAudioInputId; } })();
     const client = new LiveAudioClient({
       onStatusChange: setConnection,
       onJessStateChange: setState,
@@ -662,7 +662,7 @@ export function JessFloatingAssistant() {
       setState('error');
       scheduleFade(10000);
     }
-  }, [connection, location.pathname, navigate, profile, stop, stopScreenSharing, updatePreferredName, scheduleFade]);
+  }, [connection, location.pathname, navigate, profile, selectedAudioInputId, stop, stopScreenSharing, updatePreferredName, scheduleFade]);
 
   const activate = useCallback(() => {
     if (connection === 'connected' || connection === 'connecting') void stop();
