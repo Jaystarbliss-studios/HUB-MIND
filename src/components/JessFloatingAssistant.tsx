@@ -13,7 +13,7 @@ import { trackAndPersistSentiment } from '../services/sentimentService';
 import { scanCurrentPageContext, ContextActionSuggestion } from '../services/contextScannerService';
 import { startJessWorkspaceCache } from '../services/jessWorkspaceCache';
 import { hydrateGoogleCalendarConnection, isGoogleCalendarConnected, refreshGoogleCalendarEvents } from '../lib/googleCalendar';
-import { JessPcWakeListener, isJessPcWakeSupported } from '../services/jessWakeListener';
+import { JessPcWakeListener, isJessPcWakeSupported, isJessInstalledApp } from '../services/jessWakeListener';
 import { 
   Activity, 
   Lightbulb, 
@@ -518,23 +518,45 @@ export function JessFloatingAssistant() {
   }, [connection, start, stop]);
 
 
-  // PC-only passive voice wake. The passive listener is deliberately separate
-  // from Gemini Live so the full microphone session is not held open while Jess
-  // is asleep. Phones/tablets remain tap-only.
+  // Passive wake is strictly app-only. Normal browser tabs must never leave a
+  // background microphone listener running. Native shells can provide a native
+  // wake plugin; installed desktop PWAs use browser recognition as a fallback.
   useEffect(() => {
-    if (!profile || connection === 'connected' || connection === 'connecting') return;
-    if (!isJessPcWakeSupported()) return;
+    if (!profile || connection === 'connected' || connection === 'connecting' || !isJessInstalledApp()) return;
+    let disposed = false;
+    let nativeListener: { remove: () => Promise<void> } | null = null;
+    const nativeWake = (window as any).Capacitor?.Plugins?.JessWakeWord;
 
+    if (nativeWake?.addListener && nativeWake?.startListening) {
+      void (async () => {
+        try {
+          nativeListener = await nativeWake.addListener('wake', (event: { prompt?: string }) => {
+            if (disposed) return;
+            wakeTone();
+            void start(String(event?.prompt || '').trim() || undefined);
+          });
+          await nativeWake.startListening({ phrases: ['hey jess', 'hello jess', "what's up jess"] });
+        } catch (error) {
+          console.warn('[Jess] Native wake-word listener unavailable:', error);
+        }
+      })();
+      return () => {
+        disposed = true;
+        void nativeListener?.remove();
+        void nativeWake.stopListening?.().catch?.(() => undefined);
+      };
+    }
+
+    if (!isJessPcWakeSupported()) return;
     const wakeListener = new JessPcWakeListener({
-      onWake: (command) => {
-        // Give the user the same subtle acknowledgement as manual activation.
+      onWake: command => {
+        if (disposed) return;
         wakeTone();
         void start(command || undefined);
       },
     });
-
     wakeListener.start();
-    return () => wakeListener.stop();
+    return () => { disposed = true; wakeListener.stop(); };
   }, [profile?.id, connection, start]);
 
   const handleConfirmDeletion = async () => {
