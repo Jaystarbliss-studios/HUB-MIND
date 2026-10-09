@@ -14,7 +14,7 @@ import {
 } from './googleCalendar';
 import { globalSearch } from './globalSearch';
 import { queueJessDocumentEdit } from './jessDocumentBridge';
-import { getLocalDocsMap, setLocalDocsMap } from './offlineSync';
+import { getLocalDocsMap, setLocalDocsMap, fetchDocumentVersionHistory } from './offlineSync';
 import { jessBackgroundTasks } from '../services/jessBackgroundTasks';
 import { materializeRecurringMeetings } from './recurringMeetings';
 import { getCachedCollection } from '../services/jessWorkspaceCache';
@@ -209,7 +209,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'get_startup_workspace_checks', description: 'Run the lightweight startup check for the signed-in user: pending colleague requests, accepted connections, and unread notifications. Use at the beginning of a fresh Jess session and report only actionable items.', parameters: object({}) },
 
   { name: 'list_colleague_connections', description: 'List accepted colleague connections and verify their current status.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }) },
-  { name: 'get_document_revision_history', description: 'Retrieve saved revisions for a document by ID or title, newest first, and distinguish empty history from retrieval errors.', parameters: object({ documentId: { type: 'string' }, limit: { type: 'number' } }, ['documentId']) },
+  { name: 'get_document_revision_history', description: 'Retrieve a document revision history. Accept a document ID OR the document title/name the user mentioned; if title is supplied, resolve it against accessible documents before querying history. Report version dates, authors, summaries and whether content is available. Never claim history is empty if retrieval failed.', parameters: object({ documentId: { type: 'string' }, title: { type: 'string' }, limit: { type: 'number' } }) },
 
 
   // Sharing & Direct Info Distribution Tools
@@ -657,28 +657,40 @@ export async function executeJessTool(
       }
 
       case 'get_document_revision_history': {
-        const term = String(args.documentId || args.title || '').trim();
+        const term = String(args.documentId || args.title || args.documentTitle || '').trim();
+        if (!term) return { result: { success: false, error: 'Please provide a document title or document ID so I can find its revision history.' } };
         let item = await readResource('documents', term, user);
         if (!item) {
           const docs = await fetchAllDocumentsForUser(user);
-          const matches = docs.filter((d: any) => d.id === term || String(d.title || '').toLowerCase().includes(term.toLowerCase()));
-          if (matches.length > 1) return { result: { success: false, needsClarification: true, matches: matches.slice(0, 8).map((d: any) => ({ id: d.id, title: d.title })), message: 'More than one document matches. Please choose one.' } };
-          if (matches[0]) item = { id: matches[0].id, data: matches[0] };
+          const normalized = term.toLowerCase();
+          const matches = docs.filter((d: any) => d.id === term || String(d.title || '').toLowerCase() === normalized);
+          const candidates = matches.length ? matches : docs.filter((d: any) => String(d.title || '').toLowerCase().includes(normalized));
+          if (candidates.length > 1) return { result: { success: false, needsClarification: true, matches: candidates.slice(0, 8).map((d: any) => ({ id: d.id, title: d.title })), message: 'More than one accessible document matches that title. Please choose one.' } };
+          if (candidates[0]) item = { id: candidates[0].id, data: candidates[0] };
         }
-        if (!item) return { result: { success: false, error: 'I could not access that document. It may not exist or you may not have read permission.' } };
-        let versions: any[] = [];
+        if (!item) return { result: { success: false, error: 'I could not find that document among the documents you can access. Please check the title or your read permission.' } };
         try {
-          const snap = await getDocs(query(collection(db, 'documents', item.id, 'versions'), orderBy('versionNumber', 'desc'), limit(safeLimit(args.limit, 20))));
-          versions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        } catch (firstError) {
-          try {
-            const snap = await getDocs(query(collection(db, 'documents', item.id, 'versions'), limit(safeLimit(args.limit, 20))));
-            versions = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => Number(b.versionNumber || b.version || 0) - Number(a.versionNumber || a.version || 0));
-          } catch (error: any) {
-            return { result: { success: false, error: 'The document is readable, but revision history could not be retrieved. Check document version permissions.', details: error?.message || String(error) } };
-          }
+          const versions = await fetchDocumentVersionHistory(item.id);
+          const sorted = [...versions].sort((a: any, b: any) => new Date(b.createdAt || b.savedAt || 0).getTime() - new Date(a.createdAt || a.savedAt || 0).getTime()).slice(0, safeLimit(args.limit, 20));
+          return { result: {
+            success: true,
+            documentId: item.id,
+            title: item.data.title || 'Untitled Document',
+            total: sorted.length,
+            versions: sorted.map((v: any) => ({
+              id: v.id,
+              version: v.versionNumber || v.version || null,
+              title: v.title || item.data.title || 'Untitled Document',
+              savedAt: v.createdAt || v.savedAt || null,
+              savedBy: v.authorName || v.savedByUsername || v.savedByName || v.savedBy || v.createdByName || v.createdBy || null,
+              changeSummary: v.changeSummary || v.checkpointName || null,
+              contentAvailable: typeof v.content === 'string' && v.content.length > 0,
+            })),
+            message: sorted.length ? 'Retrieved the document revision history, including locally saved revisions where available.' : 'The history lookup completed successfully but no saved revisions were found. If you expected revisions, check whether this device has local versions or whether the user can read the document versions subcollection.',
+          } };
+        } catch (error: any) {
+          return { result: { success: false, error: 'I found the document but could not retrieve its revision history. This is a history-access or storage issue, not proof that the document has no revisions.', details: error?.message || String(error) } };
         }
-        return { result: { success: true, documentId: item.id, title: item.data.title || 'Untitled Document', total: versions.length, versions: versions.map((v: any) => ({ id: v.id, version: v.versionNumber || v.version || null, title: v.title || item.data.title || 'Untitled Document', savedAt: v.savedAt || v.createdAt || null, savedBy: v.savedByUsername || v.savedByName || v.savedBy || v.createdByName || v.createdBy || null, changeSummary: v.changeSummary || null, contentAvailable: typeof v.content === 'string' && v.content.length > 0 })), message: versions.length ? 'Retrieved saved document revisions.' : 'No saved revisions were found for this document.' } };
       }
 
       case 'get_workspace_overview': {
