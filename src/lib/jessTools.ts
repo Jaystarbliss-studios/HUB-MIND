@@ -202,6 +202,9 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   // Workspace Users & Directory
   { name: 'list_workspace_users', description: 'List and search colleagues, team members, and users in the Hub-Mind workspace to find usernames, roles, and contacts for sharing resources, assigning tasks, and sending schedules.', parameters: object({ query: { type: 'string', description: 'Optional search query by name, username, or email' }, limit: { type: 'number' } }) },
   { name: 'create_quick_capture', description: 'Save a thought or scratch note directly into the signed-in user Inbox as an unprocessed item for later conversion into a task, meeting, or knowledge record.', parameters: object({ text: { type: 'string', description: 'The thought or note to save' } }, ['text']) },
+  { name: 'list_inbox_items', description: 'List quick captures in the signed-in user Inbox, filtered to unprocessed or archived items.', parameters: object({ status: { type: 'string', enum: ['unprocessed', 'processed', 'all'] }, limit: { type: 'number' } }) },
+  { name: 'archive_inbox_item', description: 'Archive a quick capture in Inbox by item ID or matching note text.', parameters: object({ itemId: { type: 'string' }, query: { type: 'string' } }) },
+
   { name: 'list_pending_colleague_requests', description: 'Check current incoming and outgoing pending colleague connection requests for the signed-in user.', parameters: object({ direction: { type: 'string', enum: ['incoming', 'outgoing', 'both'] } }) },
   { name: 'list_colleague_connections', description: 'List accepted colleague connections and verify their current status.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }) },
   { name: 'get_document_revision_history', description: 'Retrieve saved revisions for a document by ID or title, newest first, and distinguish empty history from retrieval errors.', parameters: object({ documentId: { type: 'string' }, limit: { type: 'number' } }, ['documentId']) },
@@ -559,6 +562,38 @@ export async function executeJessTool(
             backgroundTasksSummary: jessBackgroundTasks.getActiveTasksSummary(),
           },
         };
+
+      case 'list_inbox_items': {
+        const status = String(args.status || 'unprocessed');
+        const snap = await getDocs(query(collection(db, 'inbox'), limit(250)));
+        let items = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+          .filter((x: any) => user.role === 'admin' || x.createdBy === user.id || x.ownerId === user.id || x.userId === user.id);
+        if (status !== 'all') items = items.filter((x: any) => (x.status || 'unprocessed') === status);
+        items.sort((a: any, b: any) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        items = items.slice(0, safeLimit(args.limit, 30));
+        return { result: { success: true, total: items.length, items: items.map((x: any) => ({ id: x.id, text: x.text || '', status: x.status || 'unprocessed', createdAt: x.createdAt || null, convertedTo: x.convertedTo || null })), message: items.length ? 'Retrieved Inbox quick captures.' : 'No matching Inbox quick captures were found.' } };
+      }
+
+      case 'archive_inbox_item': {
+        const term = String(args.itemId || args.query || '').trim();
+        if (!term) return { result: { success: false, error: 'Provide an Inbox item ID or text to identify the capture.' } };
+        let itemId = args.itemId ? term : '';
+        let itemData: any = null;
+        if (itemId) {
+          const snap = await getDoc(doc(db, 'inbox', itemId));
+          if (snap.exists()) itemData = snap.data();
+        } else {
+          const snap = await getDocs(query(collection(db, 'inbox'), limit(250)));
+          const matches = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+            .filter((x: any) => (x.createdBy === user.id || x.ownerId === user.id || x.userId === user.id || user.role === 'admin') && String(x.text || '').toLowerCase().includes(term.toLowerCase()));
+          if (matches.length > 1) return { result: { success: false, needsClarification: true, matches: matches.slice(0, 8).map((x: any) => ({ id: x.id, text: x.text })), message: 'Several Inbox items match that text. Choose the one to archive.' } };
+          if (matches[0]) { itemId = matches[0].id; itemData = matches[0]; }
+        }
+        if (!itemData) return { result: { success: false, error: 'Inbox item not found or unavailable.' } };
+        if (user.role !== 'admin' && ![itemData.createdBy, itemData.ownerId, itemData.userId].includes(user.id)) return { result: { success: false, error: 'You can only archive your own Inbox items.' } };
+        await updateDoc(doc(db, 'inbox', itemId), { status: 'processed', convertedTo: { type: 'archived', id: '' }, updatedAt: new Date().toISOString() });
+        return { result: { success: true, itemId, message: 'Archived the quick capture in Inbox.' }, actionPayload: navigatePayload('/inbox') };
+      }
 
       case 'create_quick_capture': {
         const capturedText = String(args.text || args.content || args.note || '').trim();
