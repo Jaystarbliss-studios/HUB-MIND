@@ -58,6 +58,16 @@ function getJessScrollTarget(): HTMLElement | Window {
   if (mainTarget && mainTarget.scrollHeight > mainTarget.clientHeight + 20) return mainTarget;
   return candidates[0] || window;
 }
+function getJessHorizontalScrollTarget(): HTMLElement | Window {
+  let node = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  while (node && node !== document.body) {
+    if (node.scrollWidth > node.clientWidth + 8 && ['auto', 'scroll'].includes(getComputedStyle(node).overflowX)) return node;
+    node = node.parentElement;
+  }
+  return Array.from(document.querySelectorAll<HTMLElement>('main,[role="main"],.overflow-x-auto,.overflow-auto,[data-jess-scrollable]'))
+    .find(el => el.scrollWidth > el.clientWidth + 8) || window;
+}
+
 
 function findJessVisibleElement(target?: string, selector?: string): HTMLElement | null {
   if (selector) {
@@ -320,20 +330,43 @@ export function JessFloatingAssistant() {
             stopScroll();
             result.result.message = 'Stopped screen control.';
           } else if (p.action === 'scroll') {
-            if (p.mode === 'top') {
+            if (p.mode === 'left' || p.mode === 'right') {
+              stopScroll();
+              const target = getJessHorizontalScrollTarget();
+              const max = target === window ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth : target.scrollWidth - target.clientWidth;
+              const pos = target === window ? window.scrollX : target.scrollLeft;
+              if ((p.mode === 'left' && pos <= 1) || (p.mode === 'right' && pos >= max - 1)) {
+                result.result.message = 'I have reached the end of this horizontal area; there is no more room to scroll in that direction.';
+              } else {
+                const left = p.mode === 'left' ? 0 : Math.max(0, max);
+                if (target === window) window.scrollTo({ left, behavior: 'smooth' }); else target.scrollTo({ left, behavior: 'smooth' });
+                result.result.message = 'Scrolled horizontally to the requested edge.';
+              }
+            } else if (p.mode === 'top') {
               stopScroll();
               const target = getJessScrollTarget();
-              if (target === window) window.scrollTo({ top: 0, behavior: 'smooth' }); else target.scrollTo({ top: 0, behavior: 'smooth' });
+              const pos = target === window ? window.scrollY : target.scrollTop;
+              if (pos <= 1) result.result.message = 'I am already at the top of this scrollable area.';
+              else if (target === window) window.scrollTo({ top: 0, behavior: 'smooth' }); else target.scrollTo({ top: 0, behavior: 'smooth' });
             } else if (p.mode === 'bottom') {
               stopScroll();
               const target = getJessScrollTarget();
               if (target === window) window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); else target.scrollTo({ top: (target as HTMLElement).scrollHeight, behavior: 'smooth' });
             } else if (p.mode === 'by') {
               stopScroll();
-              const direction = p.direction === 'up' ? -1 : 1;
-              const amount = Math.max(50, Math.min(3000, Number(p.amount) || window.innerHeight * 0.75));
-              const target = getJessScrollTarget();
-              if (target === window) window.scrollBy({ top: direction * amount, behavior: 'smooth' }); else target.scrollBy({ top: direction * amount, behavior: 'smooth' });
+              const horizontal = p.direction === 'left' || p.direction === 'right';
+              const direction = (p.direction === 'up' || p.direction === 'left') ? -1 : 1;
+              const amount = Math.max(50, Math.min(3000, Number(p.amount) || (horizontal ? window.innerWidth : window.innerHeight) * 0.75));
+              const target = horizontal ? getJessHorizontalScrollTarget() : getJessScrollTarget();
+              const pos = target === window ? (horizontal ? window.scrollX : window.scrollY) : (horizontal ? target.scrollLeft : target.scrollTop);
+              const max = horizontal
+                ? (target === window ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth : target.scrollWidth - target.clientWidth)
+                : (target === window ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - window.innerHeight : target.scrollHeight - target.clientHeight);
+              if ((direction < 0 && pos <= 1) || (direction > 0 && pos >= max - 1)) result.result.message = 'I have reached the end of this scrollable area in that direction.';
+              else if (horizontal && target === window) window.scrollBy({ left: direction * amount, behavior: 'smooth' });
+              else if (horizontal) target.scrollBy({ left: direction * amount, behavior: 'smooth' });
+              else if (target === window) window.scrollBy({ top: direction * amount, behavior: 'smooth' });
+              else target.scrollBy({ top: direction * amount, behavior: 'smooth' });
             } else {
               const speeds: Record<string, number> = { slow: 1.2, normal: 3, fast: 7, very_fast: 14 };
               control.speed = speeds[p.speed] || 3;
