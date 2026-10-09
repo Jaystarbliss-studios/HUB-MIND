@@ -596,11 +596,17 @@ export function Documents() {
             {filteredDocs.length === 0 ? (
               <div className="p-12 text-center text-slate-500">No documents found.</div>
             ) : (
-              filteredDocs.map(doc => {
+              filteredDocs.map((doc, index) => {
                 const client = clients.find(c => c.id === doc.clientId);
+                const createdByAdmin = profile?.role === 'admin' && (doc.createdBy === profile.id || doc.ownerId === profile.id);
+                const previousDoc = filteredDocs[index - 1];
+                const previousCreatedByAdmin = previousDoc && (previousDoc.createdBy === profile?.id || previousDoc.ownerId === profile?.id);
+                const showAdminGroupHeading = profile?.role === 'admin' && (index === 0 || createdByAdmin !== previousCreatedByAdmin);
                 const canManage = profile?.role === 'admin' || doc.ownerId === profile?.id || doc.createdBy === profile?.id;
                 return (
-                  <div key={doc.id} className="group relative p-3 sm:p-4 hover:bg-slate-800/30 transition-colors" onContextMenu={(e) => { e.preventDefault(); setOpenPropertiesId(doc.id); }}>
+                  <React.Fragment key={doc.id}>
+                  {showAdminGroupHeading && <div className="px-4 py-3 bg-slate-900/70 border-b border-slate-800 text-xs font-semibold uppercase tracking-wider text-slate-400">{createdByAdmin ? 'Documents created by admin' : 'Documents created by workspace users'}</div>}
+                  <div className="group relative p-3 sm:p-4 hover:bg-slate-800/30 transition-colors" onContextMenu={(e) => { e.preventDefault(); setOpenPropertiesId(doc.id); }}>
                     <div className="flex items-center gap-3 min-w-0">
                       <button onClick={() => openDocument(doc)} className="flex items-center gap-3 min-w-0 flex-1 text-left">
                         <div className="w-11 h-12 sm:w-12 sm:h-14 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-accent shrink-0 shadow-sm"><FileText className="w-5 h-5 sm:w-6 sm:h-6" /></div>
@@ -634,6 +640,7 @@ export function Documents() {
                       </div>
                     )}
                   </div>
+                  </React.Fragment>
                 );
               })
             )}
