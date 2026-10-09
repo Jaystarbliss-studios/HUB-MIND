@@ -53,7 +53,7 @@ export function Login() {
     <main className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
       <section className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
         <div className="flex flex-col items-center mb-8">
-          <img src="/jaystarbliss-logo.svg" alt="Hub-Mind" className="w-16 h-16 object-contain mb-4" />
+          <img src="/icon.svg" alt="Hub-Mind" className="w-16 h-16 object-contain mb-4" />
           <h1 className="text-2xl font-bold text-slate-100">Hub-Mind</h1>
         </div>
 
