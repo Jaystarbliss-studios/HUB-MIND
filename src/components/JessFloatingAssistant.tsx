@@ -167,6 +167,7 @@ export function JessFloatingAssistant() {
   // Context-aware Page/Document Scanner Menu
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [showOrbDismiss, setShowOrbDismiss] = useState(false);
+  const [screenSharePrompt, setScreenSharePrompt] = useState(false);
   const [orbDismissed, setOrbDismissed] = useState(false);
   const [contextActions, setContextActions] = useState<ContextActionSuggestion[]>([]);
 
@@ -179,6 +180,49 @@ export function JessFloatingAssistant() {
     message?: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const beginDesktopScreenShare = useCallback(async () => {
+    setScreenSharePrompt(false);
+    const share = screenShareRef.current;
+    try {
+      if (!isJessInstalledApp() || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
+        throw new Error('This screen-sharing option is only available in the installed desktop app. Mobile cross-app sharing requires the native app.');
+      }
+      if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Screen capture is not supported by this installed app environment.');
+      if (share.stream) share.stream.getTracks().forEach(track => track.stop());
+      if (share.timer !== null) window.clearInterval(share.timer);
+      share.stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 1 }, audio: false });
+      share.video = document.createElement('video');
+      share.video.muted = true;
+      share.video.playsInline = true;
+      share.video.srcObject = share.stream;
+      await share.video.play();
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = 960;
+      canvas.height = 540;
+      const sendFrame = () => {
+        if (!share.video || !ctx || share.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+        ctx.drawImage(share.video, 0, 0, canvas.width, canvas.height);
+        clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.62));
+      };
+      sendFrame();
+      share.timer = window.setInterval(sendFrame, 1200);
+      share.stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        if (share.timer !== null) window.clearInterval(share.timer);
+        share.timer = null;
+        share.stream = null;
+        share.video = null;
+        setSpeechState({ text: 'Screen sharing has ended.', speaker: 'jess', visible: true });
+      });
+      setSpeechState({ text: 'Screen sharing is active. Say “stop screen sharing” when you are done.', speaker: 'jess', visible: true });
+    } catch (error: any) {
+      if (share.stream) share.stream.getTracks().forEach(track => track.stop());
+      share.stream = null;
+      share.video = null;
+      setSpeechState({ text: error?.message || 'Screen sharing was cancelled or permission was denied.', speaker: 'jess', visible: true });
+    }
+  }, []);
 
   const jessSpeechAccumulatorRef = useRef<string>('');
   const fadeTimerRef = useRef<number | null>(null);
@@ -386,30 +430,8 @@ export function JessFloatingAssistant() {
               } else if (!navigator.mediaDevices?.getDisplayMedia) {
                 result.result = { success: false, error: 'This installed app environment does not support screen capture. Use a supported installed desktop app build.' };
               } else {
-                try {
-                  share.stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 1 }, audio: false });
-                  share.video = document.createElement('video');
-                  share.video.muted = true;
-                  share.video.playsInline = true;
-                  share.video.srcObject = share.stream;
-                  await share.video.play();
-                  const canvas = document.createElement('canvas');
-                  const ctx = canvas.getContext('2d');
-                  canvas.width = 960;
-                  canvas.height = 540;
-                  const sendFrame = () => {
-                    if (!share.video || !ctx || share.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-                    ctx.drawImage(share.video, 0, 0, canvas.width, canvas.height);
-                    clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.62));
-                  };
-                  sendFrame();
-                  share.timer = window.setInterval(sendFrame, 1200);
-                  share.stream.getVideoTracks()[0]?.addEventListener('ended', () => { void stopShare(); });
-                  result.result.message = 'Screen sharing is active in the installed desktop app. Say “stop screen sharing” when you are done.';
-                } catch (error: any) {
-                  await stopShare();
-                  result.result = { success: false, error: error?.message || 'Screen sharing was cancelled or permission was denied.' };
-                }
+                setScreenSharePrompt(true);
+                result.result.message = 'I have opened the screen-sharing confirmation. Tap “Share screen” to choose what I can see.';
               }
             }
           }
@@ -938,6 +960,19 @@ export function JessFloatingAssistant() {
           style={{ position: 'fixed', left: `${Math.min(96, Math.max(4, renderedPosition.x * 100 + 4))}%`, top: `${Math.max(4, renderedPosition.y * 100 - 4)}%`, zIndex: 10001 }}
           className="w-7 h-7 rounded-full bg-red-600 hover:bg-red-500 border border-red-300 text-white shadow-lg flex items-center justify-center"
         ><X className="w-4 h-4" /></button>
+      )}
+
+      {screenSharePrompt && (
+        <div className="fixed inset-0 z-[10002] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="jess-screen-share-title" className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 text-slate-100 shadow-2xl">
+            <h3 id="jess-screen-share-title" className="text-base font-semibold">Share your screen with Jess?</h3>
+            <p className="mt-2 text-sm text-slate-400">Choose a screen or window in the system prompt. Jess will receive occasional frames while sharing is active. You can stop at any time.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setScreenSharePrompt(false)} className="rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
+              <button type="button" onClick={() => void beginDesktopScreenShare()} className="rounded-lg bg-teal-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-teal-400">Share screen</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete Confirmation Modal (User has the final say) */}
