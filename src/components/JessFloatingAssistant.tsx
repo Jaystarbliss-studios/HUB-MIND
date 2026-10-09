@@ -644,7 +644,7 @@ export function JessFloatingAssistant() {
       setState('error');
       scheduleFade(10000);
     }
-  }, [connection, location.pathname, navigate, profile, stop, updatePreferredName, scheduleFade]);
+  }, [connection, location.pathname, navigate, profile, stop, stopScreenSharing, updatePreferredName, scheduleFade]);
 
   const activate = useCallback(() => {
     if (connection === 'connected' || connection === 'connecting') void stop();
