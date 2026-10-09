@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractJessWakeCommand } from '../../src/services/jessWakeListener.ts';
 
-test('recognizes direct Jess wake phrases', () => {
+test('recognizes direct Jess wake phrases and rejects trailing mentions', () => {
   assert.equal(extractJessWakeCommand('Hey Jess'), '');
   assert.equal(extractJessWakeCommand('Hi Jess, what is on my schedule?'), 'what is on my schedule?');
   assert.equal(extractJessWakeCommand('Jess, open my documents'), 'open my documents');
