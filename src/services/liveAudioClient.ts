@@ -802,6 +802,21 @@ export class LiveAudioClient {
     }
   }
 
+  public sendScreenFrame(dataUrl: string): boolean {
+    if (!this.connected || !this.session || !dataUrl) return false;
+    const match = String(dataUrl).match(/^data:(image\\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!match) return false;
+    try {
+      this.session.sendRealtimeInput({
+        video: { data: match[2], mimeType: match[1] },
+      });
+      return true;
+    } catch (error) {
+      console.warn('[Jess] Could not send screen frame:', error);
+      return false;
+    }
+  }
+
   public toggleMute(): boolean {
     this.isMuted = !this.isMuted;
     this.callbacks.onJessStateChange(this.isMuted ? 'muted' : 'listening');
