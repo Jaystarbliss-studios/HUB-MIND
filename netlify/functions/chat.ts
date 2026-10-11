@@ -64,7 +64,7 @@ function latestUserMessage(messages: any): string {
 export function shouldGroundWithSearch(prompt: string): boolean {
   const value = prompt.trim();
   if (!value) return false;
-  return /\\b(latest|current|currently|today|tonight|this week|this month|this year|right now|up[- ]to[- ]date|recent|newest|as of \\d{4}|look up|look online|search (?:the )?(?:web|internet|website|site)|browse|open (?:this )?(?:website|webpage|url|link)|read (?:this )?(?:website|webpage|page|url|link)|visit (?:this )?(?:website|site|page)|google search|research|fact[- ]?check|verify (?:this|that|whether|if)|check (?:the )?(?:latest|current|official)|source(?:s)? for|cite (?:your )?sources?|references?|live (?:data|information|updates?)|release notes?|version (?:number|history)|price today|exam (?:syllabus|registration|date|deadline)|admission requirements|competition dates?)\\b/i.test(value) || /https?:\\/\\//i.test(value);
+  return /\b(latest|current|currently|today|tonight|this week|this month|this year|right now|up[- ]to[- ]date|recent|newest|as of \d{4}|look up|look online|search (?:the )?(?:web|internet|website|site)|browse|open (?:this )?(?:website|webpage|url|link)|read (?:this )?(?:website|webpage|page|url|link)|visit (?:this )?(?:website|site|page)|google search|research|fact[- ]?check|verify (?:this|that|whether|if)|check (?:the )?(?:latest|current|official)|source(?:s)? for|cite (?:your )?sources?|references?|live (?:data|information|updates?)|release notes?|version (?:number|history)|price today|exam (?:syllabus|registration|date|deadline)|admission requirements|competition dates?)\b/i.test(value) || /https?:\/\//i.test(value);
 }
 
 function sourceList(chunks: any[] = []) {
@@ -109,6 +109,8 @@ export default async (req: Request) => {
     const explicitSearch = body.useSearch === true || body.searchGrounding === true;
     const autoSearch = body.autoSearch !== false && shouldGroundWithSearch(latestPrompt);
     const useSearch = explicitSearch || autoSearch;
+    const hasUrl = /https?:\/\//i.test(latestPrompt);
+    const useUrlContext = body.useUrlContext === true || hasUrl;
     const useMaps = body.useMaps === true || body.mapsGrounding === true;
     const tools: any[] = [...functionTools];
     if (useSearch) tools.push({ googleSearch: {} });
@@ -118,11 +120,7 @@ export default async (req: Request) => {
     const clientSystem = typeof body.systemInstruction === 'string'
       ? body.systemInstruction
       : body.systemInstruction?.parts?.[0]?.text || '';
-    const system = [JESS_CORE_IDENTITY, clientSystem].filter(Boolean).join('\\n\\n');
-
-    const hasUrl = /https?:\\/\\//i.test(latestPrompt);
-    const useUrlContext = body.useUrlContext === true || hasUrl;
-
+    const system = [JESS_CORE_IDENTITY, clientSystem].filter(Boolean).join('\n\n');
 
     let lastError: any = null;
     const attemptedModels: string[] = [];
