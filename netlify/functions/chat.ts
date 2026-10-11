@@ -64,7 +64,7 @@ function latestUserMessage(messages: any): string {
 export function shouldGroundWithSearch(prompt: string): boolean {
   const value = prompt.trim();
   if (!value) return false;
-  return /\b(latest|current|currently|today|tonight|this week|this month|this year|right now|up[- ]to[- ]date|recent|newest|as of \d{4}|look up|search (?:the )?web|google search|research|fact[- ]?check|verify (?:this|that|whether|if)|check (?:the )?(?:latest|current|official)|source(?:s)? for|cite (?:your )?sources?|references?|live (?:data|information|updates?)|release notes?|version (?:number|history)|price today|exam (?:syllabus|registration|date|deadline)|admission requirements|competition dates?)\b/i.test(value);
+  return /\\b(latest|current|currently|today|tonight|this week|this month|this year|right now|up[- ]to[- ]date|recent|newest|as of \\d{4}|look up|look online|search (?:the )?(?:web|internet|website|site)|browse|open (?:this )?(?:website|webpage|url|link)|read (?:this )?(?:website|webpage|page|url|link)|visit (?:this )?(?:website|site|page)|google search|research|fact[- ]?check|verify (?:this|that|whether|if)|check (?:the )?(?:latest|current|official)|source(?:s)? for|cite (?:your )?sources?|references?|live (?:data|information|updates?)|release notes?|version (?:number|history)|price today|exam (?:syllabus|registration|date|deadline)|admission requirements|competition dates?)\\b/i.test(value) || /https?:\\/\\//i.test(value);
 }
 
 function sourceList(chunks: any[] = []) {
