@@ -32,8 +32,8 @@ test('desktop and installed app start at sign-in, while the orb remains icon-onl
   ]);
   assert.match(main, /function createMainWindow\(initialPath = '\/login'\)/);
   assert.match(main, /APP_URL \+ '\/companion'/);
-  assert.match(orb, /src="\/icon\.png"/);
-  assert.match(orb, /jess-orb-close/);
+  assert.match(orb, /JessOrbVisualizer/);
+  assert.match(orb, /jess-orb-controls/);
   assert.match(orb, /hideCompanion/);
   assert.match(orb, /moveCompanionBy/);
   assert.match(css, /is-transcript-visible \.jess-transcript\{display:flex\}/);
