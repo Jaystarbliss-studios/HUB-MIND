@@ -366,7 +366,8 @@ export class LiveAudioClient {
         return;
       }
 
-      const nativeToolNames = JESS_TOOLS_DECLARATIONS.filter(tool => /^(jess_full_control|jess_stop|list_windows|manage_windows|control_mouse|type_windows_text|press_windows_keys|take_windows_screenshot|read_windows_screen|launch_windows_application|run_windows_command_native|get_windows_time|get_windows_system_info)$/.test(tool.name)).map(tool => tool.name);
+      const nativeToolNames = JESS_TOOLS_DECLARATIONS.filter(tool => /^(jess_full_control|jess_stop|list_windows|manage_windows|control_mouse|drag_windows_mouse|type_windows_text|press_windows_keys|take_windows_screenshot|read_windows_screen|launch_windows_application|open_local_windows_path|run_windows_command_native|get_windows_time|get_windows_system_info)$/.test(tool.name)).map(tool => tool.name);
+      const availableTools = JESS_TOOLS_DECLARATIONS.filter(tool => !nativeToolNames.includes(tool.name) || (window as any).hubMindDesktop?.isDesktopApp === true);
       const systemInstruction = [
         'NATIVE WINDOWS HONESTY PROTOCOL: Your available tool registry is provided here: ' + nativeToolNames.join(', ') + '. Use only tools actually listed and successfully returned. Do not claim a Windows action succeeded unless the tool result has ok=true and verified=true. For mouse clicks, typing and keyboard injection, explain that input was sent but the effect could not be independently verified unless a follow-up read/screenshot confirms it.',
         'FULL CONTROL SESSION: Do not start a session unless the user explicitly says “Jess, full control” or equivalent clear permission. When the user says “Jess, stop”, call jess_stop immediately. Native desktop actions require the active session and are written to a local audit log. Never pretend you can cross the Windows secure desktop, bypass Windows Hello/password dialogs, or automate DRM-protected content.',
@@ -479,7 +480,7 @@ export class LiveAudioClient {
               sessionResumption: { handle: resumeHandle || undefined },
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
               systemInstruction: { parts: [{ text: systemInstruction }] },
-              tools: [{ functionDeclarations: JESS_TOOLS_DECLARATIONS as any }],
+              tools: [{ functionDeclarations: availableTools as any }],
             } as any,
             callbacks: {
               onopen: () => {
