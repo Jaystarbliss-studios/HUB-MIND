@@ -43,3 +43,18 @@ test('Chrome actions are gated by the signed-in Full Control Session and close r
   assert.match(worker, /A specific tabId is required to close a tab/);
   assert.match(worker, /chrome\.tabs\.query\(\{\}\)/);
 });
+
+test('offline Windows wake listener requires consent and uses local System.Speech', async () => {
+  const [wake, main, preload, assistant] = await Promise.all([
+    read('native/JessOfflineWake/Program.cs'),
+    read('electron/main.cjs'),
+    read('electron/preload.cjs'),
+    read('src/components/JessFloatingAssistant.tsx'),
+  ]);
+  assert.match(wake, /System\.Speech\.Recognition/);
+  assert.match(wake, /Windows System\.Speech offline recognizer/);
+  assert.match(main, /Enable local Jess wake-word detection/);
+  assert.match(main, /offlineWakeConsentGranted = choice\.response === 1/);
+  assert.match(preload, /onOfflineWake/);
+  assert.match(assistant, /startOfflineWake/);
+});
