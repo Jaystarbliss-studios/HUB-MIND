@@ -35,8 +35,8 @@ function Get-Windows {
  $cb=[JessWin32+EnumWindowsProc]{param([IntPtr]$h,[IntPtr]$lp)
   if(-not [JessWin32]::IsWindowVisible($h)){return $true}
   $sb=New-Object System.Text.StringBuilder 1024;[void][JessWin32]::GetWindowText($h,$sb,$sb.Capacity);$title=$sb.ToString().Trim();if(!$title){return $true}
-  $pid=[uint32]0;[void][JessWin32]::GetWindowThreadProcessId($h,[ref]$pid);$r=New-Object JessWin32+RECT;[void][JessWin32]::GetWindowRect($h,[ref]$r);$proc='';try{$proc=(Get-Process -Id $pid -ErrorAction Stop).ProcessName}catch{}
-  $items.Add([pscustomobject]@{handle=$h.ToInt64();title=$title;process=$proc;pid=$pid;bounds=@{x=$r.Left;y=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top};state=$(if([JessWin32]::IsIconic($h)){'minimized'}elseif([JessWin32]::IsZoomed($h)){'maximized'}else{'normal'});foreground=($h -eq [JessWin32]::GetForegroundWindow())});return $true
+  $processId=[uint32]0;[void][JessWin32]::GetWindowThreadProcessId($h,[ref]$processId);$r=New-Object JessWin32+RECT;[void][JessWin32]::GetWindowRect($h,[ref]$r);$proc='';try{$proc=(Get-Process -Id $processId -ErrorAction Stop).ProcessName}catch{}
+  $items.Add([pscustomobject]@{handle=$h.ToInt64();title=$title;process=$proc;pid=$processId;bounds=@{x=$r.Left;y=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top};state=$(if([JessWin32]::IsIconic($h)){'minimized'}elseif([JessWin32]::IsZoomed($h)){'maximized'}else{'normal'});foreground=($h -eq [JessWin32]::GetForegroundWindow())});return $true
  }
  [void][JessWin32]::EnumWindows($cb,[IntPtr]::Zero);return @($items)
 }
@@ -44,7 +44,7 @@ function Find-Window($a){$ws=Get-Windows;if($a.handle){$w=$ws|Where-Object{[stri
 function Send-Key($key){
  $map=@{ENTER=13;ESC=27;TAB=9;SPACE=32;BACKSPACE=8;DELETE=46;UP=38;DOWN=40;LEFT=37;RIGHT=39;HOME=36;END=35;CTRL=17;ALT=18;SHIFT=16;WIN=91;F1=112;F2=113;F3=114;F4=115;F5=116;F6=117;F7=118;F8=119;F9=120;F10=121;F11=122;F12=123}
  $list=New-Object System.Collections.Generic.List[JessWin32+INPUT];foreach($p in $key.ToUpperInvariant().Split('+')){$v=$map[$p];if(!$v -and $p.Length -eq 1){$v=[int][char]$p};if(!$v){throw ('Unsupported key '+$p)};$i=New-Object JessWin32+INPUT;$i.type=1;$i.U.ki.vk=[uint16]$v;$list.Add($i)}
- for($n=$list.Count-1;$n -ge 0;$n--){$i=$list[$n];$i.U.ki.flags=[JessWin32]::KEYUP;$list.Add($i)};$arr=$list.ToArray();[void][JessWin32]::SendInput([uint32]$arr.Length,$arr,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]))
+ $keyDowns=$list.ToArray();for($n=$keyDowns.Length-1;$n -ge 0;$n--){$i=$keyDowns[$n];$i.U.ki.flags=[JessWin32]::KEYUP;$list.Add($i)};$arr=$list.ToArray();[void][JessWin32]::SendInput([uint32]$arr.Length,$arr,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]))
 }
 function Invoke-Action($q){
  $a=$q.args
