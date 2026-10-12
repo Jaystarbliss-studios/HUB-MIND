@@ -53,6 +53,7 @@ export function CompanionPage() {
     drag.current = null;
     if (owner && owner.leaseUntil > Date.now()) {
       if (owner.client === 'windows-desktop') void window.hubMindDesktop?.showMain();
+      else setRequestError(`Jess is already active in ${owner.client === 'installed-web-app' ? 'the installed Chrome app' : 'another Hub-Mind window'}. Stop that session before switching here.`);
       return;
     }
     if (!profile?.id) { setRequestError('Sign in to activate Jess.'); return; }
