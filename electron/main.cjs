@@ -104,8 +104,14 @@ function getDialogParent() {
 }
 
 function showMain() {
-  if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
-  else { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); mainWindow.show(); mainWindow.focus(); }
+  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
 }
 
 function auditNativeAction(entry) {
