@@ -29,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Ensure Rollup Windows native binary is installed
-        run: npm install --no-save --include=optional @rollup/rollup-win32-x64-msvc@4.62.4
+        run: npm install --no-save --include=optional @rollup/rollup-win32-x64-msvc@4.62.4 lightningcss-win32-x64-msvc@1.32.0 @tailwindcss/oxide-win32-x64-msvc@4.3.3
       - name: Verify assistant integration
         run: npm run verify:jess
       - name: TypeScript validation
