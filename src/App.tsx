@@ -1,5 +1,5 @@
 import React, { Component, Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { LoadingProvider } from './lib/loadingContext';
 import { Layout } from './components/Layout';
@@ -85,6 +85,9 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
 
 function AuthenticatedAssistantWidgets() {
   const { user, profile } = useAuth();
+  const location = useLocation();
+  // Keep the desktop companion window icon-only: do not mount the full workspace assistant UI there.
+  if (!location.pathname.startsWith('/workspace')) return null;
   if (!user || !profile || profile.status !== 'active') return null;
   return <><JessDocumentBridge /><JessFloatingAssistant /></>;
 }
