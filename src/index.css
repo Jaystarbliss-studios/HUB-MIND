@@ -589,3 +589,8 @@ body, #root { background-color: #020617; color: #e2e8f0; }
 html:root { color-scheme: dark !important; background: #020617 !important; }
 body:not(:has(.hm-public)):not(:has(.jess-orb-window)), body:not(:has(.hm-public)):not(:has(.jess-orb-window)) #root { background-color: #020617 !important; color: #e2e8f0 !important; }
 body:not(:has(.hm-public)) #root > .min-h-screen, body:not(:has(.hm-public)) #root > .h-screen { background-color: #020617; }
+
+
+/* Hub-Mind desktop workspace is permanently dark, independent of Windows theme settings. */
+:root { color-scheme: dark !important; }
+html:not(:has(.jess-orb-window)), body:not(:has(.jess-orb-window)), #root:not(:has(.jess-orb-window)) { background-color:#020617 !important; color-scheme:dark !important; }
