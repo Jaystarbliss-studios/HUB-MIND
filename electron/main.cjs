@@ -119,7 +119,7 @@ function createCompanionWindow() {
     try { fs.writeFileSync(orbPositionPath(), JSON.stringify({ x: companionWindow.getBounds().x, y: companionWindow.getBounds().y }), 'utf8'); } catch {}
   });
   companionWindow.on('closed', () => { companionWindow = null; });
-  companionWindow.loadURL(APP_URL + '/orb');
+  companionWindow.loadURL(APP_URL + '/companion');
 }
 function orbPositionPath() { return path.join(app.getPath('userData'), 'jess-orb-position.json'); }
 function readOrbPosition() {
@@ -445,6 +445,23 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:show-workspace', async (event) => { assertTrustedSender(event); return await showWorkspaceVerified(); });
   ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(); positionCompanionBottomRightIfNeeded(); return true; });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionWindow?.hide(); return true; });
+  ipcMain.handle('hubmind:set-companion-transcript-visible', (event, visible) => {
+    assertTrustedSender(event);
+    if (!companionWindow || companionWindow.isDestroyed()) return false;
+    const showTranscript = visible === true;
+    const width = showTranscript ? 420 : 96;
+    const height = showTranscript ? 520 : 96;
+    const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay();
+    const area = display.workArea;
+    const [x, y] = companionWindow.getPosition();
+    companionWindow.setSize(width, height, false);
+    companionWindow.setPosition(
+      Math.max(area.x, Math.min(area.x + area.width - width, x + 96 - width)),
+      Math.max(area.y, Math.min(area.y + area.height - height, y)),
+      false
+    );
+    return true;
+  });
   ipcMain.handle('hubmind:reset-orb-position', (event) => { assertTrustedSender(event); resetOrbPosition(); return true; });
   ipcMain.handle('hubmind:set-companion-interactive', (event, interactive) => {
     assertTrustedSender(event);
