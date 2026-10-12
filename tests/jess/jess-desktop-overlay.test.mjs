@@ -16,13 +16,13 @@ test('native Jess orb hides with the workspace and returns after minimize or clo
 });
 
 test('desktop orb displays only the Jess icon with a working hide control', () => {
-  const orb = read('../../src/pages/JessOrbPage.tsx');
-  assert.ok(orb.includes('src="/hub-mind%20logo.png"'));
-  assert.ok(orb.includes('src = "/jess-orb.svg"'));
-  assert.ok(orb.includes('jess-orb-close'));
+  const orb = read('../../src/pages/CompanionPage.tsx');
+  assert.ok(orb.includes('src="/icon.svg"'));
+  assert.ok(orb.includes("event.currentTarget.src = '/jess-orb.svg'"));
+  assert.ok(orb.includes('jess-orb-controls'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
-  assert.doesNotMatch(orb, /transcript|textarea|microphone controls/i);
+  assert.match(orb, /is-transcript-visible/);
 });
 
 test('voice turns are mirrored into the cross-window desktop transcript cache', () => {
