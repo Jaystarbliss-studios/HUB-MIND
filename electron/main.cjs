@@ -268,6 +268,7 @@ function createTray() {
     { label: 'Show Jess companion', click: () => { createCompanionWindow(); positionCompanionBottomRight(); } },
     { label: 'Reset Jess orb to bottom-right', click: () => { createCompanionWindow(); positionCompanionBottomRight(); } },
     { label: 'Stop Jess (end Full Control Session)', click: () => stopFullControl('tray-stop') },
+    { label: 'Start Hub-Mind at Windows sign-in (this user)', type: 'checkbox', checked: !!app.getLoginItemSettings().openAtLogin, click: item => { try { app.setLoginItemSettings({ openAtLogin: item.checked }); item.checked = !!app.getLoginItemSettings().openAtLogin; } catch (error) { item.checked = !!app.getLoginItemSettings().openAtLogin; console.error('[Hub-Mind] Could not update per-user startup setting:', error); } } },
     { type: 'separator' },
     { label: 'Quit Hub-Mind', click: () => { quitting = true; app.quit(); } },
   ]));
