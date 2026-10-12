@@ -1,69 +1,66 @@
-# Jess Windows desktop capability gap report
+# Jess Windows Desktop Agent — Gap Report
 
-Audit basis: repository sources reviewed for the native Windows work in this branch. This report separates code present from behavior that still needs a real Windows smoke test.
+Audit date: 2026-10-12. This is a repository audit, not proof that the packaged Windows executable was run.
+
+## Verified architecture
+
+- `electron/main.cjs` creates the Electron workspace and companion window, sets `backgroundThrottling: false`, maintains Full Control Session state, appends action/session events to `jess-native-audit.jsonl`, and exposes an allowlisted native-action IPC handler.
+- `electron/preload.cjs` exposes a limited `hubMindDesktop` bridge through context-isolated IPC.
+- `electron/agentBridge.cjs` starts `electron/jess-agent.ps1` on Windows and exchanges newline-delimited JSON over stdio with per-call timeouts.
+- `electron/jess-agent.ps1` contains Win32 interop and UI Automation support. This is a PowerShell sidecar, not the requested .NET 8 self-contained helper.
+- `src/lib/jessTools.ts` declares native window, mouse, screenshot, UI Automation, text, keyboard, app-launch, path and command tools. Its main native wrapper previously considered `ok: true` sufficient for success; this branch now requires both `ok: true` and `verified: true`.
+- `src/pages/CompanionPage.tsx` uses the orb-only `/jess-orb.svg` asset and supports dragging the companion.
+- `src/services/jessWakeListener.ts` uses browser `SpeechRecognition`/`webkitSpeechRecognition`. That does not establish that always-on wake detection works in packaged Electron.
+- `electron-builder.yml` configures an NSIS installer with `perMachine: false`; it does not configure the requested signed installer or elevated scheduled-task setup.
+- `server.ts` provisions a Gemini Live token; `src/services/liveAudioClient.ts` uses browser/Web Audio APIs. A native wake-word engine is not implemented in those files.
 
 ## Feature audit
 
-| Requested feature | Existing / changed implementation | Status and limits |
+| Requested feature | Current repository evidence | Status |
 |---|---|---|
-| Launch installed Windows apps | `electron/jess-agent.ps1` `launch_app`; Start Menu AppID and PATH lookup | Implemented as a first pass; exact app resolution/window matching must be smoke-tested. |
-| Enumerate windows, foreground focus | `electron/jess-agent.ps1` `Get-Windows`, `focus_window` | Implemented for visible titled top-level windows; hidden/untitled windows are omitted. |
-| Close/minimize/maximize/restore | `electron/jess-agent.ps1` window action switch | Implemented with Win32 messages/show states; each action must be tested against real applications. |
-| Move/resize/snap windows | `electron/jess-agent.ps1` `MoveWindow` and snap positions | Basic positions supported. Snap currently targets the primary monitor only; exact bounds and monitor selection are not complete. |
-| Mouse move/click/double/right-click/scroll/drag | `electron/jess-agent.ps1` Win32 cursor and mouse events | Input injection exists. A sent click/drag is deliberately not reported as verified application success without follow-up evidence. |
-| Type text / press key combinations | `electron/jess-agent.ps1` Unicode SendInput and `Send-Key` | Basic Unicode typing and named/letter combinations exist; unusual layouts, dead keys, held keys and target-field verification need testing. |
-| Read text from screen | `electron/jess-agent.ps1` UI Automation tree traversal | UIA names are available when apps expose accessible text. OCR fallback is not implemented, so canvas/remote/unsupported controls may return little or no text. |
-| Screenshot / click coordinates | `electron/jess-agent.ps1` GDI capture per monitor | Returns each monitor's physical bounds and image data, so offsets are preserved. DPI scaling and coordinate mapping need Windows/multi-monitor tests; screenshots are not yet passed to Gemini as image parts automatically. |
-| Find/invoke UI elements | `find_ui_element`, `invoke_ui_element` in the native helper | UIA find/invoke first pass exists; invoke results remain unverified until a follow-up screen read/screenshot confirms the outcome. |
-| Run system commands | `run_command` in the native helper | Bounded PowerShell runs as the current user. It is **not administrator by default**; common destructive commands are blocked. No elevation/scheduled-task bypass has been added. |
-| Local time / system info | `get_time`, `system_info` | Implemented; Windows runtime still needs testing. |
-| Jess capability honesty | `src/services/liveAudioClient.ts` system instructions and desktop-only tool filtering | Tool descriptions and results now distinguish injected input from verified outcomes. A runtime smoke test must confirm the model follows this reliably. |
-| Full Control Session | `electron/main.cjs`, `electron/preload.cjs`, `src/lib/jessTools.ts` | Session is opt-in, auditable, and stoppable by voice/tool, tray, app exit, or Ctrl+Alt+Shift+J. The indicator is a small colored dot on the orb. |
-| Audit log | Electron main writes `jess-native-audit.jsonl` under the app user-data directory | Append-only JSONL entries are implemented; disk-full/permission failures are logged to console, not surfaced as a dedicated alert. |
-| Strict origin protection | `electron/main.cjs` `assertTrustedSender` | Validates the hosted Hub-Mind origin. Per-call verification of the signed-in Firebase UID is **not yet implemented**; this remains a hardening gap before granting admin-level capabilities. |
-| Voice session while hidden/minimized | `electron/main.cjs` sets `backgroundThrottling: false` for the voice windows | Mitigates Chromium background throttling; does not prove microphone/session survival across Windows sleep, device changes, or network interruption. |
-| Jess orb | `public/jess-orb.svg`, `src/pages/CompanionPage.tsx`, `src/pages/companion.css` | Dedicated orb asset; workspace is not rendered in the companion window. Close/open controls appear on hover; window is focusable and draggable. |
-| Dark workspace theme | `src/index.css` | Root dark color scheme and dark body/root backgrounds are explicit. Keep workspace palette unchanged; public-home styles are scoped under `.hm-public`. |
-| Screen sharing | `src/components/JessFloatingAssistant.tsx`, `electron/main.cjs` display-media handler and permission handler | Desktop bridge detection is present and the chooser is explicit. Actual capture in the packaged installer is not verified here; use the checklist below. |
-| Chrome in the real logged-in profile | Current main process + browser renderer | **Not implemented** as an extension/native-messaging connection. Do not claim tab/DOM control of the real Chrome profile. |
-| OCR fallback | Native helper | **Not implemented**. |
-| Native “Hey Jess” wake word | `src/services/jessWakeListener.ts` | Still uses browser Web Speech recognition. No offline native wake-word engine is included; continuous wake detection in Electron is unverified. |
-| Elevated commands / no UAC at normal launch | `electron-builder.yml` and native helper | **Not implemented**. No highest-privilege scheduled task is silently registered. This is intentionally not enabled before per-UID IPC authorization and isolated privileged-sidecar hardening. |
-| Signed installer / SmartScreen | `.github/workflows/windows-release.yml`, `electron-builder.yml` | Windows installer build/release automation exists; signing certificate/publisher and SmartScreen reputation are not configured. |
-| Installer contains sidecar | `electron-builder.yml` includes `electron/**` | The PowerShell helper is included by the file glob. It is not a .NET 8 self-contained signed executable yet. |
+| Window enumeration/focus/close/minimize/maximize/restore/move/resize/snap | Native declarations, IPC allowlist and PowerShell sidecar | Partially implemented; real postconditions need Windows tests |
+| Mouse move/click/double/right-click/scroll/drag | Native declarations and sidecar | Partially implemented; input delivery is not proof of target effect |
+| Type text / arbitrary key combinations | Sidecar and native declarations | Partially implemented; focus and postcondition checks need testing |
+| Screenshot and screen text | Sidecar screenshot/UIA support and tool declarations | Partially implemented; DPI/multi-monitor mapping needs validation |
+| UI Automation find/invoke | Sidecar and tool declarations | Partially implemented; app-specific reliability unknown |
+| Installed app resolution/launch | Native launch tool claims Start Menu/PATH resolution | Needs Windows acceptance tests |
+| Run arbitrary commands as administrator | Legacy command path explicitly runs with current-user permissions; native runner is not proven elevated | Missing for requested admin behavior |
+| Real Chrome tab/DOM control | No Chrome extension/native-messaging implementation in inspected paths | Missing |
+| “Show me X” brings workspace forward and verifies visible target | `showMain()` creates/shows/focuses the main window; no complete `show_in_app` tool found in inspected registry | Partial; route and visible-target confirmation remain |
+| Honest verified results | Native sidecar returns `ok`, `verified`, `evidence`; renderer wrapper previously checked only `ok` | Primary native wrapper fixed on this branch; audit legacy wrappers next |
+| Full Control Session and audit log | Main-process session state and JSONL log exist | Partial; signed-in identity is passed from renderer and needs stronger binding |
+| Emergency stop hotkey | Advertised in tool copy but not registered in main | Registration added on this branch; runtime test required |
+| Tray stop and orb reset | Previously absent | Added on this branch |
+| Orb position | Previously inferred display from existing companion bounds | Changed to primary display work area on this branch |
+| Single orb in desktop shell | In-app orb hidden when `isDesktopShell` | Present in inspected component; package behavior untested |
+| Native offline wake word | Browser SpeechRecognition only | Missing |
+| Elevated installer/autostart/scheduled task/signing | Current builder config is per-user NSIS | Missing |
+| Chrome native messaging and extension install | No implementation found in inspected paths | Missing |
+| Release workflow producing downloadable installer | Package script targets Windows NSIS; workflow was not fully verified in this audit | Not verified |
+| UAC secure desktop/password prompts/DRM | Platform restrictions | Cannot promise automation or capture |
 
-## Files audited
+## Changes in this branch
 
-- `electron/main.cjs`: Electron window lifecycle, display capture chooser/permissions, tray, IPC trust boundary, session/audit controls, global kill hotkey, background throttling.
-- `electron/preload.cjs`: narrow `contextBridge` APIs for native actions.
-- `electron/agentBridge.cjs`: persistent PowerShell child process and JSON-lines RPC.
-- `electron/jess-agent.ps1`: Win32 windows/input/screenshot, UI Automation, app launching, command execution.
-- `electron-builder.yml`: NSIS packaging configuration; per-machine install, elevation, code signing and scheduled task remain incomplete.
-- `src/lib/jessTools.ts`: native tool declarations and dispatch; legacy dialog-gated native actions are no longer offered in the tool registry.
-- `src/services/liveAudioClient.ts`: live tool declaration list filtered for desktop, dynamic capability honesty instructions, Jess identity and web research guidance.
-- `src/services/jessWakeListener.ts`: browser SpeechRecognition fallback; no native wake-word engine.
-- `src/components/JessFloatingAssistant.tsx`: desktop detection and screen-sharing capture flow; screen stream still samples down to 960x540 for model frames.
-- `src/pages/CompanionPage.tsx`, `src/pages/companion.css`, `public/jess-orb.svg`: dedicated icon-only overlay, drag and hover controls.
-- `public/icon.svg`: workspace/application icon, no longer used as the orb artwork.
-- `.github/workflows/windows-release.yml`: Windows installer workflow, PowerShell syntax parse, typecheck, tests, build and release artifact.
-- `server.ts`: server-side live token/search integration; not a Windows native automation layer.
-- `docs/windows-desktop-native-agent.md`: operational notes and explicit limits.
+1. Native tool execution reports success only when both `ok` and `verified` are true; evidence and error fields remain available to Jess.
+2. Registers Ctrl+Alt+Shift+J as a global emergency stop; logs a warning if Electron cannot register it.
+3. Adds tray actions to stop the Full Control Session and reset/show the orb at the primary display's bottom-right work-area corner.
+4. Uses the primary display's work area for orb placement instead of inferring the display from stale companion bounds.
 
-## Acceptance test checklist (packaged Windows build)
+## Windows smoke tests (not yet run)
 
-1. Install the new installer, sign in, minimize the workspace. Confirm only the orb remains at the bottom-right. Drag it to another visible location, click the orb to reopen the workspace, then close the workspace again and verify the orb returns.
-2. Hover the orb, click X, verify it hides. Use the tray to show it again.
-3. Say “Jess, full control”. Verify the small active indicator appears. Say “Jess, stop”; verify it disappears. Repeat with Ctrl+Alt+Shift+J and the tray stop action.
-4. Say “list my windows”; verify titles, process names, bounds and foreground status are returned.
-5. Say “open Notepad and snap it to the left half”. Verify the new window appears and its bounds change; Jess must report failure if it cannot verify the target.
-6. Test minimize, maximize, restore, move, resize and close on Notepad. Test clicking, scrolling, dragging, typing and Ctrl+S in a disposable text document; confirm the actual UI result.
-7. Say “read what is on my screen” and “find the Save button”. Confirm accessible text is read; note that OCR fallback is not yet available.
-8. Say “take a screenshot”. Check each monitor's reported bounds against Windows Display Settings; verify a click at a known coordinate maps to the intended physical location. Repeat with mixed-DPI and multiple monitors.
-9. Say “open Chrome, navigate to example.com, scroll and close the tab”. The native helper in this build does not provide real Chrome tab APIs, so Jess must not claim the whole browser workflow succeeded; this test documents the remaining extension integration.
-10. Say “run ipconfig and read the IP”. Confirm output and exit status are returned; confirm the command is not elevated and does not claim administrator execution.
-11. Use the web app/PWA and compare with the Windows app: workspace backgrounds must remain dark; only the public homepage may use its own scoped styling.
-12. Start screen sharing from the installed desktop app. Confirm the chooser lists screens/windows, select one, verify frames arrive, stop sharing, then repeat after minimizing/restoring the workspace.
+- Launch the packaged app; confirm only one orb is visible and it starts at the primary display's bottom-right corner.
+- Minimize Hub-Mind; confirm the orb remains. Restore Hub-Mind; confirm the orb hides.
+- Start Full Control Session by voice; confirm the visible indicator and audit-log start entry.
+- Press Ctrl+Alt+Shift+J; confirm native control stops immediately and the audit log records the stop.
+- Use tray → Stop Jess; confirm the same behavior.
+- Drag the orb, then use tray → Reset Jess orb to bottom-right; confirm its position.
+- Ask Jess to list windows, snap Notepad, read screen text, type into Notepad and capture a screenshot. Confirm she reports “done” only when the result contains `verified: true`.
+- Confirm `verified: false` is described as unverified/failure, not success.
 
-## Validation boundary
+## Remaining phases
 
-GitHub Actions can parse the PowerShell source, typecheck TypeScript, run repository tests, build the web bundle, and package an NSIS installer. It cannot prove the native input actions work correctly on your specific laptop. Before calling this complete, the Windows installer must be downloaded and exercised using the checklist above. This branch does not claim OCR, real Chrome control, native wake-word detection, elevated execution, or successful Windows runtime smoke tests.
+- **P1 (in progress):** dynamic capability manifest/system prompt; remove misleading DOM-only OS controls; add a `show_in_app` flow that focuses the workspace and verifies visibility; audit every legacy wrapper.
+- **P2:** harden sidecar postconditions, DPI/per-monitor coordinates, UIA/OCR and window enumeration; test actual Windows interactions.
+- **P3:** installer-time elevation and secure logon task; do not claim it is done until install/uninstall and privilege boundaries are tested.
+- **P4:** Chrome MV3 extension plus Native Messaging host; verify real-profile tabs and DOM operations.
+- **P5:** native offline wake word, robust session lifetime, startup behavior and packaging/signing.
