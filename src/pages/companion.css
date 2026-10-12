@@ -28,14 +28,21 @@ body:has(.jess-orb-window) #root>div{width:100%;height:100%;background:transpare
 .jess-transcript-message.user>div{color:#99f6e4}
 .jess-transcript-message p{font-size:12px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;color:#e2e8f0}
 
-/* Idle state is a compact orb; fresh speech expands the native window briefly for a readable transcript. */
-.jess-orb-window.is-transcript-visible{width:420px;height:520px;min-width:420px;min-height:520px;max-width:420px;max-height:520px}
+/* Desktop transcript mirrors the compact browser live-caption card, never a full workflow panel. */
+.jess-orb-window.is-transcript-visible{width:520px;height:150px;min-width:520px;min-height:150px;max-width:520px;max-height:150px}
+.jess-orb-window .jess-transcript{display:none;position:absolute;left:0;right:auto;top:8px;bottom:auto;width:450px;height:112px;max-height:112px;border-radius:17px;background:rgba(2,6,23,.97);border:1px solid rgba(45,212,191,.22);box-shadow:0 10px 32px rgba(0,0,0,.34)}
 .jess-orb-window.is-transcript-visible .jess-transcript{display:flex}
-.jess-orb-window:not(.is-transcript-visible) .jess-transcript{display:none}
+.jess-orb-window .jess-transcript-header{padding:9px 12px 6px;border-bottom:0}
+.jess-orb-window .jess-transcript-messages{padding:0 12px 10px;overflow:hidden}
+.jess-orb-window .jess-transcript-message{display:none;background:transparent;border:0;padding:0}
+.jess-orb-window .jess-transcript-message:last-child{display:block}
+.jess-orb-window .jess-transcript-message>div{display:none}
+.jess-orb-window .jess-transcript-message p{font-size:16px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.jess-orb-window .jess-transcript-message.user p{color:#e2e8f0}
 .jess-orb-window .jess-orb-controls button:first-child{display:none!important}
 .jess-orb-window .jess-orb-controls button:last-child{display:grid!important}
-
-.jess-orb-window.is-transcript-visible .jess-orb-drag{left:auto;right:4px;transform:none}
+.jess-orb-window.is-transcript-visible .jess-orb-drag{left:auto;right:3px;top:24px;transform:none}
+.jess-orb-window.is-transcript-visible .jess-orb-controls{top:2px;right:2px}
 
 .jess-orb-launch>div{width:100%;height:100%;border-radius:50%;overflow:hidden}
 .jess-orb-launch canvas{width:100%;height:100%;display:block}

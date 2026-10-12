@@ -34,10 +34,12 @@ body { background: #020617; color: #e2e8f0; }
 
 /* The workspace always keeps its original dark palette. Transparency belongs only to the companion document and is scoped in companion.css. */
 html, body, #root {
-  color-scheme: dark;
-  background-color: #020617;
+  color-scheme: dark !important;
+  background-color: #020617 !important;
   color: #e2e8f0;
 }
+html:not(:has(.jess-orb-window)), body:not(:has(.jess-orb-window)), #root:not(:has(.jess-orb-window)) { background-color: #020617 !important; color-scheme: dark !important; }
+#root > .flex.h-screen.bg-slate-950 { background-color: #020617 !important; }
 
 #root > .flex.h-screen.bg-slate-950 {
   background-color: #020617 !important;
