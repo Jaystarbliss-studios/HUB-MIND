@@ -9,6 +9,7 @@ const companionCss = fs.readFileSync(new URL('../../src/pages/companion.css', im
 const electron = fs.readFileSync(new URL('../../electron/main.cjs', import.meta.url), 'utf8');
 const preload = fs.readFileSync(new URL('../../electron/preload.cjs', import.meta.url), 'utf8');
 const companion = fs.readFileSync(new URL('../../src/pages/CompanionPage.tsx', import.meta.url), 'utf8');
+const orb = fs.readFileSync(new URL('../../src/pages/JessOrbPage.tsx', import.meta.url), 'utf8');
 const tools = fs.readFileSync(new URL('../../src/lib/jessTools.ts', import.meta.url), 'utf8');
 const live = fs.readFileSync(new URL('../../src/services/liveAudioClient.ts', import.meta.url), 'utf8');
 
@@ -32,17 +33,20 @@ test('transparent companion styles are scoped only to the companion route', () =
   assert.doesNotMatch(app, /import '\.\/pages\/companion\.css';/);
 });
 
-test('desktop companion remains visible above the workspace and is shown after minimization', () => {
+test('desktop shows only the movable Jess orb when the workspace is minimized or hidden', () => {
   assert.match(electron, /positionCompanionBottomRight/);
-  assert.match(electron, /mainWindow\.on\('show', keepCompanionVisible\)/);
-  assert.match(electron, /mainWindow\.on\('restore', keepCompanionVisible\)/);
-  assert.doesNotMatch(electron, /mainWindow\.on\('show'.*companionWindow\.hide/s);
-  assert.match(electron, /mainWindow\.on\('minimize'.*createCompanionWindow/s);
-  assert.match(electron, /focusable: true/);
+  assert.match(electron, /mainWindow\\.on\\('show'.*companionWindow\\.hide\\(\\)/s);
+  assert.match(electron, /mainWindow\\.on\\('restore'.*companionWindow\\.hide\\(\\)/s);
+  assert.match(electron, /mainWindow\\.on\\('minimize'.*createCompanionWindow/s);
+  assert.match(electron, /width: 96, height: 96/);
+  assert.match(electron, /APP_URL \\+ '\\/orb'/);
   assert.match(electron, /hubmind:hide-companion/);
   assert.match(electron, /hubmind:move-companion-by/);
-  assert.match(electron, /Math\.max\(area\.x/);
-  assert.match(companion, /jess-status-dot/);
+  assert.match(electron, /Math\\.max\\(area\\.x/);
+  assert.match(orb, /jess-orb\\.svg/);
+  assert.match(orb, /jess-orb-close/);
+  assert.match(orb, /hideCompanion/);
+  assert.doesNotMatch(orb, /transcript|textarea|microphone controls/i);
 });
 
 test('native Windows tools use a full-control session, narrow preload bridge and honesty protocol', () => {
