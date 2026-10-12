@@ -49,8 +49,9 @@ test('Jess has practical web search and screen-verification tools', async () => 
   ]);
   assert.match(tools, /name: 'search_web'/);
   assert.match(tools, /name: 'take_windows_screenshot'/);
-  assert.match(tools, /WEB RESEARCH/);
+  assert.match(tools, /Search the public web for current information/);
   assert.match(main, /hubmind:native-action/);
   assert.match(main, /verified/);
   assert.match(live, /WEB RESEARCH/);
+  assert.match(live, /SCREEN-SHARE ACTION VERIFICATION/);
 });
