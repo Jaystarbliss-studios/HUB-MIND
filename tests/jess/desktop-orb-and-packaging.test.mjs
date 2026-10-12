@@ -14,13 +14,13 @@ test('packaged Windows app unpacks and resolves the Jess PowerShell sidecar', ()
 
 test('desktop orb is a compact draggable icon-only surface', () => {
   const main = read('../../electron/main.cjs');
-  const orb = read('../../src/pages/JessOrbPage.tsx');
+  const orb = read('../../src/pages/CompanionPage.tsx');
   assert.match(main, /width: 96, height: 96/);
   assert.match(main, /APP_URL \+ '\/orb'/);
   assert.match(main, /mainWindow\.on\('show', \(\) => \{ if \(companionWindow/);
   assert.match(orb, /jess-orb\.svg/);
   assert.match(orb, /moveCompanionBy/);
-  assert.doesNotMatch(orb, /transcript|textarea|microphone controls/i);
+  assert.match(orb, /is-transcript-visible/);
 });
 
 test('screen sharing uses Electron capture plumbing without a custom app modal', () => {
