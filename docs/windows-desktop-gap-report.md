@@ -27,7 +27,7 @@ Audit date: 2026-10-12. Repository implementation and CI configuration are inspe
 | Native offline wake word | Consent-gated .NET 8 helper using Windows System.Speech; falls back to browser recognition outside the desktop shell | Verify recognizer availability, microphone access, false wakes, latency and cleanup on Windows |
 | Installer and extension packaging | Windows workflow now builds the three self-contained .NET helpers and packages extension/installer scripts | Latest CI must pass and artifacts must be downloaded/installed |
 | Elevated administrator actions / scheduled task | Not implemented. Native control remains at the current user's permissions | Needs a separately hardened privilege boundary, explicit UAC consent, secure install/uninstall and threat review |
-| Installer code signing | Not configured with a certificate | Requires a real code-signing certificate and protected CI secrets |
+| Installer code signing | Workflow supports optional signing through protected `WINDOWS_CERTIFICATE_BASE64` and `WINDOWS_CERTIFICATE_PASSWORD` secrets | Output remains unsigned until the certificate secrets are configured; signed output must be verified |
 | OCR fallback | Implemented with Windows.Media.Ocr when UI Automation exposes no text | Must compile, have an installed OCR language, and be tested on real screenshots before relying on it |
 | Secure desktop, password prompts, DRM and protected browser pages | Restricted by platform and application security | Must remain unsupported; never bypass OS protections |
 
