@@ -222,12 +222,15 @@ export function JessFloatingAssistant() {
       await share.video.play();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      canvas.width = 960;
-      canvas.height = 540;
       const sendFrame = () => {
         if (!share.video || !ctx || share.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+        const sourceWidth = share.video.videoWidth || 1280;
+        const sourceHeight = share.video.videoHeight || 720;
+        const scale = Math.min(1, 1280 / sourceWidth, 1280 / sourceHeight);
+        canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+        canvas.height = Math.max(1, Math.round(sourceHeight * scale));
         ctx.drawImage(share.video, 0, 0, canvas.width, canvas.height);
-        clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.62));
+        clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.72));
       };
       sendFrame();
       share.timer = window.setInterval(sendFrame, 1200);
