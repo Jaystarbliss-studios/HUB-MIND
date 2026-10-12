@@ -566,3 +566,11 @@ input, textarea, select, [contenteditable] {
   -webkit-user-select: auto;
   user-select: auto;
 }
+
+
+/* Product-level invariant: the Hub-Mind workspace is always dark. Paper-white document canvases remain explicitly scoped to the editor. */
+html:root { color-scheme: dark !important; background: #020617 !important; }
+body:not(:has(.hm-public)):not(:has(.jess-orb-window)), body:not(:has(.hm-public)):not(:has(.jess-orb-window)) #root {
+  background-color: #020617 !important;
+  color: #e2e8f0;
+}
