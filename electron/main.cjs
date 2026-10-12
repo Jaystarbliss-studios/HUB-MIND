@@ -322,6 +322,10 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       callback(selected ? { video: selected } : {});
     } catch { callback({}); }
   }, { useSystemPicker: true });
+  const stopHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+J', () => {
+    if (fullControlActive) stopFullControl('global-hotkey');
+  });
+  if (!stopHotkeyRegistered) console.warn('[Jess native control] Could not register Ctrl+Alt+Shift+J emergency stop hotkey.');
   createMainWindow();
   createTray();
   app.on('activate', showMain);
