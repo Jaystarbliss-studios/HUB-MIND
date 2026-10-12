@@ -12,7 +12,7 @@
   --color-slate-700: #334155;
   --color-slate-800: #1e293b;
   --color-slate-900: #0f172a;
-  --color-slate-950: #020617;
+  --color-slate-950: #020617; /* Hub-Mind's established dark workspace background */
   
   --color-accent: #14b8a6; /* Teal 500 */
   --color-accent-hover: #2dd4bf; /* Teal 400 */
@@ -31,6 +31,20 @@ html, body, #root {
 }
 body { background: #020617; color: #e2e8f0; }
 #root { isolation: isolate; }
+
+/* Keep the workspace palette stable even when the OS prefers light mode or a cached stylesheet is partially applied. The transparent companion window is intentionally excluded. */
+html:not(:has(.jess-orb-window)),
+body:not(:has(.jess-orb-window)),
+#root:not(:has(.jess-orb-window)) {
+  color-scheme: dark;
+  background-color: #020617 !important;
+  color: #e2e8f0;
+}
+
+#root > .flex.h-screen.bg-slate-950 {
+  background-color: #020617 !important;
+  color: #f1f5f9;
+}
 body {
   @apply bg-slate-950 text-slate-200 font-sans antialiased;
 }
