@@ -117,7 +117,9 @@ function auditNativeAction(entry) {
 function stopFullControl(reason = 'user-stop') {
   fullControlActive = false;
   controlSessionStartedAt = null;
-  auditNativeAction({ event: 'full-control-stopped', reason });
+  const previousUserId = controlSessionUserId;
+  controlSessionUserId = null;
+  auditNativeAction({ event: 'full-control-stopped', reason, userId: previousUserId });
   return { ok: true, active: false, reason };
 }
 function requireFullControl(method) {
@@ -144,17 +146,20 @@ app.whenReady().then(() => {
   app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
 
-  ipcMain.handle('hubmind:full-control-start', (event) => {
+  ipcMain.handle('hubmind:full-control-start', (event, userId) => {
     assertTrustedSender(event);
+    if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
     fullControlActive = true;
+    controlSessionUserId = userId;
     controlSessionStartedAt = new Date().toISOString();
-    auditNativeAction({ event: 'full-control-started', startedAt: controlSessionStartedAt });
-    return { ok: true, active: true, startedAt: controlSessionStartedAt, stopHotkey: 'Ctrl+Alt+Shift+J' };
+    auditNativeAction({ event: 'full-control-started', startedAt: controlSessionStartedAt, userId });
+    return { ok: true, active: true, startedAt: controlSessionStartedAt, userId, stopHotkey: 'Ctrl+Alt+Shift+J' };
   });
   ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
   ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
-  ipcMain.handle('hubmind:native-action', async (event, method, args) => {
+  ipcMain.handle('hubmind:native-action', async (event, method, args, userId) => {
     assertTrustedSender(event);
+    if (typeof userId !== 'string' || !userId.trim() || userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
     const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','get_time','system_info','open_path']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method);
@@ -177,10 +182,10 @@ app.whenReady().then(() => {
     const started = Date.now();
     try {
       const result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
-      auditNativeAction({ event: 'native-action-result', method, durationMs: Date.now()-started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
+      auditNativeAction({ event: 'native-action-result', method, userId, durationMs: Date.now()-started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
       return result;
     } catch (error) {
-      auditNativeAction({ event: 'native-action-error', method, durationMs: Date.now()-started, error: String(error?.message || error) });
+      auditNativeAction({ event: 'native-action-error', method, userId, durationMs: Date.now()-started, error: String(error?.message || error) });
       return { ok: false, verified: false, evidence: null, error: String(error?.message || error) };
     }
   });
