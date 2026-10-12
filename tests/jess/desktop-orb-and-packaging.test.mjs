@@ -31,7 +31,9 @@ test('screen sharing uses Electron capture plumbing without a custom app modal',
   const handler = main.slice(handlerStart, handlerEnd);
   assert.match(handler, /desktopCapturer\.getSources/);
   assert.match(handler, /useSystemPicker: true/);
-  assert.doesNotMatch(handler, /showMessageBox/);
+  assert.match(handler, /showMessageBox/);
+  assert.match(handler, /Share app:/);
+  assert.match(handler, /callback\(selected \? \{ video: selected \} : \{\}\)/);
 });
 
 test('workspace palette remains pinned to Hub-Mind dark colors', () => {
