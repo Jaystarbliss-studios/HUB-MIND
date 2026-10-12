@@ -143,8 +143,8 @@ function positionCompanionBottomRightIfNeeded() {
   if (x < area.x || y < area.y || x + width > area.x + area.width || y + height > area.y + area.height) positionCompanionBottomRight();
 }
 function resetOrbPosition() {
-  if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow(true);
-  positionCompanionBottomRight();
+  createCompanionWindow(true);
+  if (companionWindow && !companionWindow.isDestroyed()) { positionCompanionBottomRight(); companionWindow.showInactive(); }
 }
 function getDialogParent() {
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) return mainWindow;
