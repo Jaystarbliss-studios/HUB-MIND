@@ -571,6 +571,15 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
     const trustedOrigin = (() => { try { return new URL(APP_URL).origin; } catch { return ''; } })();
     callback(origin === trustedOrigin && ['media', 'display-capture', 'notifications', 'clipboard-read', 'clipboard-sanitized-write'].includes(permission));
   });
+  // Chromium may check capture permission before asking for it. Mirror the
+  // same trusted-origin policy so Electron behaves like the installed web app.
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    let trustedOrigin = '';
+    try { trustedOrigin = new URL(APP_URL).origin; } catch {}
+    const origin = (() => { try { return new URL(requestingOrigin).origin; } catch { return ''; } })();
+    const allowed = ['media', 'display-capture', 'notifications', 'clipboard-read', 'clipboard-sanitized-write'];
+    return !!webContents && origin === trustedOrigin && allowed.includes(permission);
+  });
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
       // On Windows, provide an explicit native source chooser. Automatically
@@ -620,7 +629,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       console.warn('[Hub-Mind] Display source picker failed:', error);
       callback({});
     }
-  }, { useSystemPicker: true });
+  }, { useSystemPicker: false });
   const stopHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+J', () => {
     if (fullControlActive) stopFullControl('global-hotkey');
   });
