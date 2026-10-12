@@ -75,8 +75,13 @@ function createMainWindow() {
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); } });
-  mainWindow.on('show', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
-  mainWindow.on('restore', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
+  // Keep Jess's native overlay visible above the workspace as well as other desktop apps.
+  const keepCompanionVisible = () => {
+    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow();
+    else if (!companionWindow.isVisible()) companionWindow.showInactive();
+  };
+  mainWindow.on('show', keepCompanionVisible);
+  mainWindow.on('restore', keepCompanionVisible);
   mainWindow.on('minimize', () => { createCompanionWindow(); positionCompanionBottomRight(); });
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.loadURL(APP_URL);
@@ -91,8 +96,8 @@ function positionCompanionBottomRight() {
 }
 
 function createCompanionWindow() {
-  if (companionWindow && !companionWindow.isDestroyed()) { companionWindow.show(); companionWindow.focus(); return; }
-  companionWindow = new BrowserWindow(secureWindowOptions({ width: 116, height: 116, minWidth: 116, minHeight: 116, maxWidth: 116, maxHeight: 116, frame: false, transparent: true, resizable: false, focusable: true, alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000', title: 'Jess · Hub-Mind', show: false, webPreferences: { backgroundThrottling: false } }));
+  if (companionWindow && !companionWindow.isDestroyed()) { companionWindow.showInactive(); return; }
+  companionWindow = new BrowserWindow(secureWindowOptions({ width: 420, height: 560, minWidth: 360, minHeight: 420, maxWidth: 520, maxHeight: 760, frame: false, transparent: true, resizable: true, focusable: true, alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000', title: 'Jess · Hub-Mind', show: false, webPreferences: { backgroundThrottling: false } }));
   companionWindow.on('blur', () => { /* The overlay remains available until explicitly hidden or the workspace is restored. */ });
   guardNavigation(companionWindow);
   companionWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -109,7 +114,8 @@ function getDialogParent() {
 }
 
 function showMain() {
-  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+  if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow();
+  else if (!companionWindow.isVisible()) companionWindow.showInactive();
   if (!mainWindow || mainWindow.isDestroyed()) {
     createMainWindow();
     return;
