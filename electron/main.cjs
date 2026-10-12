@@ -79,7 +79,7 @@ function createMainWindow() {
 
 function positionCompanionBottomRight() {
   if (!companionWindow || companionWindow.isDestroyed()) return;
-  const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay();
+  const display = screen.getPrimaryDisplay();
   const area = display.workArea;
   const [width, height] = companionWindow.getSize();
   companionWindow.setPosition(Math.max(area.x, area.x + area.width - width - 18), Math.max(area.y, area.y + area.height - height - 18), false);
@@ -134,7 +134,9 @@ function createTray() {
   tray.setToolTip('Hub-Mind');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Hub-Mind', click: showMain },
-    { label: 'Show Jess companion', click: createCompanionWindow },
+    { label: 'Show Jess companion', click: () => { createCompanionWindow(); positionCompanionBottomRight(); } },
+    { label: 'Reset Jess orb to bottom-right', click: () => { createCompanionWindow(); positionCompanionBottomRight(); } },
+    { label: 'Stop Jess (end Full Control Session)', click: () => stopFullControl('tray-stop') },
     { type: 'separator' },
     { label: 'Quit Hub-Mind', click: () => { quitting = true; app.quit(); } },
   ]));
@@ -145,6 +147,9 @@ app.whenReady().then(() => {
   if (!hasSingleInstanceLock) { app.quit(); return; }
   app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
+  // Emergency stop is available even when the renderer or voice session is unresponsive.
+  const stopHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+J', () => stopFullControl('global-kill-hotkey'));
+  if (!stopHotkeyRegistered) console.error('[Jess] Could not register Ctrl+Alt+Shift+J emergency stop hotkey. Use the tray Stop Jess item.');
 
   ipcMain.handle('hubmind:full-control-start', (event, userId) => {
     assertTrustedSender(event);
