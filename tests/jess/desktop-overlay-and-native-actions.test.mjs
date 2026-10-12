@@ -14,16 +14,16 @@ test('workspace theme remains dark regardless of operating system preference', a
 
 test('desktop companion is an icon-only movable orb with a close control', async () => {
   const main = await read('../../electron/main.cjs');
-  const page = await read('../../src/pages/JessOrbPage.tsx');
+  const page = await read('../../src/pages/CompanionPage.tsx');
   assert.ok(main.includes('width: 96, height: 96'));
   assert.ok(main.includes('maxWidth: 420, maxHeight: 520'));
   assert.ok(main.includes("APP_URL + '/companion'"));
   assert.match(main, /hubmind:set-companion-transcript-visible/);
   assert.match(page, /src=\"\/icon.svg\"/);
   assert.ok(page.includes('src="/icon.svg"'));
-  assert.ok(page.includes('src = "/jess-orb.svg"'));
+  assert.ok(page.includes("event.currentTarget.src = '/jess-orb.svg'"));
   assert.ok(page.includes('hideCompanion'));
-  assert.ok(page.includes('jess-orb-close'));
+  assert.ok(page.includes('jess-orb-controls'));
   assert.ok(page.includes('moveCompanionBy'));
   assert.ok(page.includes('onPointerMove'));
   assert.match(page, /is-transcript-visible/);
