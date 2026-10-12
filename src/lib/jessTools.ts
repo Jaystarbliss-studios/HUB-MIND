@@ -2512,17 +2512,21 @@ export async function executeJessTool(
 
       case 'navigate_app': {
         let path = String(args.path || '').trim();
-        const lower = path.toLowerCase().replace(/^\/+/, '');
+        const lower = path.toLowerCase().replace(/^\/+/, '').replace(/^workspace\//, '');
         if (lower === 'people' || lower === 'colleagues' || lower === 'colleague' || lower === 'team' || lower === 'directory' || lower === 'members') {
-          path = '/colleagues';
-        } else if (lower === 'today' || lower === 'dashboard' || lower === 'home') {
-          path = '/';
+          path = '/workspace/colleagues';
+        } else if (lower === 'today' || lower === 'dashboard' || lower === 'home' || lower === 'workspace') {
+          path = '/workspace';
+        } else if (path.startsWith('/workspace/')) {
+          // Already a canonical workspace route.
         } else if (!path.startsWith('/')) {
-          path = '/' + path;
+          path = '/workspace/' + path.replace(/^\/+/, '');
+        } else {
+          path = '/workspace/' + path.replace(/^\/+/, '');
         }
-        if (path === '/people') path = '/colleagues';
-        if (path.startsWith('//') || path.includes('://')) {
-          return { result: { success: false, error: 'Only internal Hub-Mind routes are allowed.' } };
+        if (path === '/workspace/people') path = '/workspace/colleagues';
+        if (path.startsWith('//') || path.includes('://') || path.includes('..')) {
+          return { result: { success: false, error: 'Only safe internal Hub-Mind workspace routes are allowed.' } };
         }
         return { result: { success: true, path }, actionPayload: navigatePayload(path) };
       }
