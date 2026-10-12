@@ -57,13 +57,13 @@ test('Gemini Live ephemeral tokens use the SDK-supported API version', () => {
 });
 
 
-test('Live token endpoints use the supported constrained-token schema', () => {
+test('Live token endpoints mint short-lived tokens without overriding browser session setup', () => {
   const netlify = read('../../netlify/functions/live-token.mjs');
   const server = read('../../server.ts');
   for (const source of [netlify, server]) {
     assert.ok(source.includes('v1beta/auth_tokens'));
-    assert.ok(source.includes('liveConnectConstraints'));
-    assert.ok(source.includes('models/gemini-3.8-live'));
+    assert.ok(source.includes('newSessionExpireTime'));
+    assert.ok(!source.includes('liveConnectConstraints'));
     assert.ok(!source.includes('bidiGenerateContentSetup'));
   }
 });
