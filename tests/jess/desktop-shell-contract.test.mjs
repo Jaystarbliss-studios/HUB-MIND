@@ -14,7 +14,8 @@ test('Windows shell identifies itself as an installed app and uses the native di
   assert.match(main, /setDisplayMediaRequestHandler/);
   assert.match(main, /desktopCapturer\.getSources/);
   assert.match(main, /useSystemPicker:\s*true/);
-  assert.doesNotMatch(main, /Choose what Jess can see/);
+  assert.match(main, /Choose what to share/);
+  assert.match(main, /Share app:/);
 });
 
 test('Jess desktop overlay is a compact, movable, closeable orb', () => {
@@ -27,7 +28,8 @@ test('Jess desktop overlay is a compact, movable, closeable orb', () => {
   assert.ok(orb.includes('jess-orb-close'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
-  assert.ok(orb.includes('src="/jess-orb.svg"'));
+  assert.ok(orb.includes('src="/hub-mind%20logo.png"'));
+  assert.ok(orb.includes('src = "/jess-orb.svg"'));
   assert.doesNotMatch(orb, /transcript|textarea|microphone controls/i);
 });
 
