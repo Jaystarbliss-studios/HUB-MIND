@@ -34,3 +34,5 @@ body:has(.jess-orb-window) #root>div{width:100%;height:100%;background:transpare
 .jess-orb-window:not(.is-transcript-visible) .jess-transcript{display:none}
 .jess-orb-window .jess-orb-controls button:first-child{display:none!important}
 .jess-orb-window .jess-orb-controls button:last-child{display:grid!important}
+
+.jess-orb-window.is-transcript-visible .jess-orb-drag{left:auto;right:4px;transform:none}
