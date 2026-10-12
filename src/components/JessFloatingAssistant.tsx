@@ -4,6 +4,7 @@ import { doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { LiveAudioClient, JessState } from '../services/liveAudioClient';
+import { claimJessSession, createJessSessionId, releaseJessSession, renewJessSession, watchJessSession, JessSessionOwner } from '../services/jessSessionCoordinator';
 import { executeJessTool } from '../lib/jessTools';
 import { resolveJessContext } from '../lib/jessContext';
 import { JessOrbVisualizer } from './JessOrbVisualizer';
@@ -144,6 +145,8 @@ export function JessFloatingAssistant() {
   const location = useLocation();
   const navigate = useNavigate();
   const clientRef = useRef<LiveAudioClient | null>(null);
+  const sessionLeaseRef = useRef<{ userId: string; sessionId: string; timer: number | null } | null>(null);
+  const [remoteJessOwner, setRemoteJessOwner] = useState<JessSessionOwner | null>(null);
   const sessionEndingRef = useRef(false);
   const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number; axis: 'x' | 'y' }>({ timer: null, running: false, speed: 3, direction: 1, axis: 'y' });
   const screenShareRef = useRef<{ stream: MediaStream | null; timer: number | null; video: HTMLVideoElement | null; nativePlugin: any; nativeListener: any }>({ stream: null, timer: null, video: null, nativePlugin: null, nativeListener: null });
@@ -352,6 +355,10 @@ export function JessFloatingAssistant() {
 
   const stop = useCallback(async () => {
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    const lease = sessionLeaseRef.current;
+    sessionLeaseRef.current = null;
+    if (lease?.timer !== null && lease?.timer !== undefined) window.clearInterval(lease.timer);
+    if (lease) void releaseJessSession(lease.userId, lease.sessionId).catch(error => console.warn('[Jess] Could not release cross-client session:', error));
     await stopScreenSharing(false);
     await clientRef.current?.disconnect();
     clientRef.current = null;
@@ -374,6 +381,39 @@ export function JessFloatingAssistant() {
       try { await clientRef.current.disconnect(false); } catch {}
       clientRef.current = null;
     }
+    const sessionId = createJessSessionId();
+    const clientKind = (window as any).hubMindDesktop?.isDesktopApp ? 'windows-desktop' : (window.matchMedia?.('(display-mode: standalone)').matches ? 'installed-web-app' : 'browser');
+    let claim;
+    try { claim = await claimJessSession(profile.id, sessionId, clientKind); }
+    catch (error) {
+      console.warn('[Jess] Could not claim cross-client session:', error);
+      setSpeechState({ text: 'Jess could not verify whether another device is already active. Check your connection and try again.', speaker: 'jess', visible: true });
+      return;
+    }
+    if (!claim.claimed) {
+      const ownerName = claim.owner?.client === 'windows-desktop' ? 'the Windows desktop app' : claim.owner?.client === 'installed-web-app' ? 'the installed Chrome app' : 'another browser or device';
+      setSpeechState({ text: `Jess is already active in ${ownerName} on this account. Stop her there before activating this instance, so you do not get overlapping voices.`, speaker: 'jess', visible: true });
+      setConnection('disconnected');
+      setState('idle');
+      return;
+    }
+    sessionLeaseRef.current = { userId: profile.id, sessionId, timer: null };
+    sessionLeaseRef.current.timer = window.setInterval(() => {
+      void renewJessSession(profile.id, sessionId, clientKind).then(ok => {
+        if (!ok) {
+          const lease = sessionLeaseRef.current;
+          if (lease?.sessionId === sessionId) {
+            if (lease.timer !== null) window.clearInterval(lease.timer);
+            sessionLeaseRef.current = null;
+            void clientRef.current?.disconnect(false);
+            clientRef.current = null;
+            setConnection('disconnected');
+            setState('idle');
+            setSpeechState({ text: 'Jess was activated in another Hub-Mind window, so this voice session has stopped to prevent overlapping audio.', speaker: 'jess', visible: true });
+          }
+        }
+      }).catch(error => console.warn('[Jess] Session heartbeat failed:', error));
+    }, 7000);
     sessionEndingRef.current = false;
     wakeTone();
     jessSpeechAccumulatorRef.current = '';
@@ -669,6 +709,12 @@ export function JessFloatingAssistant() {
     else void start();
   }, [connection, start, stop]);
 
+
+  // Desktop, Chrome-installed PWA, and browser sessions coordinate through the same per-user Firestore lease.
+  useEffect(() => {
+    if (!profile?.id) { setRemoteJessOwner(null); return; }
+    return watchJessSession(profile.id, owner => setRemoteJessOwner(owner));
+  }, [profile?.id]);
 
   // Passive wake is strictly app-only. Normal browser tabs must never leave a
   // background microphone listener running. Native shells can provide a native
