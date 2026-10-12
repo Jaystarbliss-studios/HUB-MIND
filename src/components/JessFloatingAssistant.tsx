@@ -385,6 +385,10 @@ export function JessFloatingAssistant() {
       if (connection === 'connected' || connection === 'connecting') return;
       try { await clientRef.current.disconnect(false); } catch {}
       clientRef.current = null;
+      const previousLease = sessionLeaseRef.current;
+      sessionLeaseRef.current = null;
+      if (previousLease?.timer !== null && previousLease?.timer !== undefined) window.clearInterval(previousLease.timer);
+      if (previousLease) await releaseJessSession(previousLease.userId, previousLease.sessionId).catch(error => console.warn('[Jess] Could not release stale session before reconnect:', error));
     }
     const sessionId = createJessSessionId();
     const clientKind = (window as any).hubMindDesktop?.isDesktopApp ? 'windows-desktop' : (window.matchMedia?.('(display-mode: standalone)').matches ? 'installed-web-app' : 'browser');
