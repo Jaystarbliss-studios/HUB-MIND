@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, session, desktopCapturer } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -56,9 +56,7 @@ function createMainWindow() {
   mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#080b12', title: 'Hub-Mind', autoHideMenuBar: true, show: false }));
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.on('close', (event) => {
-    if (!quitting && process.platform === 'win32') { event.preventDefault(); mainWindow.hide(); }
-  });
+  mainWindow.on('close', () => { /* Close the workspace window; Jess remains available from the tray. */ });
   mainWindow.on('minimize', () => createCompanionWindow());
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.loadURL(APP_URL);
@@ -66,8 +64,9 @@ function createMainWindow() {
 
 function createCompanionWindow() {
   if (companionWindow && !companionWindow.isDestroyed()) { companionWindow.show(); companionWindow.focus(); return; }
-  companionWindow = new BrowserWindow(secureWindowOptions({ width: 380, height: 600, minWidth: 320, minHeight: 360, frame: false, transparent: false, resizable: true, alwaysOnTop: true, skipTaskbar: true, backgroundColor: '#080b12', title: 'Jess · Hub-Mind', show: false }));
+  companionWindow = new BrowserWindow(secureWindowOptions({ width: 116, height: 116, minWidth: 116, minHeight: 116, maxWidth: 116, maxHeight: 116, frame: false, transparent: true, resizable: false, alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000', title: 'Jess · Hub-Mind', show: false }));
   guardNavigation(companionWindow);
+  companionWindow.setAlwaysOnTop(true, 'screen-saver');
   companionWindow.once('ready-to-show', () => companionWindow.show());
   companionWindow.on('closed', () => { companionWindow = null; });
   companionWindow.loadURL(APP_URL + '/companion');
@@ -98,6 +97,7 @@ app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
   ipcMain.handle('hubmind:show-main', () => { showMain(); return true; });
   ipcMain.handle('hubmind:show-companion', () => { createCompanionWindow(); return true; });
+  ipcMain.handle('hubmind:hide-companion', () => { companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:open-user-path', async (_event, requestedPath) => {
     if (typeof requestedPath !== 'string' || requestedPath.length > 2048 || requestedPath.includes('\0')) throw new Error('Invalid path.');
     const result = await dialog.showMessageBox(mainWindow || companionWindow, {
@@ -112,6 +112,18 @@ app.whenReady().then(() => {
     if (error) throw new Error(error);
     return { opened: true };
   });
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const origin = (() => { try { return new URL(details.requestingUrl || webContents.getURL()).origin; } catch { return ''; } })();
+    const trustedOrigin = (() => { try { return new URL(APP_URL).origin; } catch { return ''; } })();
+    callback(origin === trustedOrigin && ['media', 'display-capture', 'notifications', 'clipboard-read', 'clipboard-sanitized-write'].includes(permission));
+  });
+  session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
+      const screen = sources.find(source => source.id.startsWith('screen:'));
+      callback(screen ? { video: screen } : {});
+    } catch { callback({}); }
+  }, { useSystemPicker: true });
   createMainWindow();
   createTray();
   app.on('activate', showMain);
