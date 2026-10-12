@@ -16,7 +16,7 @@ export function PublicHome() {
   const [inviteValue, setInviteValue] = useState('');
   const [error, setError] = useState('');
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [release, setRelease] = useState<{ url: string; name: string; version: string } | null>(null);
+  const [release, setRelease] = useState<{ url: string; name: string; version: string; extensionUrl?: string } | null>(null);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
 
@@ -26,7 +26,8 @@ export function PublicHome() {
       .then(response => response.ok ? response.json() : Promise.reject(new Error('No public release yet')))
       .then(data => {
         const asset = (data.assets || []).find((item: any) => /\.exe$/i.test(item.name));
-        if (active && asset) setRelease({ url: asset.browser_download_url, name: asset.name, version: data.tag_name || 'Latest' });
+        const extension = (data.assets || []).find((item: any) => /Jess-Chrome-Extension\.zip$/i.test(item.name));
+        if (active && asset) setRelease({ url: asset.browser_download_url, name: asset.name, version: data.tag_name || 'Latest', extensionUrl: extension?.browser_download_url });
       })
       .catch(() => { if (active) setRelease(null); });
     return () => { active = false; };
@@ -139,7 +140,7 @@ export function PublicHome() {
           <div className="hm-desktop-copy"><div className="hm-eyebrow">TAKE IT WITH YOU</div><h2>Your workspace.<br/><span>At home on Windows.</span></h2><p>{release ? 'The Hub-Mind Windows desktop installer is available now, with a dedicated window and a persistent Jess companion.' : 'A dedicated Windows desktop experience is being prepared. The installer will appear here as soon as a release is published and verified.'}</p>
           <div className="hm-desktop-points"><span><Check size={15}/> Dedicated desktop window</span><span><Check size={15}/> Floating Jess companion</span><span><Check size={15}/> Controlled system integrations</span></div>
           {release ? <a className="hm-button hm-button-primary hm-button-large" href={release.url}><Download size={17}/> Download for Windows <span className="hm-version">{release.version}</span></a> : <button className="hm-button hm-button-disabled hm-button-large" disabled title="A verified Windows installer has not been published yet"><Download size={17}/> Windows app coming soon</button>}
-          <div className="hm-install-actions"><button className="hm-button hm-button-outline hm-button-large" onClick={installWebApp}><Download size={16}/> Install Chrome app</button><a className="hm-text-link" href="https://github.com/Jaystarbliss-studios/HUB-MIND/tree/main/chrome-extension" target="_blank" rel="noreferrer">Get Jess Chrome extension <ArrowUpRight size={15}/></a></div>
+          <div className="hm-install-actions"><button className="hm-button hm-button-outline hm-button-large" onClick={installWebApp}><Download size={16}/> Install Chrome app</button><a className="hm-text-link" href={release?.extensionUrl || "https://github.com/Jaystarbliss-studios/HUB-MIND/tree/main/chrome-extension"} target="_blank" rel="noreferrer">Get Jess Chrome extension <ArrowUpRight size={15}/></a></div>
           {release && <small className="hm-release-name">{release.name}</small>}
           </div>
           <div className="hm-desktop-art"><div className="hm-monitor"><div className="hm-monitor-top"><span/><span/><span/><small>HUB-MIND / WORKSPACE</small></div><div className="hm-monitor-content"><div className="hm-monitor-sidebar"><i/><i/><i/><i/></div><div className="hm-monitor-main"><div className="hm-monitor-kicker">YOUR WORKSPACE</div><div className="hm-monitor-title">Make today count.</div><div className="hm-monitor-bars"><i/><i/><i/></div><div className="hm-monitor-bottom"><span/><span/><span/></div></div></div></div><div className="hm-monitor-stand"/><div className="hm-monitor-base"/><div className="hm-desktop-orb"><Sparkles size={20}/></div></div>
