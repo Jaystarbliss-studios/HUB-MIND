@@ -8,6 +8,7 @@ import { JessFloatingAssistant } from './components/JessFloatingAssistant';
 import { JessDocumentBridge } from './components/JessDocumentBridge';
 import { PublicHome } from './pages/PublicHome';
 import './pages/public-home.css';
+import './pages/companion.css';
 import { Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
 
 function safeLazy<T extends React.ComponentType<any>>(importer: () => Promise<{ [key: string]: any }>, namedExport?: string): React.LazyExoticComponent<T> {
