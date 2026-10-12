@@ -63,7 +63,7 @@ export function PublicHome() {
     <div className="hm-public min-h-screen overflow-hidden">
       <header className="hm-nav">
         <a href="/" className="hm-brand" aria-label="Hub-Mind home">
-          <span className="hm-brand-mark"><img src="/icon.svg" alt="" /></span>
+          <span className="hm-brand-mark"><img src="/hub-mind%20logo.png" alt="" /></span>
           <span>Hub<span className="hm-brand-dash">-</span>Mind</span>
         </a>
         <nav className={mobileMenu ? 'hm-nav-links is-open' : 'hm-nav-links'}>
@@ -94,7 +94,7 @@ export function PublicHome() {
           <div className="hm-hero-art" aria-label="Hub-Mind workspace preview">
             <div className="hm-orbit hm-orbit-outer"/><div className="hm-orbit hm-orbit-inner"/>
             <div className="hm-glass-card hm-work-card">
-              <div className="hm-card-top"><span className="hm-mini-logo"><img src="/icon.svg" alt=""/></span><span>MONDAY, AT A GLANCE</span><span className="hm-card-dot"/></div>
+              <div className="hm-card-top"><span className="hm-mini-logo"><img src="/hub-mind%20logo.png" alt=""/></span><span>MONDAY, AT A GLANCE</span><span className="hm-card-dot"/></div>
               <h3>Good morning.</h3><p className="hm-card-muted">Here's what deserves your attention.</p>
               <div className="hm-progress-row"><span className="hm-progress-icon teal"><Check size={14}/></span><div><b>Review project milestones</b><small>Website redesign · Today</small></div><span className="hm-check">✓</span></div>
               <div className="hm-progress-row"><span className="hm-progress-icon purple"><FileText size={14}/></span><div><b>Finish the proposal</b><small>Client work · In progress</small></div><span className="hm-task-dot"/></div>
@@ -127,7 +127,7 @@ export function PublicHome() {
         </section>
       </main>
 
-      <footer className="hm-footer"><div className="hm-footer-top"><a href="/" className="hm-brand"><span className="hm-brand-mark"><img src="/icon.svg" alt=""/></span><span>Hub<span className="hm-brand-dash">-</span>Mind</span></a><p>Make room for meaningful work.</p><button className="hm-button hm-button-outline" onClick={openWorkspace}>Open workspace <ArrowRight size={15}/></button></div><div className="hm-footer-bottom"><span>© {new Date().getFullYear()} Hub-Mind</span><span>Designed and built by <a href="https://jaystarbliss-studios.name.ng" target="_blank" rel="noreferrer">Jaystarbliss Studios</a> (JSW)</span><a href="mailto:hello@jaystarbliss-studios.name.ng">Contact</a></div></footer>
+      <footer className="hm-footer"><div className="hm-footer-top"><a href="/" className="hm-brand"><span className="hm-brand-mark"><img src="/hub-mind%20logo.png" alt=""/></span><span>Hub<span className="hm-brand-dash">-</span>Mind</span></a><p>Make room for meaningful work.</p><button className="hm-button hm-button-outline" onClick={openWorkspace}>Open workspace <ArrowRight size={15}/></button></div><div className="hm-footer-bottom"><span>© {new Date().getFullYear()} Hub-Mind</span><span>Designed and built by <a href="https://jaystarbliss-studios.name.ng" target="_blank" rel="noreferrer">Jaystarbliss Studios</a> (JSW)</span><a href="mailto:hello@jaystarbliss-studios.name.ng">Contact</a></div></footer>
 
       {inviteOpen && <div className="hm-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setInviteOpen(false); }}><section className="hm-invite-modal" role="dialog" aria-modal="true" aria-labelledby="hm-invite-title"><button className="hm-modal-close" onClick={() => setInviteOpen(false)} aria-label="Close"><X size={18}/></button><div className="hm-modal-icon"><LockKeyhole size={22}/></div><div className="hm-eyebrow">WORKSPACE ACCESS</div><h2 id="hm-invite-title">Your invitation is the key.</h2><p>Paste the full Hub-Mind invitation link or enter the invitation ID shared by your workspace administrator.</p><form onSubmit={submitInvite}><label htmlFor="hm-invite-code">Invitation link or code</label><input id="hm-invite-code" autoFocus value={inviteValue} onChange={event => setInviteValue(event.target.value)} placeholder="Paste link or invitation ID" autoComplete="off"/>{error && <p className="hm-form-error" role="alert">{error}</p>}<button className="hm-button hm-button-primary hm-button-large" type="submit">Continue to sign in <ArrowRight size={16}/></button></form><p className="hm-modal-footnote">Invitations expire after seven days and are tied to the invited Google account.</p></section></div>}
     </div>
