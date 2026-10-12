@@ -2,6 +2,21 @@ name: Hub-Mind Windows Installer
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'electron/**'
+      - 'native/**'
+      - 'chrome-extension/**'
+      - 'scripts/install-jess-chrome-bridge.ps1'
+      - 'electron-builder.yml'
+      - 'package.json'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'vite.config.ts'
+      - '.github/workflows/windows-release.yml'
   push:
     branches:
       - main
@@ -65,6 +80,16 @@ jobs:
         with:
           name: hub-mind-windows-installer
           path: release/*.exe
+          if-no-files-found: error
+          retention-days: 30
+      - name: Archive Jess Chrome extension for manual installation
+        shell: pwsh
+        run: Compress-Archive -Path chrome-extension\* -DestinationPath release\Jess-Chrome-Extension.zip -Force
+      - name: Upload Chrome extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jess-chrome-extension
+          path: release/Jess-Chrome-Extension.zip
           if-no-files-found: error
           retention-days: 30
       - name: Publish installer to GitHub release
