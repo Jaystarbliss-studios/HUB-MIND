@@ -1,13 +1,17 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, session, desktopCapturer, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, session, desktopCapturer, screen, globalShortcut } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { execFile, spawn } = require('node:child_process');
+const nativeAgent = require('./agentBridge.cjs');
 
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
 let companionWindow;
 let tray;
 let quitting = false;
+let fullControlActive = false;
+let controlSessionStartedAt = null;
+let controlAuditPath = null;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const trustedAppHosts = new Set(['hub-mind.netlify.app']);
 const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'identitytoolkit.googleapis.com']);
@@ -103,6 +107,23 @@ function showMain() {
   else { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); mainWindow.show(); mainWindow.focus(); }
 }
 
+function auditNativeAction(entry) {
+  try {
+    if (!controlAuditPath) controlAuditPath = path.join(app.getPath('userData'), 'jess-native-audit.jsonl');
+    fs.appendFileSync(controlAuditPath, JSON.stringify({ at: new Date().toISOString(), sessionActive: fullControlActive, ...entry }) + '\n', { encoding: 'utf8' });
+  } catch (error) { console.error('[Jess audit] Could not append audit entry:', error); }
+}
+function stopFullControl(reason = 'user-stop') {
+  fullControlActive = false;
+  controlSessionStartedAt = null;
+  auditNativeAction({ event: 'full-control-stopped', reason });
+  return { ok: true, active: false, reason };
+}
+function requireFullControl(method) {
+  if (!fullControlActive) throw new Error('Full Control Session is off. Say “Jess, full control” to enable native actions, or use the tray control.');
+  auditNativeAction({ event: 'native-action-request', method });
+}
+
 function createTray() {
   const iconPath = path.join(__dirname, '..', 'dist', 'icon.svg');
   const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }) : nativeImage.createEmpty();
@@ -121,6 +142,38 @@ app.whenReady().then(() => {
   if (!hasSingleInstanceLock) { app.quit(); return; }
   app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
+
+  ipcMain.handle('hubmind:full-control-start', (event) => {
+    assertTrustedSender(event);
+    fullControlActive = true;
+    controlSessionStartedAt = new Date().toISOString();
+    auditNativeAction({ event: 'full-control-started', startedAt: controlSessionStartedAt });
+    return { ok: true, active: true, startedAt: controlSessionStartedAt, stopHotkey: 'Ctrl+Alt+Shift+J' };
+  });
+  ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
+  ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt }; });
+  ipcMain.handle('hubmind:native-action', async (event, method, args) => {
+    assertTrustedSender(event);
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','launch_app','run_command','get_time','system_info']);
+    if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
+    requireFullControl(method);
+    const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+    if (method === 'run_command') {
+      const command = String(safeArgs.command || '');
+      if (command.length > 4000) throw new Error('Command exceeds the 4,000-character limit.');
+      if (/\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)\b/i.test(command)) throw new Error('Potentially destructive commands require a separate explicit confirmation flow and are blocked in this release.');
+    }
+    const started = Date.now();
+    try {
+      const result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
+      auditNativeAction({ event: 'native-action-result', method, durationMs: Date.now()-started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
+      return result;
+    } catch (error) {
+      auditNativeAction({ event: 'native-action-error', method, durationMs: Date.now()-started, error: String(error?.message || error) });
+      return { ok: false, verified: false, evidence: null, error: String(error?.message || error) };
+    }
+  });
+
   ipcMain.handle('hubmind:show-main', (event) => { assertTrustedSender(event); showMain(); return true; });
   ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); createCompanionWindow(); return true; });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionWindow?.hide(); return true; });
@@ -257,5 +310,5 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   app.on('activate', showMain);
 });
 
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', () => { stopFullControl('app-quit'); globalShortcut.unregisterAll(); quitting = true; });
 app.on('window-all-closed', () => { /* Keep tray and companion available until explicit Quit. */ });
