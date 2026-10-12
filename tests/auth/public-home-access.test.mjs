@@ -18,6 +18,8 @@ test('public landing page keeps invite-only access and release-gated installer',
   assert.match(home, /This Google account|invitation/i);
   assert.match(auth, /acceptInvitation\(inviteId, firebaseUser\.uid, userEmail\)/);
   assert.match(auth, /if \(!inviteId\)/);
+  assert.match(auth, /if \(isAdminByEmail\)/);
+  assert.doesNotMatch(auth, /isWorkspaceEmpty/);
   assert.doesNotMatch(auth, /hubmind_existing_auth_login/);
   assert.doesNotMatch(login, /hubmind_existing_auth_login/);
 });
