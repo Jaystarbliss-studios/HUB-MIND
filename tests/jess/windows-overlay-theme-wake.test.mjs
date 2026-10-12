@@ -28,7 +28,7 @@ test('Windows desktop exposes guarded app, command, URL, typing and shortcut act
     assert.match(preload, new RegExp(method));
   }
   assert.match(main, /assertTrustedSender\(event\)/);
-  assert.match(main, /Full Control Session is off/);
+  assert.match(main, /Start Jess Full Control before running Windows commands/);
   assert.match(main, /Potentially destructive command blocked|command is blocked/i);
 });
 
