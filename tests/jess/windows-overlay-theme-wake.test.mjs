@@ -18,7 +18,9 @@ test('Windows screen sharing uses the native system picker with a safe fallback'
   const handler = main.slice(start, end);
   assert.match(handler, /desktopCapturer\.getSources/);
   assert.match(handler, /useSystemPicker: true/);
-  assert.doesNotMatch(handler, /showMessageBox/);
+  assert.match(handler, /showMessageBox/);
+  assert.match(handler, /Share app:/);
+  assert.match(handler, /callback\(selected \? \{ video: selected \} : \{\}\)/);
 });
 
 test('Windows desktop exposes guarded app, command, URL, typing and shortcut actions', async () => {
