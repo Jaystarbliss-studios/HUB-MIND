@@ -798,6 +798,23 @@ export function JessFloatingAssistant() {
       };
     }
 
+    const desktopWake = (window as any).hubMindDesktop;
+    if (desktopWake?.isDesktopApp && typeof desktopWake.startOfflineWake === 'function' && typeof desktopWake.onOfflineWake === 'function') {
+      const removeWakeListener = desktopWake.onOfflineWake((event: { prompt?: string }) => {
+        if (disposed) return;
+        wakeTone();
+        void start(String(event?.prompt || '').trim() || undefined);
+      });
+      void desktopWake.startOfflineWake().then((result: { started?: boolean; cancelled?: boolean; error?: string }) => {
+        if (!disposed && !result?.started && !result?.cancelled) console.warn('[Jess] Offline wake listener unavailable:', result?.error || 'No local recognizer is available.');
+      }).catch((error: unknown) => console.warn('[Jess] Offline wake listener failed:', error));
+      return () => {
+        disposed = true;
+        try { removeWakeListener?.(); } catch {}
+        void Promise.resolve(desktopWake.stopOfflineWake?.()).catch(() => undefined);
+      };
+    }
+
     if (!isJessPcWakeSupported()) return;
     const wakeListener = new JessPcWakeListener({
       onWake: command => {
