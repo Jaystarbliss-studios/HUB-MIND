@@ -97,7 +97,7 @@ export function CompanionPage() {
     {isActive && <span className={`jess-status-dot ${localActive ? 'is-local' : 'is-remote'}`} title={localActive ? 'Jess is active in this desktop app' : 'Jess is active in another Hub-Mind client'} />}
     {controlActive && <span className="jess-control-indicator" title="Full Control Session active — Ctrl+Alt+Shift+J stops native control" aria-label="Full Control Session active" />}
     {requestError && <span className="jess-orb-error" role="status" title={requestError}>!</span>}
-    <div className="jess-orb-controls">
+    <div className="jess-orb-controls" aria-label="Jess overlay controls">
       <button type="button" title="Open Hub-Mind workspace" aria-label="Open Hub-Mind workspace" onClick={() => void window.hubMindDesktop?.showMain()}><Maximize2 size={12}/></button>
       <button type="button" title="Hide Jess overlay" aria-label="Hide Jess overlay" onClick={() => void window.hubMindDesktop?.hideCompanion()}><X size={13}/></button>
     </div>
