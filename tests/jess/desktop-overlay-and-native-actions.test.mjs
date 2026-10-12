@@ -17,12 +17,11 @@ test('desktop companion keeps the original icon and exposes a visible transcript
   const page = await read('../../src/pages/CompanionPage.tsx');
   assert.match(css, /width:100%;height:100%/);
   assert.match(css, /\.jess-transcript\{/);
-  assert.match(page, /src="\/icon\.svg"/);
-  assert.doesNotMatch(page, /src="\/jess-orb\.svg"/);
+  assert.ok(page.includes('src="/icon.svg"'));
+  assert.ok(!page.includes('src="/jess-orb.svg"'));
   assert.match(page, /hideCompanion/);
   assert.match(page, /moveCompanionBy/);
   assert.match(page, /onPointerMove/);
-  assert.match(page, /jess-transcript-messages/);
   assert.match(page, /jess-transcript-messages/);
 });
 
