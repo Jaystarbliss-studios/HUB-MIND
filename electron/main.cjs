@@ -13,6 +13,7 @@ const trustedAppHosts = new Set(['hub-mind.netlify.app']);
 const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'identitytoolkit.googleapis.com']);
 const WINDOWS_APPS = Object.freeze({ calculator: 'calc.exe', notepad: 'notepad.exe', paint: 'mspaint.exe', explorer: 'explorer.exe', taskManager: 'taskmgr.exe', edge: 'msedge.exe', chrome: 'chrome.exe', word: 'winword.exe', excel: 'excel.exe', powerpoint: 'powerpnt.exe', teams: 'ms-teams.exe', vscode: 'code.exe' });
 const READ_ONLY_COMMANDS = Object.freeze({ ipconfig: ['ipconfig.exe', []], systemInfo: ['systeminfo.exe', []], runningProcesses: ['tasklist.exe', []] });
+const WINDOWS_SHORTCUTS = Object.freeze({ save: '^s', selectAll: '^a', copy: '^c', paste: '^v', undo: '^z', redo: '^y', find: '^f', closeWindow: '%{F4}', switchWindow: '%{TAB}', taskManager: '^+{ESC}', enter: '{ENTER}', escape: '{ESC}', tab: '{TAB}' });
 function assertTrustedSender(event) {
   let origin = ''; try { origin = new URL(event.senderFrame?.url || '').origin; } catch {}
   if (origin !== new URL(APP_URL).origin) throw new Error('Blocked desktop action from an untrusted page.');
@@ -133,6 +134,46 @@ app.whenReady().then(() => {
     const error = await shell.openPath(resolved);
     if (error) throw new Error(error);
     return { opened: true };
+  });
+  ipcMain.handle('hubmind:type-text', async (event, requestedText) => {
+    assertTrustedSender(event);
+    if (typeof requestedText !== 'string' || !requestedText.length || requestedText.length > 3000) throw new Error('Text must be between 1 and 3,000 characters.');
+    const preview = requestedText.length > 500 ? requestedText.slice(0, 500) + '…' : requestedText;
+    const choice = await dialog.showMessageBox(mainWindow || companionWindow, { type: 'warning', buttons: ['Cancel', 'Type this text'], defaultId: 0, cancelId: 0, title: 'Type into the active Windows application?', message: 'Jess wants to type text into whichever app currently has keyboard focus.', detail: preview + (requestedText.length > 500 ? '\n\n[Preview truncated; full text will be typed.]' : '') });
+    if (choice.response !== 1) return { typed: false, cancelled: true };
+    const textBase64 = Buffer.from(requestedText, 'utf8').toString('base64');
+    const script = String.raw`Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class HubMindUnicodeInput {
+  [StructLayout(LayoutKind.Sequential)] public struct INPUT { public uint type; public InputUnion U; }
+  [StructLayout(LayoutKind.Explicit)] public struct InputUnion { [FieldOffset(0)] public KEYBDINPUT ki; }
+  [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+  [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+  public static void Type(string value) {
+    foreach (char ch in value) {
+      INPUT down = new INPUT(); down.type = 1; down.U.ki.wScan = ch; down.U.ki.dwFlags = 4;
+      INPUT up = new INPUT(); up.type = 1; up.U.ki.wScan = ch; up.U.ki.dwFlags = 6;
+      INPUT[] pair = new INPUT[] { down, up };
+      SendInput(2, pair, Marshal.SizeOf(typeof(INPUT)));
+    }
+  }
+}
+'@
+$text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${textBase64}'))
+[HubMindUnicodeInput]::Type($text)`;
+    await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024, shell: false }, error => error ? reject(new Error(String(error.message || 'Text entry failed.').slice(0, 1000))) : resolve(true)));
+    return { typed: true, characterCount: requestedText.length };
+  });
+  ipcMain.handle('hubmind:press-shortcut', async (event, shortcutName) => {
+    assertTrustedSender(event);
+    if (typeof shortcutName !== 'string' || !Object.prototype.hasOwnProperty.call(WINDOWS_SHORTCUTS, shortcutName)) throw new Error('That keyboard shortcut is not approved.');
+    const choice = await dialog.showMessageBox(mainWindow || companionWindow, { type: 'warning', buttons: ['Cancel', 'Press shortcut'], defaultId: 0, cancelId: 0, title: 'Send a keyboard shortcut?', message: 'Jess wants to send ' + shortcutName + ' to the active Windows application.', detail: 'The shortcut will be sent to whichever window has keyboard focus after you confirm.' });
+    if (choice.response !== 1) return { pressed: false, cancelled: true };
+    const sequence = WINDOWS_SHORTCUTS[shortcutName];
+    const script = String.raw`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${sequence}')`;
+    await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, timeout: 10000, shell: false }, error => error ? reject(new Error(String(error.message || 'Keyboard shortcut failed.').slice(0, 1000))) : resolve(true)));
+    return { pressed: true, shortcut: shortcutName };
   });
   ipcMain.handle('hubmind:open-url', async (event, requestedUrl) => {
     assertTrustedSender(event);
