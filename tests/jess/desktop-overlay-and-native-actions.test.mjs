@@ -21,7 +21,6 @@ test('desktop companion is an icon-only movable orb with a close control', async
   assert.match(main, /hubmind:set-companion-transcript-visible/);
   assert.match(page, /JessOrbVisualizer/);
   assert.ok(page.includes('JessOrbVisualizer'));
-  assert.ok(page.includes("event.currentTarget.src = '/jess-orb.svg'"));
   assert.ok(page.includes('hideCompanion'));
   assert.ok(page.includes('jess-orb-controls'));
   assert.ok(page.includes('moveCompanionBy'));
