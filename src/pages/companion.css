@@ -16,7 +16,7 @@ body:has(.jess-orb-window) #root>div{width:100%;height:100%;background:transpare
 .jess-orb-error{position:absolute;left:calc(50% - 43px);top:17px;width:18px;height:18px;display:grid;place-items:center;border-radius:50%;background:#991b1b;color:#fff;font-size:11px;font-weight:700;z-index:5}
 .jess-control-indicator{position:absolute;left:calc(50% - 37px);top:74px;width:11px;height:11px;border-radius:50%;background:#fb7185;border:2px solid #080b12;z-index:5;box-shadow:0 0 12px rgba(251,113,133,.85);animation:jess-control-pulse 1.5s ease-in-out infinite}
 @keyframes jess-control-pulse{0%,100%{opacity:1}50%{opacity:.45}}
-.jess-transcript{position:absolute;left:10px;right:10px;top:112px;bottom:10px;display:flex;flex-direction:column;min-height:0;border:1px solid rgba(94,234,212,.24);border-radius:16px;background:rgba(2,6,23,.94);color:#e2e8f0;box-shadow:0 12px 34px rgba(0,0,0,.4);overflow:hidden;-webkit-app-region:no-drag}
+.jess-transcript{display:none;position:absolute;left:10px;right:10px;top:102px;bottom:10px;flex-direction:column;min-height:0;border:1px solid rgba(94,234,212,.24);border-radius:16px;background:rgba(2,6,23,.94);color:#e2e8f0;box-shadow:0 12px 34px rgba(0,0,0,.4);overflow:hidden;-webkit-app-region:no-drag}
 .jess-transcript-header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(148,163,184,.16);font-size:11px;font-weight:700;letter-spacing:.04em;color:#ccfbf1}
 .jess-transcript-header span:last-child{font-size:10px;text-transform:uppercase;color:#94a3b8}
 .jess-transcript-header .jess-transcript-live{color:#34d399}
@@ -28,7 +28,9 @@ body:has(.jess-orb-window) #root>div{width:100%;height:100%;background:transpare
 .jess-transcript-message.user>div{color:#99f6e4}
 .jess-transcript-message p{font-size:12px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;color:#e2e8f0}
 
-/* The desktop companion is intentionally an icon-only orb; the full transcript stays in the workspace. */
-.jess-transcript{display:none!important}
+/* Idle state is a compact orb; fresh speech expands the native window briefly for a readable transcript. */
+.jess-orb-window.is-transcript-visible{width:420px;height:520px;min-width:420px;min-height:520px;max-width:420px;max-height:520px}
+.jess-orb-window.is-transcript-visible .jess-transcript{display:flex}
+.jess-orb-window:not(.is-transcript-visible) .jess-transcript{display:none}
 .jess-orb-window .jess-orb-controls button:first-child{display:none!important}
 .jess-orb-window .jess-orb-controls button:last-child{display:grid!important}
