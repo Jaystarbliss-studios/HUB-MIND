@@ -56,7 +56,7 @@ test('native Windows tools use a full-control session, narrow preload bridge and
   assert.match(preload, /hubmind:native-action/);
   assert.match(preload, /hubmind:full-control-start/);
   assert.match(preload, /hubmind:full-control-stop/);
-  assert.match(electron, /Ctrl\+Alt\+Shift\+J/);
+  assert.match(electron, /Control\+Alt\+Shift\+J|Ctrl\+Alt\+Shift\+J/);
   assert.match(electron, /full-control-started/);
   assert.match(electron, /jess-native-audit\.jsonl/);
   assert.match(live, /NATIVE WINDOWS HONESTY PROTOCOL/);
