@@ -58,3 +58,19 @@ test('offline Windows wake listener requires consent and uses local System.Speec
   assert.match(preload, /onOfflineWake/);
   assert.match(assistant, /startOfflineWake/);
 });
+
+test('screen reading has a bounded local Windows OCR fallback and removes temporary screenshots', async () => {
+  const [main, ocr, project, builder] = await Promise.all([
+    read('electron/main.cjs'),
+    read('native/JessWindowsOcr/Program.cs'),
+    read('native/JessWindowsOcr/JessWindowsOcr.csproj'),
+    read('electron-builder.yml'),
+  ]);
+  assert.match(main, /readWindowsOcrFallback/);
+  assert.match(main, /25 \* 1024 \* 1024/);
+  assert.match(main, /fs\.unlinkSync\(tempPath\)/);
+  assert.match(ocr, /Windows\.Media\.Ocr/);
+  assert.match(ocr, /TryCreateFromUserProfileLanguages/);
+  assert.match(project, /Microsoft\.Windows\.SDK\.NET\.Ref/);
+  assert.match(builder, /JessWindowsOcr\.exe/);
+});
