@@ -74,6 +74,6 @@ test('screen reading has a bounded local Windows OCR fallback and removes tempor
   assert.match(main, /fs\.unlinkSync\(tempPath\)/);
   assert.match(ocr, /Windows\.Media\.Ocr/);
   assert.match(ocr, /TryCreateFromUserProfileLanguages/);
-  assert.match(project, /Microsoft\.Windows\.SDK\.NET\.Ref/);
+  assert.match(project, /net8\.0-windows10\.0\.26100\.0/);
   assert.match(builder, /JessWindowsOcr\.exe/);
 });
