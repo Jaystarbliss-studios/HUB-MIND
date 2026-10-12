@@ -14,6 +14,7 @@ declare global {
       showMain: () => Promise<boolean>;
       hideCompanion: () => Promise<boolean>;
       moveCompanionBy: (dx: number, dy: number) => Promise<boolean>;
+      setCompanionInteractive?: (interactive: boolean) => Promise<boolean>;
       nativeStatus: () => Promise<{ active: boolean; startedAt?: string | null; userId?: string | null }>;  
     };
   }
@@ -104,7 +105,7 @@ export function CompanionPage() {
   const remoteActive = isActive && !localActive;
 
   return <main className="jess-orb-window" aria-label="Jess desktop companion">
-    <div className="jess-orb-drag" title="Drag to move Jess" aria-label="Drag to move Jess">
+    <div className="jess-orb-drag" title="Drag to move Jess" aria-label="Drag to move Jess" onMouseEnter={() => void window.hubMindDesktop?.setCompanionInteractive?.(true)} onMouseLeave={() => void window.hubMindDesktop?.setCompanionInteractive?.(false)}>
       <button className="jess-orb-launch" type="button"
         aria-label={localActive ? 'Open the active Jess workspace' : remoteActive ? 'Jess is active in another Hub-Mind window' : 'Activate Jess'}
         title={localActive ? 'Jess is active — click to open workspace' : remoteActive ? 'Jess is active elsewhere; stop that session before switching' : 'Click to activate Jess'}
@@ -115,11 +116,11 @@ export function CompanionPage() {
     {isActive && <span className={`jess-status-dot ${localActive ? 'is-local' : 'is-remote'}`} title={localActive ? 'Jess is active in this desktop app' : 'Jess is active in another Hub-Mind client'} />}
     {controlActive && <span className="jess-control-indicator" title="Full Control Session active — Ctrl+Alt+Shift+J stops native control" aria-label="Full Control Session active" />}
     {requestError && <span className="jess-orb-error" role="status" title={requestError}>!</span>}
-    <div className="jess-orb-controls" aria-label="Jess overlay controls">
+    <div className="jess-orb-controls" aria-label="Jess overlay controls" onMouseEnter={() => void window.hubMindDesktop?.setCompanionInteractive?.(true)} onMouseLeave={() => void window.hubMindDesktop?.setCompanionInteractive?.(false)}>
       <button type="button" title="Open Hub-Mind workspace" aria-label="Open Hub-Mind workspace" onClick={() => void window.hubMindDesktop?.showMain()}><Maximize2 size={12}/></button>
       <button type="button" title="Hide Jess overlay" aria-label="Hide Jess overlay" onClick={() => void window.hubMindDesktop?.hideCompanion()}><X size={13}/></button>
     </div>
-    <section className="jess-transcript" aria-label="Jess conversation transcript">
+    <section className="jess-transcript" aria-label="Jess conversation transcript" onMouseEnter={() => void window.hubMindDesktop?.setCompanionInteractive?.(true)} onMouseLeave={() => void window.hubMindDesktop?.setCompanionInteractive?.(false)}>
       <header className="jess-transcript-header"><span>Jess conversation</span><span className={controlActive ? 'jess-transcript-live' : ''}>{controlActive ? 'Live' : 'Recent'}</span></header>
       <div className="jess-transcript-messages" aria-live="polite">
         {transcript.length === 0 ? <p className="jess-transcript-empty">Your conversation with Jess will appear here, including while Hub-Mind is minimised.</p> : transcript.map(item => <article className={'jess-transcript-message ' + item.speaker} key={item.id}><div>{item.speaker === 'user' ? 'You' : 'Jess'}</div><p>{item.text}</p></article>)}
