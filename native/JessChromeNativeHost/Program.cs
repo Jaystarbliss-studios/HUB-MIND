@@ -4,6 +4,12 @@ using System.Text;
 
 const int MaxMessageBytes = 1024 * 1024;
 const string PipeName = "hubmind-jess-chrome-v1";
+const string AllowedOrigin = "chrome-extension://baifedjcpcnkjjoikbafnkiombiaooai/";
+if (args.Length < 1 || !string.Equals(args[0], AllowedOrigin, StringComparison.Ordinal))
+{
+    Environment.ExitCode = 2;
+    return;
+}
 using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
 try
 {
