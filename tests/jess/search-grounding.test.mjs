@@ -6,6 +6,8 @@ test('search grounding is enabled for current and explicitly researched question
   assert.equal(shouldGroundWithSearch('What is the latest stable Node.js version?'), true);
   assert.equal(shouldGroundWithSearch('Please research the official Scratch release notes'), true);
   assert.equal(shouldGroundWithSearch('Fact-check these current admission requirements'), true);
+  assert.equal(shouldGroundWithSearch('Can you look online for the official website?'), true);
+  assert.equal(shouldGroundWithSearch('Open and read https://example.com/about'), true);
 });
 
 test('search grounding stays off for ordinary writing and conversation', () => {

@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { addDoc, collection, doc, getDoc, getDocs, limit, query, updateDoc, setDoc, where, orderBy, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 import { User, DocumentInfo, RecurringMeetingTemplate, ResourceType, SharePermission } from '../types';
 import { isSharedWith } from './rbac';
 import { 
@@ -198,6 +198,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'get_current_context', description: 'Get the current Hub-Mind route and active workspace context.', parameters: object({}) },
   { name: 'get_workspace_overview', description: 'Get a concise overview of tasks, documents, and projects.', parameters: object({}) },
   { name: 'search_workspace', description: 'Search the signed-in workspace for documents, tasks, projects, clients and records by keywords.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }, ['query']) },
+  { name: 'search_google_drive', description: 'Search file names and indexed full text in the signed-in user’s connected Google Drive. Read-only; requires Google Drive permission to be granted in Hub-Mind.', parameters: object({ query: { type: 'string', description: 'Optional phrase to search in Drive' }, limit: { type: 'number', description: 'Maximum results, up to 20' } }) },
   
   // Workspace Users & Directory
   { name: 'list_workspace_users', description: 'List and search colleagues, team members, and users in the Hub-Mind workspace to find usernames, roles, and contacts for sharing resources, assigning tasks, and sending schedules.', parameters: object({ query: { type: 'string', description: 'Optional search query by name, username, or email' }, limit: { type: 'number' } }) },
@@ -731,6 +732,44 @@ export async function executeJessTool(
             results: await globalSearch(String(args.query || ''), user.id, Math.min(15, safeLimit(args.limit, 10)), user.role),
           },
         };
+
+      case 'search_google_drive': {
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          return { result: { success: false, error: 'Please sign in again before searching Google Drive.' } };
+        }
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch('/api/google-drive-search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify({
+            query: String(args.query || '').trim(),
+            pageSize: Math.min(20, safeLimit(args.limit, 10)),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.connected) {
+          return {
+            result: {
+              success: false,
+              connected: false,
+              reconnectRequired: Boolean(data.reconnectRequired),
+              error: data.error || 'Google Drive search did not complete.',
+            },
+          };
+        }
+        return {
+          result: {
+            success: true,
+            connected: true,
+            readOnly: true,
+            email: data.email || '',
+            total: Array.isArray(data.files) ? data.files.length : 0,
+            files: data.files || [],
+            message: 'These are matching file listings and links; file contents have not been opened.',
+          },
+        };
+      }
 
       case 'list_workspace_users': {
         const users = await getAllUsers();
