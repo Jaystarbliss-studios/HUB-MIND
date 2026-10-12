@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useLayoutEffect } from 'react';
 import { X, Maximize2 } from 'lucide-react';
 
 declare global {
@@ -11,7 +11,7 @@ declare global {
 }
 
 export function CompanionPage() {
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.body.classList.add('jess-companion-active');
     return () => document.body.classList.remove('jess-companion-active');
   }, []);
