@@ -73,7 +73,7 @@ function guardNavigation(win) {
   });
 }
 
-function createMainWindow() {
+function createMainWindow(initialPath = '/') {
   mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#020617', title: 'Hub-Mind', autoHideMenuBar: true, show: false, webPreferences: { backgroundThrottling: false } }));
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
@@ -83,7 +83,7 @@ function createMainWindow() {
   mainWindow.on('restore', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
   mainWindow.on('minimize', () => { createCompanionWindow(); positionCompanionBottomRight(); });
   mainWindow.on('closed', () => { mainWindow = null; });
-  mainWindow.loadURL(APP_URL);
+  return mainWindow.loadURL(APP_URL + initialPath);
 }
 
 function positionCompanionBottomRight() {
@@ -174,6 +174,25 @@ async function showMainVerified(timeoutMs = 5000) {
     const timer = setInterval(check, 50);
     check();
   });
+}
+
+async function showWorkspaceVerified() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    await createMainWindow('/workspace');
+  } else {
+    let shouldNavigate = true;
+    try {
+      const current = new URL(mainWindow.webContents.getURL());
+      shouldNavigate = current.origin === new URL(APP_URL).origin && !current.pathname.startsWith('/workspace');
+    } catch {}
+    if (shouldNavigate) await mainWindow.loadURL(APP_URL + '/workspace');
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+  return mainWindow.isVisible();
 }
 
 function stopOfflineWake() {
@@ -423,6 +442,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
+  ipcMain.handle('hubmind:show-workspace', async (event) => { assertTrustedSender(event); return await showWorkspaceVerified(); });
   ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(); positionCompanionBottomRightIfNeeded(); return true; });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:reset-orb-position', (event) => { assertTrustedSender(event); resetOrbPosition(); return true; });
