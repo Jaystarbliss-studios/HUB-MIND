@@ -383,7 +383,7 @@ app.whenReady().then(() => {
       // This runner uses the current Windows user's token only. Refuse common
       // destructive aliases and script-based bypasses; high-risk operations
       // remain unavailable until a dedicated spoken-confirmation flow exists.
-      if (/(^|[;&|]\s*)(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)(\s|$)/i.test(command) ||
+      if (/\b(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)\b/i.test(command) ||
           /\.(ps1|bat|cmd|vbs|js|hta)\b/i.test(command) ||
           /\b(invoke-expression|iex|start-process\s+.*-verb\s+runas)\b/i.test(command)) {
         throw new Error('This command is blocked because it can modify the system, launch a script, or bypass the command safety checks. Elevated commands are not silently executed.');
@@ -501,7 +501,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
     if (typeof requestedCommand !== 'string' || !requestedCommand.trim() || requestedCommand.length > 1200) throw new Error('Command must be between 1 and 1,200 characters.');
     if (typeof requestedPurpose !== 'string' || !requestedPurpose.trim() || requestedPurpose.length > 300) throw new Error('A short purpose is required.');
     const command = requestedCommand.trim();
-    const blocked = /(^|[;&|]\s*)(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)(\s|$)/i;
+    const blocked = /\b(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)\b/i;
     if (blocked.test(command) || /\.(ps1|bat|cmd|vbs|js|hta)\b/i.test(command) || /\b(start-process\s+.*-verb\s+runas)\b/i.test(command)) {
       throw new Error('This command is blocked because it can modify the system, launch a script, or bypass safety checks.');
     }
