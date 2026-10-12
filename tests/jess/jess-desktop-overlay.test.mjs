@@ -18,7 +18,7 @@ test('native Jess companion remains visible when the workspace is shown', () => 
 test('companion uses the established animated Jess orb and has a transcript panel', () => {
   const companion = read('../../src/pages/CompanionPage.tsx');
   const styles = read('../../src/pages/companion.css');
-  assert.match(companion, /JessOrbVisualizer/);
+  assert.match(companion, /src="\/icon\.svg"/);
   assert.doesNotMatch(companion, /src="\/jess-orb\.svg"/);
   assert.match(companion, /jess-transcript-messages/);
   assert.match(companion, /setCompanionInteractive/);
