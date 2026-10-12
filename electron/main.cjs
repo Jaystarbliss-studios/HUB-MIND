@@ -69,7 +69,7 @@ function createCompanionWindow() {
   guardNavigation(companionWindow);
   companionWindow.once('ready-to-show', () => companionWindow.show());
   companionWindow.on('closed', () => { companionWindow = null; });
-  companionWindow.loadURL(APP_URL + '/workspace?desktopCompanion=1');
+  companionWindow.loadURL(APP_URL + '/companion');
 }
 
 function showMain() {
