@@ -154,7 +154,7 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt }; });
   ipcMain.handle('hubmind:native-action', async (event, method, args) => {
     assertTrustedSender(event);
-    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','launch_app','run_command','get_time','system_info']);
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','launch_app','run_command','get_time','system_info']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     requireFullControl(method);
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
