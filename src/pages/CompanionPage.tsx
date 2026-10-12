@@ -12,7 +12,7 @@ declare global {
       showMain: () => Promise<boolean>;
       hideCompanion: () => Promise<boolean>;
       moveCompanionBy: (dx: number, dy: number) => Promise<boolean>;
-      nativeStatus: () => Promise<{ active: boolean; startedAt?: string | null }>; 
+      nativeStatus: () => Promise<{ active: boolean; startedAt?: string | null; userId?: string | null }>;  
     };
   }
 }
@@ -32,7 +32,7 @@ export function CompanionPage() {
   useEffect(() => {
     if (!window.hubMindDesktop?.nativeStatus) return;
     let alive = true;
-    const refresh = () => window.hubMindDesktop!.nativeStatus().then(status => { if (alive) setControlActive(status.active); }).catch(() => { if (alive) setControlActive(false); });
+    const refresh = () => window.hubMindDesktop!.nativeStatus().then(status => { if (alive) setControlActive(status.active && status.userId === profile?.id); }).catch(() => { if (alive) setControlActive(false); });
     void refresh();
     const interval = window.setInterval(refresh, 1000);
     return () => { alive = false; window.clearInterval(interval); };
