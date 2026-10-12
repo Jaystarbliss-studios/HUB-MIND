@@ -584,3 +584,8 @@ body { background-color: #020617 !important; color: #e2e8f0; }
 /* Do not allow OS theme or landing-page CSS to flip authenticated workspace surfaces to light mode. */
 :root { color-scheme: dark !important; }
 body, #root { background-color: #020617; color: #e2e8f0; }
+
+/* Dark-first workspace contract: browser/OS appearance must not whiten the private workspace. */
+html:root { color-scheme: dark !important; background: #020617 !important; }
+body:not(:has(.hm-public)):not(:has(.jess-orb-window)), body:not(:has(.hm-public)):not(:has(.jess-orb-window)) #root { background-color: #020617 !important; color: #e2e8f0 !important; }
+body:not(:has(.hm-public)) #root > .min-h-screen, body:not(:has(.hm-public)) #root > .h-screen { background-color: #020617; }
