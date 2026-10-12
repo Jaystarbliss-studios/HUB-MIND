@@ -21,7 +21,9 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --include=optional
+      - name: Ensure Windows native build packages are installed
+        run: npm install --no-save --no-audit --no-fund @rollup/rollup-win32-x64-msvc @esbuild/win32-x64
       - name: Verify Jess integration
         run: npm run verify:jess
       - name: TypeScript validation
