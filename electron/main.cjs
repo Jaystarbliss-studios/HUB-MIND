@@ -140,6 +140,9 @@ function stopFullControl(reason = 'user-stop') {
   controlSessionStartedAt = null;
   const previousUserId = controlSessionUserId;
   controlSessionUserId = null;
+  // End the PowerShell sidecar and drop in-flight Chrome messages immediately.
+  try { nativeAgent.stop(); } catch {}
+  try { chromeBridge.cancelPending('Full Control Session stopped.'); } catch {}
   auditNativeAction({ event: 'full-control-stopped', reason, userId: previousUserId });
   return { ok: true, active: false, reason };
 }
