@@ -21,7 +21,7 @@ Audit date: 2026-10-12. PR #66 is merged to main. The cross-platform CI, Windows
 | Window listing, focus, close, minimize, maximize, restore, move, resize, snap | Implemented in the PowerShell sidecar and allowlisted IPC | Test against real Windows applications and DPI/multi-monitor setups |
 | Mouse, typing, key combinations | Implemented; input delivery is not proof of target effect | Verify Notepad and real app postconditions |
 | Screenshot and UI Automation text | Implemented through Win32/UIA | Test capture visibility, screen bounds, protected/secure desktop behavior |
-| Jess orb, tray, emergency stop | Native overlay now uses the established animated Jess orb, stays visible over the workspace and desktop, includes a cross-window transcript panel, and passes clicks through transparent regions except while interacting with the orb/transcript | Verify packaged visibility, hotkey registration and stop behavior on real Windows |
+| Jess orb, tray, emergency stop | Native overlay restores the original `/icon.svg` Jess orb, stays visible over the workspace and desktop, includes a cross-window transcript panel, and passes clicks through transparent regions except while interacting with the orb/transcript | Verify packaged visibility, hotkey registration and stop behavior on real Windows |
 | Workspace foreground recovery | Desktop-only tool waits for visible and focused main window; showing/restoring workspace no longer hides the always-on-top companion | Real-machine acceptance test |
 | Minimized conversation transcript | Voice transcript entries are cached in same-origin localStorage and mirrored into the native companion window | Verify multi-window storage events and transcript continuity in packaged runtime |
 | Chrome tab list/open/close/activate/navigate/reload/scroll/read/find/click/fill | Implemented through MV3 extension, .NET 8 native host and named-pipe relay; gated by the signed-in Full Control Session | Build installer, register host, load unpacked extension and test against a real Chrome profile |
@@ -34,7 +34,7 @@ Audit date: 2026-10-12. PR #66 is merged to main. The cross-platform CI, Windows
 
 ## Changes in this branch
 
-1. Keeps the native Jess companion overlay visible both over the workspace and when Hub-Mind is minimized; uses the established animated orb instead of the separate teal-brain SVG.
+1. Keeps the native Jess companion overlay visible both over the workspace and when Hub-Mind is minimized; restores the original `/icon.svg` icon instead of the changed `/jess-orb.svg` asset.
 2. Adds a compact transcript panel that receives user/Jess voice transcript updates across desktop windows.
 3. Improves real desktop window activation with BringWindowToTop before SetForegroundWindow, and clarifies how Jess should use the window-management tools.
 4. Enforces verified-result honesty for native Windows actions.
