@@ -19,16 +19,16 @@ function cn(...inputs: ClassValue[]) {
 }
 
 const navItems = [
-  { to: '/', label: 'Today', icon: LayoutDashboard },
-  { to: '/inbox', label: 'Inbox', icon: Inbox },
-  { to: '/tasks', label: 'Tasks', icon: CheckSquare },
-  { to: '/projects', label: 'Projects', icon: Briefcase },
-  { to: '/documents', label: 'Documents', icon: Folder },
-  { to: '/calendar', label: 'Calendar', icon: Calendar },
-  { to: '/colleagues', label: 'Colleagues', icon: Users },
-  { to: '/clients', label: 'Clients', icon: Book },
-  { to: '/knowledge', label: 'Knowledge', icon: Brain },
-  { to: '/follow-ups', label: 'Follow-ups', icon: Clock3 },
+  { to: '/workspace', label: 'Today', icon: LayoutDashboard },
+  { to: '/workspace/inbox', label: 'Inbox', icon: Inbox },
+  { to: '/workspace/tasks', label: 'Tasks', icon: CheckSquare },
+  { to: '/workspace/projects', label: 'Projects', icon: Briefcase },
+  { to: '/workspace/documents', label: 'Documents', icon: Folder },
+  { to: '/workspace/calendar', label: 'Calendar', icon: Calendar },
+  { to: '/workspace/colleagues', label: 'Colleagues', icon: Users },
+  { to: '/workspace/clients', label: 'Clients', icon: Book },
+  { to: '/workspace/knowledge', label: 'Knowledge', icon: Brain },
+  { to: '/workspace/follow-ups', label: 'Follow-ups', icon: Clock3 },
 ];
 
 export function Layout() {
