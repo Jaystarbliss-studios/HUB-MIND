@@ -34,6 +34,7 @@ test('desktop companion is moved to lower right and hidden when workspace is res
   assert.match(electron, /positionCompanionBottomRight/);
   assert.match(electron, /mainWindow\.on\('show'.*companionWindow\.hide/s);
   assert.match(electron, /mainWindow\.on\('minimize'.*createCompanionWindow/s);
+  assert.match(electron, /focusable: false/);
   assert.match(electron, /hubmind:hide-companion/);
   assert.match(electron, /hubmind:move-companion-by/);
   assert.match(electron, /Math\.max\(area\.x/);
