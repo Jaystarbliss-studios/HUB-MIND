@@ -163,6 +163,16 @@ app.whenReady().then(() => {
       if (command.length > 4000) throw new Error('Command exceeds the 4,000-character limit.');
       if (/\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)\b/i.test(command)) throw new Error('Potentially destructive commands require a separate explicit confirmation flow and are blocked in this release.');
     }
+    if (['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'].includes(method) && !safeArgs.handle && !String(safeArgs.title || '').trim()) throw new Error('Provide a window title or handle.');
+    if (method === 'move_window' && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Moving a window requires numeric x and y coordinates.');
+    if (method === 'resize_window' && (!Number.isFinite(safeArgs.width) || !Number.isFinite(safeArgs.height))) throw new Error('Resizing a window requires numeric width and height.');
+    if (method === 'snap_window' && !['left','right','top-left','top-right','bottom-left','bottom-right'].includes(String(safeArgs.position))) throw new Error('Choose a supported snap position.');
+    if (['mouse_move','click','double_click','right_click','scroll'].includes(method) && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Mouse actions require numeric screen coordinates.');
+    if (method === 'drag' && !['fromX','fromY','toX','toY'].every(key => Number.isFinite(safeArgs[key]))) throw new Error('Drag requires start and end screen coordinates.');
+    if (method === 'type_text' && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 10000)) throw new Error('Text must be a string no longer than 10,000 characters.');
+    if (method === 'press_keys' && (typeof safeArgs.keys !== 'string' || !safeArgs.keys.trim() || safeArgs.keys.length > 80)) throw new Error('Provide a key combination under 80 characters.');
+    if (method === 'launch_app' && (typeof safeArgs.name !== 'string' || !safeArgs.name.trim() || safeArgs.name.length > 160)) throw new Error('Provide an application name under 160 characters.');
+    if (method === 'open_path' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid local file path.');
     const started = Date.now();
     try {
       const result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
