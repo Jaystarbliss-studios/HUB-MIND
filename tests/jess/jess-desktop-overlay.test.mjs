@@ -4,27 +4,24 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
-test('native Jess companion remains visible when the workspace is shown', () => {
+test('native Jess orb hides with the workspace and returns after minimize or close', () => {
   const main = read('../../electron/main.cjs');
-  assert.match(main, /mainWindow\.on\('show', keepCompanionVisible\)/);
-  assert.match(main, /mainWindow\.on\('restore', keepCompanionVisible\)/);
-  assert.match(main, /companionWindow\.showInactive\(\)/);
-  assert.doesNotMatch(main, /mainWindow\.on\('show',\s*\(\)\s*=>\s*\{\s*if\s*\(companionWindow[^\n]*companionWindow\.hide\(\)/);
-  assert.match(main, /width: 420, height: 560/);
-  assert.match(main, /setIgnoreMouseEvents\(true, \{ forward: true \}\)/);
-  assert.match(main, /hubmind:set-companion-interactive/);
+  assert.match(main, /mainWindow\\.on\\('show'.*companionWindow\\.hide\\(\\)/s);
+  assert.match(main, /mainWindow\\.on\\('restore'.*companionWindow\\.hide\\(\\)/s);
+  assert.match(main, /mainWindow\\.on\\('minimize'.*createCompanionWindow/s);
+  assert.match(main, /mainWindow\\.on\\('close'.*createCompanionWindow/s);
+  assert.match(main, /width: 96, height: 96/);
+  assert.match(main, /hubmind:move-companion-by/);
+  assert.match(main, /hubmind:hide-companion/);
 });
 
-test('companion restores the original Jess icon and has a transcript panel', () => {
-  const companion = read('../../src/pages/CompanionPage.tsx');
-  const styles = read('../../src/pages/companion.css');
-  assert.match(companion, /src="\/icon\.svg"/);
-  assert.doesNotMatch(companion, /src="\/jess-orb\.svg"/);
-  assert.match(companion, /jess-transcript-messages/);
-  assert.match(companion, /setCompanionInteractive/);
-  assert.match(companion, /hubmind\.jess\.desktopTranscript\.v1/);
-  assert.match(styles, /\.jess-transcript\{/);
-  assert.match(styles, /\.jess-transcript-messages\{/);
+test('desktop orb displays only the Jess icon with a working hide control', () => {
+  const orb = read('../../src/pages/JessOrbPage.tsx');
+  assert.match(orb, /src="\\/jess-orb\\.svg"/);
+  assert.match(orb, /jess-orb-close/);
+  assert.match(orb, /hideCompanion/);
+  assert.match(orb, /moveCompanionBy/);
+  assert.doesNotMatch(orb, /transcript|textarea|microphone controls/i);
 });
 
 test('voice turns are mirrored into the cross-window desktop transcript cache', () => {
