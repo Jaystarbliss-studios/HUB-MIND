@@ -11,6 +11,7 @@ let tray;
 let quitting = false;
 let fullControlActive = false;
 let controlSessionStartedAt = null;
+let controlSessionUserId = null;
 let controlAuditPath = null;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const trustedAppHosts = new Set(['hub-mind.netlify.app']);
@@ -151,7 +152,7 @@ app.whenReady().then(() => {
     return { ok: true, active: true, startedAt: controlSessionStartedAt, stopHotkey: 'Ctrl+Alt+Shift+J' };
   });
   ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
-  ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt }; });
+  ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
   ipcMain.handle('hubmind:native-action', async (event, method, args) => {
     assertTrustedSender(event);
     const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','get_time','system_info','open_path']);
