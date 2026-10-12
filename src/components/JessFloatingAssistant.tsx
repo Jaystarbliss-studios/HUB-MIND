@@ -35,6 +35,7 @@ const POSITION_KEY = 'hubmind.jess.position.v2';
 const DEFAULT_POSITION = { x: 0.92, y: 0.88 };
 const DRAG_THRESHOLD = 8;
 const DOUBLE_TAP_MS = 380;
+const isDesktopShell = typeof window !== 'undefined' && (window as any).hubMindDesktop?.isDesktopApp === true;
 
 function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)); }
 function clampViewportPosition(position: { x: number; y: number }, size: number) {
@@ -1091,8 +1092,8 @@ export function JessFloatingAssistant() {
         </div>
       )}
 
-      {/* Floating Assistant Orb Button */}
-      {!orbDismissed && <button
+      {/* Floating Assistant Orb Button — the native desktop shell owns the only visible orb. */}
+      {!isDesktopShell && !orbDismissed && <button
         data-jess-orb="true"
         type="button"
         onPointerDown={onPointerDown}
