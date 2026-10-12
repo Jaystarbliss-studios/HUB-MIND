@@ -3,6 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { execFile, spawn } = require('node:child_process');
 const nativeAgent = require('./agentBridge.cjs');
+const chromeBridge = require('./chromeBridge.cjs');
 
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
@@ -167,6 +168,7 @@ app.whenReady().then(() => {
   if (!hasSingleInstanceLock) { app.quit(); return; }
   app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
+  chromeBridge.start();
   ipcMain.handle('hubmind:full-control-start', (event, userId) => {
     assertTrustedSender(event);
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
@@ -178,6 +180,25 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
   ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
+  ipcMain.handle('hubmind:chrome-status', (event) => { assertTrustedSender(event); return chromeBridge.status(); });
+  ipcMain.handle('hubmind:chrome-action', async (event, method, args, userId) => {
+    assertTrustedSender(event);
+    if (!fullControlActive || typeof userId !== 'string' || userId !== controlSessionUserId) {
+      return { ok: false, verified: false, error: 'Chrome control requires an active Full Control Session owned by the signed-in user.' };
+    }
+    const allowed = new Set(['chrome_list_tabs','chrome_open_tab','chrome_close_tab','chrome_activate_tab','chrome_navigate_tab','chrome_reload_tab','chrome_scroll','chrome_read_page','chrome_find_element','chrome_click_element','chrome_fill_field']);
+    if (typeof method !== 'string' || !allowed.has(method)) return { ok: false, verified: false, error: 'Unsupported Chrome action.' };
+    const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+    if (safeArgs.tabId !== undefined && (!Number.isInteger(Number(safeArgs.tabId)) || Number(safeArgs.tabId) < 1)) return { ok: false, verified: false, error: 'Invalid Chrome tab ID.' };
+    if (['chrome_open_tab','chrome_navigate_tab'].includes(method) && (typeof safeArgs.url !== 'string' || safeArgs.url.length > 2048)) return { ok: false, verified: false, error: 'A valid HTTP or HTTPS URL is required.' };
+    if (method === 'chrome_fill_field' && (typeof safeArgs.selector !== 'string' || !safeArgs.selector.trim() || safeArgs.selector.length > 500 || typeof safeArgs.value !== 'string' || safeArgs.value.length > 10000)) return { ok: false, verified: false, error: 'A field selector and value under 10,000 characters are required.' };
+    if (['chrome_find_element','chrome_click_element'].includes(method) && ((safeArgs.selector && (typeof safeArgs.selector !== 'string' || safeArgs.selector.length > 500)) || (safeArgs.text && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 500)))) return { ok: false, verified: false, error: 'Element selectors and text queries must be under 500 characters.' };
+    auditNativeAction({ event: 'chrome-action-request', method, userId });
+    const started = Date.now();
+    const result = await chromeBridge.request(method, safeArgs, method === 'chrome_read_page' ? 20000 : 12000);
+    auditNativeAction({ event: 'chrome-action-result', method, userId, durationMs: Date.now() - started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
+    return result;
+  });
   ipcMain.handle('hubmind:native-action', async (event, method, args, userId) => {
     assertTrustedSender(event);
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
@@ -348,5 +369,5 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   app.on('activate', showMain);
 });
 
-app.on('before-quit', () => { stopFullControl('app-quit'); globalShortcut.unregisterAll(); quitting = true; });
+app.on('before-quit', () => { stopFullControl('app-quit'); chromeBridge.stop(); globalShortcut.unregisterAll(); quitting = true; });
 app.on('window-all-closed', () => { /* Keep tray and companion available until explicit Quit. */ });
