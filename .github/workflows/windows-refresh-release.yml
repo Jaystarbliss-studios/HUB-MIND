@@ -41,4 +41,5 @@ jobs:
         run: |
           $installer = Get-ChildItem -Path release -Filter '*.exe' | Select-Object -First 1
           if (-not $installer) { throw 'Windows installer was not produced.' }
-          gh release create desktop-v9 $installer.FullName --target main --title 'Hub-Mind Windows Installer desktop-v9' --notes 'Refreshed Windows installer with the compact draggable Jess overlay, display capture permission handling, grounded web research integration, and confirmed native Windows app/diagnostic actions.' --latest
+          gh release upload desktop-v9 $installer.FullName --clobber
+          gh release edit desktop-v9 --title 'Hub-Mind Windows Installer desktop-v9' --notes 'Refreshed Windows installer with the compact draggable Jess overlay, display capture permission handling, grounded web research integration, and confirmed native Windows app/diagnostic actions.' --latest
