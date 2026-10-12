@@ -12,6 +12,8 @@ Audit date: 2026-10-12. Repository implementation and CI configuration are inspe
 - `electron-builder.yml` includes the extension, native host, offline wake helper and per-user install/uninstall scripts as extra resources. The Windows workflows now publish the native helpers before packaging.
 - Native action success is reported by the primary tool wrapper only when both `ok: true` and `verified: true`. Injection-only mouse/keyboard operations intentionally remain unverified until follow-up evidence is available.
 
+- `native/JessWindowsOcr` is a .NET 8 helper using Windows.Media.Ocr. If UI Automation returns no text, the desktop captures the primary monitor, runs local OCR, deletes the temporary screenshot, and returns recognized text with its source and bounds.
+
 ## Feature audit
 
 | Capability | Implementation state | Validation still required |
@@ -23,10 +25,10 @@ Audit date: 2026-10-12. Repository implementation and CI configuration are inspe
 | Workspace foreground recovery | Desktop-only tool waits for visible and focused main window | Real-machine acceptance test |
 | Chrome tab list/open/close/activate/navigate/reload/scroll/read/find/click/fill | Implemented through MV3 extension, .NET 8 native host and named-pipe relay; gated by the signed-in Full Control Session | Build installer, register host, load unpacked extension and test against a real Chrome profile |
 | Native offline wake word | Consent-gated .NET 8 helper using Windows System.Speech; falls back to browser recognition outside the desktop shell | Verify recognizer availability, microphone access, false wakes, latency and cleanup on Windows |
-| Installer and extension packaging | Windows workflow now builds the two self-contained .NET helpers and packages extension/installer scripts | Latest CI must pass and artifacts must be downloaded/installed |
+| Installer and extension packaging | Windows workflow now builds the three self-contained .NET helpers and packages extension/installer scripts | Latest CI must pass and artifacts must be downloaded/installed |
 | Elevated administrator actions / scheduled task | Not implemented. Native control remains at the current user's permissions | Needs a separately hardened privilege boundary, explicit UAC consent, secure install/uninstall and threat review |
 | Installer code signing | Not configured with a certificate | Requires a real code-signing certificate and protected CI secrets |
-| OCR fallback | Not implemented as a dedicated OCR engine; screenshot bytes alone do not prove Jess saw pixels | Add and test a Windows OCR implementation before claiming screenshot text recognition |
+| OCR fallback | Implemented with Windows.Media.Ocr when UI Automation exposes no text | Must compile, have an installed OCR language, and be tested on real screenshots before relying on it |
 | Secure desktop, password prompts, DRM and protected browser pages | Restricted by platform and application security | Must remain unsupported; never bypass OS protections |
 
 ## Changes in this branch
@@ -56,4 +58,4 @@ The packaged installer places `Install-JessChromeBridge.ps1` and `Uninstall-Jess
 
 ## Still outstanding
 
-The Chrome bridge and offline wake-word implementation are now present in source, but their packaged runtime behavior remains unverified until Windows CI succeeds and the app is installed and tested on a real Windows machine. Dedicated OCR, administrator elevation/scheduled-task integration, and code signing remain intentionally unclaimed. Do not merge or describe this as fully complete until those gates are satisfied.
+The Chrome bridge, consent-gated offline wake-word listener and Windows.Media.Ocr fallback are now present in source. Their packaged runtime behavior remains unverified until Windows CI succeeds and the app is installed and tested on a real Windows machine. Administrator elevation/scheduled-task integration remain unimplemented. Code signing is wired only when protected certificate secrets are configured. Do not merge or describe this as fully complete until those gates are satisfied.
