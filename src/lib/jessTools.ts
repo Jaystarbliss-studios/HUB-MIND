@@ -544,16 +544,18 @@ export async function executeJessTool(
 
   try {
     switch (name) {
+      case 'desktop_launch_app':
       case 'launch_windows_app': {
         const desktop = (window as any).hubMindDesktop;
         if (!desktop?.isDesktopApp || typeof desktop.launchApp !== 'function') return { result: { success: false, error: 'Windows application launching is available only in the installed desktop app.' } };
-        const result = await desktop.launchApp(String(args?.app || ''));
+        const result = await desktop.launchApp(String(args?.app || args?.appName || ''));
         return { result: { success: !!result?.launched, ...result } };
       }
+      case 'desktop_run_readonly_command':
       case 'run_windows_diagnostic': {
         const desktop = (window as any).hubMindDesktop;
         if (!desktop?.isDesktopApp || typeof desktop.runReadonlyCommand !== 'function') return { result: { success: false, error: 'Windows diagnostics are available only in the installed desktop app.' } };
-        const result = await desktop.runReadonlyCommand(String(args?.command || ''));
+        const result = await desktop.runReadonlyCommand(String(args?.command || args?.commandName || ''));
         return { result: { success: !!result?.ran, ...result } };
       }
       case 'run_windows_command': {
@@ -565,6 +567,7 @@ export async function executeJessTool(
         const result = await desktop.runSystemCommand(command, purpose);
         return { result: { success: !!result?.ran, ...result } };
       }
+      case 'desktop_open_website':
       case 'open_windows_website': {
         const desktop = (window as any).hubMindDesktop;
         if (!desktop?.isDesktopApp || typeof desktop.openUrl !== 'function') return { result: { success: false, error: 'Native website opening is available only in the installed desktop app.' } };
