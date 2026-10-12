@@ -7,13 +7,19 @@ const app = fs.readFileSync(new URL('../../src/App.tsx', import.meta.url), 'utf8
 const electronMain = fs.readFileSync(new URL('../../electron/main.cjs', import.meta.url), 'utf8');
 const preload = fs.readFileSync(new URL('../../electron/preload.cjs', import.meta.url), 'utf8');
 const workflow = fs.readFileSync(new URL('../../.github/workflows/windows-release.yml', import.meta.url), 'utf8');
+const auth = fs.readFileSync(new URL('../../src/lib/auth.tsx', import.meta.url), 'utf8');
+const login = fs.readFileSync(new URL('../../src/pages/Login.tsx', import.meta.url), 'utf8');
 
 test('public landing page keeps invite-only access and release-gated installer', () => {
-  assert.match(home, /Get invite|Get invite/i);
+  assert.match(home, /Get Invite/i);
   assert.match(home, /\/login\?invite=/);
   assert.match(home, /releases\/latest/);
   assert.match(home, /\.exe\$/i);
   assert.match(home, /This Google account|invitation/i);
+  assert.match(auth, /acceptInvitation\(inviteId, firebaseUser\.uid, userEmail\)/);
+  assert.match(auth, /if \(!inviteId\)/);
+  assert.doesNotMatch(auth, /hubmind_existing_auth_login/);
+  assert.doesNotMatch(login, /hubmind_existing_auth_login/);
 });
 
 test('workspace routes remain under authenticated workspace path', () => {
