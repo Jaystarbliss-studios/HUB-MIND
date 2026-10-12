@@ -22,7 +22,8 @@ $nativeManifest = @{
   type = 'stdio'
   allowed_origins = @($extensionOrigin)
 }
-$nativeManifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+$manifestJson = $nativeManifest | ConvertTo-Json -Depth 4
+[System.IO.File]::WriteAllText($manifestPath, $manifestJson, [System.Text.UTF8Encoding]::new($false))
 $registryPath = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\$hostName"
 New-Item -Path $registryPath -Force | Out-Null
 Set-Item -Path $registryPath -Value $manifestPath
