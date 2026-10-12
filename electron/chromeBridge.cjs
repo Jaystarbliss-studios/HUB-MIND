@@ -38,7 +38,7 @@ function start() {
       if (client === socket) client = null;
       for (const [id, waiter] of pending) {
         clearTimeout(waiter.timer);
-        waiter.reject(new Error('Chrome native messaging connection closed.'));
+        waiter.resolve({ ok: false, verified: false, error: 'Chrome native messaging connection closed.' });
         pending.delete(id);
       }
     });
