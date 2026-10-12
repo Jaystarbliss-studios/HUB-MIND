@@ -15,7 +15,7 @@ test('native Jess companion remains visible when the workspace is shown', () => 
   assert.match(main, /hubmind:set-companion-interactive/);
 });
 
-test('companion uses the established animated Jess orb and has a transcript panel', () => {
+test('companion restores the original Jess icon and has a transcript panel', () => {
   const companion = read('../../src/pages/CompanionPage.tsx');
   const styles = read('../../src/pages/companion.css');
   assert.match(companion, /src="\/icon\.svg"/);
