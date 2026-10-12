@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   platform: process.platform, isDesktopApp: true,
+  startFullControl: (userId) => ipcRenderer.invoke('hubmind:full-control-start', userId),
+  stopFullControl: () => ipcRenderer.invoke('hubmind:full-control-stop'),
+  nativeStatus: () => ipcRenderer.invoke('hubmind:native-status'),
+  nativeAction: (method, args, userId) => ipcRenderer.invoke('hubmind:native-action', method, args, userId),
   showMain: () => ipcRenderer.invoke('hubmind:show-main'),
   showCompanion: () => ipcRenderer.invoke('hubmind:show-companion'),
   hideCompanion: () => ipcRenderer.invoke('hubmind:hide-companion'),

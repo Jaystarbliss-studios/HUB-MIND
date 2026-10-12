@@ -21,6 +21,7 @@ test('Jess voice sessions coordinate through a per-user Firestore lease', () => 
   assert.match(assistant, /releaseJessSession\(previousLease\.userId, previousLease\.sessionId\)/);
   assert.match(assistant, /Jess is already active in/);
   assert.match(assistant, /jessActivationRequest/);
+  assert.match(assistant, /!isDesktopShell && !orbDismissed/);
   assert.match(companion, /windows-desktop-companion/);
   assert.match(companion, /watchJessSession/);
 });
@@ -35,22 +36,26 @@ test('desktop companion is moved to lower right and hidden when workspace is res
   assert.match(electron, /positionCompanionBottomRight/);
   assert.match(electron, /mainWindow\.on\('show'.*companionWindow\.hide/s);
   assert.match(electron, /mainWindow\.on\('minimize'.*createCompanionWindow/s);
-  assert.match(electron, /focusable: false/);
+  assert.match(electron, /focusable: true/);
   assert.match(electron, /hubmind:hide-companion/);
   assert.match(electron, /hubmind:move-companion-by/);
   assert.match(electron, /Math\.max\(area\.x/);
   assert.match(companion, /jess-status-dot/);
 });
 
-test('native Windows tools are wired through the secure preload and require confirmation', () => {
-  assert.match(tools, /type_into_active_windows_app/);
-  assert.match(tools, /press_windows_shortcut/);
-  assert.match(tools, /case 'type_into_active_windows_app'/);
-  assert.match(tools, /case 'press_windows_shortcut'/);
-  assert.match(preload, /hubmind:type-text/);
-  assert.match(preload, /hubmind:press-shortcut/);
-  assert.match(electron, /title: 'Type into the active Windows application\?'/);
-  assert.match(electron, /title: 'Send a keyboard shortcut\?'/);
-  assert.match(live, /WINDOWS DESKTOP CONTROL/);
+test('native Windows tools use a full-control session, narrow preload bridge and honesty protocol', () => {
+  assert.match(tools, /jess_full_control/);
+  assert.match(tools, /jess_stop/);
+  assert.match(tools, /list_windows/);
+  assert.match(tools, /manage_windows/);
+  assert.match(tools, /take_windows_screenshot/);
+  assert.match(tools, /run_windows_command_native/);
+  assert.match(preload, /hubmind:native-action/);
+  assert.match(preload, /hubmind:full-control-start/);
+  assert.match(preload, /hubmind:full-control-stop/);
+  assert.match(electron, /Ctrl\+Alt\+Shift\+J|CommandOrControl\+Alt\+Shift\+J/);
+  assert.match(electron, /full-control-started/);
+  assert.match(electron, /jess-native-audit\.jsonl/);
+  assert.match(live, /NATIVE WINDOWS HONESTY PROTOCOL/);
   assert.match(live, /WEB RESEARCH/);
 });

@@ -35,6 +35,7 @@ const POSITION_KEY = 'hubmind.jess.position.v2';
 const DEFAULT_POSITION = { x: 0.92, y: 0.88 };
 const DRAG_THRESHOLD = 8;
 const DOUBLE_TAP_MS = 380;
+const isDesktopShell = typeof window !== 'undefined' && (window as any).hubMindDesktop?.isDesktopApp === true;
 
 function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)); }
 function clampViewportPosition(position: { x: number; y: number }, size: number) {
@@ -222,12 +223,15 @@ export function JessFloatingAssistant() {
       await share.video.play();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      canvas.width = 960;
-      canvas.height = 540;
       const sendFrame = () => {
         if (!share.video || !ctx || share.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+        const sourceWidth = share.video.videoWidth || 1280;
+        const sourceHeight = share.video.videoHeight || 720;
+        const scale = Math.min(1, 1280 / sourceWidth, 1280 / sourceHeight);
+        canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+        canvas.height = Math.max(1, Math.round(sourceHeight * scale));
         ctx.drawImage(share.video, 0, 0, canvas.width, canvas.height);
-        clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.62));
+        clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.72));
       };
       sendFrame();
       share.timer = window.setInterval(sendFrame, 1200);
@@ -602,6 +606,29 @@ export function JessFloatingAssistant() {
               result.result.message = 'Typed into the visible screen field.';
             }
           }
+        }
+
+        if (fc.name === 'take_windows_screenshot' && Array.isArray(result.result?.evidence?.monitors)) {
+          const monitors = result.result.evidence.monitors;
+          const primary = monitors.find((monitor: any) => monitor.primary) || monitors[0];
+          let delivered = false;
+          if (primary?.imageBase64) {
+            delivered = !!clientRef.current?.sendScreenFrame('data:image/jpeg;base64,' + primary.imageBase64);
+          }
+          result.result.evidence = {
+            ...result.result.evidence,
+            monitors: monitors.map((monitor: any) => ({
+              monitor: monitor.monitor,
+              bounds: monitor.bounds,
+              primary: monitor.primary,
+              imageDeliveredToJess: !!monitor.primary && delivered,
+            })),
+            note: delivered
+              ? 'The primary monitor screenshot was sent to Jess as an image frame. Map image coordinates to physical screen coordinates by adding the primary monitor bounds offset; other monitors are listed but were not sent as images.'
+              : 'Screenshot metadata was captured, but the image frame could not be delivered to the live session.',
+          };
+          result.result.verified = delivered && result.result.verified === true;
+          result.result.success = delivered;
         }
 
         clientRef.current?.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
@@ -1065,8 +1092,8 @@ export function JessFloatingAssistant() {
         </div>
       )}
 
-      {/* Floating Assistant Orb Button */}
-      {!orbDismissed && <button
+      {/* Floating Assistant Orb Button — the native desktop shell owns the only visible orb. */}
+      {!isDesktopShell && !orbDismissed && <button
         data-jess-orb="true"
         type="button"
         onPointerDown={onPointerDown}

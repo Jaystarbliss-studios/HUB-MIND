@@ -193,13 +193,23 @@ const object = (properties: Record<string, any>, required?: string[]): JessToolD
 });
 
 export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
-  { name: 'launch_windows_app', description: 'On the installed Windows desktop app only, launch an approved application. Windows displays a confirmation before launching.', parameters: object({ app: { type: 'string', enum: ['calculator','notepad','paint','explorer','taskManager','edge','chrome','word','excel','powerpoint','teams','vscode'] } }, ['app']) },
-  { name: 'run_windows_diagnostic', description: 'On the installed Windows desktop app only, run an approved read-only system diagnostic. Windows displays a confirmation first.', parameters: object({ command: { type: 'string', enum: ['ipconfig','systemInfo','runningProcesses'] } }, ['command']) },
-  { name: 'type_into_active_windows_app', description: 'On the installed Windows desktop app, type the provided text into the currently focused application after showing the exact text and requesting confirmation. Never send text until the user approves.', parameters: object({ text: { type: 'string', description: 'Text to type, up to 3,000 characters' } }, ['text']) },
-  { name: 'press_windows_shortcut', description: 'On the installed Windows desktop app, send an approved keyboard shortcut to the focused application after user confirmation.', parameters: object({ shortcut: { type: 'string', enum: ['save','selectAll','copy','paste','undo','redo','find','closeWindow','switchWindow','taskManager','enter','escape','tab'] } }, ['shortcut']) },
-  { name: 'run_windows_command', description: 'On the installed Windows desktop app only, request a user-confirmed PowerShell command. The exact command and purpose must be shown to the user; high-risk destructive commands are blocked.', parameters: object({ command: { type: 'string', description: 'PowerShell command to run after Windows confirmation' }, purpose: { type: 'string', description: 'Plain-language reason for running it' } }, ['command','purpose']) },
-  { name: 'open_windows_website', description: 'On the installed Windows desktop app only, open a public HTTP or HTTPS website in the default browser after user confirmation.', parameters: object({ url: { type: 'string' } }, ['url']) },
-  { name: 'open_windows_path', description: 'On the installed Windows desktop app only, open a local file or folder after confirmation.', parameters: object({ path: { type: 'string' } }, ['path']) },
+  { name: 'jess_full_control', description: 'Start the Windows Full Control Session. Use only after the user explicitly says “Jess, full control”. Enables hands-free native input until stopped. The session is audited and can be stopped by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.', parameters: object({}) },
+  { name: 'jess_stop', description: 'Immediately stop Jess native Windows control. Use when the user says “Jess, stop”.', parameters: object({}) },
+  { name: 'list_windows', description: 'List visible Windows desktop windows with titles, process names, bounds, state and foreground status. Requires Full Control Session.', parameters: object({}) },
+  { name: 'manage_windows', description: 'Manage a Windows window: focus, close/hide, minimize, maximize, restore, move, resize or snap. Supply title or handle; move/resize need coordinates/dimensions; snap position is left, right, top-left, top-right, bottom-left or bottom-right. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'] }, title: { type: 'string' }, handle: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, position: { type: 'string', enum: ['left','right','top-left','top-right','bottom-left','bottom-right'] } }, ['action']) },
+  { name: 'control_mouse', description: 'Move the Windows cursor, click, double-click, right-click or scroll at physical screen coordinates. Input delivery is not proof the target action succeeded. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['mouse_move','click','double_click','right_click','scroll'] }, x: { type: 'number' }, y: { type: 'number' }, delta: { type: 'number' } }, ['action','x','y']) },
+  { name: 'drag_windows_mouse', description: 'Drag from one physical screen coordinate to another. Requires Full Control Session; the app-level result is not automatically verified.', parameters: object({ fromX: { type: 'number' }, fromY: { type: 'number' }, toX: { type: 'number' }, toY: { type: 'number' } }, ['fromX','fromY','toX','toY']) },
+  { name: 'type_windows_text', description: 'Type text into the currently focused Windows app. Requires Full Control Session. Never type into password or payment fields.', parameters: object({ text: { type: 'string' } }, ['text']) },
+  { name: 'press_windows_keys', description: 'Send a key or key combination to the active Windows app, e.g. CTRL+S, ALT+TAB, ENTER, ESC, WIN+R. Requires Full Control Session.', parameters: object({ keys: { type: 'string' } }, ['keys']) },
+  { name: 'take_windows_screenshot', description: 'Capture screenshots of connected monitors, including monitor names, physical bounds and scale context. Requires Full Control Session.', parameters: object({}) },
+  { name: 'find_windows_ui_element', description: 'Find accessible Windows UI elements by visible name and return automation IDs and screen bounds. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
+  { name: 'invoke_windows_ui_element', description: 'Invoke a matching accessible Windows UI element by visible name. Follow with a screenshot or screen read to verify the outcome. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
+  { name: 'read_windows_screen', description: 'Read accessible text from Windows UI Automation. Secure desktop, protected content and controls that expose no accessible text are unavailable. Requires Full Control Session.', parameters: object({}) },
+  { name: 'open_local_windows_path', description: 'Open an existing local file or folder using its default Windows application. Requires Full Control Session. Does not execute a file as a command.', parameters: object({ path: { type: 'string' } }, ['path']) },
+  { name: 'launch_windows_application', description: 'Find an installed application from Start Menu or PATH, launch it and verify whether a matching window appeared. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
+  { name: 'run_windows_command_native', description: 'Run a bounded PowerShell command as the current Windows user and return captured output. Non-elevated. Destructive commands are blocked and results are not considered verified merely because output was returned. Requires Full Control Session.', parameters: object({ command: { type: 'string' } }, ['command']) },
+  { name: 'get_windows_time', description: 'Read local Windows time and time zone.', parameters: object({}) },
+  { name: 'get_windows_system_info', description: 'Read basic Windows computer and OS information.', parameters: object({}) },
   { name: 'get_user_profile', description: 'Get the signed-in Hub-Mind user profile, role, name, preferred name, email, and preferences.', parameters: object({}) },
   { name: 'get_current_user_profile', description: 'Get the currently signed-in user identity, name, preferred name, email, role, and preferences.', parameters: object({}) },
   { name: 'get_current_context', description: 'Get the current Hub-Mind route and active workspace context.', parameters: object({}) },
@@ -546,6 +556,58 @@ export async function executeJessTool(
 
   try {
     switch (name) {
+      case 'jess_full_control': {
+        if (!/full control/i.test(String(context?.page || '')) && !(args?.userExplicitlyRequested === true)) {
+          // The tool is only called by the model after an explicit spoken request; native side enforces session state.
+        }
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.startFullControl !== 'function') return { result: { success: false, error: 'Full Control Session is only available in the installed Windows desktop app.' } };
+        const result = await desktop.startFullControl(user.id);
+        return { result: { success: !!result?.active, ...result } };
+      }
+      case 'jess_stop': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.stopFullControl !== 'function') return { result: { success: false, error: 'Native control is only available in the installed Windows desktop app.' } };
+        const result = await desktop.stopFullControl();
+        return { result: { success: result?.active === false, ...result } };
+      }
+      case 'list_windows':
+      case 'take_windows_screenshot':
+      case 'read_windows_screen':
+      case 'find_windows_ui_element':
+      case 'invoke_windows_ui_element':
+      case 'get_windows_time':
+      case 'get_windows_system_info':
+      case 'open_local_windows_path':
+      case 'launch_windows_application':
+      case 'run_windows_command_native':
+      case 'type_windows_text':
+      case 'press_windows_keys':
+      case 'manage_windows':
+      case 'control_mouse':
+      case 'drag_windows_mouse': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.nativeAction !== 'function') return { result: { success: false, error: 'Native Windows control is only available in the installed desktop app.' } };
+        const status = await desktop.nativeStatus();
+        if (!status?.active && !['get_windows_time','get_windows_system_info'].includes(name)) return { result: { success: false, error: 'Full Control Session is off. Say “Jess, full control” first, or use the tray Stop Jess control.' } };
+        let method: string = name, payload: any = args || {};
+        if (name === 'manage_windows') { method = String(args?.action || ''); payload = { title: args?.title, handle: args?.handle, x: args?.x, y: args?.y, width: args?.width, height: args?.height, position: args?.position }; }
+        if (name === 'control_mouse') { method = String(args?.action || ''); payload = { x: args?.x, y: args?.y, delta: args?.delta ?? -120 }; }
+        if (name === 'drag_windows_mouse') { method = 'drag'; payload = { fromX: args?.fromX, fromY: args?.fromY, toX: args?.toX, toY: args?.toY }; }
+        if (name === 'type_windows_text') { method = 'type_text'; payload = { text: String(args?.text || '') }; }
+        if (name === 'press_windows_keys') { method = 'press_keys'; payload = { keys: String(args?.keys || '') }; }
+        if (name === 'take_windows_screenshot') { method = 'screenshot'; payload = {}; }
+        if (name === 'read_windows_screen') { method = 'read_screen_text'; payload = {}; }
+        if (name === 'find_windows_ui_element') { method = 'find_ui_element'; payload = { name: String(args?.name || '') }; }
+        if (name === 'invoke_windows_ui_element') { method = 'invoke_ui_element'; payload = { name: String(args?.name || '') }; }
+        if (name === 'launch_windows_application') { method = 'launch_app'; payload = { name: String(args?.name || '') }; }
+        if (name === 'open_local_windows_path') { method = 'open_path'; payload = { path: String(args?.path || '') }; }
+        if (name === 'run_windows_command_native') { method = 'run_command'; payload = { command: String(args?.command || '') }; }
+        if (name === 'get_windows_time') { method = 'get_time'; payload = {}; }
+        if (name === 'get_windows_system_info') { method = 'system_info'; payload = {}; }
+        const result = await desktop.nativeAction(method, payload, user.id);
+        return { result: { success: result?.ok === true, ...result } };
+      }
       case 'desktop_launch_app':
       case 'launch_windows_app': {
         const desktop = (window as any).hubMindDesktop;

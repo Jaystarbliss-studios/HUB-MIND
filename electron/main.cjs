@@ -1,13 +1,18 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, session, desktopCapturer, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, session, desktopCapturer, screen, globalShortcut } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { execFile, spawn } = require('node:child_process');
+const nativeAgent = require('./agentBridge.cjs');
 
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
 let companionWindow;
 let tray;
 let quitting = false;
+let fullControlActive = false;
+let controlSessionStartedAt = null;
+let controlSessionUserId = null;
+let controlAuditPath = null;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const trustedAppHosts = new Set(['hub-mind.netlify.app']);
 const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'identitytoolkit.googleapis.com']);
@@ -61,7 +66,7 @@ function guardNavigation(win) {
 }
 
 function createMainWindow() {
-  mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#080b12', title: 'Hub-Mind', autoHideMenuBar: true, show: false }));
+  mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#020617', title: 'Hub-Mind', autoHideMenuBar: true, show: false, webPreferences: { backgroundThrottling: false } }));
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); } });
@@ -82,7 +87,7 @@ function positionCompanionBottomRight() {
 
 function createCompanionWindow() {
   if (companionWindow && !companionWindow.isDestroyed()) { companionWindow.show(); companionWindow.focus(); return; }
-  companionWindow = new BrowserWindow(secureWindowOptions({ width: 116, height: 116, minWidth: 116, minHeight: 116, maxWidth: 116, maxHeight: 116, frame: false, transparent: true, resizable: false, focusable: false, alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000', title: 'Jess · Hub-Mind', show: false }));
+  companionWindow = new BrowserWindow(secureWindowOptions({ width: 116, height: 116, minWidth: 116, minHeight: 116, maxWidth: 116, maxHeight: 116, frame: false, transparent: true, resizable: false, focusable: true, alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000', title: 'Jess · Hub-Mind', show: false, webPreferences: { backgroundThrottling: false } }));
   companionWindow.on('blur', () => { /* The overlay remains available until explicitly hidden or the workspace is restored. */ });
   guardNavigation(companionWindow);
   companionWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -103,6 +108,25 @@ function showMain() {
   else { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); mainWindow.show(); mainWindow.focus(); }
 }
 
+function auditNativeAction(entry) {
+  try {
+    if (!controlAuditPath) controlAuditPath = path.join(app.getPath('userData'), 'jess-native-audit.jsonl');
+    fs.appendFileSync(controlAuditPath, JSON.stringify({ at: new Date().toISOString(), sessionActive: fullControlActive, ...entry }) + '\n', { encoding: 'utf8' });
+  } catch (error) { console.error('[Jess audit] Could not append audit entry:', error); }
+}
+function stopFullControl(reason = 'user-stop') {
+  fullControlActive = false;
+  controlSessionStartedAt = null;
+  const previousUserId = controlSessionUserId;
+  controlSessionUserId = null;
+  auditNativeAction({ event: 'full-control-stopped', reason, userId: previousUserId });
+  return { ok: true, active: false, reason };
+}
+function requireFullControl(method) {
+  if (!fullControlActive) throw new Error('Full Control Session is off. Say “Jess, full control” to enable native actions, or use the tray control.');
+  auditNativeAction({ event: 'native-action-request', method });
+}
+
 function createTray() {
   const iconPath = path.join(__dirname, '..', 'dist', 'icon.svg');
   const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }) : nativeImage.createEmpty();
@@ -121,6 +145,52 @@ app.whenReady().then(() => {
   if (!hasSingleInstanceLock) { app.quit(); return; }
   app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
+
+  ipcMain.handle('hubmind:full-control-start', (event, userId) => {
+    assertTrustedSender(event);
+    if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
+    fullControlActive = true;
+    controlSessionUserId = userId;
+    controlSessionStartedAt = new Date().toISOString();
+    auditNativeAction({ event: 'full-control-started', startedAt: controlSessionStartedAt, userId });
+    return { ok: true, active: true, startedAt: controlSessionStartedAt, userId, stopHotkey: 'Ctrl+Alt+Shift+J' };
+  });
+  ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
+  ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
+  ipcMain.handle('hubmind:native-action', async (event, method, args, userId) => {
+    assertTrustedSender(event);
+    if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
+    if (!['get_time','system_info'].includes(method) && userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','get_time','system_info','open_path']);
+    if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
+    if (!['get_time','system_info'].includes(method)) requireFullControl(method);
+    const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+    if (method === 'run_command') {
+      const command = String(safeArgs.command || '');
+      if (command.length > 4000) throw new Error('Command exceeds the 4,000-character limit.');
+      if (/\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)\b/i.test(command)) throw new Error('Potentially destructive commands require a separate explicit confirmation flow and are blocked in this release.');
+    }
+    if (['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'].includes(method) && !safeArgs.handle && !String(safeArgs.title || '').trim()) throw new Error('Provide a window title or handle.');
+    if (method === 'move_window' && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Moving a window requires numeric x and y coordinates.');
+    if (method === 'resize_window' && (!Number.isFinite(safeArgs.width) || !Number.isFinite(safeArgs.height))) throw new Error('Resizing a window requires numeric width and height.');
+    if (method === 'snap_window' && !['left','right','top-left','top-right','bottom-left','bottom-right'].includes(String(safeArgs.position))) throw new Error('Choose a supported snap position.');
+    if (['mouse_move','click','double_click','right_click','scroll'].includes(method) && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Mouse actions require numeric screen coordinates.');
+    if (method === 'drag' && !['fromX','fromY','toX','toY'].every(key => Number.isFinite(safeArgs[key]))) throw new Error('Drag requires start and end screen coordinates.');
+    if (method === 'type_text' && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 10000)) throw new Error('Text must be a string no longer than 10,000 characters.');
+    if (method === 'press_keys' && (typeof safeArgs.keys !== 'string' || !safeArgs.keys.trim() || safeArgs.keys.length > 80)) throw new Error('Provide a key combination under 80 characters.');
+    if (method === 'launch_app' && (typeof safeArgs.name !== 'string' || !safeArgs.name.trim() || safeArgs.name.length > 160)) throw new Error('Provide an application name under 160 characters.');
+    if (method === 'open_path' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid local file path.');
+    const started = Date.now();
+    try {
+      const result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
+      auditNativeAction({ event: 'native-action-result', method, userId, durationMs: Date.now()-started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
+      return result;
+    } catch (error) {
+      auditNativeAction({ event: 'native-action-error', method, userId, durationMs: Date.now()-started, error: String(error?.message || error) });
+      return { ok: false, verified: false, evidence: null, error: String(error?.message || error) };
+    }
+  });
+
   ipcMain.handle('hubmind:show-main', (event) => { assertTrustedSender(event); showMain(); return true; });
   ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); createCompanionWindow(); return true; });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionWindow?.hide(); return true; });
@@ -257,5 +327,5 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   app.on('activate', showMain);
 });
 
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', () => { stopFullControl('app-quit'); globalShortcut.unregisterAll(); quitting = true; });
 app.on('window-all-closed', () => { /* Keep tray and companion available until explicit Quit. */ });

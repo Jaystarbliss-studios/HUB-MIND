@@ -32,6 +32,13 @@ jobs:
         run: npm install --no-save --include=optional @rollup/rollup-win32-x64-msvc@4.62.4 lightningcss-win32-x64-msvc@1.32.0 @tailwindcss/oxide-win32-x64-msvc@4.3.3
       - name: Verify assistant integration
         run: npm run verify:jess
+      - name: Validate PowerShell agent syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'electron/jess-agent.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
       - name: TypeScript validation
         run: npm run typecheck
       - name: Unit and contract tests
