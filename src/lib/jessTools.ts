@@ -195,6 +195,7 @@ const object = (properties: Record<string, any>, required?: string[]): JessToolD
 export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'jess_full_control', description: 'Start the Windows Full Control Session. Use only after the user explicitly says “Jess, full control”. Enables hands-free native input until stopped. The session is audited and can be stopped by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.', parameters: object({}) },
   { name: 'jess_stop', description: 'Immediately stop Jess native Windows control. Use when the user says “Jess, stop”.', parameters: object({}) },
+  { name: 'show_hub_mind_workspace', description: 'Bring the Hub-Mind workspace window to the foreground and hide the floating Jess companion. Use when the user asks to show/open/bring Hub-Mind back to the screen. This does not claim that a separate Windows app or website has been opened.', parameters: object({}) },
   { name: 'list_windows', description: 'List visible Windows desktop windows with titles, process names, bounds, state and foreground status. Requires Full Control Session.', parameters: object({}) },
   { name: 'manage_windows', description: 'Manage a Windows window: focus, close/hide, minimize, maximize, restore, move, resize or snap. Supply title or handle; move/resize need coordinates/dimensions; snap position is left, right, top-left, top-right, bottom-left or bottom-right. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'] }, title: { type: 'string' }, handle: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, position: { type: 'string', enum: ['left','right','top-left','top-right','bottom-left','bottom-right'] } }, ['action']) },
   { name: 'control_mouse', description: 'Move the Windows cursor, click, double-click, right-click or scroll at physical screen coordinates. Input delivery is not proof the target action succeeded. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['mouse_move','click','double_click','right_click','scroll'] }, x: { type: 'number' }, y: { type: 'number' }, delta: { type: 'number' } }, ['action','x','y']) },
@@ -564,6 +565,12 @@ export async function executeJessTool(
         if (!desktop?.isDesktopApp || typeof desktop.startFullControl !== 'function') return { result: { success: false, error: 'Full Control Session is only available in the installed Windows desktop app.' } };
         const result = await desktop.startFullControl(user.id);
         return { result: { success: !!result?.active, ...result } };
+      }
+      case 'show_hub_mind_workspace': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.showMain !== 'function') return { result: { success: false, error: 'Bringing the Hub-Mind workspace to the foreground is available only in the installed Windows desktop app.' } };
+        const shown = await desktop.showMain();
+        return { result: { success: shown === true, verified: shown === true, message: shown === true ? 'Hub-Mind workspace foreground request completed.' : 'Hub-Mind workspace foreground could not be confirmed.' } };
       }
       case 'jess_stop': {
         const desktop = (window as any).hubMindDesktop;
