@@ -44,6 +44,7 @@ test('Chrome actions are gated by the signed-in Full Control Session and close r
   assert.match(tools, /chrome_close_tab/);
   assert.match(worker, /A specific tabId is required to close a tab/);
   assert.match(worker, /chrome\.tabs\.query\(\{\}\)/);
+  assert.match(worker, /password, payment, card, security-code or one-time-code fields/);
 });
 
 test('offline Windows wake listener requires consent and uses local System.Speech', async () => {
