@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const [main, orb, workspaceCss, layout] = await Promise.all([
   readFile(new URL('../../electron/main.cjs', import.meta.url), 'utf8'),
-  readFile(new URL('../../src/pages/JessOrbPage.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/pages/CompanionPage.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/index.css', import.meta.url), 'utf8'),
   readFile(new URL('../../src/components/Layout.tsx', import.meta.url), 'utf8'),
 ]);
@@ -20,17 +20,17 @@ test('Windows shell identifies itself as an installed app and uses the native di
 
 test('Jess desktop overlay is a compact, movable, closeable orb', () => {
   assert.ok(main.includes('width: 96, height: 96'));
-  assert.ok(main.includes("APP_URL + '/orb'"));
+  assert.ok(main.includes("APP_URL + '/companion'"));
   assert.match(main, /transparent: true/);
   assert.match(main, /alwaysOnTop: true/);
   assert.match(main, /hubmind:move-companion-by/);
   assert.match(main, /hubmind:hide-companion/);
-  assert.ok(orb.includes('jess-orb-close'));
+  assert.ok(orb.includes('jess-orb-controls'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
-  assert.ok(orb.includes('src="/hub-mind%20logo.png"'));
-  assert.ok(orb.includes('src = "/jess-orb.svg"'));
-  assert.doesNotMatch(orb, /transcript|textarea|microphone controls/i);
+  assert.ok(orb.includes('src="/icon.svg"'));
+  assert.ok(orb.includes("event.currentTarget.src = '/jess-orb.svg'"));
+  assert.match(orb, /is-transcript-visible/);
 });
 
 test('authenticated workspace explicitly preserves the established dark background', () => {
