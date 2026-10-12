@@ -56,9 +56,7 @@ function createMainWindow() {
   mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#080b12', title: 'Hub-Mind', autoHideMenuBar: true, show: false }));
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.on('close', (event) => {
-    if (!quitting && process.platform === 'win32') { event.preventDefault(); mainWindow.hide(); }
-  });
+  mainWindow.on('close', () => { /* Close the workspace window; Jess remains available from the tray. */ });
   mainWindow.on('minimize', () => createCompanionWindow());
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.loadURL(APP_URL);
