@@ -6,7 +6,11 @@ let child = null, nextId = 0, buffer = '';
 const pending = new Map();
 function ensureAgent() {
  if (child && child.exitCode === null) return child;
- child = spawn('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'jess-agent.ps1')],{windowsHide:true,stdio:['pipe','pipe','pipe'],shell:false});
+ const scriptPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'jess-agent.ps1')
+  : path.join(__dirname, 'jess-agent.ps1');
+ if (!require('node:fs').existsSync(scriptPath)) throw new Error('Jess native agent script is missing from this build: ' + scriptPath);
+ child = spawn('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',scriptPath],{windowsHide:true,stdio:['pipe','pipe','pipe'],shell:false});
  child.stdout.setEncoding('utf8');
  child.stdout.on('data',chunk=>{ buffer+=chunk; while(true){const at=buffer.indexOf('\n');if(at<0)break;const line=buffer.slice(0,at).trim();buffer=buffer.slice(at+1);if(!line)continue;try{const msg=JSON.parse(line),wait=pending.get(msg.id);if(wait){pending.delete(msg.id);clearTimeout(wait.timer);wait.resolve(msg.result);}}catch{}} });
  child.stderr.on('data',chunk=>console.warn('[Jess native agent]',String(chunk).slice(0,1000)));
