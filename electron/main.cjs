@@ -1,7 +1,7 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, session, desktopCapturer, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
-const { execFile } = require('node:child_process');
+const { execFile, spawn } = require('node:child_process');
 
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
@@ -195,7 +195,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
     if (typeof appName !== 'string' || !Object.prototype.hasOwnProperty.call(WINDOWS_APPS, appName)) throw new Error('That application is not on the approved launch list.');
     const choice = await dialog.showMessageBox(getDialogParent(), { type: 'question', buttons: ['Cancel', 'Launch app'], defaultId: 0, cancelId: 0, title: 'Launch Windows application?', message: 'Jess wants to launch ' + appName + '.', detail: 'This opens the selected built-in Windows application.' });
     if (choice.response !== 1) return { launched: false };
-    await new Promise((resolve, reject) => execFile(WINDOWS_APPS[appName], [], { windowsHide: true, timeout: 10000, shell: false }, error => error ? reject(error) : resolve(true)));
+    await new Promise((resolve, reject) => { const child = spawn(WINDOWS_APPS[appName], [], { windowsHide: true, detached: true, stdio: 'ignore', shell: false }); child.once('error', reject); child.once('spawn', () => { child.unref(); resolve(true); }); });
     return { launched: true, app: appName };
   });
   ipcMain.handle('hubmind:run-system-command', async (event, requestedCommand, requestedPurpose) => {
