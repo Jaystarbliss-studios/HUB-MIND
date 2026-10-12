@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { LiveAudioClient, JessState } from '../services/liveAudioClient';
+import { claimJessSession, createJessSessionId, releaseJessSession, renewJessSession, watchJessSession, JessSessionOwner } from '../services/jessSessionCoordinator';
 import { executeJessTool } from '../lib/jessTools';
 import { resolveJessContext } from '../lib/jessContext';
 import { JessOrbVisualizer } from './JessOrbVisualizer';
@@ -144,6 +145,9 @@ export function JessFloatingAssistant() {
   const location = useLocation();
   const navigate = useNavigate();
   const clientRef = useRef<LiveAudioClient | null>(null);
+  const sessionLeaseRef = useRef<{ userId: string; sessionId: string; timer: number | null } | null>(null);
+  const activationRequestSeenRef = useRef<string | null>(null);
+  const [remoteJessOwner, setRemoteJessOwner] = useState<JessSessionOwner | null>(null);
   const sessionEndingRef = useRef(false);
   const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number; axis: 'x' | 'y' }>({ timer: null, running: false, speed: 3, direction: 1, axis: 'y' });
   const screenShareRef = useRef<{ stream: MediaStream | null; timer: number | null; video: HTMLVideoElement | null; nativePlugin: any; nativeListener: any }>({ stream: null, timer: null, video: null, nativePlugin: null, nativeListener: null });
@@ -340,6 +344,10 @@ export function JessFloatingAssistant() {
       share.nativePlugin = null;
       void clientRef.current?.disconnect();
       clientRef.current = null;
+      const lease = sessionLeaseRef.current;
+      sessionLeaseRef.current = null;
+      if (lease?.timer !== null && lease?.timer !== undefined) window.clearInterval(lease.timer);
+      if (lease) void releaseJessSession(lease.userId, lease.sessionId).catch(error => console.warn('[Jess] Could not release session on unmount:', error));
     };
   }, []);
 
@@ -352,6 +360,10 @@ export function JessFloatingAssistant() {
 
   const stop = useCallback(async () => {
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    const lease = sessionLeaseRef.current;
+    sessionLeaseRef.current = null;
+    if (lease?.timer !== null && lease?.timer !== undefined) window.clearInterval(lease.timer);
+    if (lease) void releaseJessSession(lease.userId, lease.sessionId).catch(error => console.warn('[Jess] Could not release cross-client session:', error));
     await stopScreenSharing(false);
     await clientRef.current?.disconnect();
     clientRef.current = null;
@@ -373,7 +385,44 @@ export function JessFloatingAssistant() {
       if (connection === 'connected' || connection === 'connecting') return;
       try { await clientRef.current.disconnect(false); } catch {}
       clientRef.current = null;
+      const previousLease = sessionLeaseRef.current;
+      sessionLeaseRef.current = null;
+      if (previousLease?.timer !== null && previousLease?.timer !== undefined) window.clearInterval(previousLease.timer);
+      if (previousLease) await releaseJessSession(previousLease.userId, previousLease.sessionId).catch(error => console.warn('[Jess] Could not release stale session before reconnect:', error));
     }
+    const sessionId = createJessSessionId();
+    const clientKind = (window as any).hubMindDesktop?.isDesktopApp ? 'windows-desktop' : (window.matchMedia?.('(display-mode: standalone)').matches ? 'installed-web-app' : 'browser');
+    let claim;
+    try { claim = await claimJessSession(profile.id, sessionId, clientKind); }
+    catch (error) {
+      console.warn('[Jess] Could not claim cross-client session:', error);
+      setSpeechState({ text: 'Jess could not verify whether another device is already active. Check your connection and try again.', speaker: 'jess', visible: true });
+      return;
+    }
+    if (!claim.claimed) {
+      const ownerName = claim.owner?.client === 'windows-desktop' ? 'the Windows desktop app' : claim.owner?.client === 'installed-web-app' ? 'the installed Chrome app' : 'another browser or device';
+      setSpeechState({ text: `Jess is already active in ${ownerName} on this account. Stop her there before activating this instance, so you do not get overlapping voices.`, speaker: 'jess', visible: true });
+      setConnection('disconnected');
+      setState('idle');
+      return;
+    }
+    sessionLeaseRef.current = { userId: profile.id, sessionId, timer: null };
+    sessionLeaseRef.current.timer = window.setInterval(() => {
+      void renewJessSession(profile.id, sessionId, clientKind).then(ok => {
+        if (!ok) {
+          const lease = sessionLeaseRef.current;
+          if (lease?.sessionId === sessionId) {
+            if (lease.timer !== null) window.clearInterval(lease.timer);
+            sessionLeaseRef.current = null;
+            void clientRef.current?.disconnect(false);
+            clientRef.current = null;
+            setConnection('disconnected');
+            setState('idle');
+            setSpeechState({ text: 'Jess was activated in another Hub-Mind window, so this voice session has stopped to prevent overlapping audio.', speaker: 'jess', visible: true });
+          }
+        }
+      }).catch(error => console.warn('[Jess] Session heartbeat failed:', error));
+    }, 7000);
     sessionEndingRef.current = false;
     wakeTone();
     jessSpeechAccumulatorRef.current = '';
@@ -670,11 +719,34 @@ export function JessFloatingAssistant() {
   }, [connection, start, stop]);
 
 
+  // Desktop, Chrome-installed PWA, and browser sessions coordinate through the same per-user Firestore lease.
+  useEffect(() => {
+    if (!profile?.id) { setRemoteJessOwner(null); return; }
+    return watchJessSession(profile.id, owner => setRemoteJessOwner(owner));
+  }, [profile?.id]);
+
+  // The desktop companion is an icon-only shell. Clicking it writes a short-lived
+  // request that the authenticated main workspace consumes to start the actual Jess voice session.
+  useEffect(() => {
+    if (!profile?.id || !(window as any).hubMindDesktop?.isDesktopApp) return;
+    return onSnapshot(doc(db, 'users', profile.id, 'private', 'jessActivationRequest'), snapshot => {
+      if (!snapshot.exists()) return;
+      const request = snapshot.data();
+      const requestId = String(request.requestId || '');
+      const requestedAt = Number(request.requestedAt || 0);
+      if (!requestId || requestId === activationRequestSeenRef.current) return;
+      if (request.requestedBy !== 'windows-desktop-companion' || Date.now() - requestedAt > 15000 || requestedAt > Date.now() + 5000) return;
+      activationRequestSeenRef.current = requestId;
+      void start(String(request.prompt || '').trim() || undefined);
+    }, error => console.warn('[Jess] Desktop activation request listener failed:', error));
+  }, [profile?.id, start]);
+
   // Passive wake is strictly app-only. Normal browser tabs must never leave a
   // background microphone listener running. Native shells can provide a native
   // wake plugin; installed desktop PWAs use browser recognition as a fallback.
   useEffect(() => {
-    if (!profile || connection === 'connected' || connection === 'connecting' || !isJessInstalledApp()) return;
+    const leaseIsRemote = !!remoteJessOwner && remoteJessOwner.leaseUntil > Date.now() && remoteJessOwner.sessionId !== sessionLeaseRef.current?.sessionId;
+    if (!profile || connection === 'connected' || connection === 'connecting' || !isJessInstalledApp() || leaseIsRemote) return;
     let disposed = false;
     let nativeListener: { remove: () => Promise<void> } | null = null;
     const nativeWake = (window as any).Capacitor?.Plugins?.JessVoiceActivation;
@@ -709,7 +781,7 @@ export function JessFloatingAssistant() {
     });
     wakeListener.start();
     return () => { disposed = true; wakeListener.stop(); };
-  }, [profile?.id, connection, start]);
+  }, [profile?.id, connection, start, remoteJessOwner?.sessionId, remoteJessOwner?.leaseUntil]);
 
   const handleConfirmDeletion = async () => {
     if (!pendingDelete) return;
@@ -1024,6 +1096,11 @@ export function JessFloatingAssistant() {
           </div>
         )}
       </button>}
+      {remoteJessOwner && remoteJessOwner.leaseUntil > Date.now() && remoteJessOwner.sessionId !== sessionLeaseRef.current?.sessionId && !orbDismissed && (
+        <div role="status" aria-live="polite" style={{ position: 'fixed', left: `${Math.max(4, Math.min(96, renderedPosition.x * 100))}%`, top: `${Math.max(3, renderedPosition.y * 100 - 5)}%`, transform: 'translate(-50%, -100%)', zIndex: 9998, pointerEvents: 'none' }} className="max-w-[230px] rounded-full border border-teal-500/25 bg-slate-950/95 px-3 py-1.5 text-[10px] text-teal-100 shadow-xl">
+          Jess is active in {remoteJessOwner.client === 'windows-desktop' ? 'the Windows app' : remoteJessOwner.client === 'installed-web-app' ? 'the installed Chrome app' : 'another browser/device'}
+        </div>
+      )}
       {showOrbDismiss && !orbDismissed && (
         <button
           type="button"

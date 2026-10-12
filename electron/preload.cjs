@@ -10,4 +10,6 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   launchApp: (appName) => ipcRenderer.invoke('hubmind:launch-app', appName),
   runReadonlyCommand: (commandName) => ipcRenderer.invoke('hubmind:run-readonly-command', commandName),
   runSystemCommand: (command, purpose) => ipcRenderer.invoke('hubmind:run-system-command', command, purpose),
+  typeText: (text) => ipcRenderer.invoke('hubmind:type-text', text),
+  pressShortcut: (shortcutName) => ipcRenderer.invoke('hubmind:press-shortcut', shortcutName),
 }));

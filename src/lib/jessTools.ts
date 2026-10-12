@@ -195,6 +195,8 @@ const object = (properties: Record<string, any>, required?: string[]): JessToolD
 export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'launch_windows_app', description: 'On the installed Windows desktop app only, launch an approved application. Windows displays a confirmation before launching.', parameters: object({ app: { type: 'string', enum: ['calculator','notepad','paint','explorer','taskManager','edge','chrome','word','excel','powerpoint','teams','vscode'] } }, ['app']) },
   { name: 'run_windows_diagnostic', description: 'On the installed Windows desktop app only, run an approved read-only system diagnostic. Windows displays a confirmation first.', parameters: object({ command: { type: 'string', enum: ['ipconfig','systemInfo','runningProcesses'] } }, ['command']) },
+  { name: 'type_into_active_windows_app', description: 'On the installed Windows desktop app, type the provided text into the currently focused application after showing the exact text and requesting confirmation. Never send text until the user approves.', parameters: object({ text: { type: 'string', description: 'Text to type, up to 3,000 characters' } }, ['text']) },
+  { name: 'press_windows_shortcut', description: 'On the installed Windows desktop app, send an approved keyboard shortcut to the focused application after user confirmation.', parameters: object({ shortcut: { type: 'string', enum: ['save','selectAll','copy','paste','undo','redo','find','closeWindow','switchWindow','taskManager','enter','escape','tab'] } }, ['shortcut']) },
   { name: 'run_windows_command', description: 'On the installed Windows desktop app only, request a user-confirmed PowerShell command. The exact command and purpose must be shown to the user; high-risk destructive commands are blocked.', parameters: object({ command: { type: 'string', description: 'PowerShell command to run after Windows confirmation' }, purpose: { type: 'string', description: 'Plain-language reason for running it' } }, ['command','purpose']) },
   { name: 'open_windows_website', description: 'On the installed Windows desktop app only, open a public HTTP or HTTPS website in the default browser after user confirmation.', parameters: object({ url: { type: 'string' } }, ['url']) },
   { name: 'open_windows_path', description: 'On the installed Windows desktop app only, open a local file or folder after confirmation.', parameters: object({ path: { type: 'string' } }, ['path']) },
@@ -544,17 +546,33 @@ export async function executeJessTool(
 
   try {
     switch (name) {
+      case 'desktop_launch_app':
       case 'launch_windows_app': {
         const desktop = (window as any).hubMindDesktop;
         if (!desktop?.isDesktopApp || typeof desktop.launchApp !== 'function') return { result: { success: false, error: 'Windows application launching is available only in the installed desktop app.' } };
-        const result = await desktop.launchApp(String(args?.app || ''));
+        const result = await desktop.launchApp(String(args?.app || args?.appName || ''));
         return { result: { success: !!result?.launched, ...result } };
       }
+      case 'desktop_run_readonly_command':
       case 'run_windows_diagnostic': {
         const desktop = (window as any).hubMindDesktop;
         if (!desktop?.isDesktopApp || typeof desktop.runReadonlyCommand !== 'function') return { result: { success: false, error: 'Windows diagnostics are available only in the installed desktop app.' } };
-        const result = await desktop.runReadonlyCommand(String(args?.command || ''));
+        const result = await desktop.runReadonlyCommand(String(args?.command || args?.commandName || ''));
         return { result: { success: !!result?.ran, ...result } };
+      }
+      case 'type_into_active_windows_app': {
+        const desktop = (window as any).hubMindDesktop;
+        const text = String(args?.text || '');
+        if (!desktop?.isDesktopApp || typeof desktop.typeText !== 'function') return { result: { success: false, error: 'Native text entry is available only in the installed Windows desktop app.' } };
+        if (!text || text.length > 3000) return { result: { success: false, error: 'Provide text between 1 and 3,000 characters.' } };
+        const result = await desktop.typeText(text);
+        return { result: { success: !!result?.typed, ...result } };
+      }
+      case 'press_windows_shortcut': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.pressShortcut !== 'function') return { result: { success: false, error: 'Native keyboard shortcuts are available only in the installed Windows desktop app.' } };
+        const result = await desktop.pressShortcut(String(args?.shortcut || ''));
+        return { result: { success: !!result?.pressed, ...result } };
       }
       case 'run_windows_command': {
         const desktop = (window as any).hubMindDesktop;
@@ -565,6 +583,7 @@ export async function executeJessTool(
         const result = await desktop.runSystemCommand(command, purpose);
         return { result: { success: !!result?.ran, ...result } };
       }
+      case 'desktop_open_website':
       case 'open_windows_website': {
         const desktop = (window as any).hubMindDesktop;
         if (!desktop?.isDesktopApp || typeof desktop.openUrl !== 'function') return { result: { success: false, error: 'Native website opening is available only in the installed desktop app.' } };
@@ -2512,17 +2531,21 @@ export async function executeJessTool(
 
       case 'navigate_app': {
         let path = String(args.path || '').trim();
-        const lower = path.toLowerCase().replace(/^\/+/, '');
+        const lower = path.toLowerCase().replace(/^\/+/, '').replace(/^workspace\//, '');
         if (lower === 'people' || lower === 'colleagues' || lower === 'colleague' || lower === 'team' || lower === 'directory' || lower === 'members') {
-          path = '/colleagues';
-        } else if (lower === 'today' || lower === 'dashboard' || lower === 'home') {
-          path = '/';
+          path = '/workspace/colleagues';
+        } else if (lower === 'today' || lower === 'dashboard' || lower === 'home' || lower === 'workspace') {
+          path = '/workspace';
+        } else if (path.startsWith('/workspace/')) {
+          // Already a canonical workspace route.
         } else if (!path.startsWith('/')) {
-          path = '/' + path;
+          path = '/workspace/' + path.replace(/^\/+/, '');
+        } else {
+          path = '/workspace/' + path.replace(/^\/+/, '');
         }
-        if (path === '/people') path = '/colleagues';
-        if (path.startsWith('//') || path.includes('://')) {
-          return { result: { success: false, error: 'Only internal Hub-Mind routes are allowed.' } };
+        if (path === '/workspace/people') path = '/workspace/colleagues';
+        if (path.startsWith('//') || path.includes('://') || path.includes('..')) {
+          return { result: { success: false, error: 'Only safe internal Hub-Mind workspace routes are allowed.' } };
         }
         return { result: { success: true, path }, actionPayload: navigatePayload(path) };
       }
