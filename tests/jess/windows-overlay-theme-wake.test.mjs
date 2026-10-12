@@ -28,7 +28,8 @@ test('Windows desktop exposes guarded app, command, URL, typing and shortcut act
     assert.match(preload, new RegExp(method));
   }
   assert.match(main, /assertTrustedSender\(event\)/);
-  assert.match(main, /Full Control Session is off/);\n  assert.match(main, /Potentially destructive command blocked|command is blocked/i);
+  assert.match(main, /Full Control Session is off/);
+  assert.match(main, /Potentially destructive command blocked|command is blocked/i);
 });
 
 test('Jess wake listener accepts short interim wake phrases quickly', async () => {
