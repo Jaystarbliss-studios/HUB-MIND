@@ -1,6 +1,6 @@
 # Jess Windows Desktop Agent — Gap Report
 
-Audit date: 2026-10-12. Repository implementation and CI configuration are inspectable here; a packaged build has not yet been installed and exercised on a real Windows machine.
+Audit date: 2026-10-12. PR #66 is merged to main. The cross-platform CI, Windows native helper builds, and Windows installer packaging have passed; the packaged installer has not yet been installed and exercised on a real Windows machine.
 
 ## Current architecture
 
@@ -48,7 +48,7 @@ The packaged installer places `Install-JessChromeBridge.ps1` and `Uninstall-Jess
 
 ## Release acceptance checklist — not yet completed
 
-- Confirm the latest PR CI is green, including Windows native helper publish and NSIS packaging.
+- Confirm the merged main-branch CI is green, including Windows native helper publish and NSIS packaging. (Completed for merge commit `eebe793cd0bccf458d8a15de705b9ed09a59f125`.)
 - Install the produced Windows package and confirm the .NET native host and offline wake executable exist under the packaged resources.
 - Register the Chrome host and load the extension; verify listing tabs, opening/navigating, reading a page and filling a test field.
 - Confirm closing a tab without a tab ID is rejected and emergency stop cancels outstanding work.
@@ -58,4 +58,4 @@ The packaged installer places `Install-JessChromeBridge.ps1` and `Uninstall-Jess
 
 ## Still outstanding
 
-The Chrome bridge, consent-gated offline wake-word listener and Windows.Media.Ocr fallback are now present in source. Their packaged runtime behavior remains unverified until Windows CI succeeds and the app is installed and tested on a real Windows machine. Administrator elevation/scheduled-task integration remain unimplemented. Code signing is wired only when protected certificate secrets are configured. Do not merge or describe this as fully complete until those gates are satisfied.
+The Chrome bridge, consent-gated offline wake-word listener and Windows.Media.Ocr fallback are present in source, and the self-contained helpers plus NSIS installer now build successfully in CI. Their packaged runtime behavior remains unverified until the installer is installed and tested on a real Windows machine. Administrator elevation/scheduled-task integration remain intentionally unimplemented because a privileged broker requires a separate threat model, explicit UAC consent and security review. The published installer is unsigned unless protected certificate secrets are configured. Do not describe the feature as fully runtime-accepted until the real-machine acceptance checklist above passes.
