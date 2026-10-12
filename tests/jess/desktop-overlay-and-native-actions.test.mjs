@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 
 const read = (path) => readFile(new URL(path, import.meta.url).pathname.replace(/^\\//, process.platform === 'win32' ? '' : '/'), 'utf8');
 
