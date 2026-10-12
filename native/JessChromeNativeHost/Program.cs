@@ -36,7 +36,7 @@ static async Task PumpNativeMessagesToPipeAsync(Stream input, StreamWriter pipeW
         await ReadExactlyAsync(input, header, cancellationToken);
         var length = BinaryPrimitives.ReadUInt32LittleEndian(header);
         if (length < 2 || length > MaxMessageBytes) throw new InvalidDataException("Invalid Chrome native message length.");
-        var payload = new byte[length];
+        var payload = new byte[(int)length];
         await ReadExactlyAsync(input, payload, cancellationToken);
         var json = Encoding.UTF8.GetString(payload);
         await pipeWriter.WriteLineAsync(json.AsMemory(), cancellationToken);
