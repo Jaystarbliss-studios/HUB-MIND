@@ -7,25 +7,27 @@ let mainWindow;
 let companionWindow;
 let tray;
 let quitting = false;
-const allowedExternalProtocols = new Set(['https:', 'mailto:']);
+const trustedAppHosts = new Set(['hub-mind.netlify.app']);
+const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'identitytoolkit.googleapis.com']);
 
 function isTrustedAppUrl(value) {
   try {
     const url = new URL(value);
-    return url.protocol === 'file:' || (url.protocol === 'https:' && (url.hostname === 'hub-mind.netlify.app' || url.hostname.endsWith('.netlify.app')));
+    return url.protocol === 'https:' && (trustedAppHosts.has(url.hostname) || url.hostname.endsWith('.netlify.app'));
   } catch { return false; }
 }
 
 function secureWindowOptions(options = {}) {
+  const { webPreferences = {}, ...windowOptions } = options;
   return {
-    ...options,
+    ...windowOptions,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
       preload: path.join(__dirname, 'preload.cjs'),
-      ...(options.webPreferences || {}),
+      ...webPreferences,
     },
   };
 }
@@ -34,7 +36,19 @@ function guardNavigation(win) {
   win.webContents.setWindowOpenHandler(({ url }) => {
     try {
       const parsed = new URL(url);
-      if (allowedExternalProtocols.has(parsed.protocol) && parsed.protocol === 'https:') shell.openExternal(url);
+      if (parsed.protocol === 'https:' && (googleAuthHosts.has(parsed.hostname) || parsed.hostname.endsWith('.firebaseapp.com') || parsed.hostname.endsWith('.web.app'))) {
+        const authWindow = new BrowserWindow(secureWindowOptions({ width: 520, height: 720, parent: win, modal: false, autoHideMenuBar: true, title: 'Sign in to Hub-Mind' }));
+        authWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+        authWindow.webContents.on('will-navigate', (event, target) => {
+          try {
+            const next = new URL(target);
+            if (!(next.protocol === 'https:' && (googleAuthHosts.has(next.hostname) || next.hostname.endsWith('.firebaseapp.com') || next.hostname.endsWith('.web.app')))) event.preventDefault();
+          } catch { event.preventDefault(); }
+        });
+        authWindow.loadURL(url);
+        return { action: 'deny' };
+      }
+      if (parsed.protocol === 'https:' || parsed.protocol === 'mailto:') shell.openExternal(url);
     } catch {}
     return { action: 'deny' };
   });
@@ -44,14 +58,11 @@ function guardNavigation(win) {
 }
 
 function createMainWindow() {
-  mainWindow = new BrowserWindow( { ...secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#080b12', title: 'Hub-Mind', autoHideMenuBar: true, show: false }) });
+  mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#080b12', title: 'Hub-Mind', autoHideMenuBar: true, show: false }));
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('close', (event) => {
-    if (!quitting && process.platform === 'win32') {
-      event.preventDefault();
-      mainWindow.hide();
-    }
+    if (!quitting && process.platform === 'win32') { event.preventDefault(); mainWindow.hide(); }
   });
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.loadURL(APP_URL);
@@ -59,13 +70,11 @@ function createMainWindow() {
 
 function createCompanionWindow() {
   if (companionWindow && !companionWindow.isDestroyed()) { companionWindow.show(); companionWindow.focus(); return; }
-  companionWindow = new BrowserWindow({
-    ...secureWindowOptions({ width: 360, height: 560, minWidth: 320, minHeight: 360, frame: false, transparent: false, resizable: true, alwaysOnTop: true, skipTaskbar: true, backgroundColor: '#080b12', title: 'Jess · Hub-Mind', show: false }),
-  });
+  companionWindow = new BrowserWindow(secureWindowOptions({ width: 380, height: 600, minWidth: 320, minHeight: 360, frame: false, transparent: false, resizable: true, alwaysOnTop: true, skipTaskbar: true, backgroundColor: '#080b12', title: 'Jess · Hub-Mind', show: false }));
   guardNavigation(companionWindow);
   companionWindow.once('ready-to-show', () => companionWindow.show());
   companionWindow.on('closed', () => { companionWindow = null; });
-  companionWindow.loadURL(APP_URL + '/?desktopCompanion=1');
+  companionWindow.loadURL(APP_URL + '/workspace?desktopCompanion=1');
 }
 
 function showMain() {
@@ -110,4 +119,4 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => { quitting = true; });
-app.on('window-all-closed', (event) => { if (process.platform !== 'darwin') { /* Keep tray companion available until explicit quit. */ } });
+app.on('window-all-closed', () => { /* Keep tray and companion available until explicit Quit. */ });
