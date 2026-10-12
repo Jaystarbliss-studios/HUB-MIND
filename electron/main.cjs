@@ -551,16 +551,49 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   });
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
-      // The user must explicitly start screen sharing from Jess. Prefer the
-      // Windows system picker; this callback is only Electron's fallback path.
-      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
+      // On Windows, provide an explicit native source chooser. Automatically
+      // selecting the full screen made it impossible to share a single app window.
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 0, height: 0 },
+        fetchWindowIcons: true,
+      });
       if (!sources.length) { callback({}); return; }
       const primaryId = String(screen.getPrimaryDisplay().id);
       const primaryScreen = sources.find(source => source.display_id === primaryId && source.id.startsWith('screen:'));
-      const screenSource = primaryScreen || sources.find(source => source.id.startsWith('screen:'));
-      callback(screenSource ? { video: screenSource } : {});
-    } catch { callback({}); }
-  }, { useSystemPicker: true });
+      const ordered = [
+        ...(primaryScreen ? [primaryScreen] : []),
+        ...sources.filter(source => source.id.startsWith('window:') && source.name && !/^Electron$/i.test(source.name)),
+        ...sources.filter(source => source.id.startsWith('screen:') && source.id !== primaryScreen?.id),
+      ];
+      const unique = [...new Map(ordered.map(source => [source.id, source])).values()].slice(0, 4);
+      if (!unique.length) { callback({}); return; }
+      const labels = unique.map(source => {
+        const name = String(source.name || 'Application window').replace(/[\r\n]+/g, ' ').slice(0, 64);
+        return (source.id.startsWith('screen:') ? 'Share screen: ' : 'Share app: ') + name;
+      });
+      const cancelIndex = labels.length;
+      const options = {
+        type: 'question',
+        title: 'Choose what to share',
+        message: 'Choose a screen or application window to share.',
+        detail: 'Only the source you select will be shared. Cancel to keep your screen private.',
+        buttons: [...labels, 'Cancel'],
+        defaultId: cancelIndex,
+        cancelId: cancelIndex,
+        noLink: true,
+      };
+      const parent = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? mainWindow : undefined;
+      const choice = parent
+        ? await dialog.showMessageBox(parent, options)
+        : await dialog.showMessageBox(options);
+      const selected = unique[choice.response];
+      callback(selected ? { video: selected } : {});
+    } catch (error) {
+      console.warn('[Hub-Mind] Display source picker failed:', error);
+      callback({});
+    }
+  });
   const stopHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+J', () => {
     if (fullControlActive) stopFullControl('global-hotkey');
   });
