@@ -25,6 +25,12 @@ export function CompanionPage() {
   const [controlActive, setControlActive] = useState(false);
   const [transcript, setTranscript] = useState<Array<{ id: string; speaker: 'user' | 'jess'; text: string; at: number }>>([]);
   const drag = useRef<{ x: number; y: number; startX: number; startY: number; moved: boolean } | null>(null);
+  const transcriptMessagesRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const element = transcriptMessagesRef.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [transcript]);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -120,7 +126,7 @@ export function CompanionPage() {
     </div>
     <section className="jess-transcript" aria-label="Jess conversation transcript" onMouseEnter={() => void window.hubMindDesktop?.setCompanionInteractive?.(true)} onMouseLeave={() => void window.hubMindDesktop?.setCompanionInteractive?.(false)}>
       <header className="jess-transcript-header"><span>Jess conversation</span><span className={controlActive ? 'jess-transcript-live' : ''}>{controlActive ? 'Live' : 'Recent'}</span></header>
-      <div className="jess-transcript-messages" aria-live="polite">
+      <div className="jess-transcript-messages" aria-live="polite" ref={transcriptMessagesRef}>
         {transcript.length === 0 ? <p className="jess-transcript-empty">Your conversation with Jess will appear here, including while Hub-Mind is minimised.</p> : transcript.map(item => <article className={'jess-transcript-message ' + item.speaker} key={item.id}><div>{item.speaker === 'user' ? 'You' : 'Jess'}</div><p>{item.text}</p></article>)}
       </div>
     </section>
