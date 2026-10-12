@@ -28,6 +28,8 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Ensure Rollup Windows native binary is installed
+        run: npm install --no-save --include=optional @rollup/rollup-win32-x64-msvc@4.62.4
       - name: Verify assistant integration
         run: npm run verify:jess
       - name: TypeScript validation
