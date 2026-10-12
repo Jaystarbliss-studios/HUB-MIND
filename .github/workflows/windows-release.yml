@@ -58,6 +58,8 @@ jobs:
         run: npm install --no-save --include=optional @rollup/rollup-win32-x64-msvc@4.62.4 lightningcss-win32-x64-msvc@1.32.0 @tailwindcss/oxide-win32-x64-msvc@4.3.3
       - name: Publish self-contained .NET Chrome native host
         run: dotnet publish native/JessChromeNativeHost/JessChromeNativeHost.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o native/JessChromeNativeHost/publish
+      - name: Publish self-contained .NET offline wake helper
+        run: dotnet publish native/JessOfflineWake/JessOfflineWake.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o native/JessOfflineWake/publish
       - name: Verify assistant integration
         run: npm run verify:jess
       - name: Validate PowerShell agent syntax
