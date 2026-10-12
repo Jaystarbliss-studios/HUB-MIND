@@ -74,14 +74,10 @@ function createMainWindow() {
   mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#020617', title: 'Hub-Mind', autoHideMenuBar: true, show: false, webPreferences: { backgroundThrottling: false } }));
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); } });
-  // Keep Jess's native overlay visible above the workspace as well as other desktop apps.
-  const keepCompanionVisible = () => {
-    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow();
-    else if (!companionWindow.isVisible()) companionWindow.showInactive();
-  };
-  mainWindow.on('show', keepCompanionVisible);
-  mainWindow.on('restore', keepCompanionVisible);
+  mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); positionCompanionBottomRightIfNeeded(); } });
+  // The orb is intentionally hidden while the full workspace is visible.
+  mainWindow.on('show', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
+  mainWindow.on('restore', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
   mainWindow.on('minimize', () => { createCompanionWindow(); positionCompanionBottomRight(); });
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.loadURL(APP_URL);
@@ -92,23 +88,58 @@ function positionCompanionBottomRight() {
   const display = screen.getPrimaryDisplay();
   const area = display.workArea;
   const [width, height] = companionWindow.getSize();
+  // Keep the visible orb itself 18px from the work-area edges.
   companionWindow.setPosition(Math.max(area.x, area.x + area.width - width - 18), Math.max(area.y, area.y + area.height - height - 18), false);
 }
 
 function createCompanionWindow() {
-  if (companionWindow && !companionWindow.isDestroyed()) { companionWindow.showInactive(); return; }
-  companionWindow = new BrowserWindow(secureWindowOptions({ width: 420, height: 560, minWidth: 360, minHeight: 420, maxWidth: 520, maxHeight: 760, frame: false, transparent: true, resizable: true, focusable: true, alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000', title: 'Jess · Hub-Mind', show: false, webPreferences: { backgroundThrottling: false } }));
-  companionWindow.on('blur', () => { /* The overlay remains available until explicitly hidden or the workspace is restored. */ });
+  if (companionWindow && !companionWindow.isDestroyed()) {
+    positionCompanionBottomRightIfNeeded();
+    companionWindow.showInactive();
+    return;
+  }
+  const saved = readOrbPosition();
+  companionWindow = new BrowserWindow(secureWindowOptions({
+    width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 96, maxHeight: 96,
+    frame: false, transparent: true, resizable: false, movable: true, focusable: true,
+    alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
+    title: 'Jess', show: false, webPreferences: { backgroundThrottling: false }
+  }));
   guardNavigation(companionWindow);
   companionWindow.setAlwaysOnTop(true, 'screen-saver');
-  // Let clicks pass through transparent areas; renderer temporarily enables hit-testing over orb/transcript controls.
-  companionWindow.setIgnoreMouseEvents(true, { forward: true });
-  positionCompanionBottomRight();
-  companionWindow.once('ready-to-show', () => companionWindow.show());
+  companionWindow.setIgnoreMouseEvents(false);
+  if (saved) companionWindow.setPosition(saved.x, saved.y, false);
+  else positionCompanionBottomRight();
+  companionWindow.once('ready-to-show', () => companionWindow.showInactive());
+  companionWindow.on('move', () => {
+    if (!companionWindow || companionWindow.isDestroyed()) return;
+    try { fs.writeFileSync(orbPositionPath(), JSON.stringify({ x: companionWindow.getBounds().x, y: companionWindow.getBounds().y }), 'utf8'); } catch {}
+  });
   companionWindow.on('closed', () => { companionWindow = null; });
-  companionWindow.loadURL(APP_URL + '/companion');
+  companionWindow.loadURL(APP_URL + '/orb');
 }
-
+function orbPositionPath() { return path.join(app.getPath('userData'), 'jess-orb-position.json'); }
+function readOrbPosition() {
+  try {
+    const value = JSON.parse(fs.readFileSync(orbPositionPath(), 'utf8'));
+    const display = screen.getDisplayMatching({ x: value.x, y: value.y, width: 96, height: 96 });
+    const area = display.workArea;
+    if (Number.isFinite(value.x) && Number.isFinite(value.y) && value.x >= area.x && value.y >= area.y && value.x + 96 <= area.x + area.width && value.y + 96 <= area.y + area.height) return value;
+  } catch {}
+  return null;
+}
+function positionCompanionBottomRightIfNeeded() {
+  if (!companionWindow || companionWindow.isDestroyed()) return;
+  const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay();
+  const area = display.workArea;
+  const [width, height] = companionWindow.getSize();
+  const [x, y] = companionWindow.getPosition();
+  if (x < area.x || y < area.y || x + width > area.x + area.width || y + height > area.y + area.height) positionCompanionBottomRight();
+}
+function resetOrbPosition() {
+  if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow();
+  positionCompanionBottomRight();
+}
 function getDialogParent() {
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) return mainWindow;
   if (companionWindow && !companionWindow.isDestroyed() && companionWindow.isVisible()) return companionWindow;
@@ -125,6 +156,7 @@ function showMain() {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
 }
 
 async function showMainVerified(timeoutMs = 5000) {
