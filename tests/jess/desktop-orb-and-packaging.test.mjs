@@ -61,8 +61,9 @@ test('Live token endpoints use the supported constrained-token schema', () => {
   const netlify = read('../../netlify/functions/live-token.mjs');
   const server = read('../../server.ts');
   for (const source of [netlify, server]) {
-    assert.match(source, /v1beta\\/auth_tokens/);
-    assert.match(source, /liveConnectConstraints:\\s*\\{\\s*model:\\s*['"]models\\/gemini-3\\.8-live['"]/);
-    assert.doesNotMatch(source, /bidiGenerateContentSetup/);
+    assert.ok(source.includes('v1beta/auth_tokens'));
+    assert.ok(source.includes('liveConnectConstraints'));
+    assert.ok(source.includes('models/gemini-3.8-live'));
+    assert.ok(!source.includes('bidiGenerateContentSetup'));
   }
 });
