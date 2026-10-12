@@ -7,6 +7,7 @@ let mainWindow;
 let companionWindow;
 let tray;
 let quitting = false;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const trustedAppHosts = new Set(['hub-mind.netlify.app']);
 const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'identitytoolkit.googleapis.com']);
 
@@ -92,6 +93,8 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) { app.quit(); return; }
+  app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
   ipcMain.handle('hubmind:show-main', () => { showMain(); return true; });
   ipcMain.handle('hubmind:show-companion', () => { createCompanionWindow(); return true; });
