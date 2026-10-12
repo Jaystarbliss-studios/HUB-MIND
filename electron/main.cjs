@@ -103,7 +103,7 @@ function createCompanionWindow() {
   }
   const saved = readOrbPosition();
   companionWindow = new BrowserWindow(secureWindowOptions({
-    width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 96, maxHeight: 96,
+    width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 420, maxHeight: 520,
     frame: false, transparent: true, resizable: false, movable: true, focusable: true,
     alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
     title: 'Jess', show: false, webPreferences: { backgroundThrottling: false }
