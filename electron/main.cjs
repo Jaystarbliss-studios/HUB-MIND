@@ -13,7 +13,7 @@ const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com',
 function isTrustedAppUrl(value) {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' && (trustedAppHosts.has(url.hostname) || url.hostname.endsWith('.netlify.app'));
+    return url.protocol === 'https:' && trustedAppHosts.has(url.hostname);
   } catch { return false; }
 }
 
@@ -37,16 +37,10 @@ function guardNavigation(win) {
     try {
       const parsed = new URL(url);
       if (parsed.protocol === 'https:' && (googleAuthHosts.has(parsed.hostname) || parsed.hostname.endsWith('.firebaseapp.com') || parsed.hostname.endsWith('.web.app'))) {
-        const authWindow = new BrowserWindow(secureWindowOptions({ width: 520, height: 720, parent: win, modal: false, autoHideMenuBar: true, title: 'Sign in to Hub-Mind' }));
-        authWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-        authWindow.webContents.on('will-navigate', (event, target) => {
-          try {
-            const next = new URL(target);
-            if (!(next.protocol === 'https:' && (googleAuthHosts.has(next.hostname) || next.hostname.endsWith('.firebaseapp.com') || next.hostname.endsWith('.web.app')))) event.preventDefault();
-          } catch { event.preventDefault(); }
-        });
-        authWindow.loadURL(url);
-        return { action: 'deny' };
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: secureWindowOptions({ width: 520, height: 720, autoHideMenuBar: true, title: 'Sign in to Hub-Mind' }),
+        };
       }
       if (parsed.protocol === 'https:' || parsed.protocol === 'mailto:') shell.openExternal(url);
     } catch {}
@@ -64,6 +58,7 @@ function createMainWindow() {
   mainWindow.on('close', (event) => {
     if (!quitting && process.platform === 'win32') { event.preventDefault(); mainWindow.hide(); }
   });
+  mainWindow.on('minimize', () => createCompanionWindow());
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.loadURL(APP_URL);
 }
