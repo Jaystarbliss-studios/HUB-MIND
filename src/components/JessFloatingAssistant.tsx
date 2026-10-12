@@ -626,7 +626,7 @@ export function JessFloatingAssistant() {
               ? 'The primary monitor screenshot was sent to Jess as an image frame. Map image coordinates to physical screen coordinates by adding the primary monitor bounds offset; other monitors are listed but were not sent as images.'
               : 'Screenshot metadata was captured, but the image frame could not be delivered to the live session.',
           };
-          result.result.verified = false;
+          result.result.verified = delivered && result.result.verified === true;
           result.result.success = delivered;
         }
 
