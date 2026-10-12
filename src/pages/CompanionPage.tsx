@@ -26,10 +26,11 @@ export function CompanionPage() {
   const [transcript, setTranscript] = useState<Array<{ id: string; speaker: 'user' | 'jess'; text: string; at: number }>>([]);
   const drag = useRef<{ x: number; y: number; startX: number; startY: number; moved: boolean } | null>(null);
   const transcriptMessagesRef = useRef<HTMLDivElement | null>(null);
+  const shouldFollowTranscriptRef = useRef(true);
 
   useEffect(() => {
     const element = transcriptMessagesRef.current;
-    if (element) element.scrollTop = element.scrollHeight;
+    if (element && shouldFollowTranscriptRef.current) element.scrollTop = element.scrollHeight;
   }, [transcript]);
 
   useEffect(() => {
@@ -126,7 +127,7 @@ export function CompanionPage() {
     </div>
     <section className="jess-transcript" aria-label="Jess conversation transcript" onMouseEnter={() => void window.hubMindDesktop?.setCompanionInteractive?.(true)} onMouseLeave={() => void window.hubMindDesktop?.setCompanionInteractive?.(false)}>
       <header className="jess-transcript-header"><span>Jess conversation</span><span className={controlActive ? 'jess-transcript-live' : ''}>{controlActive ? 'Live' : 'Recent'}</span></header>
-      <div className="jess-transcript-messages" aria-live="polite" ref={transcriptMessagesRef}>
+      <div className="jess-transcript-messages" aria-live="polite" ref={transcriptMessagesRef} onScroll={() => { const element = transcriptMessagesRef.current; shouldFollowTranscriptRef.current = !!element && element.scrollHeight - element.scrollTop - element.clientHeight < 80; }}>
         {transcript.length === 0 ? <p className="jess-transcript-empty">Your conversation with Jess will appear here, including while Hub-Mind is minimised.</p> : transcript.map(item => <article className={'jess-transcript-message ' + item.speaker} key={item.id}><div>{item.speaker === 'user' ? 'You' : 'Jess'}</div><p>{item.text}</p></article>)}
       </div>
     </section>
