@@ -159,7 +159,8 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
   ipcMain.handle('hubmind:native-action', async (event, method, args, userId) => {
     assertTrustedSender(event);
-    if (typeof userId !== 'string' || !userId.trim() || userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
+    if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
+    if (!['get_time','system_info'].includes(method) && userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
     const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','get_time','system_info','open_path']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method);
