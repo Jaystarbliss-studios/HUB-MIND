@@ -2,7 +2,9 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, ses
 const path = require('node:path');
 const fs = require('node:fs');
 const { execFile, spawn } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
 const nativeAgent = require('./agentBridge.cjs');
+const chromeBridge = require('./chromeBridge.cjs');
 
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
@@ -13,6 +15,9 @@ let fullControlActive = false;
 let controlSessionStartedAt = null;
 let controlSessionUserId = null;
 let controlAuditPath = null;
+let offlineWakeProcess = null;
+let offlineWakeConsentAsked = false;
+let offlineWakeConsentGranted = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const trustedAppHosts = new Set(['hub-mind.netlify.app']);
 const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'identitytoolkit.googleapis.com']);
@@ -79,7 +84,7 @@ function createMainWindow() {
 
 function positionCompanionBottomRight() {
   if (!companionWindow || companionWindow.isDestroyed()) return;
-  const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay();
+  const display = screen.getPrimaryDisplay();
   const area = display.workArea;
   const [width, height] = companionWindow.getSize();
   companionWindow.setPosition(Math.max(area.x, area.x + area.width - width - 18), Math.max(area.y, area.y + area.height - height - 18), false);
@@ -104,8 +109,131 @@ function getDialogParent() {
 }
 
 function showMain() {
-  if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
-  else { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); mainWindow.show(); mainWindow.focus(); }
+  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+async function showMainVerified(timeoutMs = 5000) {
+  showMain();
+  const deadline = Date.now() + timeoutMs;
+  return await new Promise((resolve) => {
+    const check = () => {
+      const ready = !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused();
+      if (ready) { clearInterval(timer); resolve(true); return; }
+      if (Date.now() >= deadline) { clearInterval(timer); resolve(false); }
+    };
+    const timer = setInterval(check, 50);
+    check();
+  });
+}
+
+function stopOfflineWake() {
+  const child = offlineWakeProcess;
+  offlineWakeProcess = null;
+  if (child && !child.killed) {
+    try { child.kill(); } catch {}
+  }
+  return { stopped: true };
+}
+
+async function startOfflineWake(event) {
+  assertTrustedSender(event);
+  if (process.platform !== 'win32') return { started: false, error: 'Offline Windows wake detection is available only in the Windows desktop app.' };
+  if (offlineWakeProcess && !offlineWakeProcess.killed && offlineWakeProcess.exitCode === null) return { started: true, alreadyRunning: true, source: 'Windows offline recognizer' };
+  if (!offlineWakeConsentAsked) {
+    offlineWakeConsentAsked = true;
+    const choice = await dialog.showMessageBox(getDialogParent(), {
+      type: 'question', buttons: ['Not now', 'Enable offline wake word'], defaultId: 0, cancelId: 0,
+      title: 'Enable local Jess wake-word detection?',
+      message: 'Allow Hub-Mind to listen locally for “Jess” while the workspace is running?',
+      detail: 'Speech recognition runs on this PC using Windows speech components. Audio is not sent to Hub-Mind servers by this wake listener. Listening stops when Jess wakes, when you stop it, or when Hub-Mind quits. A compatible Windows speech recognizer and microphone are required.'
+    });
+    offlineWakeConsentGranted = choice.response === 1;
+  }
+  if (!offlineWakeConsentGranted) return { started: false, cancelled: true, error: 'Offline wake-word listening was not enabled.' };
+  const exePath = app.isPackaged
+    ? path.join(process.resourcesPath, 'JessOfflineWake.exe')
+    : path.join(__dirname, '..', 'native', 'JessOfflineWake', 'publish', 'JessOfflineWake.exe');
+  if (!fs.existsSync(exePath)) return { started: false, error: 'The offline wake helper is not installed. Rebuild the Windows desktop package with the native helpers.' };
+  const child = spawn(exePath, [], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], shell: false });
+  offlineWakeProcess = child;
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', chunk => console.warn('[Jess offline wake]', String(chunk).slice(0, 800)));
+  let buffer = '';
+  let resolved = false;
+  let readyTimer;
+  const settle = value => {
+    if (resolved) return;
+    resolved = true;
+    clearTimeout(readyTimer);
+    resolveStart(value);
+  };
+  let resolveStart;
+  const ready = new Promise(resolve => { resolveStart = resolve; });
+  readyTimer = setTimeout(() => {
+    if (offlineWakeProcess === child) stopOfflineWake();
+    settle({ started: false, error: 'Windows offline speech recognizer did not become ready. Check microphone access and installed speech recognition language support.' });
+  }, 5000);
+  child.stdout.on('data', chunk => {
+    buffer += chunk;
+    if (buffer.length > 65536) { stopOfflineWake(); settle({ started: false, error: 'Offline wake helper returned an oversized message.' }); return; }
+    let at;
+    while ((at = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, at).trim();
+      buffer = buffer.slice(at + 1);
+      if (!line) continue;
+      let message;
+      try { message = JSON.parse(line); } catch { continue; }
+      if (message.type === 'ready') settle({ started: true, source: message.source || 'Windows offline recognizer' });
+      if (message.type === 'wake') {
+        stopOfflineWake();
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('hubmind:offline-wake', { prompt: String(message.prompt || '').slice(0, 2000), source: message.source || 'Windows offline recognizer' });
+      }
+    }
+  });
+  child.once('error', error => {
+    if (offlineWakeProcess === child) offlineWakeProcess = null;
+    settle({ started: false, error: String(error?.message || 'Could not start offline wake helper.').slice(0, 500) });
+  });
+  child.once('exit', code => {
+    if (offlineWakeProcess === child) offlineWakeProcess = null;
+    if (!resolved) settle({ started: false, error: 'Offline wake helper exited before becoming ready (code ' + String(code) + ').' });
+  });
+  return await ready;
+}
+
+async function readWindowsOcrFallback() {
+  const exePath = app.isPackaged
+    ? path.join(process.resourcesPath, 'JessWindowsOcr.exe')
+    : path.join(__dirname, '..', 'native', 'JessWindowsOcr', 'publish', 'JessWindowsOcr.exe');
+  if (!fs.existsSync(exePath)) return { ok: false, error: 'Windows OCR helper is not installed.' };
+  const capture = await nativeAgent.call('screenshot', {}, 30000);
+  const monitors = Array.isArray(capture?.evidence?.monitors) ? capture.evidence.monitors : [];
+  const monitor = monitors.find(item => item?.primary && typeof item.imageBase64 === 'string') || monitors.find(item => typeof item?.imageBase64 === 'string');
+  if (!monitor) return { ok: false, error: 'No screenshot image was returned for OCR.' };
+  const bytes = Buffer.from(monitor.imageBase64, 'base64');
+  if (!bytes.length || bytes.length > 25 * 1024 * 1024) return { ok: false, error: 'Screenshot size is empty or exceeds the OCR safety limit.' };
+  const tempPath = path.join(app.getPath('temp'), 'hubmind-jess-ocr-' + randomUUID() + '.jpg');
+  try {
+    fs.writeFileSync(tempPath, bytes, { flag: 'wx' });
+    return await new Promise(resolve => {
+      execFile(exePath, [tempPath], { windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024, shell: false }, (error, stdout, stderr) => {
+        let parsed;
+        try { parsed = JSON.parse(String(stdout || '').trim()); } catch {}
+        if (parsed && typeof parsed.text === 'string') return resolve({ ok: parsed.ok === true && !!parsed.text.trim(), text: parsed.text, lineCount: parsed.lineCount, source: parsed.source || 'Windows.Media.Ocr', error: parsed.error || (error ? String(stderr || error.message || 'OCR failed').slice(0, 500) : null), monitor: monitor.monitor, bounds: monitor.bounds });
+        resolve({ ok: false, error: String(stderr || error?.message || 'Windows OCR returned no structured result.').slice(0, 500) });
+      });
+    });
+  } finally {
+    try { fs.unlinkSync(tempPath); } catch {}
+  }
 }
 
 function auditNativeAction(entry) {
@@ -119,6 +247,9 @@ function stopFullControl(reason = 'user-stop') {
   controlSessionStartedAt = null;
   const previousUserId = controlSessionUserId;
   controlSessionUserId = null;
+  // End the PowerShell sidecar and drop in-flight Chrome messages immediately.
+  try { nativeAgent.stop(); } catch {}
+  try { chromeBridge.cancelPending('Full Control Session stopped.'); } catch {}
   auditNativeAction({ event: 'full-control-stopped', reason, userId: previousUserId });
   return { ok: true, active: false, reason };
 }
@@ -134,7 +265,10 @@ function createTray() {
   tray.setToolTip('Hub-Mind');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Hub-Mind', click: showMain },
-    { label: 'Show Jess companion', click: createCompanionWindow },
+    { label: 'Show Jess companion', click: () => { createCompanionWindow(); positionCompanionBottomRight(); } },
+    { label: 'Reset Jess orb to bottom-right', click: () => { createCompanionWindow(); positionCompanionBottomRight(); } },
+    { label: 'Stop Jess (end Full Control Session)', click: () => stopFullControl('tray-stop') },
+    { label: 'Start Hub-Mind at Windows sign-in (this user)', type: 'checkbox', checked: !!app.getLoginItemSettings().openAtLogin, click: item => { try { app.setLoginItemSettings({ openAtLogin: item.checked }); item.checked = !!app.getLoginItemSettings().openAtLogin; } catch (error) { item.checked = !!app.getLoginItemSettings().openAtLogin; console.error('[Hub-Mind] Could not update per-user startup setting:', error); } } },
     { type: 'separator' },
     { label: 'Quit Hub-Mind', click: () => { quitting = true; app.quit(); } },
   ]));
@@ -145,7 +279,7 @@ app.whenReady().then(() => {
   if (!hasSingleInstanceLock) { app.quit(); return; }
   app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
-
+  chromeBridge.start();
   ipcMain.handle('hubmind:full-control-start', (event, userId) => {
     assertTrustedSender(event);
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
@@ -157,6 +291,27 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
   ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
+  ipcMain.handle('hubmind:chrome-status', (event) => { assertTrustedSender(event); return chromeBridge.status(); });
+  ipcMain.handle('hubmind:offline-wake-start', (event) => startOfflineWake(event));
+  ipcMain.handle('hubmind:offline-wake-stop', (event) => { assertTrustedSender(event); return stopOfflineWake(); });
+  ipcMain.handle('hubmind:chrome-action', async (event, method, args, userId) => {
+    assertTrustedSender(event);
+    if (!fullControlActive || typeof userId !== 'string' || userId !== controlSessionUserId) {
+      return { ok: false, verified: false, error: 'Chrome control requires an active Full Control Session owned by the signed-in user.' };
+    }
+    const allowed = new Set(['chrome_list_tabs','chrome_open_tab','chrome_close_tab','chrome_activate_tab','chrome_navigate_tab','chrome_reload_tab','chrome_scroll','chrome_read_page','chrome_find_element','chrome_click_element','chrome_fill_field']);
+    if (typeof method !== 'string' || !allowed.has(method)) return { ok: false, verified: false, error: 'Unsupported Chrome action.' };
+    const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+    if (safeArgs.tabId !== undefined && (!Number.isInteger(Number(safeArgs.tabId)) || Number(safeArgs.tabId) < 1)) return { ok: false, verified: false, error: 'Invalid Chrome tab ID.' };
+    if (['chrome_open_tab','chrome_navigate_tab'].includes(method) && (typeof safeArgs.url !== 'string' || safeArgs.url.length > 2048)) return { ok: false, verified: false, error: 'A valid HTTP or HTTPS URL is required.' };
+    if (method === 'chrome_fill_field' && (typeof safeArgs.selector !== 'string' || !safeArgs.selector.trim() || safeArgs.selector.length > 500 || typeof safeArgs.value !== 'string' || safeArgs.value.length > 10000)) return { ok: false, verified: false, error: 'A field selector and value under 10,000 characters are required.' };
+    if (['chrome_find_element','chrome_click_element'].includes(method) && ((safeArgs.selector && (typeof safeArgs.selector !== 'string' || safeArgs.selector.length > 500)) || (safeArgs.text && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 500)))) return { ok: false, verified: false, error: 'Element selectors and text queries must be under 500 characters.' };
+    auditNativeAction({ event: 'chrome-action-request', method, userId });
+    const started = Date.now();
+    const result = await chromeBridge.request(method, safeArgs, method === 'chrome_read_page' ? 20000 : 12000);
+    auditNativeAction({ event: 'chrome-action-result', method, userId, durationMs: Date.now() - started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
+    return result;
+  });
   ipcMain.handle('hubmind:native-action', async (event, method, args, userId) => {
     assertTrustedSender(event);
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
@@ -182,7 +337,19 @@ app.whenReady().then(() => {
     if (method === 'open_path' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid local file path.');
     const started = Date.now();
     try {
-      const result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
+      let result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
+      if (method === 'read_screen_text' && !String(result?.evidence?.text || '').trim()) {
+        try {
+          const ocr = await readWindowsOcrFallback();
+          if (ocr?.ok && String(ocr.text || '').trim()) {
+            result = { ok: true, verified: true, evidence: { text: ocr.text.slice(0, 20000), source: ocr.source || 'Windows.Media.Ocr', lineCount: ocr.lineCount, monitor: ocr.monitor, bounds: ocr.bounds, fallback: true } };
+          } else {
+            result = { ...result, evidence: { ...(result?.evidence || {}), ocrFallback: { ok: false, error: ocr?.error || 'OCR did not recognize text.' } } };
+          }
+        } catch (ocrError) {
+          result = { ...result, evidence: { ...(result?.evidence || {}), ocrFallback: { ok: false, error: String(ocrError?.message || ocrError).slice(0, 500) } } };
+        }
+      }
       auditNativeAction({ event: 'native-action-result', method, userId, durationMs: Date.now()-started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
       return result;
     } catch (error) {
@@ -191,7 +358,7 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('hubmind:show-main', (event) => { assertTrustedSender(event); showMain(); return true; });
+  ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
   ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); createCompanionWindow(); return true; });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:move-companion-by', (event, dx, dy) => { assertTrustedSender(event); if (!companionWindow || !Number.isFinite(dx) || !Number.isFinite(dy)) return false; const [x, y] = companionWindow.getPosition(); const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay(); const area = display.workArea; const [width, height] = companionWindow.getSize(); const nextX = Math.max(area.x, Math.min(area.x + area.width - width, x + Math.max(-200, Math.min(200, dx)))); const nextY = Math.max(area.y, Math.min(area.y + area.height - height, y + Math.max(-200, Math.min(200, dy)))); companionWindow.setPosition(Math.round(nextX), Math.round(nextY)); return true; });
@@ -331,5 +498,5 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   app.on('activate', showMain);
 });
 
-app.on('before-quit', () => { stopFullControl('app-quit'); globalShortcut.unregisterAll(); quitting = true; });
+app.on('before-quit', () => { stopFullControl('app-quit'); stopOfflineWake(); chromeBridge.stop(); globalShortcut.unregisterAll(); quitting = true; });
 app.on('window-all-closed', () => { /* Keep tray and companion available until explicit Quit. */ });

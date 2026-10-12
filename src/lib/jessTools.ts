@@ -195,6 +195,7 @@ const object = (properties: Record<string, any>, required?: string[]): JessToolD
 export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'jess_full_control', description: 'Start the Windows Full Control Session. Use only after the user explicitly says “Jess, full control”. Enables hands-free native input until stopped. The session is audited and can be stopped by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.', parameters: object({}) },
   { name: 'jess_stop', description: 'Immediately stop Jess native Windows control. Use when the user says “Jess, stop”.', parameters: object({}) },
+  { name: 'show_hub_mind_workspace', description: 'Bring the Hub-Mind workspace window to the foreground and hide the floating Jess companion. Use when the user asks to show/open/bring Hub-Mind back to the screen. This does not claim that a separate Windows app or website has been opened.', parameters: object({}) },
   { name: 'list_windows', description: 'List visible Windows desktop windows with titles, process names, bounds, state and foreground status. Requires Full Control Session.', parameters: object({}) },
   { name: 'manage_windows', description: 'Manage a Windows window: focus, close/hide, minimize, maximize, restore, move, resize or snap. Supply title or handle; move/resize need coordinates/dimensions; snap position is left, right, top-left, top-right, bottom-left or bottom-right. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'] }, title: { type: 'string' }, handle: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, position: { type: 'string', enum: ['left','right','top-left','top-right','bottom-left','bottom-right'] } }, ['action']) },
   { name: 'control_mouse', description: 'Move the Windows cursor, click, double-click, right-click or scroll at physical screen coordinates. Input delivery is not proof the target action succeeded. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['mouse_move','click','double_click','right_click','scroll'] }, x: { type: 'number' }, y: { type: 'number' }, delta: { type: 'number' } }, ['action','x','y']) },
@@ -204,12 +205,23 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'take_windows_screenshot', description: 'Capture screenshots of connected monitors, including monitor names, physical bounds and scale context. Requires Full Control Session.', parameters: object({}) },
   { name: 'find_windows_ui_element', description: 'Find accessible Windows UI elements by visible name and return automation IDs and screen bounds. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
   { name: 'invoke_windows_ui_element', description: 'Invoke a matching accessible Windows UI element by visible name. Follow with a screenshot or screen read to verify the outcome. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
-  { name: 'read_windows_screen', description: 'Read accessible text from Windows UI Automation. Secure desktop, protected content and controls that expose no accessible text are unavailable. Requires Full Control Session.', parameters: object({}) },
+  { name: 'read_windows_screen', description: 'Read accessible text from Windows UI Automation, with a local Windows OCR fallback when UI Automation exposes no text. OCR requires an installed Windows OCR language; secure desktop, protected content and protected controls remain unavailable. Requires Full Control Session.', parameters: object({}) },
   { name: 'open_local_windows_path', description: 'Open an existing local file or folder using its default Windows application. Requires Full Control Session. Does not execute a file as a command.', parameters: object({ path: { type: 'string' } }, ['path']) },
   { name: 'launch_windows_application', description: 'Find an installed application from Start Menu or PATH, launch it and verify whether a matching window appeared. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
   { name: 'run_windows_command_native', description: 'Run a bounded PowerShell command as the current Windows user and return captured output. Non-elevated. Destructive commands are blocked and results are not considered verified merely because output was returned. Requires Full Control Session.', parameters: object({ command: { type: 'string' } }, ['command']) },
   { name: 'get_windows_time', description: 'Read local Windows time and time zone.', parameters: object({}) },
   { name: 'get_windows_system_info', description: 'Read basic Windows computer and OS information.', parameters: object({}) },
+  { name: 'chrome_list_tabs', description: 'List open Chrome tabs with IDs, titles, URLs and loading status. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({}) },
+  { name: 'chrome_open_tab', description: 'Open an HTTP or HTTPS website in a new Chrome tab. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({ url: { type: 'string' }, active: { type: 'boolean' } }, ['url']) },
+  { name: 'chrome_close_tab', description: 'Close a specific Chrome tab by its tab ID. Requires an explicit tabId; it never closes an unspecified active tab. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }, ['tabId']) },
+  { name: 'chrome_activate_tab', description: 'Activate and focus a Chrome tab by ID, or the current active tab when omitted. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }) },
+  { name: 'chrome_navigate_tab', description: 'Navigate a Chrome tab to an HTTP or HTTPS URL. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, url: { type: 'string' }, active: { type: 'boolean' } }, ['url']) },
+  { name: 'chrome_reload_tab', description: 'Reload a Chrome tab. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }) },
+  { name: 'chrome_read_page', description: 'Read visible page text and title from a Chrome tab. Does not bypass browser protections or restricted pages. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }) },
+  { name: 'chrome_find_element', description: 'Find an element in the current Chrome page by visible text or CSS selector. Supply at least one. Returns element bounds and metadata; it does not click. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, selector: { type: 'string' }, text: { type: 'string' } }) },
+  { name: 'chrome_click_element', description: 'Click a matching page button/link/element by visible text or CSS selector. Supply at least one. The click is not considered complete until a follow-up page read verifies the intended outcome. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, selector: { type: 'string' }, text: { type: 'string' } }) },
+  { name: 'chrome_fill_field', description: 'Fill a specific input, textarea or select identified by a CSS selector. Requires Full Control Session. Never use on password or payment fields.', parameters: object({ tabId: { type: 'number' }, selector: { type: 'string' }, value: { type: 'string' } }, ['selector','value']) },
+  { name: 'chrome_scroll', description: 'Scroll a Chrome page by a number of pixels. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, delta: { type: 'number' } }, ['delta']) },
   { name: 'get_user_profile', description: 'Get the signed-in Hub-Mind user profile, role, name, preferred name, email, and preferences.', parameters: object({}) },
   { name: 'get_current_user_profile', description: 'Get the currently signed-in user identity, name, preferred name, email, role, and preferences.', parameters: object({}) },
   { name: 'get_current_context', description: 'Get the current Hub-Mind route and active workspace context.', parameters: object({}) },
@@ -565,6 +577,12 @@ export async function executeJessTool(
         const result = await desktop.startFullControl(user.id);
         return { result: { success: !!result?.active, ...result } };
       }
+      case 'show_hub_mind_workspace': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.showMain !== 'function') return { result: { success: false, error: 'Bringing the Hub-Mind workspace to the foreground is available only in the installed Windows desktop app.' } };
+        const shown = await desktop.showMain();
+        return { result: { success: shown === true, verified: shown === true, message: shown === true ? 'Hub-Mind workspace foreground request completed.' : 'Hub-Mind workspace foreground could not be confirmed.' } };
+      }
       case 'jess_stop': {
         const desktop = (window as any).hubMindDesktop;
         if (!desktop?.isDesktopApp || typeof desktop.stopFullControl !== 'function') return { result: { success: false, error: 'Native control is only available in the installed Windows desktop app.' } };
@@ -606,7 +624,27 @@ export async function executeJessTool(
         if (name === 'get_windows_time') { method = 'get_time'; payload = {}; }
         if (name === 'get_windows_system_info') { method = 'system_info'; payload = {}; }
         const result = await desktop.nativeAction(method, payload, user.id);
-        return { result: { success: result?.ok === true, ...result } };
+        return { result: { ...result, success: result?.ok === true && result?.verified === true } };
+      }
+      case 'chrome_list_tabs':
+      case 'chrome_open_tab':
+      case 'chrome_close_tab':
+      case 'chrome_activate_tab':
+      case 'chrome_navigate_tab':
+      case 'chrome_reload_tab':
+      case 'chrome_scroll':
+      case 'chrome_read_page':
+      case 'chrome_find_element':
+      case 'chrome_click_element':
+      case 'chrome_fill_field': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.chromeAction !== 'function') return { result: { success: false, verified: false, error: 'Chrome control is available only in the installed Windows desktop app with the Jess Chrome extension.' } };
+        const status = await desktop.nativeStatus();
+        if (!status?.active) return { result: { success: false, verified: false, error: 'Full Control Session is off. Say “Jess, full control” first.' } };
+        if (name === 'chrome_close_tab' && !Number.isInteger(Number(args?.tabId))) return { result: { success: false, verified: false, error: 'Specify the exact Chrome tab ID to close.' } };
+        if (['chrome_find_element','chrome_click_element'].includes(name) && !String(args?.selector || '').trim() && !String(args?.text || '').trim()) return { result: { success: false, verified: false, error: 'Provide visible text or a CSS selector to identify the target element.' } };
+        const result = await desktop.chromeAction(name, args || {}, user.id);
+        return { result: { ...result, success: result?.ok === true && result?.verified === true } };
       }
       case 'desktop_launch_app':
       case 'launch_windows_app': {

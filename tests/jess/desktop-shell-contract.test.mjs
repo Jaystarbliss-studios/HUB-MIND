@@ -36,3 +36,9 @@ test('authenticated workspace explicitly preserves the established dark backgrou
   assert.match(workspaceCss, /background-color:\s*#020617\s*!important/i);
   assert.match(layout, /backgroundColor:\s*"#020617"/);
 });
+
+test('Windows startup is explicit per-user opt-in, not an elevated scheduled task', () => {
+  assert.match(main, /Start Hub-Mind at Windows sign-in \(this user\)/);
+  assert.match(main, /app\.setLoginItemSettings\(\{ openAtLogin: item\.checked \}\)/);
+  assert.match(main, /app\.getLoginItemSettings\(\)\.openAtLogin/);
+});

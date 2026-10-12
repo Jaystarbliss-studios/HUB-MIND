@@ -4,3 +4,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Native Windows helper build output
+native/**/bin/
+native/**/obj/
+native/**/publish/
+release/

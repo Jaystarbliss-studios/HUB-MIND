@@ -4,6 +4,16 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   startFullControl: (userId) => ipcRenderer.invoke('hubmind:full-control-start', userId),
   stopFullControl: () => ipcRenderer.invoke('hubmind:full-control-stop'),
   nativeStatus: () => ipcRenderer.invoke('hubmind:native-status'),
+  chromeStatus: () => ipcRenderer.invoke('hubmind:chrome-status'),
+  chromeAction: (method, args, userId) => ipcRenderer.invoke('hubmind:chrome-action', method, args, userId),
+  startOfflineWake: () => ipcRenderer.invoke('hubmind:offline-wake-start'),
+  stopOfflineWake: () => ipcRenderer.invoke('hubmind:offline-wake-stop'),
+  onOfflineWake: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('hubmind:offline-wake', listener);
+    return () => ipcRenderer.removeListener('hubmind:offline-wake', listener);
+  },
   nativeAction: (method, args, userId) => ipcRenderer.invoke('hubmind:native-action', method, args, userId),
   showMain: () => ipcRenderer.invoke('hubmind:show-main'),
   showCompanion: () => ipcRenderer.invoke('hubmind:show-companion'),
