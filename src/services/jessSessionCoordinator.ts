@@ -1,4 +1,4 @@
-import { deleteDoc, doc, onSnapshot, runTransaction, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 export type JessSessionOwner = { sessionId: string; client: string; status: 'active'; leaseUntil: number };
