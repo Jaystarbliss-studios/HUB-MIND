@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { X } from 'lucide-react';
+import { JessOrbVisualizer } from '../components/JessOrbVisualizer';
+import { JessState } from '../services/liveAudioClient';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { watchJessSession, JessSessionOwner } from '../services/jessSessionCoordinator';
@@ -31,6 +33,7 @@ export function CompanionPage() {
   const transcriptSnapshotRef = useRef('');
   const transcriptHideTimerRef = useRef<number | null>(null);
   const [transcriptVisible, setTranscriptVisible] = useState(false);
+  const [orbVisual, setOrbVisual] = useState<{ state: JessState; inputLevel: number; outputLevel: number; connected: boolean }>({ state: 'idle', inputLevel: 0, outputLevel: 0, connected: false });
 
   useEffect(() => {
     const element = transcriptMessagesRef.current;
@@ -70,6 +73,27 @@ export function CompanionPage() {
     window.addEventListener('storage', onStorage);
     const interval = window.setInterval(load, 1500);
     return () => { window.removeEventListener('storage', onStorage); window.clearInterval(interval); if (transcriptHideTimerRef.current !== null) window.clearTimeout(transcriptHideTimerRef.current); };
+  }, []);
+
+  useEffect(() => {
+    const key = 'hubmind.jess.desktopOrbState.v1';
+    const load = () => {
+      try {
+        const value = JSON.parse(localStorage.getItem(key) || '{}');
+        const allowed = new Set(['idle','listening','thinking','speaking','interrupted','muted','error']);
+        if (allowed.has(value.state)) setOrbVisual({
+          state: value.state as JessState,
+          inputLevel: Number.isFinite(value.inputLevel) ? Math.max(0, Math.min(1, value.inputLevel)) : 0,
+          outputLevel: Number.isFinite(value.outputLevel) ? Math.max(0, Math.min(1, value.outputLevel)) : 0,
+          connected: value.connected === true,
+        });
+      } catch { /* Keep the default idle orb if state is unavailable. */ }
+    };
+    load();
+    const onStorage = (event: StorageEvent) => { if (!event.key || event.key === key) load(); };
+    window.addEventListener('storage', onStorage);
+    const interval = window.setInterval(load, 180);
+    return () => { window.removeEventListener('storage', onStorage); window.clearInterval(interval); };
   }, []);
 
   useEffect(() => {
@@ -133,7 +157,7 @@ export function CompanionPage() {
         aria-label={localActive ? 'Open the active Jess workspace' : remoteActive ? 'Jess is active in another Hub-Mind window' : 'Activate Jess'}
         title={localActive ? 'Jess is active — click to open workspace' : remoteActive ? 'Jess is active elsewhere; stop that session before switching' : 'Click to activate Jess'}
         onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onClick={() => void activateJess()}>
-        <img src="/icon.svg" alt="" onError={(event) => { event.currentTarget.src = '/jess-orb.svg'; }} />
+        <JessOrbVisualizer state={orbVisual.state} inputLevel={orbVisual.inputLevel} outputLevel={orbVisual.outputLevel} connected={orbVisual.connected} />
       </button>
     </div>
     {isActive && <span className={`jess-status-dot ${localActive ? 'is-local' : 'is-remote'}`} title={localActive ? 'Jess is active in this desktop app' : 'Jess is active in another Hub-Mind client'} />}
