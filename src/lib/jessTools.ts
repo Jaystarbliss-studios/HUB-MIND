@@ -562,7 +562,7 @@ export async function executeJessTool(
         }
         const desktop = (window as any).hubMindDesktop;
         if (!desktop?.isDesktopApp || typeof desktop.startFullControl !== 'function') return { result: { success: false, error: 'Full Control Session is only available in the installed Windows desktop app.' } };
-        const result = await desktop.startFullControl();
+        const result = await desktop.startFullControl(user.id);
         return { result: { success: !!result?.active, ...result } };
       }
       case 'jess_stop': {
@@ -605,7 +605,7 @@ export async function executeJessTool(
         if (name === 'run_windows_command_native') { method = 'run_command'; payload = { command: String(args?.command || '') }; }
         if (name === 'get_windows_time') { method = 'get_time'; payload = {}; }
         if (name === 'get_windows_system_info') { method = 'system_info'; payload = {}; }
-        const result = await desktop.nativeAction(method, payload);
+        const result = await desktop.nativeAction(method, payload, user.id);
         return { result: { success: result?.ok === true, ...result } };
       }
       case 'desktop_launch_app':
