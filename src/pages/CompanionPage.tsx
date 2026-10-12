@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { X, Maximize2 } from 'lucide-react';
 
 declare global {
@@ -11,6 +11,10 @@ declare global {
 }
 
 export function CompanionPage() {
+  useEffect(() => {
+    document.body.classList.add('jess-companion-active');
+    return () => document.body.classList.remove('jess-companion-active');
+  }, []);
   return <div className="jess-companion-shell">
     <div className="jess-companion-drag" aria-label="Move Jess" title="Drag to move Jess">
       <span className="jess-companion-title">JESS</span>
