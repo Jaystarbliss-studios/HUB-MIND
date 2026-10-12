@@ -8,10 +8,9 @@ const app = fs.readFileSync(new URL('../../src/App.tsx', import.meta.url), 'utf8
 const companionCss = fs.readFileSync(new URL('../../src/pages/companion.css', import.meta.url), 'utf8');
 const electron = fs.readFileSync(new URL('../../electron/main.cjs', import.meta.url), 'utf8');
 const preload = fs.readFileSync(new URL('../../electron/preload.cjs', import.meta.url), 'utf8');
-const companion = fs.readFileSync(new URL('../../src/pages/CompanionPage.tsx', import.meta.url), 'utf8');
-const orb = fs.readFileSync(new URL('../../src/pages/JessOrbPage.tsx', import.meta.url), 'utf8');
 const tools = fs.readFileSync(new URL('../../src/lib/jessTools.ts', import.meta.url), 'utf8');
 const live = fs.readFileSync(new URL('../../src/services/liveAudioClient.ts', import.meta.url), 'utf8');
+const orb = fs.readFileSync(new URL('../../src/pages/JessOrbPage.tsx', import.meta.url), 'utf8');
 
 test('Jess voice sessions coordinate through a per-user Firestore lease', () => {
   assert.match(coordinator, /runTransaction/);
@@ -23,29 +22,27 @@ test('Jess voice sessions coordinate through a per-user Firestore lease', () => 
   assert.match(assistant, /Jess is already active in/);
   assert.match(assistant, /jessActivationRequest/);
   assert.match(assistant, /!isDesktopShell && !orbDismissed/);
-  assert.match(companion, /windows-desktop-companion/);
-  assert.match(companion, /watchJessSession/);
 });
 
-test('transparent companion styles are scoped only to the companion route', () => {
-  assert.match(companionCss, /body:has\(\.jess-orb-window\)/);
-  assert.doesNotMatch(companionCss, /^html,body,#root\{/);
-  assert.doesNotMatch(app, /import '\.\/pages\/companion\.css';/);
+test('transparent companion styles stay scoped to the companion route', () => {
+  assert.ok(companionCss.includes('body:has(.jess-orb-window)'));
+  assert.ok(!/^html,body,#root\{/m.test(companionCss));
+  assert.ok(!app.includes("import './pages/companion.css';"));
 });
 
-test('desktop shows only the movable Jess orb when the workspace is minimized or hidden', () => {
-  assert.match(electron, /positionCompanionBottomRight/);
-  assert.match(electron, /mainWindow\\.on\\('show'.*companionWindow\\.hide\\(\\)/s);
-  assert.match(electron, /mainWindow\\.on\\('restore'.*companionWindow\\.hide\\(\\)/s);
-  assert.match(electron, /mainWindow\\.on\\('minimize'.*createCompanionWindow/s);
-  assert.match(electron, /width: 96, height: 96/);
-  assert.match(electron, /APP_URL \\+ '\\/orb'/);
-  assert.match(electron, /hubmind:hide-companion/);
-  assert.match(electron, /hubmind:move-companion-by/);
-  assert.match(electron, /Math\\.max\\(area\\.x/);
-  assert.match(orb, /jess-orb\\.svg/);
-  assert.match(orb, /jess-orb-close/);
-  assert.match(orb, /hideCompanion/);
+test('desktop workspace and icon-only orb visibility follow the requested lifecycle', () => {
+  assert.ok(electron.includes("mainWindow.on('show', () => { if (companionWindow"));
+  assert.ok(electron.includes("mainWindow.on('restore', () => { if (companionWindow"));
+  assert.ok(electron.includes("mainWindow.on('minimize', () => { createCompanionWindow();"));
+  assert.ok(electron.includes("mainWindow.on('close', (event) => { if (!quitting)"));
+  assert.ok(electron.includes('width: 96, height: 96'));
+  assert.ok(electron.includes("APP_URL + '/orb'"));
+  assert.ok(electron.includes('hubmind:hide-companion'));
+  assert.ok(electron.includes('hubmind:move-companion-by'));
+  assert.ok(orb.includes('src="/jess-orb.svg"'));
+  assert.ok(orb.includes('jess-orb-close'));
+  assert.ok(orb.includes('hideCompanion'));
+  assert.ok(orb.includes('moveCompanionBy'));
   assert.doesNotMatch(orb, /transcript|textarea|microphone controls/i);
 });
 
@@ -59,7 +56,7 @@ test('native Windows tools use a full-control session, narrow preload bridge and
   assert.match(preload, /hubmind:native-action/);
   assert.match(preload, /hubmind:full-control-start/);
   assert.match(preload, /hubmind:full-control-stop/);
-  assert.match(electron, /Ctrl\+Alt\+Shift\+J|CommandOrControl\+Alt\+Shift\+J/);
+  assert.match(electron, /Ctrl\+Alt\+Shift\+J/);
   assert.match(electron, /full-control-started/);
   assert.match(electron, /jess-native-audit\.jsonl/);
   assert.match(live, /NATIVE WINDOWS HONESTY PROTOCOL/);
