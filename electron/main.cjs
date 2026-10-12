@@ -11,7 +11,7 @@ let quitting = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const trustedAppHosts = new Set(['hub-mind.netlify.app']);
 const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'identitytoolkit.googleapis.com']);
-const WINDOWS_APPS = Object.freeze({ calculator: 'calc.exe', notepad: 'notepad.exe', paint: 'mspaint.exe', explorer: 'explorer.exe', taskManager: 'taskmgr.exe' });
+const WINDOWS_APPS = Object.freeze({ calculator: 'calc.exe', notepad: 'notepad.exe', paint: 'mspaint.exe', explorer: 'explorer.exe', taskManager: 'taskmgr.exe', edge: 'msedge.exe', chrome: 'chrome.exe', word: 'winword.exe', excel: 'excel.exe', powerpoint: 'powerpnt.exe', teams: 'ms-teams.exe', vscode: 'code.exe' });
 const READ_ONLY_COMMANDS = Object.freeze({ ipconfig: ['ipconfig.exe', []], systemInfo: ['systeminfo.exe', []], runningProcesses: ['tasklist.exe', []] });
 function assertTrustedSender(event) {
   let origin = ''; try { origin = new URL(event.senderFrame?.url || '').origin; } catch {}
@@ -159,7 +159,9 @@ app.whenReady().then(() => {
     try {
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
       const screen = sources.find(source => source.id.startsWith('screen:'));
-      callback(screen ? { video: screen } : {});
+      if (!screen) { callback({}); return; }
+      const choice = await dialog.showMessageBox(mainWindow || companionWindow, { type: 'question', buttons: ['Cancel', 'Share entire screen'], defaultId: 0, cancelId: 0, title: 'Choose what to share', message: 'Share your entire screen with Hub-Mind?', detail: 'Only continue if you intend to share everything visible on your display. You can stop sharing from the browser controls.' });
+      callback(choice.response === 1 ? { video: screen } : {});
     } catch { callback({}); }
   }, { useSystemPicker: true });
   createMainWindow();
