@@ -118,6 +118,9 @@ export default async function handler(req) {
           uses: 1,
           expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
           newSessionExpireTime: new Date(Date.now() + 60 * 1000).toISOString(),
+          liveConnectConstraints: {
+            model: 'models/gemini-3.8-live',
+          },
         }),
         signal: AbortSignal.timeout(12_000),
       },
