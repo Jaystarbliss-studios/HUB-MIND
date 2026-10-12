@@ -80,7 +80,7 @@ function showMain() {
 
 function createTray() {
   const iconPath = path.join(__dirname, '..', 'public', 'icon.svg');
-  const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
+  const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }) : nativeImage.createEmpty();
   tray = new Tray(icon);
   tray.setToolTip('Hub-Mind');
   tray.setContextMenu(Menu.buildFromTemplate([
