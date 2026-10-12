@@ -7,6 +7,9 @@ const assistant = fs.readFileSync(new URL('../../src/components/JessFloatingAssi
 const app = fs.readFileSync(new URL('../../src/App.tsx', import.meta.url), 'utf8');
 const companionCss = fs.readFileSync(new URL('../../src/pages/companion.css', import.meta.url), 'utf8');
 const electron = fs.readFileSync(new URL('../../electron/main.cjs', import.meta.url), 'utf8');
+const preload = fs.readFileSync(new URL('../../electron/preload.cjs', import.meta.url), 'utf8');
+const tools = fs.readFileSync(new URL('../../src/lib/jessTools.ts', import.meta.url), 'utf8');
+const live = fs.readFileSync(new URL('../../src/services/liveAudioClient.ts', import.meta.url), 'utf8');
 
 test('Jess voice sessions coordinate through a per-user Firestore lease', () => {
   assert.match(coordinator, /runTransaction/);
@@ -29,4 +32,17 @@ test('desktop companion is moved to lower right and hidden when workspace is res
   assert.match(electron, /mainWindow\.on\('minimize'.*createCompanionWindow/s);
   assert.match(electron, /hubmind:hide-companion/);
   assert.match(electron, /hubmind:move-companion-by/);
+});
+
+test('native Windows tools are wired through the secure preload and require confirmation', () => {
+  assert.match(tools, /type_into_active_windows_app/);
+  assert.match(tools, /press_windows_shortcut/);
+  assert.match(tools, /case 'type_into_active_windows_app'/);
+  assert.match(tools, /case 'press_windows_shortcut'/);
+  assert.match(preload, /hubmind:type-text/);
+  assert.match(preload, /hubmind:press-shortcut/);
+  assert.match(electron, /title: 'Type into the active Windows application\?'/);
+  assert.match(electron, /title: 'Send a keyboard shortcut\?'/);
+  assert.match(live, /WINDOWS DESKTOP CONTROL/);
+  assert.match(live, /WEB RESEARCH/);
 });
