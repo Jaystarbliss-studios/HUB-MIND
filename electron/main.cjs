@@ -629,7 +629,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       console.warn('[Hub-Mind] Display source picker failed:', error);
       callback({});
     }
-  }, { useSystemPicker: false });
+  }, { useSystemPicker: true });
   const stopHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+J', () => {
     if (fullControlActive) stopFullControl('global-hotkey');
   });
