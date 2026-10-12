@@ -93,22 +93,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Profile does not exist yet in Firestore: Check if user is admin or if database is empty
+      // Only the configured administrator identity may bootstrap an admin profile.
+      // A blank users collection is not proof of authorization; every other account
+      // must present a valid, email-matched invitation.
       const userEmail = (firebaseUser.email || '').trim().toLowerCase();
       const isAdminByEmail = isAdminEmail(userEmail);
 
-      let isWorkspaceEmpty = false;
-      if (!isAdminByEmail) {
-        try {
-          const userCheckSnap = await getDocs(query(collection(db, 'users'), limit(1)));
-          isWorkspaceEmpty = userCheckSnap.empty;
-        } catch {
-          // If query fails due to permissions, default to false
-          isWorkspaceEmpty = false;
-        }
-      }
-
-      if (isAdminByEmail || isWorkspaceEmpty) {
+      if (isAdminByEmail) {
         const now = new Date().toISOString();
         const handle = extractHandleFromEmail(userEmail, firebaseUser.displayName || undefined);
         const username = await generateAvailableUsername(handle, firebaseUser.uid);
