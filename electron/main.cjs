@@ -2,6 +2,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, ses
 const path = require('node:path');
 const fs = require('node:fs');
 const { execFile, spawn } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
 const nativeAgent = require('./agentBridge.cjs');
 const chromeBridge = require('./chromeBridge.cjs');
 
@@ -208,6 +209,33 @@ async function startOfflineWake(event) {
   return await ready;
 }
 
+async function readWindowsOcrFallback() {
+  const exePath = app.isPackaged
+    ? path.join(process.resourcesPath, 'JessWindowsOcr.exe')
+    : path.join(__dirname, '..', 'native', 'JessWindowsOcr', 'publish', 'JessWindowsOcr.exe');
+  if (!fs.existsSync(exePath)) return { ok: false, error: 'Windows OCR helper is not installed.' };
+  const capture = await nativeAgent.call('screenshot', {}, 30000);
+  const monitors = Array.isArray(capture?.evidence?.monitors) ? capture.evidence.monitors : [];
+  const monitor = monitors.find(item => item?.primary && typeof item.imageBase64 === 'string') || monitors.find(item => typeof item?.imageBase64 === 'string');
+  if (!monitor) return { ok: false, error: 'No screenshot image was returned for OCR.' };
+  const bytes = Buffer.from(monitor.imageBase64, 'base64');
+  if (!bytes.length || bytes.length > 25 * 1024 * 1024) return { ok: false, error: 'Screenshot size is empty or exceeds the OCR safety limit.' };
+  const tempPath = path.join(app.getPath('temp'), 'hubmind-jess-ocr-' + randomUUID() + '.jpg');
+  try {
+    fs.writeFileSync(tempPath, bytes, { flag: 'wx' });
+    return await new Promise(resolve => {
+      execFile(exePath, [tempPath], { windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024, shell: false }, (error, stdout, stderr) => {
+        let parsed;
+        try { parsed = JSON.parse(String(stdout || '').trim()); } catch {}
+        if (parsed && typeof parsed.text === 'string') return resolve({ ok: parsed.ok === true && !!parsed.text.trim(), text: parsed.text, lineCount: parsed.lineCount, source: parsed.source || 'Windows.Media.Ocr', error: parsed.error || (error ? String(stderr || error.message || 'OCR failed').slice(0, 500) : null), monitor: monitor.monitor, bounds: monitor.bounds });
+        resolve({ ok: false, error: String(stderr || error?.message || 'Windows OCR returned no structured result.').slice(0, 500) });
+      });
+    });
+  } finally {
+    try { fs.unlinkSync(tempPath); } catch {}
+  }
+}
+
 function auditNativeAction(entry) {
   try {
     if (!controlAuditPath) controlAuditPath = path.join(app.getPath('userData'), 'jess-native-audit.jsonl');
@@ -308,7 +336,19 @@ app.whenReady().then(() => {
     if (method === 'open_path' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid local file path.');
     const started = Date.now();
     try {
-      const result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
+      let result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
+      if (method === 'read_screen_text' && !String(result?.evidence?.text || '').trim()) {
+        try {
+          const ocr = await readWindowsOcrFallback();
+          if (ocr?.ok && String(ocr.text || '').trim()) {
+            result = { ok: true, verified: true, evidence: { text: ocr.text.slice(0, 20000), source: ocr.source || 'Windows.Media.Ocr', lineCount: ocr.lineCount, monitor: ocr.monitor, bounds: ocr.bounds, fallback: true } };
+          } else {
+            result = { ...result, evidence: { ...(result?.evidence || {}), ocrFallback: { ok: false, error: ocr?.error || 'OCR did not recognize text.' } } };
+          }
+        } catch (ocrError) {
+          result = { ...result, evidence: { ...(result?.evidence || {}), ocrFallback: { ok: false, error: String(ocrError?.message || ocrError).slice(0, 500) } } };
+        }
+      }
       auditNativeAction({ event: 'native-action-result', method, userId, durationMs: Date.now()-started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
       return result;
     } catch (error) {
