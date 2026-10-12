@@ -246,7 +246,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
         type: 'question', buttons, defaultId: 0, cancelId: 0,
         title: 'Choose what Jess can see',
         message: 'Select a screen or application window to share.',
-        detail: 'Only the selected source will be shared. You can stop sharing at any time.',
+        detail: 'Choose “Share entire screen” only when you intend to share the full display. Only the selected source will be shared, and you can stop sharing at any time.',
       });
       const selected = choice.response > 0 ? sources[choice.response - 1] : null;
       callback(selected ? { video: selected } : {});
