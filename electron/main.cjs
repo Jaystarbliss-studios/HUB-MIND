@@ -9,6 +9,7 @@ const chromeBridge = require('./chromeBridge.cjs');
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
 let companionWindow;
+let companionDismissed = false;
 let tray;
 let quitting = false;
 let fullControlActive = false;
@@ -95,7 +96,9 @@ function positionCompanionBottomRight() {
   companionWindow.setPosition(Math.max(area.x, area.x + area.width - width - 18), Math.max(area.y, area.y + area.height - height - 18), false);
 }
 
-function createCompanionWindow() {
+function createCompanionWindow(force = false) {
+  if (companionDismissed && !force) return;
+  if (force) companionDismissed = false;
   if (companionWindow && !companionWindow.isDestroyed()) {
     positionCompanionBottomRightIfNeeded();
     companionWindow.showInactive();
@@ -140,7 +143,7 @@ function positionCompanionBottomRightIfNeeded() {
   if (x < area.x || y < area.y || x + width > area.x + area.width || y + height > area.y + area.height) positionCompanionBottomRight();
 }
 function resetOrbPosition() {
-  if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow();
+  if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow(true);
   positionCompanionBottomRight();
 }
 function getDialogParent() {
@@ -341,7 +344,7 @@ function createTray() {
   tray.setToolTip('Hub-Mind');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Hub-Mind', click: showMain },
-    { label: 'Show Jess orb', click: () => { if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide(); createCompanionWindow(); positionCompanionBottomRightIfNeeded(); } },
+    { label: 'Show Jess orb', click: () => { if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide(); createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); } },
     { label: 'Reset orb to bottom-right', click: resetOrbPosition },
     { label: 'Stop Jess (end Full Control Session)', click: () => stopFullControl('tray-stop') },
     { label: 'Start Hub-Mind at Windows sign-in (this user)', type: 'checkbox', checked: !!app.getLoginItemSettings().openAtLogin, click: item => { try { app.setLoginItemSettings({ openAtLogin: item.checked }); item.checked = !!app.getLoginItemSettings().openAtLogin; } catch (error) { item.checked = !!app.getLoginItemSettings().openAtLogin; console.error('[Hub-Mind] Could not update per-user startup setting:', error); } } },
@@ -443,8 +446,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
   ipcMain.handle('hubmind:show-workspace', async (event) => { assertTrustedSender(event); return await showWorkspaceVerified(); });
-  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(); positionCompanionBottomRightIfNeeded(); return true; });
-  ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionWindow?.hide(); return true; });
+  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); return true; });
+  ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionDismissed = true; companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:set-companion-transcript-visible', (event, visible) => {
     assertTrustedSender(event);
     if (!companionWindow || companionWindow.isDestroyed()) return false;
