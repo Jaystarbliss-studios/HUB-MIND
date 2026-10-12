@@ -1,12 +1,12 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { X, Maximize2, Sparkles } from 'lucide-react';
 import './companion.css';
 
-declare global { interface Window { hubMindDesktop?: { showMain: () => Promise<boolean>; hideCompanion: () => Promise<boolean> } } }
+declare global { interface Window { hubMindDesktop?: { showMain: () => Promise<boolean>; hideCompanion: () => Promise<boolean>; moveCompanionBy: (dx: number, dy: number) => Promise<boolean> } } }
 export function CompanionPage() {
  return <main className="jess-orb-window" aria-label="Jess desktop companion">
   <div className="jess-orb-drag" title="Drag to move Jess" aria-label="Drag to move Jess">
-   <button className="jess-orb-launch" type="button" aria-label="Open Jess and Hub-Mind workspace" title="Open Jess and Hub-Mind workspace" onClick={() => void window.hubMindDesktop?.showMain()}>
+   <button className="jess-orb-launch" type="button" aria-label="Open Jess and Hub-Mind workspace" title="Open Jess and Hub-Mind workspace" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onClick={openWorkspace}>
     <img src="/icon.svg" alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} /><span className="jess-orb-fallback"><Sparkles size={26}/></span>
    </button>
   </div>
