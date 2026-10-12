@@ -103,12 +103,12 @@ export default defineConfig(() => {
           name: 'Hub-Mind',
           short_name: 'Hub-Mind',
           description: 'AI-Powered Business Workspace',
-          theme_color: '#0f172a',
-          background_color: '#0f172a',
+          theme_color: '#020617',
+          background_color: '#020617',
           display: 'standalone',
           orientation: 'portrait',
           scope: '/',
-          start_url: '/',
+          start_url: '/login',
           icons: [
             { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }
           ],

@@ -26,7 +26,7 @@ export function JessOrbPage() {
   };
   return <main className="jess-orb-window" aria-label="Jess desktop orb">
     <div className="jess-orb-drag" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={() => { drag.current = null; }} title="Drag to move Jess. Click to open the Hub-Mind workspace.">
-      <img src="/jess-orb.svg" alt="Open Hub-Mind workspace" draggable={false} />
+      <img src="/hub-mind%20logo.png" alt="Open Hub-Mind workspace" draggable={false} onError={(event) => { event.currentTarget.src = "/jess-orb.svg"; }} />
     </div>
     <button className="jess-orb-close" type="button" aria-label="Hide Jess overlay" title="Hide Jess overlay" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); void desktop?.hideCompanion?.(); }}><X size={13}/></button>
     <style>{`
@@ -36,7 +36,7 @@ export function JessOrbPage() {
       .jess-orb-drag{width:96px;height:96px;display:grid;place-items:center;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
       .jess-orb-drag:active{cursor:grabbing}
       .jess-orb-drag img{width:82px;height:82px;object-fit:contain;filter:drop-shadow(0 5px 12px rgba(0,0,0,.36));pointer-events:none}
-      .jess-orb-close{-webkit-app-region:no-drag;position:absolute;top:1px;right:1px;width:21px;height:21px;display:grid;place-items:center;border-radius:50%;border:1px solid rgba(255,255,255,.28);background:rgba(8,11,18,.94);color:#e2e8f0;z-index:5;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.42)}
+      .jess-orb-close{-webkit-app-region:no-drag;position:absolute;top:0;right:0;width:23px;height:23px;display:grid;place-items:center;border-radius:50%;border:1px solid rgba(255,255,255,.28);background:rgba(8,11,18,.94);color:#e2e8f0;z-index:5;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.42)}
       .jess-orb-close:hover{background:#134e4a;color:#ccfbf1;border-color:#5eead4}
     `}</style>
   </main>;

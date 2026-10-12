@@ -131,13 +131,20 @@ jobs:
         with:
           name: hub-mind-windows-installer
           path: release
-      - name: Publish installer to GitHub release
+      - name: Download Jess Chrome extension artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jess-chrome-extension
+          path: release
+      - name: Publish installer and extension to GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('desktop-v{0}', github.run_number) }}
           name: Hub-Mind Windows Installer ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('desktop-v{0}', github.run_number) }}
           target_commitish: ${{ github.sha }}
-          files: release/*.exe
+          files: |
+            release/*.exe
+            release/Jess-Chrome-Extension.zip
           fail_on_unmatched_files: true
           generate_release_notes: true
           make_latest: true

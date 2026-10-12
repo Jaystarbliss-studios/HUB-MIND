@@ -16,7 +16,9 @@ export function PublicHome() {
   const [inviteValue, setInviteValue] = useState('');
   const [error, setError] = useState('');
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [release, setRelease] = useState<{ url: string; name: string; version: string } | null>(null);
+  const [release, setRelease] = useState<{ url: string; name: string; version: string; extensionUrl?: string } | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -24,11 +26,28 @@ export function PublicHome() {
       .then(response => response.ok ? response.json() : Promise.reject(new Error('No public release yet')))
       .then(data => {
         const asset = (data.assets || []).find((item: any) => /\.exe$/i.test(item.name));
-        if (active && asset) setRelease({ url: asset.browser_download_url, name: asset.name, version: data.tag_name || 'Latest' });
+        const extension = (data.assets || []).find((item: any) => /Jess-Chrome-Extension\.zip$/i.test(item.name));
+        if (active && asset) setRelease({ url: asset.browser_download_url, name: asset.name, version: data.tag_name || 'Latest', extensionUrl: extension?.browser_download_url });
       })
       .catch(() => { if (active) setRelease(null); });
     return () => { active = false; };
   }, []);
+
+
+  useEffect(() => {
+    const capture = (event: Event) => { event.preventDefault(); setInstallPrompt(event); };
+    window.addEventListener('beforeinstallprompt', capture);
+    return () => window.removeEventListener('beforeinstallprompt', capture);
+  }, []);
+
+  const installWebApp = async () => {
+    if (installPrompt) {
+      await installPrompt.prompt();
+      setInstallPrompt(null);
+      return;
+    }
+    setInstallHelpOpen(true);
+  };
 
   const openWorkspace = () => {
     if (loading) return;
@@ -63,7 +82,7 @@ export function PublicHome() {
     <div className="hm-public min-h-screen overflow-hidden">
       <header className="hm-nav">
         <a href="/" className="hm-brand" aria-label="Hub-Mind home">
-          <span className="hm-brand-mark"><img src="/icon.svg" alt="" /></span>
+          <span className="hm-brand-mark"><img src="/hub-mind%20logo.png" alt="" /></span>
           <span>Hub<span className="hm-brand-dash">-</span>Mind</span>
         </a>
         <nav className={mobileMenu ? 'hm-nav-links is-open' : 'hm-nav-links'}>
@@ -94,7 +113,7 @@ export function PublicHome() {
           <div className="hm-hero-art" aria-label="Hub-Mind workspace preview">
             <div className="hm-orbit hm-orbit-outer"/><div className="hm-orbit hm-orbit-inner"/>
             <div className="hm-glass-card hm-work-card">
-              <div className="hm-card-top"><span className="hm-mini-logo"><img src="/icon.svg" alt=""/></span><span>MONDAY, AT A GLANCE</span><span className="hm-card-dot"/></div>
+              <div className="hm-card-top"><span className="hm-mini-logo"><img src="/hub-mind%20logo.png" alt=""/></span><span>MONDAY, AT A GLANCE</span><span className="hm-card-dot"/></div>
               <h3>Good morning.</h3><p className="hm-card-muted">Here's what deserves your attention.</p>
               <div className="hm-progress-row"><span className="hm-progress-icon teal"><Check size={14}/></span><div><b>Review project milestones</b><small>Website redesign · Today</small></div><span className="hm-check">✓</span></div>
               <div className="hm-progress-row"><span className="hm-progress-icon purple"><FileText size={14}/></span><div><b>Finish the proposal</b><small>Client work · In progress</small></div><span className="hm-task-dot"/></div>
@@ -121,14 +140,16 @@ export function PublicHome() {
           <div className="hm-desktop-copy"><div className="hm-eyebrow">TAKE IT WITH YOU</div><h2>Your workspace.<br/><span>At home on Windows.</span></h2><p>{release ? 'The Hub-Mind Windows desktop installer is available now, with a dedicated window and a persistent Jess companion.' : 'A dedicated Windows desktop experience is being prepared. The installer will appear here as soon as a release is published and verified.'}</p>
           <div className="hm-desktop-points"><span><Check size={15}/> Dedicated desktop window</span><span><Check size={15}/> Floating Jess companion</span><span><Check size={15}/> Controlled system integrations</span></div>
           {release ? <a className="hm-button hm-button-primary hm-button-large" href={release.url}><Download size={17}/> Download for Windows <span className="hm-version">{release.version}</span></a> : <button className="hm-button hm-button-disabled hm-button-large" disabled title="A verified Windows installer has not been published yet"><Download size={17}/> Windows app coming soon</button>}
+          <div className="hm-install-actions"><button className="hm-button hm-button-outline hm-button-large" onClick={installWebApp}><Download size={16}/> Install Chrome app</button><a className="hm-text-link" href={release?.extensionUrl || "https://github.com/Jaystarbliss-studios/HUB-MIND/tree/main/chrome-extension"} target="_blank" rel="noreferrer">Get Jess Chrome extension <ArrowUpRight size={15}/></a></div>
           {release && <small className="hm-release-name">{release.name}</small>}
           </div>
           <div className="hm-desktop-art"><div className="hm-monitor"><div className="hm-monitor-top"><span/><span/><span/><small>HUB-MIND / WORKSPACE</small></div><div className="hm-monitor-content"><div className="hm-monitor-sidebar"><i/><i/><i/><i/></div><div className="hm-monitor-main"><div className="hm-monitor-kicker">YOUR WORKSPACE</div><div className="hm-monitor-title">Make today count.</div><div className="hm-monitor-bars"><i/><i/><i/></div><div className="hm-monitor-bottom"><span/><span/><span/></div></div></div></div><div className="hm-monitor-stand"/><div className="hm-monitor-base"/><div className="hm-desktop-orb"><Sparkles size={20}/></div></div>
         </section>
       </main>
 
-      <footer className="hm-footer"><div className="hm-footer-top"><a href="/" className="hm-brand"><span className="hm-brand-mark"><img src="/icon.svg" alt=""/></span><span>Hub<span className="hm-brand-dash">-</span>Mind</span></a><p>Make room for meaningful work.</p><button className="hm-button hm-button-outline" onClick={openWorkspace}>Open workspace <ArrowRight size={15}/></button></div><div className="hm-footer-bottom"><span>© {new Date().getFullYear()} Hub-Mind</span><span>Designed and built by <a href="https://jaystarbliss-studios.name.ng" target="_blank" rel="noreferrer">Jaystarbliss Studios</a> (JSW)</span><a href="mailto:hello@jaystarbliss-studios.name.ng">Contact</a></div></footer>
+      <footer className="hm-footer"><div className="hm-footer-top"><a href="/" className="hm-brand"><span className="hm-brand-mark"><img src="/hub-mind%20logo.png" alt=""/></span><span>Hub<span className="hm-brand-dash">-</span>Mind</span></a><p>Make room for meaningful work.</p><button className="hm-button hm-button-outline" onClick={openWorkspace}>Open workspace <ArrowRight size={15}/></button></div><div className="hm-footer-bottom"><span>© {new Date().getFullYear()} Hub-Mind</span><span>Designed and built by <a href="https://jaystarbliss-studios.name.ng" target="_blank" rel="noreferrer">Jaystarbliss Studios</a> (JSW)</span><a href="mailto:hello@jaystarbliss-studios.name.ng">Contact</a></div></footer>
 
+      {installHelpOpen && <div className="hm-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setInstallHelpOpen(false); }}><section className="hm-invite-modal" role="dialog" aria-modal="true" aria-labelledby="hm-install-title"><button className="hm-modal-close" onClick={() => setInstallHelpOpen(false)} aria-label="Close"><X size={18}/></button><div className="hm-modal-icon"><Download size={22}/></div><div className="hm-eyebrow">INSTALL HUB-MIND</div><h2 id="hm-install-title">Keep Hub-Mind close.</h2><p>In Chrome or Microsoft Edge, open the browser menu and choose <strong>Install Hub-Mind</strong> or <strong>Apps → Install this site as an app</strong>, if that option is available. You can also continue using Hub-Mind in this browser.</p><button className="hm-button hm-button-primary hm-button-large" onClick={() => { setInstallHelpOpen(false); openWorkspace(); }}>Continue to Hub-Mind <ArrowRight size={16}/></button></section></div>}
       {inviteOpen && <div className="hm-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setInviteOpen(false); }}><section className="hm-invite-modal" role="dialog" aria-modal="true" aria-labelledby="hm-invite-title"><button className="hm-modal-close" onClick={() => setInviteOpen(false)} aria-label="Close"><X size={18}/></button><div className="hm-modal-icon"><LockKeyhole size={22}/></div><div className="hm-eyebrow">WORKSPACE ACCESS</div><h2 id="hm-invite-title">Your invitation is the key.</h2><p>Paste the full Hub-Mind invitation link or enter the invitation ID shared by your workspace administrator.</p><form onSubmit={submitInvite}><label htmlFor="hm-invite-code">Invitation link or code</label><input id="hm-invite-code" autoFocus value={inviteValue} onChange={event => setInviteValue(event.target.value)} placeholder="Paste link or invitation ID" autoComplete="off"/>{error && <p className="hm-form-error" role="alert">{error}</p>}<button className="hm-button hm-button-primary hm-button-large" type="submit">Continue to sign in <ArrowRight size={16}/></button></form><p className="hm-modal-footnote">Invitations expire after seven days and are tied to the invited Google account.</p></section></div>}
     </div>
   );
