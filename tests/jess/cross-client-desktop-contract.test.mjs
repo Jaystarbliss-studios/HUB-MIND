@@ -10,7 +10,7 @@ const electron = fs.readFileSync(new URL('../../electron/main.cjs', import.meta.
 const preload = fs.readFileSync(new URL('../../electron/preload.cjs', import.meta.url), 'utf8');
 const tools = fs.readFileSync(new URL('../../src/lib/jessTools.ts', import.meta.url), 'utf8');
 const live = fs.readFileSync(new URL('../../src/services/liveAudioClient.ts', import.meta.url), 'utf8');
-const orb = fs.readFileSync(new URL('../../src/pages/JessOrbPage.tsx', import.meta.url), 'utf8');
+const orb = fs.readFileSync(new URL('../../src/pages/CompanionPage.tsx', import.meta.url), 'utf8');
 
 test('Jess voice sessions coordinate through a per-user Firestore lease', () => {
   assert.match(coordinator, /runTransaction/);
@@ -36,15 +36,16 @@ test('desktop workspace and icon-only orb visibility follow the requested lifecy
   assert.ok(electron.includes("mainWindow.on('minimize', () => { createCompanionWindow();"));
   assert.ok(electron.includes("mainWindow.on('close', (event) => { if (!quitting)"));
   assert.ok(electron.includes('width: 96, height: 96'));
-  assert.ok(electron.includes("APP_URL + '/orb'"));
+  assert.ok(electron.includes("APP_URL + '/companion'"));
+  assert.ok(electron.includes('hubmind:set-companion-transcript-visible'));
   assert.ok(electron.includes('hubmind:hide-companion'));
   assert.ok(electron.includes('hubmind:move-companion-by'));
-  assert.ok(orb.includes('src="/hub-mind%20logo.png"'));
-  assert.ok(orb.includes('src = "/jess-orb.svg"'));
-  assert.ok(orb.includes('jess-orb-close'));
+  assert.ok(orb.includes('src="/icon.svg"'));
+  assert.ok(orb.includes("event.currentTarget.src = '/jess-orb.svg'"));
+  assert.ok(orb.includes('jess-orb-controls'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
-  assert.doesNotMatch(orb, /transcript|textarea|microphone controls/i);
+  assert.match(orb, /is-transcript-visible/);
 });
 
 test('native Windows tools use a full-control session, narrow preload bridge and honesty protocol', () => {
