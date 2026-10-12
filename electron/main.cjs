@@ -63,7 +63,7 @@ function createMainWindow() {
   mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#080b12', title: 'Hub-Mind', autoHideMenuBar: true, show: false }));
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.on('close', () => { /* Close the workspace window; Jess remains available from the tray. */ });
+  mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); } });
   mainWindow.on('minimize', () => createCompanionWindow());
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.loadURL(APP_URL);
@@ -137,6 +137,26 @@ app.whenReady().then(() => {
     if (choice.response !== 1) return { launched: false };
     await new Promise((resolve, reject) => execFile(WINDOWS_APPS[appName], [], { windowsHide: true, timeout: 10000, shell: false }, error => error ? reject(error) : resolve(true)));
     return { launched: true, app: appName };
+  });
+  ipcMain.handle('hubmind:run-system-command', async (event, requestedCommand, requestedPurpose) => {
+    assertTrustedSender(event);
+    if (typeof requestedCommand !== 'string' || !requestedCommand.trim() || requestedCommand.length > 1200) throw new Error('Command must be between 1 and 1,200 characters.');
+    if (typeof requestedPurpose !== 'string' || !requestedPurpose.trim() || requestedPurpose.length > 300) throw new Error('A short purpose is required.');
+    const command = requestedCommand.trim();
+    const blocked = /\\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|cipher\\s+\\/w|reg\\s+delete)\\b/i;
+    if (blocked.test(command)) throw new Error('This high-risk destructive command is blocked by Hub-Mind.');
+    const choice = await dialog.showMessageBox(mainWindow || companionWindow, {
+      type: 'warning', buttons: ['Cancel', 'Run this command'], defaultId: 0, cancelId: 0,
+      title: 'Jess wants to run a Windows command', message: requestedPurpose.trim(),
+      detail: 'Exact PowerShell command:\\n\\n' + command + '\\n\\nRuns with your current Windows user permissions, not as administrator. Review it carefully before allowing it.',
+    });
+    if (choice.response !== 1) return { ran: false, cancelled: true };
+    const result = await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true, timeout: 30000, maxBuffer: 1024 * 1024, shell: false }, (error, stdout, stderr) => {
+      const output = String(stdout || stderr || '').slice(0, 12000);
+      if (error && !output) return reject(new Error(String(error.message || 'PowerShell command failed.').slice(0, 1000)));
+      resolve({ output, exitCode: typeof error?.code === 'number' ? error.code : (error ? 1 : 0) });
+    }));
+    return { ran: true, purpose: requestedPurpose.trim(), command, ...result };
   });
   ipcMain.handle('hubmind:run-readonly-command', async (event, commandName) => {
     assertTrustedSender(event);
