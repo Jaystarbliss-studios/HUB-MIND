@@ -18,6 +18,7 @@ test('Jess voice sessions coordinate through a per-user Firestore lease', () => 
   assert.match(coordinator, /watchJessSession/);
   assert.match(assistant, /claimJessSession/);
   assert.match(assistant, /renewJessSession/);
+  assert.match(assistant, /releaseJessSession\(previousLease\.userId, previousLease\.sessionId\)/);
   assert.match(assistant, /Jess is already active in/);
   assert.match(assistant, /jessActivationRequest/);
   assert.match(companion, /windows-desktop-companion/);
