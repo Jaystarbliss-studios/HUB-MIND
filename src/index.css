@@ -574,3 +574,13 @@ body:not(:has(.hm-public)):not(:has(.jess-orb-window)), body:not(:has(.hm-public
   background-color: #020617 !important;
   color: #e2e8f0;
 }
+
+/* Workspace theme lock: the public landing page styles must not change the authenticated workspace palette. */
+html, body, #root { color-scheme: dark; }
+body { background-color: #020617 !important; color: #e2e8f0; }
+#root { background-color: #020617; }
+.hm-public { color-scheme: dark; }
+
+/* Do not allow OS theme or landing-page CSS to flip authenticated workspace surfaces to light mode. */
+:root { color-scheme: dark !important; }
+body, #root { background-color: #020617; color: #e2e8f0; }

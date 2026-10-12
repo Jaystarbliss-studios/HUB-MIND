@@ -1,6 +1,18 @@
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY || '';
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || '';
 const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || '(default)';
+const liveTokenRateLimits = new Map();
+
+function isRateLimited(req) {
+  const now = Date.now();
+  const clientKey = String(req.headers.get('x-nf-client-connection-ip') || req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown').slice(0, 160);
+  const current = liveTokenRateLimits.get(clientKey);
+  if (current && current.resetAt > now && current.count >= 20) return true;
+  if (!current || current.resetAt <= now) liveTokenRateLimits.set(clientKey, { count: 1, resetAt: now + 60_000 });
+  else current.count += 1;
+  if (liveTokenRateLimits.size > 5000) for (const [key, value] of liveTokenRateLimits) if (value.resetAt <= now) liveTokenRateLimits.delete(key);
+  return false;
+}
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -19,6 +31,7 @@ async function verifyFirebaseUser(idToken) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken }),
+      signal: AbortSignal.timeout(10_000),
     },
   );
 
@@ -71,6 +84,7 @@ export default async function handler(req) {
   if (req.method !== 'POST') {
     return json({ error: 'Method not allowed' }, 405);
   }
+  if (isRateLimited(req)) return json({ error: 'Too many Jess session requests. Please wait a minute and try again.' }, 429);
 
   try {
     const authorization = req.headers.get('authorization') || '';
@@ -105,6 +119,7 @@ export default async function handler(req) {
           expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
           newSessionExpireTime: new Date(Date.now() + 60 * 1000).toISOString(),
         }),
+        signal: AbortSignal.timeout(12_000),
       },
     );
 

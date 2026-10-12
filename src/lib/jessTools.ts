@@ -624,7 +624,8 @@ export async function executeJessTool(
         if (name === 'get_windows_time') { method = 'get_time'; payload = {}; }
         if (name === 'get_windows_system_info') { method = 'system_info'; payload = {}; }
         const result = await desktop.nativeAction(method, payload, user.id);
-        return { result: { ...result, success: result?.ok === true && result?.verified === true } };
+        const actionStatus = result?.ok !== true ? 'failed' : result?.verified === true ? 'done_verified' : 'sent_unverified';
+        return { result: { ...result, status: actionStatus, success: actionStatus !== 'failed', verified: result?.verified === true, evidence: result?.evidence ?? null, ...(actionStatus === 'sent_unverified' ? { note: 'Input was sent, but the resulting UI state was not independently verified. Do not repeat non-idempotent actions automatically.' } : {}) } };
       }
       case 'chrome_list_tabs':
       case 'chrome_open_tab':

@@ -10,11 +10,15 @@ test('workspace CSS explicitly fixes the original dark color scheme', async () =
   assert.match(css, /html, body, #root\s*\{[\s\S]*?background-color:\s*#020617/i);
 });
 
-test('Windows screen sharing never silently picks the first screen', async () => {
+test('Windows screen sharing uses the native system picker with a safe fallback', async () => {
   const main = await read('electron/main.cjs');
-  assert.match(main, /Choose what Jess can see/);
-  assert.match(main, /sources\.slice\(0, 8\)\.map/);
-  assert.match(main, /choice\.response > 0 \? sources\[choice\.response - 1\] : null/);
+  const start = main.indexOf('setDisplayMediaRequestHandler');
+  const end = main.indexOf('const stopHotkeyRegistered', start);
+  assert.ok(start >= 0 && end > start);
+  const handler = main.slice(start, end);
+  assert.match(handler, /desktopCapturer\.getSources/);
+  assert.match(handler, /useSystemPicker: true/);
+  assert.doesNotMatch(handler, /showMessageBox/);
 });
 
 test('Windows desktop exposes guarded app, command, URL, typing and shortcut actions', async () => {
@@ -24,7 +28,8 @@ test('Windows desktop exposes guarded app, command, URL, typing and shortcut act
     assert.match(preload, new RegExp(method));
   }
   assert.match(main, /assertTrustedSender\(event\)/);
-  assert.match(main, /Run this command/);
+  assert.match(main, /Start Jess Full Control before running Windows commands/);
+  assert.match(main, /Potentially destructive command blocked|command is blocked/i);
 });
 
 test('Jess wake listener accepts short interim wake phrases quickly', async () => {

@@ -12,17 +12,17 @@ test('workspace theme remains dark regardless of operating system preference', a
   assert.match(css, /background-color:\s*#020617/i);
 });
 
-test('desktop companion keeps the original icon and exposes a visible transcript overlay', async () => {
-  const css = await read('../../src/pages/companion.css');
-  const page = await read('../../src/pages/CompanionPage.tsx');
-  assert.match(css, /width:100%;height:100%/);
-  assert.match(css, /\.jess-transcript\{/);
-  assert.ok(page.includes('src="/icon.svg"'));
-  assert.ok(!page.includes('src="/jess-orb.svg"'));
-  assert.match(page, /hideCompanion/);
-  assert.match(page, /moveCompanionBy/);
-  assert.match(page, /onPointerMove/);
-  assert.match(page, /jess-transcript-messages/);
+test('desktop companion is an icon-only movable orb with a close control', async () => {
+  const main = await read('../../electron/main.cjs');
+  const page = await read('../../src/pages/JessOrbPage.tsx');
+  assert.ok(main.includes('width: 96, height: 96'));
+  assert.ok(main.includes("APP_URL + '/orb'"));
+  assert.ok(page.includes('src="/jess-orb.svg"'));
+  assert.ok(page.includes('hideCompanion'));
+  assert.ok(page.includes('jess-orb-close'));
+  assert.ok(page.includes('moveCompanionBy'));
+  assert.ok(page.includes('onPointerMove'));
+  assert.doesNotMatch(page, /transcript|textarea|microphone controls/i);
 });
 
 test('native system actions use the isolated bridge and a Full Control Session', async () => {
@@ -40,9 +40,13 @@ test('native system actions use the isolated bridge and a Full Control Session',
   assert.match(tools, /name: 'launch_windows_application'/);
 });
 
-test('desktop display capture does not silently grant screen sharing', async () => {
+test('desktop display capture uses the native system picker without a custom modal', async () => {
   const main = await read('../../electron/main.cjs');
-  assert.match(main, /setDisplayMediaRequestHandler/);
-  assert.match(main, /useSystemPicker:\s*true/);
-  assert.match(main, /Share entire screen/);
+  const start = main.indexOf('setDisplayMediaRequestHandler');
+  const end = main.indexOf('const stopHotkeyRegistered', start);
+  assert.ok(start >= 0 && end > start);
+  const handler = main.slice(start, end);
+  assert.match(handler, /desktopCapturer\.getSources/);
+  assert.match(handler, /useSystemPicker:\s*true/);
+  assert.doesNotMatch(handler, /showMessageBox/);
 });

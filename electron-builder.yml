@@ -3,6 +3,8 @@ productName: Hub-Mind
 directories:
   output: release
   buildResources: build-resources
+asarUnpack:
+  - electron/jess-agent.ps1
 files:
   - dist/**
   - electron/**

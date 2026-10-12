@@ -18,6 +18,7 @@ let controlAuditPath = null;
 let offlineWakeProcess = null;
 let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
+let offlineWakeConsentLoaded = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const trustedAppHosts = new Set(['hub-mind.netlify.app']);
 const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'identitytoolkit.googleapis.com']);
@@ -25,7 +26,9 @@ const WINDOWS_APPS = Object.freeze({ calculator: 'calc.exe', notepad: 'notepad.e
 const READ_ONLY_COMMANDS = Object.freeze({ ipconfig: ['ipconfig.exe', []], systemInfo: ['systeminfo.exe', []], runningProcesses: ['tasklist.exe', []] });
 const WINDOWS_SHORTCUTS = Object.freeze({ save: '^s', selectAll: '^a', copy: '^c', paste: '^v', undo: '^z', redo: '^y', find: '^f', closeWindow: '%{F4}', switchWindow: '%{TAB}', taskManager: '^+{ESC}', enter: '{ENTER}', escape: '{ESC}', tab: '{TAB}' });
 function assertTrustedSender(event) {
-  let origin = ''; try { origin = new URL(event.senderFrame?.url || '').origin; } catch {}
+  let origin = '';
+  try { origin = new URL(event.senderFrame?.url || '').origin; } catch {}
+  if (!event?.senderFrame || event.senderFrame !== event.sender.mainFrame) throw new Error('Blocked desktop action from a non-top-level frame.');
   if (origin !== new URL(APP_URL).origin) throw new Error('Blocked desktop action from an untrusted page.');
 }
 
@@ -70,21 +73,17 @@ function guardNavigation(win) {
   });
 }
 
-function createMainWindow() {
+function createMainWindow(initialPath = '/') {
   mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#020617', title: 'Hub-Mind', autoHideMenuBar: true, show: false, webPreferences: { backgroundThrottling: false } }));
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); } });
-  // Keep Jess's native overlay visible above the workspace as well as other desktop apps.
-  const keepCompanionVisible = () => {
-    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow();
-    else if (!companionWindow.isVisible()) companionWindow.showInactive();
-  };
-  mainWindow.on('show', keepCompanionVisible);
-  mainWindow.on('restore', keepCompanionVisible);
+  mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); positionCompanionBottomRightIfNeeded(); } });
+  // The orb is intentionally hidden while the full workspace is visible.
+  mainWindow.on('show', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
+  mainWindow.on('restore', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
   mainWindow.on('minimize', () => { createCompanionWindow(); positionCompanionBottomRight(); });
   mainWindow.on('closed', () => { mainWindow = null; });
-  mainWindow.loadURL(APP_URL);
+  return mainWindow.loadURL(APP_URL + initialPath);
 }
 
 function positionCompanionBottomRight() {
@@ -92,23 +91,58 @@ function positionCompanionBottomRight() {
   const display = screen.getPrimaryDisplay();
   const area = display.workArea;
   const [width, height] = companionWindow.getSize();
+  // Keep the visible orb itself 18px from the work-area edges.
   companionWindow.setPosition(Math.max(area.x, area.x + area.width - width - 18), Math.max(area.y, area.y + area.height - height - 18), false);
 }
 
 function createCompanionWindow() {
-  if (companionWindow && !companionWindow.isDestroyed()) { companionWindow.showInactive(); return; }
-  companionWindow = new BrowserWindow(secureWindowOptions({ width: 420, height: 560, minWidth: 360, minHeight: 420, maxWidth: 520, maxHeight: 760, frame: false, transparent: true, resizable: true, focusable: true, alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000', title: 'Jess · Hub-Mind', show: false, webPreferences: { backgroundThrottling: false } }));
-  companionWindow.on('blur', () => { /* The overlay remains available until explicitly hidden or the workspace is restored. */ });
+  if (companionWindow && !companionWindow.isDestroyed()) {
+    positionCompanionBottomRightIfNeeded();
+    companionWindow.showInactive();
+    return;
+  }
+  const saved = readOrbPosition();
+  companionWindow = new BrowserWindow(secureWindowOptions({
+    width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 96, maxHeight: 96,
+    frame: false, transparent: true, resizable: false, movable: true, focusable: true,
+    alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
+    title: 'Jess', show: false, webPreferences: { backgroundThrottling: false }
+  }));
   guardNavigation(companionWindow);
   companionWindow.setAlwaysOnTop(true, 'screen-saver');
-  // Let clicks pass through transparent areas; renderer temporarily enables hit-testing over orb/transcript controls.
-  companionWindow.setIgnoreMouseEvents(true, { forward: true });
-  positionCompanionBottomRight();
-  companionWindow.once('ready-to-show', () => companionWindow.show());
+  companionWindow.setIgnoreMouseEvents(false);
+  if (saved) companionWindow.setPosition(saved.x, saved.y, false);
+  else positionCompanionBottomRight();
+  companionWindow.once('ready-to-show', () => companionWindow.showInactive());
+  companionWindow.on('move', () => {
+    if (!companionWindow || companionWindow.isDestroyed()) return;
+    try { fs.writeFileSync(orbPositionPath(), JSON.stringify({ x: companionWindow.getBounds().x, y: companionWindow.getBounds().y }), 'utf8'); } catch {}
+  });
   companionWindow.on('closed', () => { companionWindow = null; });
-  companionWindow.loadURL(APP_URL + '/companion');
+  companionWindow.loadURL(APP_URL + '/orb');
 }
-
+function orbPositionPath() { return path.join(app.getPath('userData'), 'jess-orb-position.json'); }
+function readOrbPosition() {
+  try {
+    const value = JSON.parse(fs.readFileSync(orbPositionPath(), 'utf8'));
+    const display = screen.getDisplayMatching({ x: value.x, y: value.y, width: 96, height: 96 });
+    const area = display.workArea;
+    if (Number.isFinite(value.x) && Number.isFinite(value.y) && value.x >= area.x && value.y >= area.y && value.x + 96 <= area.x + area.width && value.y + 96 <= area.y + area.height) return value;
+  } catch {}
+  return null;
+}
+function positionCompanionBottomRightIfNeeded() {
+  if (!companionWindow || companionWindow.isDestroyed()) return;
+  const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay();
+  const area = display.workArea;
+  const [width, height] = companionWindow.getSize();
+  const [x, y] = companionWindow.getPosition();
+  if (x < area.x || y < area.y || x + width > area.x + area.width || y + height > area.y + area.height) positionCompanionBottomRight();
+}
+function resetOrbPosition() {
+  if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow();
+  positionCompanionBottomRight();
+}
 function getDialogParent() {
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) return mainWindow;
   if (companionWindow && !companionWindow.isDestroyed() && companionWindow.isVisible()) return companionWindow;
@@ -125,6 +159,7 @@ function showMain() {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
 }
 
 async function showMainVerified(timeoutMs = 5000) {
@@ -141,6 +176,25 @@ async function showMainVerified(timeoutMs = 5000) {
   });
 }
 
+async function showWorkspaceVerified() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    await createMainWindow('/workspace');
+  } else {
+    let shouldNavigate = true;
+    try {
+      const current = new URL(mainWindow.webContents.getURL());
+      shouldNavigate = current.origin === new URL(APP_URL).origin && !current.pathname.startsWith('/workspace');
+    } catch {}
+    if (shouldNavigate) await mainWindow.loadURL(APP_URL + '/workspace');
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+  return mainWindow.isVisible();
+}
+
 function stopOfflineWake() {
   const child = offlineWakeProcess;
   offlineWakeProcess = null;
@@ -154,15 +208,29 @@ async function startOfflineWake(event) {
   assertTrustedSender(event);
   if (process.platform !== 'win32') return { started: false, error: 'Offline Windows wake detection is available only in the Windows desktop app.' };
   if (offlineWakeProcess && !offlineWakeProcess.killed && offlineWakeProcess.exitCode === null) return { started: true, alreadyRunning: true, source: 'Windows offline recognizer' };
+  if (!offlineWakeConsentLoaded) {
+    offlineWakeConsentLoaded = true;
+    try {
+      const stored = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'jess-offline-wake-consent.json'), 'utf8'));
+      if (typeof stored.granted === 'boolean') {
+        offlineWakeConsentAsked = true;
+        offlineWakeConsentGranted = stored.granted;
+      }
+    } catch {}
+  }
   if (!offlineWakeConsentAsked) {
-    offlineWakeConsentAsked = true;
+    // Ask once per installation profile, then remember either choice.
     const choice = await dialog.showMessageBox(getDialogParent(), {
       type: 'question', buttons: ['Not now', 'Enable offline wake word'], defaultId: 0, cancelId: 0,
       title: 'Enable local Jess wake-word detection?',
       message: 'Allow Hub-Mind to listen locally for “Jess” while the workspace is running?',
-      detail: 'Speech recognition runs on this PC using Windows speech components. Audio is not sent to Hub-Mind servers by this wake listener. Listening stops when Jess wakes, when you stop it, or when Hub-Mind quits. A compatible Windows speech recognizer and microphone are required.'
+      detail: 'Speech recognition runs locally on this PC. Audio is not sent to Hub-Mind servers by this wake listener. Listening stops when Jess wakes, when you stop it, or when Hub-Mind quits. You can change this by clearing the saved wake consent in Hub-Mind app data.'
     });
+    offlineWakeConsentAsked = true;
     offlineWakeConsentGranted = choice.response === 1;
+    try {
+      fs.writeFileSync(path.join(app.getPath('userData'), 'jess-offline-wake-consent.json'), JSON.stringify({ granted: offlineWakeConsentGranted, savedAt: new Date().toISOString() }), 'utf8');
+    } catch (error) { console.warn('[Hub-Mind] Could not persist offline wake consent:', error); }
   }
   if (!offlineWakeConsentGranted) return { started: false, cancelled: true, error: 'Offline wake-word listening was not enabled.' };
   const exePath = app.isPackaged
@@ -273,8 +341,8 @@ function createTray() {
   tray.setToolTip('Hub-Mind');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Hub-Mind', click: showMain },
-    { label: 'Show Jess companion', click: () => { createCompanionWindow(); positionCompanionBottomRight(); } },
-    { label: 'Reset Jess orb to bottom-right', click: () => { createCompanionWindow(); positionCompanionBottomRight(); } },
+    { label: 'Show Jess orb', click: () => { if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide(); createCompanionWindow(); positionCompanionBottomRightIfNeeded(); } },
+    { label: 'Reset orb to bottom-right', click: resetOrbPosition },
     { label: 'Stop Jess (end Full Control Session)', click: () => stopFullControl('tray-stop') },
     { label: 'Start Hub-Mind at Windows sign-in (this user)', type: 'checkbox', checked: !!app.getLoginItemSettings().openAtLogin, click: item => { try { app.setLoginItemSettings({ openAtLogin: item.checked }); item.checked = !!app.getLoginItemSettings().openAtLogin; } catch (error) { item.checked = !!app.getLoginItemSettings().openAtLogin; console.error('[Hub-Mind] Could not update per-user startup setting:', error); } } },
     { type: 'separator' },
@@ -331,7 +399,14 @@ app.whenReady().then(() => {
     if (method === 'run_command') {
       const command = String(safeArgs.command || '');
       if (command.length > 4000) throw new Error('Command exceeds the 4,000-character limit.');
-      if (/\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)\b/i.test(command)) throw new Error('Potentially destructive commands require a separate explicit confirmation flow and are blocked in this release.');
+      // This runner uses the current Windows user's token only. Refuse common
+      // destructive aliases and script-based bypasses; high-risk operations
+      // remain unavailable until a dedicated spoken-confirmation flow exists.
+      if (/\b(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)\b/i.test(command) ||
+          /\.(ps1|bat|cmd|vbs|js|hta)\b/i.test(command) ||
+          /\b(invoke-expression|iex|start-process\s+.*-verb\s+runas)\b/i.test(command)) {
+        throw new Error('This command is blocked because it can modify the system, launch a script, or bypass the command safety checks. Elevated commands are not silently executed.');
+      }
     }
     if (['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'].includes(method) && !safeArgs.handle && !String(safeArgs.title || '').trim()) throw new Error('Provide a window title or handle.');
     if (method === 'move_window' && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Moving a window requires numeric x and y coordinates.');
@@ -367,8 +442,10 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
-  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); createCompanionWindow(); return true; });
+  ipcMain.handle('hubmind:show-workspace', async (event) => { assertTrustedSender(event); return await showWorkspaceVerified(); });
+  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(); positionCompanionBottomRightIfNeeded(); return true; });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionWindow?.hide(); return true; });
+  ipcMain.handle('hubmind:reset-orb-position', (event) => { assertTrustedSender(event); resetOrbPosition(); return true; });
   ipcMain.handle('hubmind:set-companion-interactive', (event, interactive) => {
     assertTrustedSender(event);
     if (!companionWindow || companionWindow.isDestroyed()) return false;
@@ -378,14 +455,8 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:move-companion-by', (event, dx, dy) => { assertTrustedSender(event); if (!companionWindow || !Number.isFinite(dx) || !Number.isFinite(dy)) return false; const [x, y] = companionWindow.getPosition(); const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay(); const area = display.workArea; const [width, height] = companionWindow.getSize(); const nextX = Math.max(area.x, Math.min(area.x + area.width - width, x + Math.max(-200, Math.min(200, dx)))); const nextY = Math.max(area.y, Math.min(area.y + area.height - height, y + Math.max(-200, Math.min(200, dy)))); companionWindow.setPosition(Math.round(nextX), Math.round(nextY)); return true; });
   ipcMain.handle('hubmind:open-user-path', async (event, requestedPath) => {
     assertTrustedSender(event);
+    if (!fullControlActive) throw new Error('Start Jess Full Control before opening local paths.');
     if (typeof requestedPath !== 'string' || requestedPath.length > 2048 || requestedPath.includes('\0')) throw new Error('Invalid path.');
-    const result = await dialog.showMessageBox(getDialogParent(), {
-      type: 'warning', buttons: ['Cancel', 'Open selected path'], defaultId: 0, cancelId: 0,
-      title: 'Allow Hub-Mind to open a file or folder?',
-      message: 'Open a local path using the Windows default application?',
-      detail: 'Only continue if you trust this action. Hub-Mind will not execute the file as a command.',
-    });
-    if (result.response !== 1) return { opened: false };
     const resolved = path.resolve(requestedPath);
     if (!fs.existsSync(resolved)) throw new Error('That file or folder does not exist.');
     const error = await shell.openPath(resolved);
@@ -394,10 +465,8 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('hubmind:type-text', async (event, requestedText) => {
     assertTrustedSender(event);
+    if (!fullControlActive) throw new Error('Start Jess Full Control before typing into Windows apps.');
     if (typeof requestedText !== 'string' || !requestedText.length || requestedText.length > 3000) throw new Error('Text must be between 1 and 3,000 characters.');
-    const preview = requestedText.length > 500 ? requestedText.slice(0, 500) + '…' : requestedText;
-    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'warning', buttons: ['Cancel', 'Type this text'], defaultId: 0, cancelId: 0, title: 'Type into the active Windows application?', message: 'Jess wants to type text into whichever app currently has keyboard focus.', detail: preview + (requestedText.length > 500 ? '\n\n[Preview truncated; full text will be typed.]' : '') });
-    if (choice.response !== 1) return { typed: false, cancelled: true };
     const textBase64 = Buffer.from(requestedText, 'utf8').toString('base64');
     const script = String.raw`Add-Type -TypeDefinition @'
 using System;
@@ -425,8 +494,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   ipcMain.handle('hubmind:press-shortcut', async (event, shortcutName) => {
     assertTrustedSender(event);
     if (typeof shortcutName !== 'string' || !Object.prototype.hasOwnProperty.call(WINDOWS_SHORTCUTS, shortcutName)) throw new Error('That keyboard shortcut is not approved.');
-    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'warning', buttons: ['Cancel', 'Press shortcut'], defaultId: 0, cancelId: 0, title: 'Send a keyboard shortcut?', message: 'Jess wants to send ' + shortcutName + ' to the active Windows application.', detail: 'The shortcut will be sent to whichever window has keyboard focus after you confirm.' });
-    if (choice.response !== 1) return { pressed: false, cancelled: true };
+    if (!fullControlActive) throw new Error('Start Jess Full Control before sending Windows shortcuts.');
     const sequence = WINDOWS_SHORTCUTS[shortcutName];
     const script = String.raw`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${sequence}')`;
     await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, timeout: 10000, shell: false }, error => error ? reject(new Error(String(error.message || 'Keyboard shortcut failed.').slice(0, 1000))) : resolve(true)));
@@ -434,34 +502,30 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   });
   ipcMain.handle('hubmind:open-url', async (event, requestedUrl) => {
     assertTrustedSender(event);
+    if (!fullControlActive) throw new Error('Start Jess Full Control before opening websites from voice commands.');
     if (typeof requestedUrl !== 'string' || requestedUrl.length > 2048) throw new Error('Invalid URL.');
     let parsed; try { parsed = new URL(requestedUrl); } catch { throw new Error('Enter a valid URL.'); }
     if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('Only web URLs can be opened.');
-    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'question', buttons: ['Cancel', 'Open website'], defaultId: 0, cancelId: 0, title: 'Open website?', message: parsed.href, detail: 'Jess will open this page in your default browser.' });
-    if (choice.response !== 1) return { opened: false };
-    await shell.openExternal(parsed.href); return { opened: true, url: parsed.href };
+    await shell.openExternal(parsed.href); auditNativeAction({ event: 'open-url', url: parsed.href }); return { opened: true, url: parsed.href };
   });
   ipcMain.handle('hubmind:launch-app', async (event, appName) => {
     assertTrustedSender(event);
     if (typeof appName !== 'string' || !Object.prototype.hasOwnProperty.call(WINDOWS_APPS, appName)) throw new Error('That application is not on the approved launch list.');
-    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'question', buttons: ['Cancel', 'Launch app'], defaultId: 0, cancelId: 0, title: 'Launch Windows application?', message: 'Jess wants to launch ' + appName + '.', detail: 'This opens the selected built-in Windows application.' });
-    if (choice.response !== 1) return { launched: false };
+    if (!fullControlActive) throw new Error('Start Jess Full Control before launching Windows apps.');
     await new Promise((resolve, reject) => { const child = spawn(WINDOWS_APPS[appName], [], { windowsHide: true, detached: true, stdio: 'ignore', shell: false }); child.once('error', reject); child.once('spawn', () => { child.unref(); resolve(true); }); });
     return { launched: true, app: appName };
   });
   ipcMain.handle('hubmind:run-system-command', async (event, requestedCommand, requestedPurpose) => {
     assertTrustedSender(event);
+    if (!fullControlActive) throw new Error('Start Jess Full Control before running Windows commands.');
     if (typeof requestedCommand !== 'string' || !requestedCommand.trim() || requestedCommand.length > 1200) throw new Error('Command must be between 1 and 1,200 characters.');
     if (typeof requestedPurpose !== 'string' || !requestedPurpose.trim() || requestedPurpose.length > 300) throw new Error('A short purpose is required.');
     const command = requestedCommand.trim();
-    const blocked = /\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|cipher\s+\/w|reg\s+delete)\b/i;
-    if (blocked.test(command)) throw new Error('This high-risk destructive command is blocked by Hub-Mind.');
-    const choice = await dialog.showMessageBox(getDialogParent(), {
-      type: 'warning', buttons: ['Cancel', 'Run this command'], defaultId: 0, cancelId: 0,
-      title: 'Jess wants to run a Windows command', message: requestedPurpose.trim(),
-      detail: 'Exact PowerShell command:\n\n' + command + '\n\nRuns with your current Windows user permissions, not as administrator. Review it carefully before allowing it.',
-    });
-    if (choice.response !== 1) return { ran: false, cancelled: true };
+    const blocked = /\b(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)\b/i;
+    if (blocked.test(command) || /\.(ps1|bat|cmd|vbs|js|hta)\b/i.test(command) || /\b(start-process\s+.*-verb\s+runas)\b/i.test(command)) {
+      throw new Error('This command is blocked because it can modify the system, launch a script, or bypass safety checks.');
+    }
+    // Full Control is the session-level permission; this runs as the current user, never elevated.
     const result = await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true, timeout: 30000, maxBuffer: 1024 * 1024, shell: false }, (error, stdout, stderr) => {
       const output = String(stdout || stderr || '').slice(0, 12000);
       if (error && !output) return reject(new Error(String(error.message || 'PowerShell command failed.').slice(0, 1000)));
@@ -472,8 +536,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   ipcMain.handle('hubmind:run-readonly-command', async (event, commandName) => {
     assertTrustedSender(event);
     if (typeof commandName !== 'string' || !Object.prototype.hasOwnProperty.call(READ_ONLY_COMMANDS, commandName)) throw new Error('That command is not on the approved read-only list.');
-    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'warning', buttons: ['Cancel', 'Run command'], defaultId: 0, cancelId: 0, title: 'Run a Windows diagnostic?', message: 'Jess wants to run ' + commandName + '.', detail: 'This approved command reads system information only. It cannot change files or settings.' });
-    if (choice.response !== 1) return { ran: false, cancelled: true };
+    if (!fullControlActive) throw new Error('Start Jess Full Control before running Windows diagnostics.');
     const [binary, args] = READ_ONLY_COMMANDS[commandName];
     const result = await new Promise((resolve, reject) => execFile(binary, args, { windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024, shell: false }, (error, stdout, stderr) => {
       if (error && !stdout) return reject(new Error(String(stderr || error.message).slice(0, 1000)));
@@ -488,19 +551,14 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   });
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
+      // The user must explicitly start screen sharing from Jess. Prefer the
+      // Windows system picker; this callback is only Electron's fallback path.
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
       if (!sources.length) { callback({}); return; }
-      // On Windows builds where the native system picker is unavailable, show
-      // an explicit source chooser. Never silently share the first screen.
-      const buttons = ['Cancel', ...sources.slice(0, 8).map(source => source.name || source.id)];
-      const choice = await dialog.showMessageBox(getDialogParent(), {
-        type: 'question', buttons, defaultId: 0, cancelId: 0,
-        title: 'Choose what Jess can see',
-        message: 'Select a screen or application window to share.',
-        detail: 'Choose “Share entire screen” only when you intend to share the full display. Only the selected source will be shared, and you can stop sharing at any time.',
-      });
-      const selected = choice.response > 0 ? sources[choice.response - 1] : null;
-      callback(selected ? { video: selected } : {});
+      const primaryId = String(screen.getPrimaryDisplay().id);
+      const primaryScreen = sources.find(source => source.display_id === primaryId && source.id.startsWith('screen:'));
+      const screenSource = primaryScreen || sources.find(source => source.id.startsWith('screen:'));
+      callback(screenSource ? { video: screenSource } : {});
     } catch { callback({}); }
   }, { useSystemPicker: true });
   const stopHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+J', () => {
