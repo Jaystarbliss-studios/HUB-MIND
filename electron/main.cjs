@@ -73,7 +73,7 @@ function guardNavigation(win) {
   });
 }
 
-function createMainWindow(initialPath = '/') {
+function createMainWindow(initialPath = '/login') {
   mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#020617', title: 'Hub-Mind', autoHideMenuBar: true, show: false, webPreferences: { backgroundThrottling: false } }));
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
