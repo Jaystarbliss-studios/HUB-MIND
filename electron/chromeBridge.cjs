@@ -74,15 +74,20 @@ function request(method, args = {}, timeoutMs = 12000) {
   });
 }
 
-function stop() {
+function cancelPending(reason = 'Full Control Session stopped.') {
+  const socket = client;
+  client = null;
   for (const [id, waiter] of pending) {
     clearTimeout(waiter.timer);
-    waiter.reject(new Error('Chrome bridge stopped.'));
+    waiter.resolve({ ok: false, verified: false, error: reason });
     pending.delete(id);
   }
-  try { client?.destroy(); } catch {}
-  client = null;
+  try { socket?.destroy(); } catch {}
+}
+
+function stop() {
+  cancelPending('Chrome bridge stopped.');
   try { server?.close(); } catch {}
   server = null;
 }
-module.exports = { start, stop, status, request };
+module.exports = { start, stop, status, request, cancelPending };
