@@ -202,6 +202,8 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'drag_windows_mouse', description: 'Drag from one physical screen coordinate to another. Requires Full Control Session; the app-level result is not automatically verified.', parameters: object({ fromX: { type: 'number' }, fromY: { type: 'number' }, toX: { type: 'number' }, toY: { type: 'number' } }, ['fromX','fromY','toX','toY']) },
   { name: 'type_windows_text', description: 'Type text into the currently focused Windows app. Requires Full Control Session. Never type into password or payment fields.', parameters: object({ text: { type: 'string' } }, ['text']) },
   { name: 'press_windows_keys', description: 'Send a key or key combination to the active Windows app, e.g. CTRL+S, ALT+TAB, ENTER, ESC, WIN+R. Requires Full Control Session.', parameters: object({ keys: { type: 'string' } }, ['keys']) },
+  { name: 'control_system_volume', description: 'Send a Windows volume up, down, or mute key event. The actual audio state must be checked separately; some audio drivers may not expose a readable state. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['volume_up','volume_down','volume_mute'] } }, ['action']) },
+  { name: 'control_screen_brightness', description: 'Send a Windows brightness up or down key event. Hardware and display-driver support varies; do not claim the brightness changed without independent verification. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['brightness_up','brightness_down'] } }, ['action']) },
   { name: 'take_windows_screenshot', description: 'Capture fresh screenshots of connected monitors, including monitor names, physical bounds and scale context. Use after visible UI actions to verify the actual postcondition when screen sharing is active. Requires Full Control Session.', parameters: object({}) },
   { name: 'find_windows_ui_element', description: 'Find accessible Windows UI elements by visible name and return automation IDs and screen bounds. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
   { name: 'invoke_windows_ui_element', description: 'Invoke a matching accessible Windows UI element by visible name. Follow with a screenshot or screen read to verify the outcome. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
@@ -601,6 +603,8 @@ export async function executeJessTool(
       case 'run_windows_command_native':
       case 'type_windows_text':
       case 'press_windows_keys':
+      case 'control_system_volume':
+      case 'control_screen_brightness':
       case 'manage_windows':
       case 'control_mouse':
       case 'drag_windows_mouse': {
@@ -614,6 +618,7 @@ export async function executeJessTool(
         if (name === 'drag_windows_mouse') { method = 'drag'; payload = { fromX: args?.fromX, fromY: args?.fromY, toX: args?.toX, toY: args?.toY }; }
         if (name === 'type_windows_text') { method = 'type_text'; payload = { text: String(args?.text || '') }; }
         if (name === 'press_windows_keys') { method = 'press_keys'; payload = { keys: String(args?.keys || '') }; }
+        if (name === 'control_system_volume' || name === 'control_screen_brightness') { method = 'media_key'; payload = { action: String(args?.action || '') }; }
         if (name === 'take_windows_screenshot') { method = 'screenshot'; payload = {}; }
         if (name === 'read_windows_screen') { method = 'read_screen_text'; payload = {}; }
         if (name === 'find_windows_ui_element') { method = 'find_ui_element'; payload = { name: String(args?.name || '') }; }
