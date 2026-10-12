@@ -93,22 +93,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Profile does not exist yet in Firestore: Check if user is admin or if database is empty
+      // Only the configured administrator identity may bootstrap an admin profile.
+      // A blank users collection is not proof of authorization; every other account
+      // must present a valid, email-matched invitation.
       const userEmail = (firebaseUser.email || '').trim().toLowerCase();
       const isAdminByEmail = isAdminEmail(userEmail);
 
-      let isWorkspaceEmpty = false;
-      if (!isAdminByEmail) {
-        try {
-          const userCheckSnap = await getDocs(query(collection(db, 'users'), limit(1)));
-          isWorkspaceEmpty = userCheckSnap.empty;
-        } catch {
-          // If query fails due to permissions, default to false
-          isWorkspaceEmpty = false;
-        }
-      }
-
-      if (isAdminByEmail || isWorkspaceEmpty) {
+      if (isAdminByEmail) {
         const now = new Date().toISOString();
         const handle = extractHandleFromEmail(userEmail, firebaseUser.displayName || undefined);
         const username = await generateAvailableUsername(handle, firebaseUser.uid);
@@ -141,50 +132,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const inviteId = new URLSearchParams(window.location.search).get('invite');
-
-      // Existing Firebase Auth accounts are allowed to sign in without a
-      // fresh invitation. The login screen marks a successful, pre-existing
-      // Auth account before we reach this branch. A genuinely new Google
-      // account is rejected by Login.tsx unless it has an invitation.
-      const existingAuthLogin = typeof window !== 'undefined'
-        && window.sessionStorage.getItem('hubmind_existing_auth_login') === firebaseUser.uid;
-
-      if (!inviteId && existingAuthLogin) {
-        const now = new Date().toISOString();
-        const emailLocal = extractHandleFromEmail(userEmail, firebaseUser.displayName || undefined);
-        const safeSuffix = firebaseUser.uid.slice(0, 6).toLowerCase();
-        const usernameBase = `${emailLocal}_${safeSuffix}`.slice(0, 30);
-
-        const existingAuthProfile: User = {
-          id: firebaseUser.uid,
-          username: usernameBase,
-          name: firebaseUser.displayName || emailLocal,
-          displayName: firebaseUser.displayName || emailLocal,
-          email: userEmail,
-          role: 'staff',
-          status: 'active',
-          photoUrl: firebaseUser.photoURL || undefined,
-          createdAt: now,
-          approvedAt: now,
-          defaultVisibility: 'workspace',
-          registrationSource: 'existing-auth',
-        } as User;
-
-        try {
-          await setDoc(profileRef, existingAuthProfile);
-          if (typeof window !== 'undefined') {
-            window.sessionStorage.removeItem('hubmind_existing_auth_login');
-          }
-          setProfile(existingAuthProfile);
-          setLoading(false);
-          return;
-        } catch (err: any) {
-          console.error('[AuthProvider] Failed to provision existing Firebase Auth profile:', err);
-          setAuthorizationError(`Your Firebase account is registered, but Hub-Mind could not initialize its workspace profile: ${err?.message || 'database permission error'}`);
-          setLoading(false);
-          return;
-        }
-      }
 
       // Check for invitation link
       if (!inviteId) {

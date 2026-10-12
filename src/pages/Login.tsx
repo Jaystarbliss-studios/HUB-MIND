@@ -38,7 +38,6 @@ export function Login() {
       }
 
       if (result.user) {
-        if (!isNewFirebaseUser && !invite) sessionStorage.setItem('hubmind_existing_auth_login', result.user.uid);
         navigate(invite ? '/login?invite=' + encodeURIComponent(invite) : '/workspace', { replace: true });
       }
     } catch (err: any) {
