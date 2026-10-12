@@ -263,6 +263,7 @@ export function JessFloatingAssistant() {
   }, [stopScreenSharing]);
 
   const jessSpeechAccumulatorRef = useRef<string>('');
+  const jessTranscriptTurnIdRef = useRef<string | null>(null);
   const fadeTimerRef = useRef<number | null>(null);
 
   // Refresh available audio inputs after permission is granted and when devices change.
