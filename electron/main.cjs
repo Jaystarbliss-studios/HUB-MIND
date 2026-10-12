@@ -423,7 +423,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
-  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); createCompanionWindow(); return true; });
+  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(); positionCompanionBottomRightIfNeeded(); return true; });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:reset-orb-position', (event) => { assertTrustedSender(event); resetOrbPosition(); return true; });
   ipcMain.handle('hubmind:set-companion-interactive', (event, interactive) => {
@@ -437,7 +437,6 @@ app.whenReady().then(() => {
     assertTrustedSender(event);
     if (!fullControlActive) throw new Error('Start Jess Full Control before opening local paths.');
     if (typeof requestedPath !== 'string' || requestedPath.length > 2048 || requestedPath.includes('\0')) throw new Error('Invalid path.');
-    const result = { response: 1 };
     const resolved = path.resolve(requestedPath);
     if (!fs.existsSync(resolved)) throw new Error('That file or folder does not exist.');
     const error = await shell.openPath(resolved);
@@ -502,8 +501,10 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
     if (typeof requestedCommand !== 'string' || !requestedCommand.trim() || requestedCommand.length > 1200) throw new Error('Command must be between 1 and 1,200 characters.');
     if (typeof requestedPurpose !== 'string' || !requestedPurpose.trim() || requestedPurpose.length > 300) throw new Error('A short purpose is required.');
     const command = requestedCommand.trim();
-    const blocked = /\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|cipher\s+\/w|reg\s+delete)\b/i;
-    if (blocked.test(command)) throw new Error('This high-risk destructive command is blocked by Hub-Mind.');
+    const blocked = /(^|[;&|]\\s*)(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\\s+delete|cipher\\s+\\/w)(\\s|$)/i;
+    if (blocked.test(command) || /\\.(ps1|bat|cmd|vbs|js|hta)\\b/i.test(command) || /\\b(start-process\\s+.*-verb\\s+runas)\\b/i.test(command)) {
+      throw new Error('This command is blocked because it can modify the system, launch a script, or bypass safety checks.');
+    }
     // Full Control is the session-level permission; this runs as the current user, never elevated.
     const result = await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true, timeout: 30000, maxBuffer: 1024 * 1024, shell: false }, (error, stdout, stderr) => {
       const output = String(stdout || stderr || '').slice(0, 12000);
