@@ -34,3 +34,30 @@ jobs:
         run: npm run test:rules
       - name: Production build
         run: npm run build
+
+  validate-native-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate PowerShell agent syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'electron/jess-agent.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+      - name: TypeScript validation
+        run: npm run typecheck
+      - name: Unit and contract tests
+        run: npm run test:unit
+      - name: Production build
+        run: npm run build
+      - name: Package Windows installer
+        run: npx electron-builder --win nsis --publish never
