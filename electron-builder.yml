@@ -17,6 +17,8 @@ extraResources:
     to: JessOfflineWake.exe
   - from: scripts/install-jess-chrome-bridge.ps1
     to: Install-JessChromeBridge.ps1
+  - from: scripts/uninstall-jess-chrome-bridge.ps1
+    to: Uninstall-JessChromeBridge.ps1
 win:
   target:
     - target: nsis
