@@ -12,6 +12,7 @@ declare global {
       showMain: () => Promise<boolean>;
       hideCompanion: () => Promise<boolean>;
       moveCompanionBy: (dx: number, dy: number) => Promise<boolean>;
+      setCompanionInteractive?: (interactive: boolean) => Promise<boolean>;
       nativeStatus: () => Promise<{ active: boolean; startedAt?: string | null; userId?: string | null }>;  
     };
   }
@@ -22,12 +23,36 @@ export function CompanionPage() {
   const [owner, setOwner] = useState<JessSessionOwner | null>(null);
   const [requestError, setRequestError] = useState('');
   const [controlActive, setControlActive] = useState(false);
+  const [transcript, setTranscript] = useState<Array<{ id: string; speaker: 'user' | 'jess'; text: string; at: number }>>([]);
   const drag = useRef<{ x: number; y: number; startX: number; startY: number; moved: boolean } | null>(null);
+  const transcriptMessagesRef = useRef<HTMLDivElement | null>(null);
+  const shouldFollowTranscriptRef = useRef(true);
+
+  useEffect(() => {
+    const element = transcriptMessagesRef.current;
+    if (element && shouldFollowTranscriptRef.current) element.scrollTop = element.scrollHeight;
+  }, [transcript]);
 
   useEffect(() => {
     if (!profile?.id) return;
     return watchJessSession(profile.id, setOwner);
   }, [profile?.id]);
+
+  useEffect(() => {
+    const key = 'hubmind.jess.desktopTranscript.v1';
+    const load = () => {
+      try {
+        const raw = localStorage.getItem(key);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) setTranscript(parsed.filter(item => item && (item.speaker === 'user' || item.speaker === 'jess') && typeof item.text === 'string').slice(-40));
+      } catch { /* Transcript is a convenience cache; never block the orb if it is unavailable. */ }
+    };
+    load();
+    const onStorage = (event: StorageEvent) => { if (!event.key || event.key === key) load(); };
+    window.addEventListener('storage', onStorage);
+    const interval = window.setInterval(load, 1500);
+    return () => { window.removeEventListener('storage', onStorage); window.clearInterval(interval); };
+  }, []);
 
   useEffect(() => {
     if (!window.hubMindDesktop?.nativeStatus) return;
@@ -85,21 +110,26 @@ export function CompanionPage() {
   const remoteActive = isActive && !localActive;
 
   return <main className="jess-orb-window" aria-label="Jess desktop companion">
-    <div className="jess-orb-drag" title="Drag to move Jess" aria-label="Drag to move Jess">
+    <div className="jess-orb-drag" title="Drag to move Jess" aria-label="Drag to move Jess" onMouseEnter={() => void window.hubMindDesktop?.setCompanionInteractive?.(true)} onMouseLeave={() => void window.hubMindDesktop?.setCompanionInteractive?.(false)}>
       <button className="jess-orb-launch" type="button"
         aria-label={localActive ? 'Open the active Jess workspace' : remoteActive ? 'Jess is active in another Hub-Mind window' : 'Activate Jess'}
         title={localActive ? 'Jess is active — click to open workspace' : remoteActive ? 'Jess is active elsewhere; stop that session before switching' : 'Click to activate Jess'}
         onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onClick={() => void activateJess()}>
-        <img src="/jess-orb.svg" alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
-        <span className="jess-orb-fallback"><Sparkles size={26}/></span>
+        <img src="/icon.svg" alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} /><span className="jess-orb-fallback"><Sparkles size={26}/></span>
       </button>
     </div>
     {isActive && <span className={`jess-status-dot ${localActive ? 'is-local' : 'is-remote'}`} title={localActive ? 'Jess is active in this desktop app' : 'Jess is active in another Hub-Mind client'} />}
     {controlActive && <span className="jess-control-indicator" title="Full Control Session active — Ctrl+Alt+Shift+J stops native control" aria-label="Full Control Session active" />}
     {requestError && <span className="jess-orb-error" role="status" title={requestError}>!</span>}
-    <div className="jess-orb-controls" aria-label="Jess overlay controls">
+    <div className="jess-orb-controls" aria-label="Jess overlay controls" onMouseEnter={() => void window.hubMindDesktop?.setCompanionInteractive?.(true)} onMouseLeave={() => void window.hubMindDesktop?.setCompanionInteractive?.(false)}>
       <button type="button" title="Open Hub-Mind workspace" aria-label="Open Hub-Mind workspace" onClick={() => void window.hubMindDesktop?.showMain()}><Maximize2 size={12}/></button>
       <button type="button" title="Hide Jess overlay" aria-label="Hide Jess overlay" onClick={() => void window.hubMindDesktop?.hideCompanion()}><X size={13}/></button>
     </div>
+    <section className="jess-transcript" aria-label="Jess conversation transcript" onMouseEnter={() => void window.hubMindDesktop?.setCompanionInteractive?.(true)} onMouseLeave={() => void window.hubMindDesktop?.setCompanionInteractive?.(false)}>
+      <header className="jess-transcript-header"><span>Jess conversation</span><span className={controlActive ? 'jess-transcript-live' : ''}>{controlActive ? 'Live' : 'Recent'}</span></header>
+      <div className="jess-transcript-messages" aria-live="polite" ref={transcriptMessagesRef} onScroll={() => { const element = transcriptMessagesRef.current; shouldFollowTranscriptRef.current = !!element && element.scrollHeight - element.scrollTop - element.clientHeight < 80; }}>
+        {transcript.length === 0 ? <p className="jess-transcript-empty">Your conversation with Jess will appear here, including while Hub-Mind is minimised.</p> : transcript.map(item => <article className={'jess-transcript-message ' + item.speaker} key={item.id}><div>{item.speaker === 'user' ? 'You' : 'Jess'}</div><p>{item.text}</p></article>)}
+      </div>
+    </section>
   </main>;
 }

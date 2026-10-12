@@ -1,10 +1,29 @@
-html:has(.jess-orb-window),body:has(.jess-orb-window),body:has(.jess-orb-window) #root{margin:0!important;padding:0!important;width:100%;height:100%;overflow:hidden!important;background:transparent!important}body:has(.jess-orb-window){font-family:Arial,sans-serif;background:transparent!important}body:has(.jess-orb-window) #root>div{width:100%;height:100%;background:transparent!important}.jess-orb-window{width:116px;height:116px;position:relative;display:grid;place-items:center;background:transparent}.jess-orb-drag{-webkit-app-region:drag;width:96px;height:96px;display:grid;place-items:center}.jess-orb-launch{-webkit-app-region:no-drag;position:relative;width:76px;height:76px;border:1px solid rgba(117,228,210,.72);border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 35% 25%,#234a50 0,#10242c 48%,#080b12 100%);box-shadow:0 0 0 5px rgba(117,228,210,.08),0 8px 30px rgba(0,0,0,.45),0 0 26px rgba(79,210,190,.22);cursor:pointer;transition:transform .18s,box-shadow .18s}.jess-orb-launch:hover{transform:scale(1.06);box-shadow:0 0 0 7px rgba(117,228,210,.1),0 8px 34px rgba(0,0,0,.5),0 0 34px rgba(79,210,190,.34)}.jess-orb-launch img{width:44px;height:44px;object-fit:contain;z-index:1}.jess-orb-fallback{position:absolute;inset:0;display:grid;place-items:center;color:#a5fff0}.jess-orb-controls{position:absolute;top:0;right:0;display:flex;gap:3px;opacity:0;transition:opacity .16s}.jess-orb-window:hover .jess-orb-controls,.jess-orb-controls:focus-within{opacity:1}.jess-orb-controls button{-webkit-app-region:no-drag;border:1px solid rgba(255,255,255,.16);background:#111a24;color:#e8f7f5;border-radius:50%;width:22px;height:22px;display:grid;place-items:center;cursor:pointer}.jess-orb-controls button:hover{background:#24464a}
-.jess-status-dot{position:absolute;right:15px;bottom:14px;width:11px;height:11px;border-radius:50%;border:2px solid #080b12;z-index:4;box-shadow:0 0 12px rgba(0,0,0,.45)}.jess-status-dot.is-local{background:#34d399;box-shadow:0 0 12px rgba(52,211,153,.7)}.jess-status-dot.is-remote{background:#fbbf24;box-shadow:0 0 12px rgba(251,191,36,.65)}.jess-orb-error{position:absolute;left:10px;top:10px;width:18px;height:18px;display:grid;place-items:center;border-radius:50%;background:#991b1b;color:#fff;font-size:11px;font-weight:700;z-index:5}
-.jess-control-indicator{position:absolute;left:15px;bottom:14px;width:11px;height:11px;border-radius:50%;background:#fb7185;border:2px solid #080b12;z-index:5;box-shadow:0 0 12px rgba(251,113,133,.85);animation:jess-control-pulse 1.5s ease-in-out infinite}@keyframes jess-control-pulse{0%,100%{opacity:1}50%{opacity:.45}}
-
-/* Companion affordances must be usable on transparent, always-on-top windows. */
-.jess-orb-controls { opacity: 1 !important; z-index: 10; }
-.jess-orb-controls button { width: 24px; height: 24px; box-shadow: 0 2px 8px rgba(0,0,0,.45); }
-.jess-orb-window { user-select: none; -webkit-user-select: none; }
-.jess-orb-drag { -webkit-app-region: drag; cursor: move; }
-.jess-orb-launch, .jess-orb-controls, .jess-orb-controls button { -webkit-app-region: no-drag; }
+html:has(.jess-orb-window),body:has(.jess-orb-window),body:has(.jess-orb-window) #root{margin:0!important;padding:0!important;width:100%;height:100%;overflow:hidden!important;background:transparent!important}
+body:has(.jess-orb-window){font-family:Arial,sans-serif;background:transparent!important}
+body:has(.jess-orb-window) #root>div{width:100%;height:100%;background:transparent!important}
+.jess-orb-window{width:100%;height:100%;min-height:420px;position:relative;display:block;background:transparent;user-select:none;-webkit-user-select:none}
+.jess-orb-drag{-webkit-app-region:drag;position:absolute;top:4px;left:50%;transform:translateX(-50%);width:104px;height:104px;display:grid;place-items:center;z-index:4;cursor:move}
+.jess-orb-launch{-webkit-app-region:no-drag;position:relative;width:84px;height:84px;border:1px solid rgba(117,228,210,.72);border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 35% 25%,#234a50 0,#10242c 48%,#080b12 100%);box-shadow:0 0 0 5px rgba(117,228,210,.08),0 8px 30px rgba(0,0,0,.45),0 0 26px rgba(79,210,190,.22);cursor:pointer;transition:transform .18s,box-shadow .18s;overflow:visible}
+.jess-orb-launch:hover{transform:scale(1.04);box-shadow:0 0 0 7px rgba(117,228,210,.1),0 8px 34px rgba(0,0,0,.5)}
+.jess-orb-launch img{width:44px;height:44px;object-fit:contain;z-index:1}
+.jess-orb-fallback{position:absolute;inset:0;display:grid;place-items:center;color:#a5fff0}
+.jess-orb-controls{position:absolute;top:8px;right:8px;display:flex;gap:4px;z-index:12}
+.jess-orb-controls button{-webkit-app-region:no-drag;border:1px solid rgba(255,255,255,.16);background:#111a24;color:#e8f7f5;border-radius:50%;width:25px;height:25px;display:grid;place-items:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+.jess-orb-controls button:hover{background:#24464a}
+.jess-status-dot{position:absolute;left:calc(50% + 28px);top:73px;width:11px;height:11px;border-radius:50%;border:2px solid #080b12;z-index:5;box-shadow:0 0 12px rgba(0,0,0,.45)}
+.jess-status-dot.is-local{background:#34d399;box-shadow:0 0 12px rgba(52,211,153,.7)}
+.jess-status-dot.is-remote{background:#fbbf24;box-shadow:0 0 12px rgba(251,191,36,.65)}
+.jess-orb-error{position:absolute;left:calc(50% - 43px);top:17px;width:18px;height:18px;display:grid;place-items:center;border-radius:50%;background:#991b1b;color:#fff;font-size:11px;font-weight:700;z-index:5}
+.jess-control-indicator{position:absolute;left:calc(50% - 37px);top:74px;width:11px;height:11px;border-radius:50%;background:#fb7185;border:2px solid #080b12;z-index:5;box-shadow:0 0 12px rgba(251,113,133,.85);animation:jess-control-pulse 1.5s ease-in-out infinite}
+@keyframes jess-control-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.jess-transcript{position:absolute;left:10px;right:10px;top:112px;bottom:10px;display:flex;flex-direction:column;min-height:0;border:1px solid rgba(94,234,212,.24);border-radius:16px;background:rgba(2,6,23,.94);color:#e2e8f0;box-shadow:0 12px 34px rgba(0,0,0,.4);overflow:hidden;-webkit-app-region:no-drag}
+.jess-transcript-header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(148,163,184,.16);font-size:11px;font-weight:700;letter-spacing:.04em;color:#ccfbf1}
+.jess-transcript-header span:last-child{font-size:10px;text-transform:uppercase;color:#94a3b8}
+.jess-transcript-header .jess-transcript-live{color:#34d399}
+.jess-transcript-messages{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:9px;padding:10px}
+.jess-transcript-empty{font-size:12px;line-height:1.5;color:#94a3b8;padding:6px 2px}
+.jess-transcript-message{border-radius:10px;padding:8px 9px;background:rgba(15,23,42,.88);border:1px solid rgba(148,163,184,.12)}
+.jess-transcript-message.user{background:rgba(15,118,110,.18);border-color:rgba(45,212,191,.18)}
+.jess-transcript-message>div{font-size:10px;font-weight:700;color:#5eead4;margin-bottom:4px}
+.jess-transcript-message.user>div{color:#99f6e4}
+.jess-transcript-message p{font-size:12px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;color:#e2e8f0}

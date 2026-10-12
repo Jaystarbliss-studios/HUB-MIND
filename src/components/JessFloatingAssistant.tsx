@@ -32,6 +32,18 @@ import {
 } from 'lucide-react';
 
 const POSITION_KEY = 'hubmind.jess.position.v2';
+const DESKTOP_TRANSCRIPT_KEY = 'hubmind.jess.desktopTranscript.v1';
+function publishJessTranscript(id: string, speaker: 'user' | 'jess', text: string) {
+  try {
+    const raw = localStorage.getItem(DESKTOP_TRANSCRIPT_KEY);
+    const existing = raw ? JSON.parse(raw) : [];
+    const entries = Array.isArray(existing) ? existing.filter((item: any) => item && typeof item.id === 'string') : [];
+    const index = entries.findIndex((item: any) => item.id === id);
+    const entry = { id, speaker, text: String(text).slice(0, 12000), at: Date.now() };
+    if (index >= 0) entries[index] = entry; else entries.push(entry);
+    localStorage.setItem(DESKTOP_TRANSCRIPT_KEY, JSON.stringify(entries.slice(-40)));
+  } catch { /* Transcript persistence must never interrupt the live voice session. */ }
+}
 const DEFAULT_POSITION = { x: 0.92, y: 0.88 };
 const DRAG_THRESHOLD = 8;
 const DOUBLE_TAP_MS = 380;
@@ -251,6 +263,7 @@ export function JessFloatingAssistant() {
   }, [stopScreenSharing]);
 
   const jessSpeechAccumulatorRef = useRef<string>('');
+  const jessTranscriptTurnIdRef = useRef<string | null>(null);
   const fadeTimerRef = useRef<number | null>(null);
 
   // Refresh available audio inputs after permission is granted and when devices change.
@@ -439,7 +452,9 @@ export function JessFloatingAssistant() {
         if (!text) return;
         if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
         const next = jessSpeechAccumulatorRef.current ? `${jessSpeechAccumulatorRef.current} ${text}` : text;
+        if (!jessSpeechAccumulatorRef.current) jessTranscriptTurnIdRef.current = `jess-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         jessSpeechAccumulatorRef.current = next;
+        publishJessTranscript(jessTranscriptTurnIdRef.current || `jess-${Date.now()}`, 'jess', next);
         setSpeechState({
           text: next,
           speaker: 'jess',
@@ -448,6 +463,7 @@ export function JessFloatingAssistant() {
       },
       onTurnComplete: () => {
         jessSpeechAccumulatorRef.current = '';
+        jessTranscriptTurnIdRef.current = null;
         scheduleFade(5000);
       },
       onError: error => {
@@ -665,6 +681,8 @@ export function JessFloatingAssistant() {
           void stopScreenSharing(true);
         }
         jessSpeechAccumulatorRef.current = '';
+        jessTranscriptTurnIdRef.current = null;
+        publishJessTranscript(`user-${Date.now()}-${Math.random().toString(36).slice(2)}`, 'user', text);
         setSpeechState({
           text,
           speaker: 'user',

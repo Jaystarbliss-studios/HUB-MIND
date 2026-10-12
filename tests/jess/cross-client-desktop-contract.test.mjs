@@ -32,9 +32,11 @@ test('transparent companion styles are scoped only to the companion route', () =
   assert.doesNotMatch(app, /import '\.\/pages\/companion\.css';/);
 });
 
-test('desktop companion is moved to lower right and hidden when workspace is restored', () => {
+test('desktop companion remains visible above the workspace and is shown after minimization', () => {
   assert.match(electron, /positionCompanionBottomRight/);
-  assert.match(electron, /mainWindow\.on\('show'.*companionWindow\.hide/s);
+  assert.match(electron, /mainWindow\.on\('show', keepCompanionVisible\)/);
+  assert.match(electron, /mainWindow\.on\('restore', keepCompanionVisible\)/);
+  assert.doesNotMatch(electron, /mainWindow\.on\('show'.*companionWindow\.hide/s);
   assert.match(electron, /mainWindow\.on\('minimize'.*createCompanionWindow/s);
   assert.match(electron, /focusable: true/);
   assert.match(electron, /hubmind:hide-companion/);

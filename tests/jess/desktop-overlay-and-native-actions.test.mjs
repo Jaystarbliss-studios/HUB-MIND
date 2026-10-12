@@ -12,15 +12,17 @@ test('workspace theme remains dark regardless of operating system preference', a
   assert.match(css, /background-color:\s*#020617/i);
 });
 
-test('desktop companion is a compact, movable icon with visible close and workspace controls', async () => {
+test('desktop companion keeps the original icon and exposes a visible transcript overlay', async () => {
   const css = await read('../../src/pages/companion.css');
   const page = await read('../../src/pages/CompanionPage.tsx');
-  assert.match(css, /width:116px;height:116px/);
-  assert.match(css, /jess-orb-controls[^}]*opacity:0/);
-  assert.match(css, /jess-orb-window:hover \.jess-orb-controls[^}]*opacity:1/);
+  assert.match(css, /width:100%;height:100%/);
+  assert.match(css, /\.jess-transcript\{/);
+  assert.ok(page.includes('src="/icon.svg"'));
+  assert.ok(!page.includes('src="/jess-orb.svg"'));
   assert.match(page, /hideCompanion/);
   assert.match(page, /moveCompanionBy/);
   assert.match(page, /onPointerMove/);
+  assert.match(page, /jess-transcript-messages/);
 });
 
 test('native system actions use the isolated bridge and a Full Control Session', async () => {
