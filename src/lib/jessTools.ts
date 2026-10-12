@@ -202,6 +202,8 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'type_windows_text', description: 'Type text into the currently focused Windows app. Requires Full Control Session. Never type into password or payment fields.', parameters: object({ text: { type: 'string' } }, ['text']) },
   { name: 'press_windows_keys', description: 'Send a key or key combination to the active Windows app, e.g. CTRL+S, ALT+TAB, ENTER, ESC, WIN+R. Requires Full Control Session.', parameters: object({ keys: { type: 'string' } }, ['keys']) },
   { name: 'take_windows_screenshot', description: 'Capture screenshots of connected monitors, including monitor names, physical bounds and scale context. Requires Full Control Session.', parameters: object({}) },
+  { name: 'find_windows_ui_element', description: 'Find accessible Windows UI elements by visible name and return automation IDs and screen bounds. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
+  { name: 'invoke_windows_ui_element', description: 'Invoke a matching accessible Windows UI element by visible name. Follow with a screenshot or screen read to verify the outcome. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
   { name: 'read_windows_screen', description: 'Read accessible text from Windows UI Automation. Secure desktop, protected content and controls that expose no accessible text are unavailable. Requires Full Control Session.', parameters: object({}) },
   { name: 'open_local_windows_path', description: 'Open an existing local file or folder using its default Windows application. Requires Full Control Session. Does not execute a file as a command.', parameters: object({ path: { type: 'string' } }, ['path']) },
   { name: 'launch_windows_application', description: 'Find an installed application from Start Menu or PATH, launch it and verify whether a matching window appeared. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
@@ -572,6 +574,8 @@ export async function executeJessTool(
       case 'list_windows':
       case 'take_windows_screenshot':
       case 'read_windows_screen':
+      case 'find_windows_ui_element':
+      case 'invoke_windows_ui_element':
       case 'get_windows_time':
       case 'get_windows_system_info':
       case 'open_local_windows_path':
@@ -594,6 +598,8 @@ export async function executeJessTool(
         if (name === 'press_windows_keys') { method = 'press_keys'; payload = { keys: String(args?.keys || '') }; }
         if (name === 'take_windows_screenshot') { method = 'screenshot'; payload = {}; }
         if (name === 'read_windows_screen') { method = 'read_screen_text'; payload = {}; }
+        if (name === 'find_windows_ui_element') { method = 'find_ui_element'; payload = { name: String(args?.name || '') }; }
+        if (name === 'invoke_windows_ui_element') { method = 'invoke_ui_element'; payload = { name: String(args?.name || '') }; }
         if (name === 'launch_windows_application') { method = 'launch_app'; payload = { name: String(args?.name || '') }; }
         if (name === 'open_local_windows_path') { method = 'open_path'; payload = { path: String(args?.path || '') }; }
         if (name === 'run_windows_command_native') { method = 'run_command'; payload = { command: String(args?.command || '') }; }
