@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-const read = (path) => readFile(new URL(path, import.meta.url).pathname.replace(/^\\//, process.platform === 'win32' ? '' : '/'), 'utf8');
+const read = (path) => readFile(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
 
 test('workspace theme remains dark regardless of operating system preference', async () => {
   const css = await read('../../src/index.css');
@@ -12,7 +12,7 @@ test('workspace theme remains dark regardless of operating system preference', a
   assert.match(css, /background-color:\s*#020617/i);
 });
 
-test('desktop companion is an icon-sized overlay with visible close and workspace controls', async () => {
+test('desktop companion is a compact, movable icon with visible close and workspace controls', async () => {
   const css = await read('../../src/pages/companion.css');
   const page = await read('../../src/pages/CompanionPage.tsx');
   assert.match(css, /width:116px;height:116px/);
@@ -22,7 +22,7 @@ test('desktop companion is an icon-sized overlay with visible close and workspac
   assert.match(page, /onPointerMove/);
 });
 
-test('native system actions are exposed through the isolated bridge and require confirmation', async () => {
+test('native system actions use the isolated bridge and require explicit confirmation', async () => {
   const main = await read('../../electron/main.cjs');
   const preload = await read('../../electron/preload.cjs');
   const tools = await read('../../src/lib/jessTools.ts');
