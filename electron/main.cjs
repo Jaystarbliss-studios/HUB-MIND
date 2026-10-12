@@ -92,6 +92,12 @@ function createCompanionWindow() {
   companionWindow.loadURL(APP_URL + '/companion');
 }
 
+function getDialogParent() {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) return mainWindow;
+  if (companionWindow && !companionWindow.isDestroyed() && companionWindow.isVisible()) return companionWindow;
+  return undefined;
+}
+
 function showMain() {
   if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
   else { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); mainWindow.show(); mainWindow.focus(); }
@@ -122,7 +128,7 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:open-user-path', async (event, requestedPath) => {
     assertTrustedSender(event);
     if (typeof requestedPath !== 'string' || requestedPath.length > 2048 || requestedPath.includes('\0')) throw new Error('Invalid path.');
-    const result = await dialog.showMessageBox(mainWindow || companionWindow, {
+    const result = await dialog.showMessageBox(getDialogParent(), {
       type: 'warning', buttons: ['Cancel', 'Open selected path'], defaultId: 0, cancelId: 0,
       title: 'Allow Hub-Mind to open a file or folder?',
       message: 'Open a local path using the Windows default application?',
@@ -139,7 +145,7 @@ app.whenReady().then(() => {
     assertTrustedSender(event);
     if (typeof requestedText !== 'string' || !requestedText.length || requestedText.length > 3000) throw new Error('Text must be between 1 and 3,000 characters.');
     const preview = requestedText.length > 500 ? requestedText.slice(0, 500) + '…' : requestedText;
-    const choice = await dialog.showMessageBox(mainWindow || companionWindow, { type: 'warning', buttons: ['Cancel', 'Type this text'], defaultId: 0, cancelId: 0, title: 'Type into the active Windows application?', message: 'Jess wants to type text into whichever app currently has keyboard focus.', detail: preview + (requestedText.length > 500 ? '\n\n[Preview truncated; full text will be typed.]' : '') });
+    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'warning', buttons: ['Cancel', 'Type this text'], defaultId: 0, cancelId: 0, title: 'Type into the active Windows application?', message: 'Jess wants to type text into whichever app currently has keyboard focus.', detail: preview + (requestedText.length > 500 ? '\n\n[Preview truncated; full text will be typed.]' : '') });
     if (choice.response !== 1) return { typed: false, cancelled: true };
     const textBase64 = Buffer.from(requestedText, 'utf8').toString('base64');
     const script = String.raw`Add-Type -TypeDefinition @'
@@ -168,7 +174,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   ipcMain.handle('hubmind:press-shortcut', async (event, shortcutName) => {
     assertTrustedSender(event);
     if (typeof shortcutName !== 'string' || !Object.prototype.hasOwnProperty.call(WINDOWS_SHORTCUTS, shortcutName)) throw new Error('That keyboard shortcut is not approved.');
-    const choice = await dialog.showMessageBox(mainWindow || companionWindow, { type: 'warning', buttons: ['Cancel', 'Press shortcut'], defaultId: 0, cancelId: 0, title: 'Send a keyboard shortcut?', message: 'Jess wants to send ' + shortcutName + ' to the active Windows application.', detail: 'The shortcut will be sent to whichever window has keyboard focus after you confirm.' });
+    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'warning', buttons: ['Cancel', 'Press shortcut'], defaultId: 0, cancelId: 0, title: 'Send a keyboard shortcut?', message: 'Jess wants to send ' + shortcutName + ' to the active Windows application.', detail: 'The shortcut will be sent to whichever window has keyboard focus after you confirm.' });
     if (choice.response !== 1) return { pressed: false, cancelled: true };
     const sequence = WINDOWS_SHORTCUTS[shortcutName];
     const script = String.raw`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${sequence}')`;
@@ -180,14 +186,14 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
     if (typeof requestedUrl !== 'string' || requestedUrl.length > 2048) throw new Error('Invalid URL.');
     let parsed; try { parsed = new URL(requestedUrl); } catch { throw new Error('Enter a valid URL.'); }
     if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('Only web URLs can be opened.');
-    const choice = await dialog.showMessageBox(mainWindow || companionWindow, { type: 'question', buttons: ['Cancel', 'Open website'], defaultId: 0, cancelId: 0, title: 'Open website?', message: parsed.href, detail: 'Jess will open this page in your default browser.' });
+    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'question', buttons: ['Cancel', 'Open website'], defaultId: 0, cancelId: 0, title: 'Open website?', message: parsed.href, detail: 'Jess will open this page in your default browser.' });
     if (choice.response !== 1) return { opened: false };
     await shell.openExternal(parsed.href); return { opened: true, url: parsed.href };
   });
   ipcMain.handle('hubmind:launch-app', async (event, appName) => {
     assertTrustedSender(event);
     if (typeof appName !== 'string' || !Object.prototype.hasOwnProperty.call(WINDOWS_APPS, appName)) throw new Error('That application is not on the approved launch list.');
-    const choice = await dialog.showMessageBox(mainWindow || companionWindow, { type: 'question', buttons: ['Cancel', 'Launch app'], defaultId: 0, cancelId: 0, title: 'Launch Windows application?', message: 'Jess wants to launch ' + appName + '.', detail: 'This opens the selected built-in Windows application.' });
+    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'question', buttons: ['Cancel', 'Launch app'], defaultId: 0, cancelId: 0, title: 'Launch Windows application?', message: 'Jess wants to launch ' + appName + '.', detail: 'This opens the selected built-in Windows application.' });
     if (choice.response !== 1) return { launched: false };
     await new Promise((resolve, reject) => execFile(WINDOWS_APPS[appName], [], { windowsHide: true, timeout: 10000, shell: false }, error => error ? reject(error) : resolve(true)));
     return { launched: true, app: appName };
@@ -199,7 +205,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
     const command = requestedCommand.trim();
     const blocked = /\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|cipher\s+\/w|reg\s+delete)\b/i;
     if (blocked.test(command)) throw new Error('This high-risk destructive command is blocked by Hub-Mind.');
-    const choice = await dialog.showMessageBox(mainWindow || companionWindow, {
+    const choice = await dialog.showMessageBox(getDialogParent(), {
       type: 'warning', buttons: ['Cancel', 'Run this command'], defaultId: 0, cancelId: 0,
       title: 'Jess wants to run a Windows command', message: requestedPurpose.trim(),
       detail: 'Exact PowerShell command:\n\n' + command + '\n\nRuns with your current Windows user permissions, not as administrator. Review it carefully before allowing it.',
@@ -215,7 +221,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   ipcMain.handle('hubmind:run-readonly-command', async (event, commandName) => {
     assertTrustedSender(event);
     if (typeof commandName !== 'string' || !Object.prototype.hasOwnProperty.call(READ_ONLY_COMMANDS, commandName)) throw new Error('That command is not on the approved read-only list.');
-    const choice = await dialog.showMessageBox(mainWindow || companionWindow, { type: 'warning', buttons: ['Cancel', 'Run command'], defaultId: 0, cancelId: 0, title: 'Run a Windows diagnostic?', message: 'Jess wants to run ' + commandName + '.', detail: 'This approved command reads system information only. It cannot change files or settings.' });
+    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'warning', buttons: ['Cancel', 'Run command'], defaultId: 0, cancelId: 0, title: 'Run a Windows diagnostic?', message: 'Jess wants to run ' + commandName + '.', detail: 'This approved command reads system information only. It cannot change files or settings.' });
     if (choice.response !== 1) return { ran: false, cancelled: true };
     const [binary, args] = READ_ONLY_COMMANDS[commandName];
     const result = await new Promise((resolve, reject) => execFile(binary, args, { windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024, shell: false }, (error, stdout, stderr) => {
@@ -234,7 +240,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
       const screen = sources.find(source => source.id.startsWith('screen:'));
       if (!screen) { callback({}); return; }
-      const choice = await dialog.showMessageBox(mainWindow || companionWindow, { type: 'question', buttons: ['Cancel', 'Share entire screen'], defaultId: 0, cancelId: 0, title: 'Choose what to share', message: 'Share your entire screen with Hub-Mind?', detail: 'Only continue if you intend to share everything visible on your display. You can stop sharing from the browser controls.' });
+      const choice = await dialog.showMessageBox(getDialogParent(), { type: 'question', buttons: ['Cancel', 'Share entire screen'], defaultId: 0, cancelId: 0, title: 'Choose what to share', message: 'Share your entire screen with Hub-Mind?', detail: 'Only continue if you intend to share everything visible on your display. You can stop sharing from the browser controls.' });
       callback(choice.response === 1 ? { video: screen } : {});
     } catch { callback({}); }
   }, { useSystemPicker: true });
