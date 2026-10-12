@@ -83,7 +83,7 @@ function showMain() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, '..', 'public', 'icon.png');
+  const iconPath = path.join(__dirname, '..', 'public', 'icon.svg');
   const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
   tray = new Tray(icon);
   tray.setToolTip('Hub-Mind');
