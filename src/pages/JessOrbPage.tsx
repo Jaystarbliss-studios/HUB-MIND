@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { X } from 'lucide-react';
 
 export function JessOrbPage() {
   const navigate = useNavigate();
@@ -29,13 +30,16 @@ export function JessOrbPage() {
     <div className="jess-orb-drag" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={() => { drag.current = null; }} title="Drag to move Jess. Click to open Hub-Mind.">
       <img src="/jess-orb.svg" alt="Open Jess" draggable={false} />
     </div>
+    <button className="jess-orb-close" type="button" aria-label="Hide Jess overlay" title="Hide Jess overlay" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); void desktop?.hideCompanion?.(); }}><X size={13}/></button>
     <style>{`
       html,body,#root{width:96px!important;height:96px!important;min-height:96px!important;margin:0!important;overflow:hidden!important;background:transparent!important;color-scheme:dark}
       body{background:transparent!important}
-      .jess-orb-window{width:96px;height:96px;background:transparent;overflow:hidden}
+      .jess-orb-window{width:96px;height:96px;background:transparent;overflow:hidden;position:relative}
       .jess-orb-drag{width:96px;height:96px;display:grid;place-items:center;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
       .jess-orb-drag:active{cursor:grabbing}
-      .jess-orb-drag img{width:88px;height:88px;object-fit:contain;filter:drop-shadow(0 5px 12px rgba(0,0,0,.36));pointer-events:none}
+      .jess-orb-drag img{width:82px;height:82px;object-fit:contain;filter:drop-shadow(0 5px 12px rgba(0,0,0,.36));pointer-events:none}
+      .jess-orb-close{-webkit-app-region:no-drag;position:absolute;top:1px;right:1px;width:21px;height:21px;display:grid;place-items:center;border-radius:50%;border:1px solid rgba(255,255,255,.28);background:rgba(8,11,18,.94);color:#e2e8f0;z-index:5;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.42)}
+      .jess-orb-close:hover{background:#134e4a;color:#ccfbf1;border-color:#5eead4}
     `}</style>
   </main>;
 }
