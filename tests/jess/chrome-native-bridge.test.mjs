@@ -12,6 +12,8 @@ test('Chrome native host and desktop bridge use the same bounded named-pipe prot
   ]);
   assert.match(bridge, /hubmind-jess-chrome-v1/);
   assert.match(host, /hubmind-jess-chrome-v1/);
+  assert.match(host, /AllowedOrigin/);
+  assert.match(host, /baifedjcpcnkjjoikbafnkiombiaooai/);
   assert.match(host, /ReadUInt32LittleEndian/);
   assert.match(host, /WriteUInt32LittleEndian/);
   assert.match(host, /MaxMessageBytes = 1024 \* 1024/);
