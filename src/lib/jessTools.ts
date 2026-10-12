@@ -586,7 +586,7 @@ export async function executeJessTool(
         if (!desktop?.isDesktopApp || typeof desktop.nativeAction !== 'function') return { result: { success: false, error: 'Native Windows control is only available in the installed desktop app.' } };
         const status = await desktop.nativeStatus();
         if (!status?.active && !['get_windows_time','get_windows_system_info'].includes(name)) return { result: { success: false, error: 'Full Control Session is off. Say “Jess, full control” first, or use the tray Stop Jess control.' } };
-        let method = name, payload: any = args || {};
+        let method: string = name, payload: any = args || {};
         if (name === 'manage_windows') { method = String(args?.action || ''); payload = { title: args?.title, handle: args?.handle, x: args?.x, y: args?.y, width: args?.width, height: args?.height, position: args?.position }; }
         if (name === 'control_mouse') { method = String(args?.action || ''); payload = { x: args?.x, y: args?.y, delta: args?.delta ?? -120 }; }
         if (name === 'drag_windows_mouse') { method = 'drag'; payload = { fromX: args?.fromX, fromY: args?.fromY, toX: args?.toX, toY: args?.toY }; }
