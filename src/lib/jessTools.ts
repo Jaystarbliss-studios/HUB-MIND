@@ -193,10 +193,6 @@ const object = (properties: Record<string, any>, required?: string[]): JessToolD
 });
 
 export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
-  { name: 'launch_windows_app', description: 'On the installed Hub-Mind Windows desktop app, launch an approved built-in application such as File Explorer, Notepad, Calculator, Paint or Task Manager. Only works in the desktop app; asks Windows-user confirmation for each launch.', parameters: object({ app: { type: 'string', enum: ['explorer', 'notepad', 'calculator', 'paint', 'taskManager'] } }, ['app']) },
-  { name: 'run_windows_diagnostic', description: 'On the installed Hub-Mind Windows desktop app, run a safe read-only Windows diagnostic such as network configuration, system information or running process list. Never use for destructive commands.', parameters: object({ command: { type: 'string', enum: ['ipconfig', 'systemInfo', 'runningProcesses', 'diskSpace'] } }, ['command']) },
-  { name: 'open_website_in_browser', description: 'Open a specified HTTP or HTTPS website in the user default browser from the installed Hub-Mind Windows desktop app.', parameters: object({ url: { type: 'string' } }, ['url']) },
-
   { name: 'launch_windows_app', description: 'On the installed Windows desktop app only, launch an approved application. Windows displays a confirmation before launching.', parameters: object({ app: { type: 'string', enum: ['calculator','notepad','paint','explorer','taskManager','edge','chrome','word','excel','powerpoint','teams','vscode'] } }, ['app']) },
   { name: 'run_windows_diagnostic', description: 'On the installed Windows desktop app only, run an approved read-only system diagnostic. Windows displays a confirmation first.', parameters: object({ command: { type: 'string', enum: ['ipconfig','systemInfo','runningProcesses'] } }, ['command']) },
   { name: 'run_windows_command', description: 'On the installed Windows desktop app only, request a user-confirmed PowerShell command. The exact command and purpose must be shown to the user; high-risk destructive commands are blocked.', parameters: object({ command: { type: 'string', description: 'PowerShell command to run after Windows confirmation' }, purpose: { type: 'string', description: 'Plain-language reason for running it' } }, ['command','purpose']) },
@@ -2494,27 +2490,6 @@ export async function executeJessTool(
       case 'open_colleagues':
       case 'open_people': {
         return { result: { success: true, path: '/colleagues' }, actionPayload: navigatePayload('/colleagues') };
-      }
-
-      case 'launch_windows_app': {
-        const desktop = typeof window !== 'undefined' ? (window as any).hubMindDesktop : null;
-        if (!desktop?.launchApp) return { result: { success: false, error: 'Windows app launching is available only in the installed Hub-Mind desktop app.' } };
-        const response = await desktop.launchApp(String(args.app || ''));
-        return { result: { success: response?.launched === true, ...response, message: response?.launched ? 'Launched ' + args.app + '.' : 'Windows app launch was cancelled or did not complete.' } };
-      }
-
-      case 'run_windows_diagnostic': {
-        const desktop = typeof window !== 'undefined' ? (window as any).hubMindDesktop : null;
-        if (!desktop?.runReadonlyCommand) return { result: { success: false, error: 'Windows diagnostics are available only in the installed Hub-Mind desktop app.' } };
-        const response = await desktop.runReadonlyCommand(String(args.command || ''));
-        return { result: { success: response?.ran === true, ...response } };
-      }
-
-      case 'open_website_in_browser': {
-        const desktop = typeof window !== 'undefined' ? (window as any).hubMindDesktop : null;
-        if (!desktop?.openUrl) return { result: { success: false, error: 'Opening websites from Jess is available only in the installed Hub-Mind desktop app.' } };
-        const response = await desktop.openUrl(String(args.url || ''));
-        return { result: { success: response?.opened === true, ...response } };
       }
 
       case 'scroll_screen':
