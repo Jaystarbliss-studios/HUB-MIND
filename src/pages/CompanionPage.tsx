@@ -79,7 +79,7 @@ export function CompanionPage() {
         aria-label={localActive ? 'Open the active Jess workspace' : remoteActive ? 'Jess is active in another Hub-Mind window' : 'Activate Jess'}
         title={localActive ? 'Jess is active — click to open workspace' : remoteActive ? 'Jess is active elsewhere; stop that session before switching' : 'Click to activate Jess'}
         onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onClick={() => void activateJess()}>
-        <img src="/icon.svg" alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+        <img src="/jess-orb.svg" alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
         <span className="jess-orb-fallback"><Sparkles size={26}/></span>
       </button>
     </div>
