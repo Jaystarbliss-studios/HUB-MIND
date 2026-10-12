@@ -54,6 +54,7 @@ const Knowledge = safeLazy(() => import('./pages/Knowledge'), 'Knowledge');
 const FollowUps = safeLazy(() => import('./pages/FollowUps'), 'FollowUps');
 const SharedRecord = safeLazy(() => import('./pages/SharedRecord'), 'SharedRecord');
 const CompanionPage = safeLazy(() => import('./pages/CompanionPage'), 'CompanionPage');
+const JessOrbPage = safeLazy(() => import('./pages/JessOrbPage'), 'JessOrbPage');
 
 const LoadingScreen = () => <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-slate-400"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
 
@@ -104,6 +105,7 @@ export default function App() {
         <Route path="/" element={<PublicHome />} />
         <Route path="/login" element={<Login />} />
         <Route path="/companion" element={<ProtectedRoute><CompanionPage /></ProtectedRoute>} />
+        <Route path="/orb" element={<ProtectedRoute><JessOrbPage /></ProtectedRoute>} />
         <Route path="/share-target" element={<Navigate to="/workspace/inbox?shared=true" replace />} />
         <Route path="/share/:type/:id" element={<ProtectedRoute><SharedRecord /></ProtectedRoute>} />
         <Route path="/workspace" element={<WorkspaceRoutes />}>
