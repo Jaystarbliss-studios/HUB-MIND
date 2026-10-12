@@ -26,13 +26,15 @@ test('native system actions use the isolated bridge and a Full Control Session',
   const main = await read('../../electron/main.cjs');
   const preload = await read('../../electron/preload.cjs');
   const tools = await read('../../src/lib/jessTools.ts');
-  assert.match(main, /hubmind:run-system-command/);
-  assert.match(main, /dialog\.showMessageBox/);
-  assert.match(main, /execFile\('powershell\.exe'/);
+  assert.match(main, /hubmind:native-action/);
+  assert.match(main, /hubmind:full-control-start/);
+  assert.match(main, /jess-native-audit\.jsonl/);
+  assert.match(main, /nativeAgent\.call/);
   assert.match(main, /assertTrustedSender\(event\)/);
-  assert.match(preload, /runSystemCommand/);
-  assert.match(tools, /name: 'run_windows_command'/);
-  assert.match(tools, /name: 'launch_windows_app'/);
+  assert.match(preload, /nativeAction/);
+  assert.match(preload, /startFullControl/);
+  assert.match(tools, /name: 'run_windows_command_native'/);
+  assert.match(tools, /name: 'launch_windows_application'/);
 });
 
 test('desktop display capture does not silently grant screen sharing', async () => {
