@@ -4,7 +4,7 @@ Audit date: 2026-10-12. Repository implementation and CI configuration are inspe
 
 ## Current architecture
 
-- `electron/main.cjs` creates the workspace and companion window, maintains Full Control Session state, records native action/session events in `jess-native-audit.jsonl`, enforces a method allowlist, and owns the consent-gated offline wake process.
+- `electron/main.cjs` creates the workspace and companion window, maintains Full Control Session state, records native action/session events in `jess-native-audit.jsonl`, enforces a method allowlist, owns the consent-gated offline wake process, and offers an explicit per-user Windows sign-in startup toggle.
 - `electron/preload.cjs` exposes a narrow context-isolated bridge; renderer code cannot directly access Node child processes or the filesystem.
 - `electron/agentBridge.cjs` and `electron/jess-agent.ps1` still provide the Windows desktop UI Automation/Win32 sidecar. This is not yet replaced by a .NET implementation.
 - `native/JessChromeNativeHost` is a .NET 8 self-contained Chrome Native Messaging relay. `electron/chromeBridge.cjs` connects it to the Electron main process over a named pipe. The extension is in `chrome-extension/`.
@@ -26,7 +26,7 @@ Audit date: 2026-10-12. Repository implementation and CI configuration are inspe
 | Chrome tab list/open/close/activate/navigate/reload/scroll/read/find/click/fill | Implemented through MV3 extension, .NET 8 native host and named-pipe relay; gated by the signed-in Full Control Session | Build installer, register host, load unpacked extension and test against a real Chrome profile |
 | Native offline wake word | Consent-gated .NET 8 helper using Windows System.Speech; falls back to browser recognition outside the desktop shell | Verify recognizer availability, microphone access, false wakes, latency and cleanup on Windows |
 | Installer and extension packaging | Windows workflow now builds the three self-contained .NET helpers and packages extension/installer scripts | Latest CI must pass and artifacts must be downloaded/installed |
-| Elevated administrator actions / scheduled task | Not implemented. Native control remains at the current user's permissions | Needs a separately hardened privilege boundary, explicit UAC consent, secure install/uninstall and threat review |
+| Elevated administrator actions / elevated scheduled task | Not implemented; the app provides an opt-in per-user Windows sign-in startup toggle instead | A privileged broker requires a separate threat model, UAC consent and security review; the full Electron app must not run elevated by default |
 | Installer code signing | Workflow supports optional signing through protected `WINDOWS_CERTIFICATE_BASE64` and `WINDOWS_CERTIFICATE_PASSWORD` secrets | Output remains unsigned until the certificate secrets are configured; signed output must be verified |
 | OCR fallback | Implemented with Windows.Media.Ocr when UI Automation exposes no text | Must compile, have an installed OCR language, and be tested on real screenshots before relying on it |
 | Secure desktop, password prompts, DRM and protected browser pages | Restricted by platform and application security | Must remain unsupported; never bypass OS protections |
