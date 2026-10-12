@@ -36,7 +36,7 @@ async function dispatch(message) {
   const a = message?.args && typeof message.args === 'object' ? message.args : {};
   switch (message?.method) {
     case 'chrome_list_tabs': {
-      const tabs = await chrome.tabs.query({ currentWindow: false });
+      const tabs = await chrome.tabs.query({});
       return { ok: true, verified: true, evidence: tabs.slice(0, 100).map(t => ({ id: t.id, windowId: t.windowId, title: t.title || '', url: t.url || '', active: !!t.active, index: t.index, status: t.status })) };
     }
     case 'chrome_open_tab': {
@@ -45,6 +45,7 @@ async function dispatch(message) {
       return { ok: true, verified: !!tab.id, evidence: { id: tab.id, url: tab.url || url, windowId: tab.windowId, active: tab.active } };
     }
     case 'chrome_close_tab': {
+      if (!Number.isInteger(Number(a.tabId)) || Number(a.tabId) < 1) throw new Error('A specific tabId is required to close a tab.');
       const tab = await tabById(a.tabId);
       await chrome.tabs.remove(tab.id);
       let stillExists = true; try { await chrome.tabs.get(tab.id); } catch { stillExists = false; }
