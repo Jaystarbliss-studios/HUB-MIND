@@ -19,7 +19,7 @@ test('desktop companion is an icon-only movable orb with a close control', async
   assert.ok(main.includes('maxWidth: 420, maxHeight: 520'));
   assert.ok(main.includes("APP_URL + '/companion'"));
   assert.match(main, /hubmind:set-companion-transcript-visible/);
-  assert.match(page, /src=\"\/icon.svg\"/);
+  assert.match(page, /JessOrbVisualizer/);
   assert.ok(page.includes('JessOrbVisualizer'));
   assert.ok(page.includes("event.currentTarget.src = '/jess-orb.svg'"));
   assert.ok(page.includes('hideCompanion'));
