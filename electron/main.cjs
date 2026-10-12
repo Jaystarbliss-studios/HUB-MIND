@@ -410,6 +410,7 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
   ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); createCompanionWindow(); return true; });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionWindow?.hide(); return true; });
+  ipcMain.handle('hubmind:reset-orb-position', (event) => { assertTrustedSender(event); resetOrbPosition(); return true; });
   ipcMain.handle('hubmind:set-companion-interactive', (event, interactive) => {
     assertTrustedSender(event);
     if (!companionWindow || companionWindow.isDestroyed()) return false;
@@ -419,14 +420,9 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:move-companion-by', (event, dx, dy) => { assertTrustedSender(event); if (!companionWindow || !Number.isFinite(dx) || !Number.isFinite(dy)) return false; const [x, y] = companionWindow.getPosition(); const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay(); const area = display.workArea; const [width, height] = companionWindow.getSize(); const nextX = Math.max(area.x, Math.min(area.x + area.width - width, x + Math.max(-200, Math.min(200, dx)))); const nextY = Math.max(area.y, Math.min(area.y + area.height - height, y + Math.max(-200, Math.min(200, dy)))); companionWindow.setPosition(Math.round(nextX), Math.round(nextY)); return true; });
   ipcMain.handle('hubmind:open-user-path', async (event, requestedPath) => {
     assertTrustedSender(event);
+    if (!fullControlActive) throw new Error('Start Jess Full Control before opening local paths.');
     if (typeof requestedPath !== 'string' || requestedPath.length > 2048 || requestedPath.includes('\0')) throw new Error('Invalid path.');
-    const result = await dialog.showMessageBox(getDialogParent(), {
-      type: 'warning', buttons: ['Cancel', 'Open selected path'], defaultId: 0, cancelId: 0,
-      title: 'Allow Hub-Mind to open a file or folder?',
-      message: 'Open a local path using the Windows default application?',
-      detail: 'Only continue if you trust this action. Hub-Mind will not execute the file as a command.',
-    });
-    if (result.response !== 1) return { opened: false };
+    const result = { response: 1 };
     const resolved = path.resolve(requestedPath);
     if (!fs.existsSync(resolved)) throw new Error('That file or folder does not exist.');
     const error = await shell.openPath(resolved);
@@ -435,10 +431,8 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('hubmind:type-text', async (event, requestedText) => {
     assertTrustedSender(event);
+    if (!fullControlActive) throw new Error('Start Jess Full Control before typing into Windows apps.');
     if (typeof requestedText !== 'string' || !requestedText.length || requestedText.length > 3000) throw new Error('Text must be between 1 and 3,000 characters.');
-    const preview = requestedText.length > 500 ? requestedText.slice(0, 500) + '…' : requestedText;
-    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'warning', buttons: ['Cancel', 'Type this text'], defaultId: 0, cancelId: 0, title: 'Type into the active Windows application?', message: 'Jess wants to type text into whichever app currently has keyboard focus.', detail: preview + (requestedText.length > 500 ? '\n\n[Preview truncated; full text will be typed.]' : '') });
-    if (choice.response !== 1) return { typed: false, cancelled: true };
     const textBase64 = Buffer.from(requestedText, 'utf8').toString('base64');
     const script = String.raw`Add-Type -TypeDefinition @'
 using System;
@@ -466,8 +460,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   ipcMain.handle('hubmind:press-shortcut', async (event, shortcutName) => {
     assertTrustedSender(event);
     if (typeof shortcutName !== 'string' || !Object.prototype.hasOwnProperty.call(WINDOWS_SHORTCUTS, shortcutName)) throw new Error('That keyboard shortcut is not approved.');
-    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'warning', buttons: ['Cancel', 'Press shortcut'], defaultId: 0, cancelId: 0, title: 'Send a keyboard shortcut?', message: 'Jess wants to send ' + shortcutName + ' to the active Windows application.', detail: 'The shortcut will be sent to whichever window has keyboard focus after you confirm.' });
-    if (choice.response !== 1) return { pressed: false, cancelled: true };
+    if (!fullControlActive) throw new Error('Start Jess Full Control before sending Windows shortcuts.');
     const sequence = WINDOWS_SHORTCUTS[shortcutName];
     const script = String.raw`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${sequence}')`;
     await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, timeout: 10000, shell: false }, error => error ? reject(new Error(String(error.message || 'Keyboard shortcut failed.').slice(0, 1000))) : resolve(true)));
@@ -485,24 +478,19 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   ipcMain.handle('hubmind:launch-app', async (event, appName) => {
     assertTrustedSender(event);
     if (typeof appName !== 'string' || !Object.prototype.hasOwnProperty.call(WINDOWS_APPS, appName)) throw new Error('That application is not on the approved launch list.');
-    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'question', buttons: ['Cancel', 'Launch app'], defaultId: 0, cancelId: 0, title: 'Launch Windows application?', message: 'Jess wants to launch ' + appName + '.', detail: 'This opens the selected built-in Windows application.' });
-    if (choice.response !== 1) return { launched: false };
+    if (!fullControlActive) throw new Error('Start Jess Full Control before launching Windows apps.');
     await new Promise((resolve, reject) => { const child = spawn(WINDOWS_APPS[appName], [], { windowsHide: true, detached: true, stdio: 'ignore', shell: false }); child.once('error', reject); child.once('spawn', () => { child.unref(); resolve(true); }); });
     return { launched: true, app: appName };
   });
   ipcMain.handle('hubmind:run-system-command', async (event, requestedCommand, requestedPurpose) => {
     assertTrustedSender(event);
+    if (!fullControlActive) throw new Error('Start Jess Full Control before running Windows commands.');
     if (typeof requestedCommand !== 'string' || !requestedCommand.trim() || requestedCommand.length > 1200) throw new Error('Command must be between 1 and 1,200 characters.');
     if (typeof requestedPurpose !== 'string' || !requestedPurpose.trim() || requestedPurpose.length > 300) throw new Error('A short purpose is required.');
     const command = requestedCommand.trim();
     const blocked = /\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|cipher\s+\/w|reg\s+delete)\b/i;
     if (blocked.test(command)) throw new Error('This high-risk destructive command is blocked by Hub-Mind.');
-    const choice = await dialog.showMessageBox(getDialogParent(), {
-      type: 'warning', buttons: ['Cancel', 'Run this command'], defaultId: 0, cancelId: 0,
-      title: 'Jess wants to run a Windows command', message: requestedPurpose.trim(),
-      detail: 'Exact PowerShell command:\n\n' + command + '\n\nRuns with your current Windows user permissions, not as administrator. Review it carefully before allowing it.',
-    });
-    if (choice.response !== 1) return { ran: false, cancelled: true };
+    // Full Control is the session-level permission; this runs as the current user, never elevated.
     const result = await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true, timeout: 30000, maxBuffer: 1024 * 1024, shell: false }, (error, stdout, stderr) => {
       const output = String(stdout || stderr || '').slice(0, 12000);
       if (error && !output) return reject(new Error(String(error.message || 'PowerShell command failed.').slice(0, 1000)));
@@ -513,8 +501,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   ipcMain.handle('hubmind:run-readonly-command', async (event, commandName) => {
     assertTrustedSender(event);
     if (typeof commandName !== 'string' || !Object.prototype.hasOwnProperty.call(READ_ONLY_COMMANDS, commandName)) throw new Error('That command is not on the approved read-only list.');
-    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'warning', buttons: ['Cancel', 'Run command'], defaultId: 0, cancelId: 0, title: 'Run a Windows diagnostic?', message: 'Jess wants to run ' + commandName + '.', detail: 'This approved command reads system information only. It cannot change files or settings.' });
-    if (choice.response !== 1) return { ran: false, cancelled: true };
+    if (!fullControlActive) throw new Error('Start Jess Full Control before running Windows diagnostics.');
     const [binary, args] = READ_ONLY_COMMANDS[commandName];
     const result = await new Promise((resolve, reject) => execFile(binary, args, { windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024, shell: false }, (error, stdout, stderr) => {
       if (error && !stdout) return reject(new Error(String(stderr || error.message).slice(0, 1000)));
