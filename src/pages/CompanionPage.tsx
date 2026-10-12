@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
-import { Maximize2, X } from 'lucide-react';
-import { JessOrbVisualizer } from '../components/JessOrbVisualizer';
-import { JessState } from '../services/liveAudioClient';
+import { Maximize2, Sparkles, X } from 'lucide-react';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { watchJessSession, JessSessionOwner } from '../services/jessSessionCoordinator';
@@ -110,7 +108,7 @@ export function CompanionPage() {
         aria-label={localActive ? 'Open the active Jess workspace' : remoteActive ? 'Jess is active in another Hub-Mind window' : 'Activate Jess'}
         title={localActive ? 'Jess is active — click to open workspace' : remoteActive ? 'Jess is active elsewhere; stop that session before switching' : 'Click to activate Jess'}
         onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onClick={() => void activateJess()}>
-        <span className="jess-orb-visual" aria-hidden="true"><JessOrbVisualizer state={'idle' as JessState} inputLevel={0} outputLevel={0} connected={controlActive || localActive} /></span>
+        <img src="/icon.svg" alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} /><span className="jess-orb-fallback"><Sparkles size={26}/></span>
       </button>
     </div>
     {isActive && <span className={`jess-status-dot ${localActive ? 'is-local' : 'is-remote'}`} title={localActive ? 'Jess is active in this desktop app' : 'Jess is active in another Hub-Mind client'} />}
