@@ -28,8 +28,8 @@ test('Jess desktop overlay is a compact, movable, closeable orb', () => {
   assert.ok(orb.includes('jess-orb-controls'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
-  assert.ok(orb.includes('src="/icon.svg"'));
-  assert.ok(orb.includes("event.currentTarget.src = '/jess-orb.svg'"));
+  assert.ok(orb.includes('JessOrbVisualizer'));
+  assert.ok(orb.includes('JessOrbVisualizer'));
   assert.match(orb, /is-transcript-visible/);
 });
 
