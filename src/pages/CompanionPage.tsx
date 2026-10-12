@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
-import { Maximize2, Sparkles, X } from 'lucide-react';
+import { Sparkles, X } from 'lucide-react';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { watchJessSession, JessSessionOwner } from '../services/jessSessionCoordinator';
