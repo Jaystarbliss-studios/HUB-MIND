@@ -1096,7 +1096,7 @@ export function JessFloatingAssistant() {
           </div>
         )}
       </button>}
-      {remoteJessOwner && remoteJessOwner.sessionId !== sessionLeaseRef.current?.sessionId && !orbDismissed && (
+      {remoteJessOwner && remoteJessOwner.leaseUntil > Date.now() && remoteJessOwner.sessionId !== sessionLeaseRef.current?.sessionId && !orbDismissed && (
         <div role="status" aria-live="polite" style={{ position: 'fixed', left: `${Math.max(4, Math.min(96, renderedPosition.x * 100))}%`, top: `${Math.max(3, renderedPosition.y * 100 - 5)}%`, transform: 'translate(-50%, -100%)', zIndex: 9998, pointerEvents: 'none' }} className="max-w-[230px] rounded-full border border-teal-500/25 bg-slate-950/95 px-3 py-1.5 text-[10px] text-teal-100 shadow-xl">
           Jess is active in {remoteJessOwner.client === 'windows-desktop' ? 'the Windows app' : remoteJessOwner.client === 'installed-web-app' ? 'the installed Chrome app' : 'another browser/device'}
         </div>
