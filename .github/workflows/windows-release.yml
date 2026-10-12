@@ -47,9 +47,6 @@ concurrency:
 jobs:
   windows-installer:
     runs-on: windows-latest
-    env:
-      WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,9 +84,16 @@ jobs:
       - name: Build web workspace
         run: npm run build
       - name: Prepare optional Windows code-signing certificate
-        if: ${{ github.event_name != 'pull_request' && env.WINDOWS_CERTIFICATE_BASE64 != '' }}
+        if: ${{ github.event_name != 'pull_request' }}
         shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
+            Write-Output 'No signing certificate configured; the installer will remain unsigned.'
+            exit 0
+          }
           $certificatePath = Join-Path $env:RUNNER_TEMP 'hubmind-windows-signing.pfx'
           $certificateBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
           [System.IO.File]::WriteAllBytes($certificatePath, $certificateBytes)
