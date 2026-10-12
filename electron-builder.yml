@@ -13,6 +13,8 @@ extraResources:
     to: jess-chrome-extension
   - from: native/JessChromeNativeHost/publish/JessChromeNativeHost.exe
     to: JessChromeNativeHost.exe
+  - from: native/JessOfflineWake/publish/JessOfflineWake.exe
+    to: JessOfflineWake.exe
   - from: scripts/install-jess-chrome-bridge.ps1
     to: Install-JessChromeBridge.ps1
 win:
