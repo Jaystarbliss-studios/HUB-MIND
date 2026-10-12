@@ -92,6 +92,7 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
   ipcMain.handle('hubmind:show-main', () => { showMain(); return true; });
   ipcMain.handle('hubmind:show-companion', () => { createCompanionWindow(); return true; });
   ipcMain.handle('hubmind:open-user-path', async (_event, requestedPath) => {
