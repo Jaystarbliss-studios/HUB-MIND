@@ -108,7 +108,7 @@ export default defineConfig(() => {
           display: 'standalone',
           orientation: 'portrait',
           scope: '/',
-          start_url: '/',
+          start_url: '/login',
           icons: [
             { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }
           ],
