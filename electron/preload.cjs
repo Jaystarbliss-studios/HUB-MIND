@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   showCompanion: () => ipcRenderer.invoke('hubmind:show-companion'),
   resetOrbPosition: () => ipcRenderer.invoke('hubmind:reset-orb-position'),
   hideCompanion: () => ipcRenderer.invoke('hubmind:hide-companion'),
+  setCompanionTranscriptVisible: (visible) => ipcRenderer.invoke('hubmind:set-companion-transcript-visible', visible === true),
   setCompanionInteractive: (interactive) => ipcRenderer.invoke('hubmind:set-companion-interactive', interactive === true),
   moveCompanionBy: (dx, dy) => ipcRenderer.invoke('hubmind:move-companion-by', dx, dy),
   openUserPath: (path) => ipcRenderer.invoke('hubmind:open-user-path', path),
