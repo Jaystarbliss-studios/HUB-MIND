@@ -23,5 +23,5 @@ test('Electron desktop screen sharing checks trusted-origin permissions and pres
   assert.match(electronMain, /setDisplayMediaRequestHandler/);
   assert.match(electronMain, /Choose what to share/);
   assert.match(electronMain, /callback\(selected \? \{ video: selected \} : \{\}\)/);
-  assert.match(electronMain, /useSystemPicker:\s*false/);
+  assert.match(electronMain, /useSystemPicker:\s*true/);
 });
