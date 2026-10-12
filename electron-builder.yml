@@ -1,0 +1,28 @@
+appId: studios.jaystarbliss.hubmind
+productName: Hub-Mind
+directories:
+  output: release
+  buildResources: build-resources
+files:
+  - dist/**
+  - electron/**
+  - package.json
+  - '!node_modules/.cache/**'
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Hub-Mind-Setup-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Hub-Mind
+  deleteAppDataOnUninstall: false
+publish:
+  provider: github
+  owner: Jaystarbliss-studios
+  repo: HUB-MIND
