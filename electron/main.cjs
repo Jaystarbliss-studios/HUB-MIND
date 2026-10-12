@@ -9,6 +9,7 @@ const chromeBridge = require('./chromeBridge.cjs');
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
 let companionWindow;
+let companionDismissed = false;
 let tray;
 let quitting = false;
 let fullControlActive = false;
@@ -95,7 +96,9 @@ function positionCompanionBottomRight() {
   companionWindow.setPosition(Math.max(area.x, area.x + area.width - width - 18), Math.max(area.y, area.y + area.height - height - 18), false);
 }
 
-function createCompanionWindow() {
+function createCompanionWindow(force = false) {
+  if (companionDismissed && !force) return;
+  if (force) companionDismissed = false;
   if (companionWindow && !companionWindow.isDestroyed()) {
     positionCompanionBottomRightIfNeeded();
     companionWindow.showInactive();
@@ -103,7 +106,7 @@ function createCompanionWindow() {
   }
   const saved = readOrbPosition();
   companionWindow = new BrowserWindow(secureWindowOptions({
-    width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 96, maxHeight: 96,
+    width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 420, maxHeight: 520,
     frame: false, transparent: true, resizable: false, movable: true, focusable: true,
     alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
     title: 'Jess', show: false, webPreferences: { backgroundThrottling: false }
@@ -119,7 +122,7 @@ function createCompanionWindow() {
     try { fs.writeFileSync(orbPositionPath(), JSON.stringify({ x: companionWindow.getBounds().x, y: companionWindow.getBounds().y }), 'utf8'); } catch {}
   });
   companionWindow.on('closed', () => { companionWindow = null; });
-  companionWindow.loadURL(APP_URL + '/orb');
+  companionWindow.loadURL(APP_URL + '/companion');
 }
 function orbPositionPath() { return path.join(app.getPath('userData'), 'jess-orb-position.json'); }
 function readOrbPosition() {
@@ -140,8 +143,8 @@ function positionCompanionBottomRightIfNeeded() {
   if (x < area.x || y < area.y || x + width > area.x + area.width || y + height > area.y + area.height) positionCompanionBottomRight();
 }
 function resetOrbPosition() {
-  if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow();
-  positionCompanionBottomRight();
+  createCompanionWindow(true);
+  if (companionWindow && !companionWindow.isDestroyed()) { positionCompanionBottomRight(); companionWindow.showInactive(); }
 }
 function getDialogParent() {
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) return mainWindow;
@@ -341,7 +344,7 @@ function createTray() {
   tray.setToolTip('Hub-Mind');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Hub-Mind', click: showMain },
-    { label: 'Show Jess orb', click: () => { if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide(); createCompanionWindow(); positionCompanionBottomRightIfNeeded(); } },
+    { label: 'Show Jess orb', click: () => { if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide(); createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); } },
     { label: 'Reset orb to bottom-right', click: resetOrbPosition },
     { label: 'Stop Jess (end Full Control Session)', click: () => stopFullControl('tray-stop') },
     { label: 'Start Hub-Mind at Windows sign-in (this user)', type: 'checkbox', checked: !!app.getLoginItemSettings().openAtLogin, click: item => { try { app.setLoginItemSettings({ openAtLogin: item.checked }); item.checked = !!app.getLoginItemSettings().openAtLogin; } catch (error) { item.checked = !!app.getLoginItemSettings().openAtLogin; console.error('[Hub-Mind] Could not update per-user startup setting:', error); } } },
@@ -392,10 +395,11 @@ app.whenReady().then(() => {
     assertTrustedSender(event);
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
     if (!['get_time','system_info'].includes(method) && userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
-    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','get_time','system_info','open_path']);
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method);
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+    if (method === 'media_key' && !['volume_up','volume_down','volume_mute','brightness_up','brightness_down'].includes(String(safeArgs.action))) throw new Error('Unsupported volume or brightness action.');
     if (method === 'run_command') {
       const command = String(safeArgs.command || '');
       if (command.length > 4000) throw new Error('Command exceeds the 4,000-character limit.');
@@ -443,8 +447,25 @@ app.whenReady().then(() => {
 
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
   ipcMain.handle('hubmind:show-workspace', async (event) => { assertTrustedSender(event); return await showWorkspaceVerified(); });
-  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(); positionCompanionBottomRightIfNeeded(); return true; });
-  ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionWindow?.hide(); return true; });
+  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); return true; });
+  ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionDismissed = true; companionWindow?.hide(); return true; });
+  ipcMain.handle('hubmind:set-companion-transcript-visible', (event, visible) => {
+    assertTrustedSender(event);
+    if (!companionWindow || companionWindow.isDestroyed()) return false;
+    const showTranscript = visible === true;
+    const width = showTranscript ? 420 : 96;
+    const height = showTranscript ? 520 : 96;
+    const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay();
+    const area = display.workArea;
+    const [x, y] = companionWindow.getPosition();
+    companionWindow.setSize(width, height, false);
+    companionWindow.setPosition(
+      Math.max(area.x, Math.min(area.x + area.width - width, x + 96 - width)),
+      Math.max(area.y, Math.min(area.y + area.height - height, y)),
+      false
+    );
+    return true;
+  });
   ipcMain.handle('hubmind:reset-orb-position', (event) => { assertTrustedSender(event); resetOrbPosition(); return true; });
   ipcMain.handle('hubmind:set-companion-interactive', (event, interactive) => {
     assertTrustedSender(event);
@@ -561,12 +582,17 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       if (!sources.length) { callback({}); return; }
       const primaryId = String(screen.getPrimaryDisplay().id);
       const primaryScreen = sources.find(source => source.display_id === primaryId && source.id.startsWith('screen:'));
+      // Put Hub-Mind's real top-level window near the front of the chooser so it
+      // remains selectable even when many unrelated windows are open.
+      const hubMindWindow = sources.find(source => source.id.startsWith('window:') && /hub-mind/i.test(String(source.name || '')));
+      const otherWindows = sources.filter(source => source.id.startsWith('window:') && source.name && !/^Electron$/i.test(source.name) && source.id !== hubMindWindow?.id);
       const ordered = [
         ...(primaryScreen ? [primaryScreen] : []),
-        ...sources.filter(source => source.id.startsWith('window:') && source.name && !/^Electron$/i.test(source.name)),
+        ...(hubMindWindow ? [hubMindWindow] : []),
+        ...otherWindows,
         ...sources.filter(source => source.id.startsWith('screen:') && source.id !== primaryScreen?.id),
       ];
-      const unique = [...new Map(ordered.map(source => [source.id, source])).values()].slice(0, 4);
+      const unique = [...new Map(ordered.map(source => [source.id, source])).values()].slice(0, 8);
       if (!unique.length) { callback({}); return; }
       const labels = unique.map(source => {
         const name = String(source.name || 'Application window').replace(/[\r\n]+/g, ' ').slice(0, 64);

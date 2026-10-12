@@ -26,18 +26,16 @@ body {
 :root { color-scheme: dark; }
 html, body, #root {
   min-height: 100%;
-  background-color: #020617;
+  background-color: #020617 !important;
   color: #e2e8f0;
 }
 body { background: #020617; color: #e2e8f0; }
 #root { isolation: isolate; }
 
-/* Keep the workspace palette stable even when the OS prefers light mode or a cached stylesheet is partially applied. The transparent companion window is intentionally excluded. */
-html:not(:has(.jess-orb-window)),
-body:not(:has(.jess-orb-window)),
-#root:not(:has(.jess-orb-window)) {
+/* The workspace always keeps its original dark palette. Transparency belongs only to the companion document and is scoped in companion.css. */
+html, body, #root {
   color-scheme: dark;
-  background-color: #020617 !important;
+  background-color: #020617;
   color: #e2e8f0;
 }
 

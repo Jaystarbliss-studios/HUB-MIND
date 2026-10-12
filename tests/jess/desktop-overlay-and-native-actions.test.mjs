@@ -14,16 +14,20 @@ test('workspace theme remains dark regardless of operating system preference', a
 
 test('desktop companion is an icon-only movable orb with a close control', async () => {
   const main = await read('../../electron/main.cjs');
-  const page = await read('../../src/pages/JessOrbPage.tsx');
+  const page = await read('../../src/pages/CompanionPage.tsx');
   assert.ok(main.includes('width: 96, height: 96'));
-  assert.ok(main.includes("APP_URL + '/orb'"));
-  assert.ok(page.includes('src="/hub-mind%20logo.png"'));
-  assert.ok(page.includes('src = "/jess-orb.svg"'));
+  assert.ok(main.includes('maxWidth: 420, maxHeight: 520'));
+  assert.ok(main.includes("APP_URL + '/companion'"));
+  assert.match(main, /hubmind:set-companion-transcript-visible/);
+  assert.match(page, /JessOrbVisualizer/);
+  assert.ok(page.includes('JessOrbVisualizer'));
+  assert.ok(page.includes("event.currentTarget.src = '/jess-orb.svg'"));
   assert.ok(page.includes('hideCompanion'));
-  assert.ok(page.includes('jess-orb-close'));
+  assert.ok(page.includes('jess-orb-controls'));
   assert.ok(page.includes('moveCompanionBy'));
   assert.ok(page.includes('onPointerMove'));
-  assert.doesNotMatch(page, /transcript|textarea|microphone controls/i);
+  assert.match(page, /is-transcript-visible/);
+  assert.match(page, /setCompanionTranscriptVisible/);
 });
 
 test('native system actions use the isolated bridge and a Full Control Session', async () => {
@@ -39,6 +43,10 @@ test('native system actions use the isolated bridge and a Full Control Session',
   assert.match(preload, /startFullControl/);
   assert.match(tools, /name: 'run_windows_command_native'/);
   assert.match(tools, /name: 'launch_windows_application'/);
+  assert.match(tools, /name: 'control_system_volume'/);
+  assert.match(tools, /name: 'control_screen_brightness'/);
+  assert.match(main, /method === 'media_key'/);
+  assert.match(await read('../../electron/jess-agent.ps1'), /'media_key'/);
 });
 
 test('desktop display capture uses the native system picker without a custom modal', async () => {

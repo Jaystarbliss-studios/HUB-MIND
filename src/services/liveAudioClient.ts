@@ -366,7 +366,7 @@ export class LiveAudioClient {
         return;
       }
 
-      const nativeToolNames = JESS_TOOLS_DECLARATIONS.filter(tool => /^(jess_full_control|jess_stop|show_hub_mind_workspace|list_windows|manage_windows|control_mouse|drag_windows_mouse|type_windows_text|press_windows_keys|take_windows_screenshot|read_windows_screen|find_windows_ui_element|invoke_windows_ui_element|launch_windows_application|open_local_windows_path|run_windows_command_native|get_windows_time|get_windows_system_info|chrome_list_tabs|chrome_open_tab|chrome_close_tab|chrome_activate_tab|chrome_navigate_tab|chrome_reload_tab|chrome_scroll|chrome_read_page|chrome_find_element|chrome_click_element|chrome_fill_field)$/.test(tool.name)).map(tool => tool.name);
+      const nativeToolNames = JESS_TOOLS_DECLARATIONS.filter(tool => /^(jess_full_control|jess_stop|show_hub_mind_workspace|list_windows|manage_windows|control_mouse|drag_windows_mouse|type_windows_text|press_windows_keys|control_system_volume|control_screen_brightness|take_windows_screenshot|read_windows_screen|find_windows_ui_element|invoke_windows_ui_element|launch_windows_application|open_local_windows_path|run_windows_command_native|get_windows_time|get_windows_system_info|chrome_list_tabs|chrome_open_tab|chrome_close_tab|chrome_activate_tab|chrome_navigate_tab|chrome_reload_tab|chrome_scroll|chrome_read_page|chrome_find_element|chrome_click_element|chrome_fill_field)$/.test(tool.name)).map(tool => tool.name);
       const isDesktopClient = (window as any).hubMindDesktop?.isDesktopApp === true;
       const desktopOnlyDomTools = new Set(['scroll_screen', 'click_screen', 'type_screen', 'stop_screen_control']);
       const availableTools = JESS_TOOLS_DECLARATIONS.filter(tool =>

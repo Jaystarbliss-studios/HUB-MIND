@@ -102,7 +102,7 @@ export default function App() {
     <PWAPrompt />
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
-        <Route path="/" element={<PublicHome />} />
+        <Route path="/" element={<AppHomeRoute />} />
         <Route path="/login" element={<Login />} />
         <Route path="/companion" element={<ProtectedRoute><CompanionPage /></ProtectedRoute>} />
         <Route path="/orb" element={<ProtectedRoute><JessOrbPage /></ProtectedRoute>} />
@@ -153,4 +153,13 @@ export default function App() {
 function LegacyWorkspaceRedirect() {
   const location = window.location;
   return <Navigate to={'/workspace' + location.pathname + location.search + location.hash} replace />;
+}
+
+function AppHomeRoute() {
+  const installed = typeof window !== 'undefined' && (
+    window.matchMedia?.('(display-mode: standalone)').matches === true ||
+    (navigator as any).standalone === true ||
+    (window as any).hubMindDesktop?.isDesktopApp === true
+  );
+  return installed ? <Navigate to="/login" replace /> : <PublicHome />;
 }

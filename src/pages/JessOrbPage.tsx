@@ -26,7 +26,7 @@ export function JessOrbPage() {
   };
   return <main className="jess-orb-window" aria-label="Jess desktop orb">
     <div className="jess-orb-drag" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={() => { drag.current = null; }} title="Drag to move Jess. Click to open the Hub-Mind workspace.">
-      <img src="/hub-mind%20logo.png" alt="Open Hub-Mind workspace" draggable={false} onError={(event) => { event.currentTarget.src = "/jess-orb.svg"; }} />
+      <img src="/icon.svg" alt="Open Hub-Mind workspace" draggable={false} onError={(event) => { event.currentTarget.src = "/jess-orb.svg"; }} />
     </div>
     <button className="jess-orb-close" type="button" aria-label="Hide Jess overlay" title="Hide Jess overlay" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); void desktop?.hideCompanion?.(); }}><X size={13}/></button>
     <style>{`

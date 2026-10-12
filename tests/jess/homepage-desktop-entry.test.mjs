@@ -27,16 +27,16 @@ test('public landing page uses official branding and exposes workspace, install,
 test('desktop and installed app start at sign-in, while the orb remains icon-only and dismissible', async () => {
   const [main, orb, css] = await Promise.all([
     read('electron/main.cjs'),
-    read('src/pages/JessOrbPage.tsx'),
+    read('src/pages/CompanionPage.tsx'),
     read('src/pages/companion.css'),
   ]);
   assert.match(main, /function createMainWindow\(initialPath = '\/login'\)/);
-  assert.match(main, /APP_URL \+ '\/orb'/);
-  assert.match(orb, /src="\/hub-mind%20logo\.png"/);
-  assert.match(orb, /jess-orb-close/);
+  assert.match(main, /APP_URL \+ '\/companion'/);
+  assert.match(orb, /JessOrbVisualizer/);
+  assert.match(orb, /jess-orb-controls/);
   assert.match(orb, /hideCompanion/);
   assert.match(orb, /moveCompanionBy/);
-  assert.match(css, /\.jess-transcript\{display:none!important\}/);
+  assert.match(css, /is-transcript-visible \.jess-transcript\{display:flex\}/);
   assert.match(main, /Share app:/);
   assert.match(main, /callback\(selected \? \{ video: selected \} : \{\}\)/);
 });
