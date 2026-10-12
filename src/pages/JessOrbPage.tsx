@@ -1,9 +1,7 @@
 import React, { useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 
 export function JessOrbPage() {
-  const navigate = useNavigate();
   const drag = useRef<{ x: number; y: number; lastX: number; lastY: number } | null>(null);
   const desktop = (window as any).hubMindDesktop;
   const begin = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -23,12 +21,12 @@ export function JessOrbPage() {
     const initial = drag.current;
     drag.current = null;
     if (initial && Math.abs(event.screenX - initial.x) < 5 && Math.abs(event.screenY - initial.y) < 5) {
-      void desktop?.showMain?.().then(() => navigate('/workspace'));
+      void desktop?.showWorkspace?.();
     }
   };
   return <main className="jess-orb-window" aria-label="Jess desktop orb">
-    <div className="jess-orb-drag" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={() => { drag.current = null; }} title="Drag to move Jess. Click to open Hub-Mind.">
-      <img src="/jess-orb.svg" alt="Open Jess" draggable={false} />
+    <div className="jess-orb-drag" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={() => { drag.current = null; }} title="Drag to move Jess. Click to open the Hub-Mind workspace.">
+      <img src="/jess-orb.svg" alt="Open Hub-Mind workspace" draggable={false} />
     </div>
     <button className="jess-orb-close" type="button" aria-label="Hide Jess overlay" title="Hide Jess overlay" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); void desktop?.hideCompanion?.(); }}><X size={13}/></button>
     <style>{`
