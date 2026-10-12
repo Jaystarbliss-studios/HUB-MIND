@@ -36,3 +36,6 @@ body:has(.jess-orb-window) #root>div{width:100%;height:100%;background:transpare
 .jess-orb-window .jess-orb-controls button:last-child{display:grid!important}
 
 .jess-orb-window.is-transcript-visible .jess-orb-drag{left:auto;right:4px;transform:none}
+
+.jess-orb-launch>div{width:100%;height:100%;border-radius:50%;overflow:hidden}
+.jess-orb-launch canvas{width:100%;height:100%;display:block}
