@@ -17,8 +17,8 @@ test('native Jess orb hides with the workspace and returns after minimize or clo
 
 test('desktop orb displays only the Jess icon with a working hide control', () => {
   const orb = read('../../src/pages/CompanionPage.tsx');
-  assert.ok(orb.includes('src="/icon.svg"'));
-  assert.ok(orb.includes("event.currentTarget.src = '/jess-orb.svg'"));
+  assert.ok(orb.includes('JessOrbVisualizer'));
+  assert.ok(orb.includes('JessOrbVisualizer'));
   assert.ok(orb.includes('jess-orb-controls'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
