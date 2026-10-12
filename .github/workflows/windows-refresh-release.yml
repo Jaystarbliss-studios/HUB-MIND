@@ -1,0 +1,42 @@
+name: Refresh Windows desktop installer
+
+on:
+  push:
+    branches:
+      - release/windows-desktop-refresh
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout current production main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify Jess integration
+        run: npm run verify:jess
+      - name: TypeScript validation
+        run: npm run typecheck
+      - name: Unit and contract tests
+        run: npm run test:unit
+      - name: Build web workspace
+        run: npm run build
+      - name: Package Windows installer
+        run: npx electron-builder --win nsis --publish never
+      - name: Publish refreshed installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Windows installer was not produced.' }
+          gh release create desktop-v9 $installer.FullName --target main --title 'Hub-Mind Windows Installer desktop-v9' --notes 'Refreshed Windows installer with the compact draggable Jess overlay, display capture permission handling, grounded web research integration, and confirmed native Windows app/diagnostic actions.' --latest
