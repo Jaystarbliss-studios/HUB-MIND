@@ -11,6 +11,10 @@ on:
       - 'electron/**'
       - 'electron-builder.yml'
       - 'package.json'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'vite.config.ts'
       - '.github/workflows/windows-release.yml'
 
 permissions:
