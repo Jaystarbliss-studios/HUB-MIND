@@ -11,6 +11,8 @@ test('native Jess companion remains visible when the workspace is shown', () => 
   assert.match(main, /companionWindow\.showInactive\(\)/);
   assert.doesNotMatch(main, /mainWindow\.on\('show',\s*\(\)\s*=>\s*\{\s*if\s*\(companionWindow[^\n]*companionWindow\.hide\(\)/);
   assert.match(main, /width: 420, height: 560/);
+  assert.match(main, /setIgnoreMouseEvents\(true, \{ forward: true \}\)/);
+  assert.match(main, /hubmind:set-companion-interactive/);
 });
 
 test('companion uses the established animated Jess orb and has a transcript panel', () => {
@@ -19,6 +21,7 @@ test('companion uses the established animated Jess orb and has a transcript pane
   assert.match(companion, /JessOrbVisualizer/);
   assert.doesNotMatch(companion, /src="\/jess-orb\.svg"/);
   assert.match(companion, /jess-transcript-messages/);
+  assert.match(companion, /setCompanionInteractive/);
   assert.match(companion, /hubmind\.jess\.desktopTranscript\.v1/);
   assert.match(styles, /\.jess-transcript\{/);
   assert.match(styles, /\.jess-transcript-messages\{/);
