@@ -39,7 +39,8 @@ test('desktop workspace and icon-only orb visibility follow the requested lifecy
   assert.ok(electron.includes("APP_URL + '/orb'"));
   assert.ok(electron.includes('hubmind:hide-companion'));
   assert.ok(electron.includes('hubmind:move-companion-by'));
-  assert.ok(orb.includes('src="/jess-orb.svg"'));
+  assert.ok(orb.includes('src="/hub-mind%20logo.png"'));
+  assert.ok(orb.includes('src = "/jess-orb.svg"'));
   assert.ok(orb.includes('jess-orb-close'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
