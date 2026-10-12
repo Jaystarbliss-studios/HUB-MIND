@@ -9,6 +9,9 @@ on:
       - 'v*'
     paths:
       - 'electron/**'
+      - 'native/**'
+      - 'chrome-extension/**'
+      - 'scripts/install-jess-chrome-bridge.ps1'
       - 'electron-builder.yml'
       - 'package.json'
       - 'src/**'
@@ -30,10 +33,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Ensure Rollup Windows native binary is installed
         run: npm install --no-save --include=optional @rollup/rollup-win32-x64-msvc@4.62.4 lightningcss-win32-x64-msvc@1.32.0 @tailwindcss/oxide-win32-x64-msvc@4.3.3
+      - name: Publish self-contained .NET Chrome native host
+        run: dotnet publish native/JessChromeNativeHost/JessChromeNativeHost.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o native/JessChromeNativeHost/publish
       - name: Verify assistant integration
         run: npm run verify:jess
       - name: Validate PowerShell agent syntax
