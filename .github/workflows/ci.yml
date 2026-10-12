@@ -16,6 +16,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
           cache: npm
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -48,6 +52,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Ensure Windows native build dependencies are installed
         run: npm install --no-save --include=optional @rollup/rollup-win32-x64-msvc@4.62.4 lightningcss-win32-x64-msvc@1.32.0 @tailwindcss/oxide-win32-x64-msvc@4.3.3
+      - name: Publish self-contained .NET Chrome native host
+        run: dotnet publish native/JessChromeNativeHost/JessChromeNativeHost.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o native/JessChromeNativeHost/publish
       - name: Validate PowerShell agent syntax
         shell: pwsh
         run: |
