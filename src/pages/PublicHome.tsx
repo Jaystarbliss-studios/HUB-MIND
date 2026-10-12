@@ -60,7 +60,7 @@ export function PublicHome() {
   };
 
   return (
-    <div className="hm-public min-h-screen overflow-hidden">
+    <div className="hm-public min-h-screen overflow-x-clip">
       <header className="hm-nav">
         <a href="/" className="hm-brand" aria-label="Hub-Mind home">
           <span className="hm-brand-mark"><img src="/icon.svg" alt="" /></span>
