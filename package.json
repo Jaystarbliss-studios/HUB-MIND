@@ -20,7 +20,7 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-hubmind \"node --import tsx --test tests/security/firestore.rules.emulator.test.ts\"",
     "desktop:dev": "npm run build && electron .",
     "desktop:package:win": "npm run build && npm run build:native:win && electron-builder --win nsis --publish never",
-    "build:native:win": "dotnet publish native/JessChromeNativeHost/JessChromeNativeHost.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o native/JessChromeNativeHost/publish"
+    "build:native:win": "dotnet publish native/JessChromeNativeHost/JessChromeNativeHost.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o native/JessChromeNativeHost/publish && dotnet publish native/JessOfflineWake/JessOfflineWake.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o native/JessOfflineWake/publish"
   },
   "dependencies": {
     "@google/genai": "^2.15.0",
