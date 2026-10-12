@@ -174,6 +174,19 @@ export function JessFloatingAssistant() {
   const [state, setState] = useState<JessState>('idle');
   const [inputLevel, setInputLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
+  // Mirror the live orb state to the native companion window so its animation
+  // matches the in-workspace Jess orb instead of becoming a static product icon.
+  useEffect(() => {
+    try {
+      localStorage.setItem('hubmind.jess.desktopOrbState.v1', JSON.stringify({
+        state,
+        inputLevel: Math.max(0, Math.min(1, inputLevel || 0)),
+        outputLevel: Math.max(0, Math.min(1, outputLevel || 0)),
+        connected: connection === 'connected',
+        at: Date.now(),
+      }));
+    } catch { /* Cross-window animation state is best-effort only. */ }
+  }, [state, inputLevel, outputLevel, connection]);
   const [activeBgTasks, setActiveBgTasks] = useState<JessBackgroundTask[]>([]);
 
   // 70% transparent transient Gemini Live style subtitle overlay
