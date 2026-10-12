@@ -198,6 +198,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'list_windows', description: 'List visible Windows desktop windows with titles, process names, bounds, state and foreground status. Requires Full Control Session.', parameters: object({}) },
   { name: 'manage_windows', description: 'Manage a Windows window: focus, close/hide, minimize, maximize, restore, move, resize or snap. Supply title or handle; move/resize need coordinates/dimensions; snap position is left, right, top-left, top-right, bottom-left or bottom-right. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'] }, title: { type: 'string' }, handle: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, position: { type: 'string', enum: ['left','right','top-left','top-right','bottom-left','bottom-right'] } }, ['action']) },
   { name: 'control_mouse', description: 'Move the Windows cursor, click, double-click, right-click or scroll at physical screen coordinates. Input delivery is not proof the target action succeeded. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['mouse_move','click','double_click','right_click','scroll'] }, x: { type: 'number' }, y: { type: 'number' }, delta: { type: 'number' } }, ['action','x','y']) },
+  { name: 'drag_windows_mouse', description: 'Drag from one physical screen coordinate to another. Requires Full Control Session; the app-level result is not automatically verified.', parameters: object({ fromX: { type: 'number' }, fromY: { type: 'number' }, toX: { type: 'number' }, toY: { type: 'number' } }, ['fromX','fromY','toX','toY']) },
   { name: 'type_windows_text', description: 'Type text into the currently focused Windows app. Requires Full Control Session. Never type into password or payment fields.', parameters: object({ text: { type: 'string' } }, ['text']) },
   { name: 'press_windows_keys', description: 'Send a key or key combination to the active Windows app, e.g. CTRL+S, ALT+TAB, ENTER, ESC, WIN+R. Requires Full Control Session.', parameters: object({ keys: { type: 'string' } }, ['keys']) },
   { name: 'take_windows_screenshot', description: 'Capture screenshots of connected monitors, including monitor names, physical bounds and scale context. Requires Full Control Session.', parameters: object({}) },
@@ -584,7 +585,8 @@ export async function executeJessTool(
       case 'type_windows_text':
       case 'press_windows_keys':
       case 'manage_windows':
-      case 'control_mouse': {
+      case 'control_mouse':
+      case 'drag_windows_mouse': {
         const desktop = (window as any).hubMindDesktop;
         if (!desktop?.isDesktopApp || typeof desktop.nativeAction !== 'function') return { result: { success: false, error: 'Native Windows control is only available in the installed desktop app.' } };
         const status = await desktop.nativeStatus();
@@ -592,6 +594,7 @@ export async function executeJessTool(
         let method = name, payload: any = args || {};
         if (name === 'manage_windows') { method = String(args?.action || ''); payload = { title: args?.title, handle: args?.handle, x: args?.x, y: args?.y, width: args?.width, height: args?.height, position: args?.position }; }
         if (name === 'control_mouse') { method = String(args?.action || ''); payload = { x: args?.x, y: args?.y, delta: args?.delta ?? -120 }; }
+        if (name === 'drag_windows_mouse') { method = 'drag'; payload = { fromX: args?.fromX, fromY: args?.fromY, toX: args?.toX, toY: args?.toY }; }
         if (name === 'type_windows_text') { method = 'type_text'; payload = { text: String(args?.text || '') }; }
         if (name === 'press_windows_keys') { method = 'press_keys'; payload = { keys: String(args?.keys || '') }; }
         if (name === 'take_windows_screenshot') { method = 'screenshot'; payload = {}; }
