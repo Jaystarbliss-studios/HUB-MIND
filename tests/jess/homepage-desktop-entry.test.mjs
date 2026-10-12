@@ -27,7 +27,7 @@ test('public landing page uses official branding and exposes workspace, install,
 test('desktop and installed app start at sign-in, while the orb remains icon-only and dismissible', async () => {
   const [main, orb, css] = await Promise.all([
     read('electron/main.cjs'),
-    read('src/pages/JessOrbPage.tsx'),
+    read('src/pages/CompanionPage.tsx'),
     read('src/pages/companion.css'),
   ]);
   assert.match(main, /function createMainWindow\(initialPath = '\/login'\)/);
