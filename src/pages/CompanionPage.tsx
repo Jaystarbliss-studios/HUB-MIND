@@ -1,5 +1,6 @@
 import React from 'react';
-import { X, Maximize2 } from 'lucide-react';
+import { X, Maximize2, Sparkles } from 'lucide-react';
+import './companion.css';
 
 declare global {
   interface Window {
@@ -11,11 +12,16 @@ declare global {
 }
 
 export function CompanionPage() {
-  return <div className="jess-companion-shell">
-    <div className="jess-companion-drag" aria-label="Move Jess" title="Drag to move Jess">
-      <span className="jess-companion-title">JESS</span>
-      <button type="button" className="jess-companion-open" title="Open Hub-Mind workspace" aria-label="Open Hub-Mind workspace" onClick={() => void window.hubMindDesktop?.showMain()}><Maximize2 size={12}/></button>
-      <button type="button" className="jess-companion-close" title="Hide Jess overlay" aria-label="Hide Jess overlay" onClick={() => void window.hubMindDesktop?.hideCompanion()}><X size={13}/></button>
+  return <main className="jess-orb-window" aria-label="Jess desktop companion">
+    <div className="jess-orb-drag" title="Drag to move Jess" aria-label="Drag to move Jess">
+      <button className="jess-orb-launch" type="button" aria-label="Open Jess and Hub-Mind workspace" title="Open Jess and Hub-Mind workspace" onClick={() => void window.hubMindDesktop?.showMain()}>
+        <img src="/icon.svg" alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+        <span className="jess-orb-fallback"><Sparkles size={26}/></span>
+      </button>
     </div>
-  </div>;
+    <div className="jess-orb-controls">
+      <button type="button" title="Open Hub-Mind workspace" aria-label="Open Hub-Mind workspace" onClick={() => void window.hubMindDesktop?.showMain()}><Maximize2 size={12}/></button>
+      <button type="button" title="Hide Jess overlay" aria-label="Hide Jess overlay" onClick={() => void window.hubMindDesktop?.hideCompanion()}><X size={13}/></button>
+    </div>
+  </main>;
 }
