@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { LiveAudioClient, JessState } from '../services/liveAudioClient';
@@ -146,6 +146,7 @@ export function JessFloatingAssistant() {
   const navigate = useNavigate();
   const clientRef = useRef<LiveAudioClient | null>(null);
   const sessionLeaseRef = useRef<{ userId: string; sessionId: string; timer: number | null } | null>(null);
+  const activationRequestSeenRef = useRef<string | null>(null);
   const [remoteJessOwner, setRemoteJessOwner] = useState<JessSessionOwner | null>(null);
   const sessionEndingRef = useRef(false);
   const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number; axis: 'x' | 'y' }>({ timer: null, running: false, speed: 3, direction: 1, axis: 'y' });
@@ -719,6 +720,22 @@ export function JessFloatingAssistant() {
     if (!profile?.id) { setRemoteJessOwner(null); return; }
     return watchJessSession(profile.id, owner => setRemoteJessOwner(owner));
   }, [profile?.id]);
+
+  // The desktop companion is an icon-only shell. Clicking it writes a short-lived
+  // request that the authenticated main workspace consumes to start the actual Jess voice session.
+  useEffect(() => {
+    if (!profile?.id || !(window as any).hubMindDesktop?.isDesktopApp) return;
+    return onSnapshot(doc(db, 'users', profile.id, 'private', 'jessActivationRequest'), snapshot => {
+      if (!snapshot.exists()) return;
+      const request = snapshot.data();
+      const requestId = String(request.requestId || '');
+      const requestedAt = Number(request.requestedAt || 0);
+      if (!requestId || requestId === activationRequestSeenRef.current) return;
+      if (request.requestedBy !== 'windows-desktop-companion' || Date.now() - requestedAt > 15000 || requestedAt > Date.now() + 5000) return;
+      activationRequestSeenRef.current = requestId;
+      void start(String(request.prompt || '').trim() || undefined);
+    }, error => console.warn('[Jess] Desktop activation request listener failed:', error));
+  }, [profile?.id, start]);
 
   // Passive wake is strictly app-only. Normal browser tabs must never leave a
   // background microphone listener running. Native shells can provide a native
