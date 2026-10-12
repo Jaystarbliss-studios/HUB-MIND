@@ -724,7 +724,8 @@ export function JessFloatingAssistant() {
   // background microphone listener running. Native shells can provide a native
   // wake plugin; installed desktop PWAs use browser recognition as a fallback.
   useEffect(() => {
-    if (!profile || connection === 'connected' || connection === 'connecting' || !isJessInstalledApp()) return;
+    const leaseIsRemote = !!remoteJessOwner && remoteJessOwner.leaseUntil > Date.now() && remoteJessOwner.sessionId !== sessionLeaseRef.current?.sessionId;
+    if (!profile || connection === 'connected' || connection === 'connecting' || !isJessInstalledApp() || leaseIsRemote) return;
     let disposed = false;
     let nativeListener: { remove: () => Promise<void> } | null = null;
     const nativeWake = (window as any).Capacitor?.Plugins?.JessVoiceActivation;
@@ -759,7 +760,7 @@ export function JessFloatingAssistant() {
     });
     wakeListener.start();
     return () => { disposed = true; wakeListener.stop(); };
-  }, [profile?.id, connection, start]);
+  }, [profile?.id, connection, start, remoteJessOwner?.sessionId, remoteJessOwner?.leaseUntil]);
 
   const handleConfirmDeletion = async () => {
     if (!pendingDelete) return;
