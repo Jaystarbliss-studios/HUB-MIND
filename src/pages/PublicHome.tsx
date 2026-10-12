@@ -72,7 +72,7 @@ export function PublicHome() {
           <a href="#desktop" onClick={() => setMobileMenu(false)}>Windows app</a>
         </nav>
         <div className="hm-nav-actions">
-          <button className="hm-button hm-button-quiet hm-nav-invite" onClick={() => setInviteOpen(true)}>Get invite</button>
+          <button className="hm-button hm-button-quiet hm-nav-invite" onClick={() => setInviteOpen(true)} >Get Invite</button>
           <button className="hm-button hm-button-primary hm-nav-open" onClick={openWorkspace}>Open workspace <ArrowUpRight size={16}/></button>
         </div>
         <button className="hm-mobile-toggle" aria-label="Toggle navigation" onClick={() => setMobileMenu(v => !v)}>{mobileMenu ? <X/> : <Menu/>}</button>
@@ -83,11 +83,11 @@ export function PublicHome() {
           <div className="hm-hero-glow hm-glow-one" /><div className="hm-hero-glow hm-glow-two" />
           <div className="hm-hero-copy">
             <div className="hm-eyebrow"><span className="hm-live-dot" /> YOUR WORKSPACE, WITH A LITTLE MORE CLARITY</div>
-            <h1>Make room for<br/><span>meaningful work.</span></h1>
+            <h1>Welcome to<br/><span>Hub-Mind.</span></h1>
             <p className="hm-hero-description">A quieter place to bring your work together. Plan the day, move projects forward, keep your knowledge close — and let Jess help with the busywork.</p>
             <div className="hm-hero-actions">
-              <button className="hm-button hm-button-primary hm-button-large" onClick={openWorkspace}>Open workspace <ArrowRight size={17}/></button>
-              <button className="hm-button hm-button-outline hm-button-large" onClick={() => setInviteOpen(true)}>I have an invite</button>
+              <button className="hm-button hm-button-primary hm-button-large" onClick={openWorkspace} >Open Workspace <ArrowRight size={17}/></button>
+              <button className="hm-button hm-button-outline hm-button-large" onClick={() => setInviteOpen(true)}>Get Invite</button>
             </div>
             <div className="hm-trust-line"><LockKeyhole size={14}/> Private, invitation-based access <span>·</span> Built for focused work</div>
           </div>
