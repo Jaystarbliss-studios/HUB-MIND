@@ -25,7 +25,9 @@ const WINDOWS_APPS = Object.freeze({ calculator: 'calc.exe', notepad: 'notepad.e
 const READ_ONLY_COMMANDS = Object.freeze({ ipconfig: ['ipconfig.exe', []], systemInfo: ['systeminfo.exe', []], runningProcesses: ['tasklist.exe', []] });
 const WINDOWS_SHORTCUTS = Object.freeze({ save: '^s', selectAll: '^a', copy: '^c', paste: '^v', undo: '^z', redo: '^y', find: '^f', closeWindow: '%{F4}', switchWindow: '%{TAB}', taskManager: '^+{ESC}', enter: '{ENTER}', escape: '{ESC}', tab: '{TAB}' });
 function assertTrustedSender(event) {
-  let origin = ''; try { origin = new URL(event.senderFrame?.url || '').origin; } catch {}
+  let origin = '';
+  try { origin = new URL(event.senderFrame?.url || '').origin; } catch {}
+  if (!event?.senderFrame || event.senderFrame !== event.sender.mainFrame) throw new Error('Blocked desktop action from a non-top-level frame.');
   if (origin !== new URL(APP_URL).origin) throw new Error('Blocked desktop action from an untrusted page.');
 }
 
@@ -305,8 +307,8 @@ function createTray() {
   tray.setToolTip('Hub-Mind');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Hub-Mind', click: showMain },
-    { label: 'Show Jess companion', click: () => { createCompanionWindow(); positionCompanionBottomRight(); } },
-    { label: 'Reset Jess orb to bottom-right', click: () => { createCompanionWindow(); positionCompanionBottomRight(); } },
+    { label: 'Show Jess orb', click: () => { if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide(); createCompanionWindow(); positionCompanionBottomRightIfNeeded(); } },
+    { label: 'Reset orb to bottom-right', click: resetOrbPosition },
     { label: 'Stop Jess (end Full Control Session)', click: () => stopFullControl('tray-stop') },
     { label: 'Start Hub-Mind at Windows sign-in (this user)', type: 'checkbox', checked: !!app.getLoginItemSettings().openAtLogin, click: item => { try { app.setLoginItemSettings({ openAtLogin: item.checked }); item.checked = !!app.getLoginItemSettings().openAtLogin; } catch (error) { item.checked = !!app.getLoginItemSettings().openAtLogin; console.error('[Hub-Mind] Could not update per-user startup setting:', error); } } },
     { type: 'separator' },
@@ -363,7 +365,14 @@ app.whenReady().then(() => {
     if (method === 'run_command') {
       const command = String(safeArgs.command || '');
       if (command.length > 4000) throw new Error('Command exceeds the 4,000-character limit.');
-      if (/\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)\b/i.test(command)) throw new Error('Potentially destructive commands require a separate explicit confirmation flow and are blocked in this release.');
+      // This runner uses the current Windows user's token only. Refuse common
+      // destructive aliases and script-based bypasses; high-risk operations
+      // remain unavailable until a dedicated spoken-confirmation flow exists.
+      if (/(^|[;&|]\s*)(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)(\s|$)/i.test(command) ||
+          /\.(ps1|bat|cmd|vbs|js|hta)\b/i.test(command) ||
+          /\b(invoke-expression|iex|start-process\s+.*-verb\s+runas)\b/i.test(command)) {
+        throw new Error('This command is blocked because it can modify the system, launch a script, or bypass the command safety checks. Elevated commands are not silently executed.');
+      }
     }
     if (['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'].includes(method) && !safeArgs.handle && !String(safeArgs.title || '').trim()) throw new Error('Provide a window title or handle.');
     if (method === 'move_window' && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Moving a window requires numeric x and y coordinates.');
@@ -520,19 +529,14 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   });
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
+      // The user must explicitly start screen sharing from Jess. Prefer the
+      // Windows system picker; this callback is only Electron's fallback path.
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
       if (!sources.length) { callback({}); return; }
-      // On Windows builds where the native system picker is unavailable, show
-      // an explicit source chooser. Never silently share the first screen.
-      const buttons = ['Cancel', ...sources.slice(0, 8).map(source => source.name || source.id)];
-      const choice = await dialog.showMessageBox(getDialogParent(), {
-        type: 'question', buttons, defaultId: 0, cancelId: 0,
-        title: 'Choose what Jess can see',
-        message: 'Select a screen or application window to share.',
-        detail: 'Choose “Share entire screen” only when you intend to share the full display. Only the selected source will be shared, and you can stop sharing at any time.',
-      });
-      const selected = choice.response > 0 ? sources[choice.response - 1] : null;
-      callback(selected ? { video: selected } : {});
+      const primaryId = String(screen.getPrimaryDisplay().id);
+      const primaryScreen = sources.find(source => source.display_id === primaryId && source.id.startsWith('screen:'));
+      const screenSource = primaryScreen || sources.find(source => source.id.startsWith('screen:'));
+      callback(screenSource ? { video: screenSource } : {});
     } catch { callback({}); }
   }, { useSystemPicker: true });
   const stopHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+J', () => {
