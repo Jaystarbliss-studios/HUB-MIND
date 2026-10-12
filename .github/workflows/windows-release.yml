@@ -99,6 +99,9 @@ jobs:
           [System.IO.File]::WriteAllBytes($certificatePath, $certificateBytes)
           "CSC_LINK=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Generate valid 256px Windows icon from official logo
+        shell: pwsh
+        run: ./scripts/generate-windows-icon.ps1
       - name: Package Windows installer
         run: npx electron-builder --win nsis --publish never
       - name: Archive installer as workflow artifact
