@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   openUrl: (url) => ipcRenderer.invoke('hubmind:open-url', url),
   launchApp: (appName) => ipcRenderer.invoke('hubmind:launch-app', appName),
   runReadonlyCommand: (commandName) => ipcRenderer.invoke('hubmind:run-readonly-command', commandName),
+  runSystemCommand: (command, purpose) => ipcRenderer.invoke('hubmind:run-system-command', command, purpose),
 }));
