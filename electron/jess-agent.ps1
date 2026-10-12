@@ -1,0 +1,68 @@
+$ErrorActionPreference='Stop'
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+Add-Type -AssemblyName System.Drawing
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class JessWin32 {
+ public delegate bool EnumWindowsProc(IntPtr h,IntPtr lp);
+ [StructLayout(LayoutKind.Sequential)] public struct RECT{public int Left,Top,Right,Bottom;}
+ [StructLayout(LayoutKind.Sequential)] public struct INPUT{public uint type;public InputUnion U;}
+ [StructLayout(LayoutKind.Explicit)] public struct InputUnion{[FieldOffset(0)]public KEYBDINPUT ki;[FieldOffset(0)]public MOUSEINPUT mi;}
+ [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT{public ushort vk,scan;public uint flags,time;public IntPtr extra;}
+ [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT{public int dx,dy;public uint data,flags,time;public IntPtr extra;}
+ [DllImport("user32.dll")]public static extern bool EnumWindows(EnumWindowsProc cb,IntPtr lp);
+ [DllImport("user32.dll")]public static extern bool IsWindowVisible(IntPtr h);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)]public static extern int GetWindowText(IntPtr h,System.Text.StringBuilder s,int n);
+ [DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
+ [DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out RECT r);
+ [DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);
+ [DllImport("user32.dll")]public static extern bool ShowWindowAsync(IntPtr h,int n);
+ [DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int he,bool repaint);
+ [DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);
+ [DllImport("user32.dll")]public static extern bool IsZoomed(IntPtr h);
+ [DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();
+ [DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);
+ [DllImport("user32.dll")]public static extern void mouse_event(uint f,uint dx,uint dy,uint data,UIntPtr extra);
+ [DllImport("user32.dll")]public static extern uint SendInput(uint n,INPUT[] i,int size);
+ public const uint KEYUP=2,UNICODE=4;
+}
+'@
+function Get-Windows {
+ $items=New-Object System.Collections.Generic.List[object]
+ $cb=[JessWin32+EnumWindowsProc]{param([IntPtr]$h,[IntPtr]$lp)
+  if(-not [JessWin32]::IsWindowVisible($h)){return $true}
+  $sb=New-Object System.Text.StringBuilder 1024;[void][JessWin32]::GetWindowText($h,$sb,$sb.Capacity);$title=$sb.ToString().Trim();if(!$title){return $true}
+  $pid=[uint32]0;[void][JessWin32]::GetWindowThreadProcessId($h,[ref]$pid);$r=New-Object JessWin32+RECT;[void][JessWin32]::GetWindowRect($h,[ref]$r);$proc='';try{$proc=(Get-Process -Id $pid -ErrorAction Stop).ProcessName}catch{}
+  $items.Add([pscustomobject]@{handle=$h.ToInt64();title=$title;process=$proc;pid=$pid;bounds=@{x=$r.Left;y=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top};state=$(if([JessWin32]::IsIconic($h)){'minimized'}elseif([JessWin32]::IsZoomed($h)){'maximized'}else{'normal'});foreground=($h -eq [JessWin32]::GetForegroundWindow())});return $true
+ }
+ [void][JessWin32]::EnumWindows($cb,[IntPtr]::Zero);return @($items)
+}
+function Find-Window($a){$ws=Get-Windows;if($a.handle){$w=$ws|Where-Object{[string]$_.handle -eq [string]$a.handle}|Select-Object -First 1;if($w){return $w}};if($a.title){$w=$ws|Where-Object{$_.title -like ('*'+[string]$a.title+'*')}|Select-Object -First 1;if($w){return $w}};return $null}
+function Send-Key($key){
+ $map=@{ENTER=13;ESC=27;TAB=9;SPACE=32;BACKSPACE=8;DELETE=46;UP=38;DOWN=40;LEFT=37;RIGHT=39;HOME=36;END=35;CTRL=17;ALT=18;SHIFT=16;WIN=91;F1=112;F2=113;F3=114;F4=115;F5=116;F6=117;F7=118;F8=119;F9=120;F10=121;F11=122;F12=123}
+ $list=New-Object System.Collections.Generic.List[JessWin32+INPUT];foreach($p in $key.ToUpperInvariant().Split('+')){$v=$map[$p];if(!$v -and $p.Length -eq 1){$v=[int][char]$p};if(!$v){throw ('Unsupported key '+$p)};$i=New-Object JessWin32+INPUT;$i.type=1;$i.U.ki.vk=[uint16]$v;$list.Add($i)}
+ for($n=$list.Count-1;$n -ge 0;$n--){$i=$list[$n];$i.U.ki.flags=[JessWin32]::KEYUP;$list.Add($i)};$arr=$list.ToArray();[void][JessWin32]::SendInput([uint32]$arr.Length,$arr,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]))
+}
+function Invoke-Action($q){
+ $a=$q.args
+ switch($q.method){
+ 'list_windows' {return @{ok=$true;verified=$true;evidence=(Get-Windows)}}
+ 'focus_window' {$w=Find-Window $a;if(!$w){throw 'Window not found'};[void][JessWin32]::ShowWindowAsync([IntPtr]$w.handle,9);[void][JessWin32]::SetForegroundWindow([IntPtr]$w.handle);Start-Sleep -Milliseconds 180;$ok=([JessWin32]::GetForegroundWindow().ToInt64() -eq [int64]$w.handle);return @{ok=$ok;verified=$ok;evidence=@{window=$w;foreground=([JessWin32]::GetForegroundWindow().ToInt64())}}}
+ {$_ -in 'close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'} {$w=Find-Window $a;if(!$w){throw 'Window not found'};$h=[IntPtr]$w.handle;switch($q.method){'close_window'{[void][JessWin32]::ShowWindowAsync($h,0);return @{ok=$true;verified=$true;evidence=@{window=$w;note='Hidden, not terminated'}}}'minimize_window'{[void][JessWin32]::ShowWindowAsync($h,6)}'maximize_window'{[void][JessWin32]::ShowWindowAsync($h,3)}'restore_window'{[void][JessWin32]::ShowWindowAsync($h,9)}default{$r=$w.bounds;$x=[int]$r.x;$y=[int]$r.y;$ww=[int]$r.width;$hh=[int]$r.height;if($q.method -eq 'move_window'){$x=[int]$a.x;$y=[int]$a.y};if($q.method -eq 'resize_window'){$ww=[Math]::Max(200,[int]$a.width);$hh=[Math]::Max(150,[int]$a.height)};if($q.method -eq 'snap_window'){Add-Type -AssemblyName System.Windows.Forms;$area=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea;switch([string]$a.position){'left'{$x=$area.X;$y=$area.Y;$ww=[int]($area.Width/2);$hh=$area.Height}'right'{$x=$area.X+[int]($area.Width/2);$y=$area.Y;$ww=[int]($area.Width/2);$hh=$area.Height}'top-right'{$x=$area.X+[int]($area.Width/2);$y=$area.Y;$ww=[int]($area.Width/2);$hh=[int]($area.Height/2)}'top-left'{$x=$area.X;$y=$area.Y;$ww=[int]($area.Width/2);$hh=[int]($area.Height/2)}'bottom-right'{$x=$area.X+[int]($area.Width/2);$y=$area.Y+[int]($area.Height/2);$ww=[int]($area.Width/2);$hh=[int]($area.Height/2)}'bottom-left'{$x=$area.X;$y=$area.Y+[int]($area.Height/2);$ww=[int]($area.Width/2);$hh=[int]($area.Height/2)}default{throw 'Unsupported snap position'}}};[void][JessWin32]::ShowWindowAsync($h,9);if(-not [JessWin32]::MoveWindow($h,$x,$y,$ww,$hh,$true)){throw 'MoveWindow failed'}}};Start-Sleep -Milliseconds 150;$after=Find-Window @{handle=$w.handle};return @{ok=$true;verified=($null -ne $after);evidence=@{before=$w;after=$after}}}
+ 'mouse_move' {[void][JessWin32]::SetCursorPos([int]$a.x,[int]$a.y);return @{ok=$true;verified=$true;evidence=@{x=$a.x;y=$a.y;note='Cursor position requested'}}}
+ {$_ -in 'click','double_click','right_click'} {[void][JessWin32]::SetCursorPos([int]$a.x,[int]$a.y);$down=2;$up=4;if($q.method -eq 'right_click'){$down=8;$up=16};$count=1;if($q.method -eq 'double_click'){$count=2};1..$count|ForEach-Object{[JessWin32]::mouse_event($down,0,0,0,[UIntPtr]::Zero);[JessWin32]::mouse_event($up,0,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 70};return @{ok=$true;verified=$false;evidence=@{x=$a.x;y=$a.y;note='Input injected; UI effect not independently confirmed'}}}
+ 'scroll' {[void][JessWin32]::SetCursorPos([int]$a.x,[int]$a.y);[JessWin32]::mouse_event(0x0800,0,0,[int]$a.delta,[UIntPtr]::Zero);return @{ok=$true;verified=$false;evidence=@{x=$a.x;y=$a.y;delta=$a.delta}}}
+ 'type_text' {$text=[string]$a.text;if($text.Length -gt 10000){throw 'Text limited to 10,000 characters'};foreach($ch in $text.ToCharArray()){$i=New-Object JessWin32+INPUT;$i.type=1;$i.U.ki.scan=[uint16][char]$ch;$i.U.ki.flags=4;$up=$i;$up.U.ki.flags=6;$arr=@($i,$up);[void][JessWin32]::SendInput(2,$arr,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]))};return @{ok=$true;verified=$false;evidence=@{characters=$text.Length;note='Unicode input sent; field content not independently verified'}}}
+ 'press_keys' {Send-Key ([string]$a.keys);return @{ok=$true;verified=$false;evidence=@{keys=$a.keys;note='Key events sent; effect not independently verified'}}}
+ 'read_screen_text' {$root=[System.Windows.Automation.AutomationElement]::RootElement;$cond=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::IsControlElementProperty,$true);$all=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,$cond);$lines=New-Object System.Collections.Generic.List[string];for($i=0;$i -lt [Math]::Min($all.Count,2500);$i++){try{$name=$all.Item($i).Current.Name;if($name){$lines.Add($name)}}catch{}};$text=$lines -join [Environment]::NewLine;return @{ok=$true;verified=($text.Length -gt 0);evidence=@{text=$text.Substring(0,[Math]::Min(20000,$text.Length));source='Windows UI Automation';elements=$lines.Count}}}
+ 'screenshot' {Add-Type -AssemblyName System.Windows.Forms;$result=@();foreach($s in [System.Windows.Forms.Screen]::AllScreens){$b=$s.Bounds;$bmp=New-Object System.Drawing.Bitmap($b.Width,$b.Height);$g=[System.Drawing.Graphics]::FromImage($bmp);$g.CopyFromScreen($b.X,$b.Y,0,0,$bmp.Size);$ms=New-Object System.IO.MemoryStream;$bmp.Save($ms,[System.Drawing.Imaging.ImageFormat]::Jpeg);$result+=@{monitor=$s.DeviceName;bounds=@{x=$b.X;y=$b.Y;width=$b.Width;height=$b.Height};primary=$s.Primary;imageBase64=[Convert]::ToBase64String($ms.ToArray())};$g.Dispose();$bmp.Dispose();$ms.Dispose()};return @{ok=$true;verified=($result.Count -gt 0);evidence=@{monitors=$result}}}
+ 'get_time' {return @{ok=$true;verified=$true;evidence=@{localTime=(Get-Date).ToString('o');timeZone=[TimeZoneInfo]::Local.Id}}}
+ 'system_info' {return @{ok=$true;verified=$true;evidence=@{computer=$env:COMPUTERNAME;user=$env:USERNAME;os=[Environment]::OSVersion.VersionString;architecture=$env:PROCESSOR_ARCHITECTURE}}}
+ 'launch_app' {$name=[string]$a.name;if($name -match '[\r\n;&|<>]'){throw 'Invalid application name'};$app=Get-StartApps|Where-Object{$_.Name -like ('*'+$name+'*') -or $_.AppID -like ('*'+$name+'*')}|Select-Object -First 1;if($app){Start-Process explorer.exe -ArgumentList ('shell:AppsFolder\'+$app.AppID);Start-Sleep -Milliseconds 500;$w=Get-Windows|Where-Object{$_.title -like ('*'+$name+'*')}|Select-Object -First 1;return @{ok=$true;verified=($null -ne $w);evidence=@{app=$app;window=$w}}};$cmd=Get-Command $name -ErrorAction SilentlyContinue;if($cmd){Start-Process -FilePath $cmd.Source;Start-Sleep -Milliseconds 500;$w=Get-Windows|Where-Object{$_.process -like ('*'+$name+'*')}|Select-Object -First 1;return @{ok=$true;verified=($null -ne $w);evidence=@{command=$cmd.Source;window=$w}}};throw ('Could not resolve installed app '+$name)}
+ 'run_command' {$command=[string]$a.command;if($command.Length -gt 4000){throw 'Command limited to 4,000 characters'};$blocked='(?i)\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+/w)\b';if($command -match $blocked){throw 'Potentially destructive command blocked'};$out=& powershell.exe -NoLogo -NoProfile -NonInteractive -Command $command 2>&1|Out-String;return @{ok=($LASTEXITCODE -eq 0);verified=$false;evidence=@{output=$out.Substring(0,[Math]::Min(12000,$out.Length));exitCode=$LASTEXITCODE;note='Output captured; side effects not independently verified'}}}
+ default {throw ('Unknown method: '+$q.method)}
+ }
+}
+while($true){$line=[Console]::ReadLine();if($null -eq $line){break};try{$q=ConvertFrom-Json $line;$r=Invoke-Action $q;$o=@{id=$q.id;result=$r}}catch{$o=@{id=$q.id;result=@{ok=$false;verified=$false;evidence=$null;error=$_.Exception.Message}}};try{[Console]::Out.WriteLine((ConvertTo-Json -InputObject $o -Depth 12 -Compress));[Console]::Out.Flush()}catch{}}
