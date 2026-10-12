@@ -582,12 +582,17 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       if (!sources.length) { callback({}); return; }
       const primaryId = String(screen.getPrimaryDisplay().id);
       const primaryScreen = sources.find(source => source.display_id === primaryId && source.id.startsWith('screen:'));
+      // Put Hub-Mind's real top-level window near the front of the chooser so it
+      // remains selectable even when many unrelated windows are open.
+      const hubMindWindow = sources.find(source => source.id.startsWith('window:') && /hub-mind/i.test(String(source.name || '')));
+      const otherWindows = sources.filter(source => source.id.startsWith('window:') && source.name && !/^Electron$/i.test(source.name) && source.id !== hubMindWindow?.id);
       const ordered = [
         ...(primaryScreen ? [primaryScreen] : []),
-        ...sources.filter(source => source.id.startsWith('window:') && source.name && !/^Electron$/i.test(source.name)),
+        ...(hubMindWindow ? [hubMindWindow] : []),
+        ...otherWindows,
         ...sources.filter(source => source.id.startsWith('screen:') && source.id !== primaryScreen?.id),
       ];
-      const unique = [...new Map(ordered.map(source => [source.id, source])).values()].slice(0, 4);
+      const unique = [...new Map(ordered.map(source => [source.id, source])).values()].slice(0, 8);
       if (!unique.length) { callback({}); return; }
       const labels = unique.map(source => {
         const name = String(source.name || 'Application window').replace(/[\r\n]+/g, ' ').slice(0, 64);
