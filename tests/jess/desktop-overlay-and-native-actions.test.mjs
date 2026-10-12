@@ -43,6 +43,10 @@ test('native system actions use the isolated bridge and a Full Control Session',
   assert.match(preload, /startFullControl/);
   assert.match(tools, /name: 'run_windows_command_native'/);
   assert.match(tools, /name: 'launch_windows_application'/);
+  assert.match(tools, /name: 'control_system_volume'/);
+  assert.match(tools, /name: 'control_screen_brightness'/);
+  assert.match(main, /method === 'media_key'/);
+  assert.match(await read('../../electron/jess-agent.ps1'), /'media_key'/);
 });
 
 test('desktop display capture uses the native system picker without a custom modal', async () => {
