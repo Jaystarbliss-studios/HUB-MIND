@@ -22,11 +22,14 @@ body {
   @apply bg-slate-950 text-slate-200 font-sans antialiased;
 }
 
-/* Light mode overrides if needed, but defaulting to dark per prompt */
-@media (prefers-color-scheme: light) {
-  body {
-    @apply bg-slate-50 text-slate-900;
-  }
+/* Hub-Mind workspace is intentionally dark in every OS/browser color scheme. */
+:root { color-scheme: dark; }
+html, body, #root {
+  background-color: #020617;
+  color: #e2e8f0;
+}
+body {
+  @apply bg-slate-950 text-slate-200 font-sans antialiased;
 }
 
 

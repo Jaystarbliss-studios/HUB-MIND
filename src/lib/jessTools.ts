@@ -193,6 +193,11 @@ const object = (properties: Record<string, any>, required?: string[]): JessToolD
 });
 
 export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
+  { name: 'launch_windows_app', description: 'On the installed Windows desktop app only, launch an approved application. Windows displays a confirmation before launching.', parameters: object({ app: { type: 'string', enum: ['calculator','notepad','paint','explorer','taskManager','edge','chrome','word','excel','powerpoint','teams','vscode'] } }, ['app']) },
+  { name: 'run_windows_diagnostic', description: 'On the installed Windows desktop app only, run an approved read-only system diagnostic. Windows displays a confirmation first.', parameters: object({ command: { type: 'string', enum: ['ipconfig','systemInfo','runningProcesses'] } }, ['command']) },
+  { name: 'run_windows_command', description: 'On the installed Windows desktop app only, request a user-confirmed PowerShell command. The exact command and purpose must be shown to the user; high-risk destructive commands are blocked.', parameters: object({ command: { type: 'string', description: 'PowerShell command to run after Windows confirmation' }, purpose: { type: 'string', description: 'Plain-language reason for running it' } }, ['command','purpose']) },
+  { name: 'open_windows_website', description: 'On the installed Windows desktop app only, open a public HTTP or HTTPS website in the default browser after user confirmation.', parameters: object({ url: { type: 'string' } }, ['url']) },
+  { name: 'open_windows_path', description: 'On the installed Windows desktop app only, open a local file or folder after confirmation.', parameters: object({ path: { type: 'string' } }, ['path']) },
   { name: 'get_user_profile', description: 'Get the signed-in Hub-Mind user profile, role, name, preferred name, email, and preferences.', parameters: object({}) },
   { name: 'get_current_user_profile', description: 'Get the currently signed-in user identity, name, preferred name, email, role, and preferences.', parameters: object({}) },
   { name: 'get_current_context', description: 'Get the current Hub-Mind route and active workspace context.', parameters: object({}) },
@@ -539,6 +544,39 @@ export async function executeJessTool(
 
   try {
     switch (name) {
+      case 'launch_windows_app': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.launchApp !== 'function') return { result: { success: false, error: 'Windows application launching is available only in the installed desktop app.' } };
+        const result = await desktop.launchApp(String(args?.app || ''));
+        return { result: { success: !!result?.launched, ...result } };
+      }
+      case 'run_windows_diagnostic': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.runReadonlyCommand !== 'function') return { result: { success: false, error: 'Windows diagnostics are available only in the installed desktop app.' } };
+        const result = await desktop.runReadonlyCommand(String(args?.command || ''));
+        return { result: { success: !!result?.ran, ...result } };
+      }
+      case 'run_windows_command': {
+        const desktop = (window as any).hubMindDesktop;
+        const command = String(args?.command || '').trim();
+        const purpose = String(args?.purpose || '').trim();
+        if (!desktop?.isDesktopApp || typeof desktop.runSystemCommand !== 'function') return { result: { success: false, error: 'Windows command execution is available only in the installed desktop app.' } };
+        if (!command || command.length > 1200 || !purpose || purpose.length > 300) return { result: { success: false, error: 'Provide a command under 1,200 characters and a short purpose.' } };
+        const result = await desktop.runSystemCommand(command, purpose);
+        return { result: { success: !!result?.ran, ...result } };
+      }
+      case 'open_windows_website': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.openUrl !== 'function') return { result: { success: false, error: 'Native website opening is available only in the installed desktop app.' } };
+        const result = await desktop.openUrl(String(args?.url || ''));
+        return { result: { success: !!result?.opened, ...result } };
+      }
+      case 'open_windows_path': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.openUserPath !== 'function') return { result: { success: false, error: 'Local file opening is available only in the installed desktop app.' } };
+        const result = await desktop.openUserPath(String(args?.path || ''));
+        return { result: { success: !!result?.opened, ...result } };
+      }
       case 'search_web': {
         const queryText = String(args?.query || '').trim();
         if (!queryText || queryText.length > 2000) {

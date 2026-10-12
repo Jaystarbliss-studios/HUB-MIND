@@ -4,8 +4,10 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   showMain: () => ipcRenderer.invoke('hubmind:show-main'),
   showCompanion: () => ipcRenderer.invoke('hubmind:show-companion'),
   hideCompanion: () => ipcRenderer.invoke('hubmind:hide-companion'),
+  moveCompanionBy: (dx, dy) => ipcRenderer.invoke('hubmind:move-companion-by', dx, dy),
   openUserPath: (path) => ipcRenderer.invoke('hubmind:open-user-path', path),
   openUrl: (url) => ipcRenderer.invoke('hubmind:open-url', url),
   launchApp: (appName) => ipcRenderer.invoke('hubmind:launch-app', appName),
   runReadonlyCommand: (commandName) => ipcRenderer.invoke('hubmind:run-readonly-command', commandName),
+  runSystemCommand: (command, purpose) => ipcRenderer.invoke('hubmind:run-system-command', command, purpose),
 }));
