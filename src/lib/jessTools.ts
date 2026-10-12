@@ -211,6 +211,17 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'run_windows_command_native', description: 'Run a bounded PowerShell command as the current Windows user and return captured output. Non-elevated. Destructive commands are blocked and results are not considered verified merely because output was returned. Requires Full Control Session.', parameters: object({ command: { type: 'string' } }, ['command']) },
   { name: 'get_windows_time', description: 'Read local Windows time and time zone.', parameters: object({}) },
   { name: 'get_windows_system_info', description: 'Read basic Windows computer and OS information.', parameters: object({}) },
+  { name: 'chrome_list_tabs', description: 'List open Chrome tabs with IDs, titles, URLs and loading status. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({}) },
+  { name: 'chrome_open_tab', description: 'Open an HTTP or HTTPS website in a new Chrome tab. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({ url: { type: 'string' }, active: { type: 'boolean' } }, ['url']) },
+  { name: 'chrome_close_tab', description: 'Close a specific Chrome tab by its tab ID. Requires an explicit tabId; it never closes an unspecified active tab. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }, ['tabId']) },
+  { name: 'chrome_activate_tab', description: 'Activate and focus a Chrome tab by ID, or the current active tab when omitted. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }) },
+  { name: 'chrome_navigate_tab', description: 'Navigate a Chrome tab to an HTTP or HTTPS URL. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, url: { type: 'string' }, active: { type: 'boolean' } }, ['url']) },
+  { name: 'chrome_reload_tab', description: 'Reload a Chrome tab. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }) },
+  { name: 'chrome_read_page', description: 'Read visible page text and title from a Chrome tab. Does not bypass browser protections or restricted pages. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }) },
+  { name: 'chrome_find_element', description: 'Find an element in the current Chrome page by visible text or CSS selector. Supply at least one. Returns element bounds and metadata; it does not click. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, selector: { type: 'string' }, text: { type: 'string' } }) },
+  { name: 'chrome_click_element', description: 'Click a matching page button/link/element by visible text or CSS selector. Supply at least one. The click is not considered complete until a follow-up page read verifies the intended outcome. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, selector: { type: 'string' }, text: { type: 'string' } }) },
+  { name: 'chrome_fill_field', description: 'Fill a specific input, textarea or select identified by a CSS selector. Requires Full Control Session. Never use on password or payment fields.', parameters: object({ tabId: { type: 'number' }, selector: { type: 'string' }, value: { type: 'string' } }, ['selector','value']) },
+  { name: 'chrome_scroll', description: 'Scroll a Chrome page by a number of pixels. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, delta: { type: 'number' } }, ['delta']) },
   { name: 'get_user_profile', description: 'Get the signed-in Hub-Mind user profile, role, name, preferred name, email, and preferences.', parameters: object({}) },
   { name: 'get_current_user_profile', description: 'Get the currently signed-in user identity, name, preferred name, email, role, and preferences.', parameters: object({}) },
   { name: 'get_current_context', description: 'Get the current Hub-Mind route and active workspace context.', parameters: object({}) },
@@ -613,6 +624,26 @@ export async function executeJessTool(
         if (name === 'get_windows_time') { method = 'get_time'; payload = {}; }
         if (name === 'get_windows_system_info') { method = 'system_info'; payload = {}; }
         const result = await desktop.nativeAction(method, payload, user.id);
+        return { result: { ...result, success: result?.ok === true && result?.verified === true } };
+      }
+      case 'chrome_list_tabs':
+      case 'chrome_open_tab':
+      case 'chrome_close_tab':
+      case 'chrome_activate_tab':
+      case 'chrome_navigate_tab':
+      case 'chrome_reload_tab':
+      case 'chrome_scroll':
+      case 'chrome_read_page':
+      case 'chrome_find_element':
+      case 'chrome_click_element':
+      case 'chrome_fill_field': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.chromeAction !== 'function') return { result: { success: false, verified: false, error: 'Chrome control is available only in the installed Windows desktop app with the Jess Chrome extension.' } };
+        const status = await desktop.nativeStatus();
+        if (!status?.active) return { result: { success: false, verified: false, error: 'Full Control Session is off. Say “Jess, full control” first.' } };
+        if (name === 'chrome_close_tab' && !Number.isInteger(Number(args?.tabId))) return { result: { success: false, verified: false, error: 'Specify the exact Chrome tab ID to close.' } };
+        if (['chrome_find_element','chrome_click_element'].includes(name) && !String(args?.selector || '').trim() && !String(args?.text || '').trim()) return { result: { success: false, verified: false, error: 'Provide visible text or a CSS selector to identify the target element.' } };
+        const result = await desktop.chromeAction(name, args || {}, user.id);
         return { result: { ...result, success: result?.ok === true && result?.verified === true } };
       }
       case 'desktop_launch_app':
