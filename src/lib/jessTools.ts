@@ -606,7 +606,7 @@ export async function executeJessTool(
         if (name === 'get_windows_time') { method = 'get_time'; payload = {}; }
         if (name === 'get_windows_system_info') { method = 'system_info'; payload = {}; }
         const result = await desktop.nativeAction(method, payload, user.id);
-        return { result: { success: result?.ok === true, ...result } };
+        return { result: { ...result, success: result?.ok === true && result?.verified === true } };
       }
       case 'desktop_launch_app':
       case 'launch_windows_app': {
