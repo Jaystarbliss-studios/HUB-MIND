@@ -14,6 +14,9 @@ let fullControlActive = false;
 let controlSessionStartedAt = null;
 let controlSessionUserId = null;
 let controlAuditPath = null;
+let offlineWakeProcess = null;
+let offlineWakeConsentAsked = false;
+let offlineWakeConsentGranted = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const trustedAppHosts = new Set(['hub-mind.netlify.app']);
 const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'identitytoolkit.googleapis.com']);
@@ -129,6 +132,82 @@ async function showMainVerified(timeoutMs = 5000) {
   });
 }
 
+function stopOfflineWake() {
+  const child = offlineWakeProcess;
+  offlineWakeProcess = null;
+  if (child && !child.killed) {
+    try { child.kill(); } catch {}
+  }
+  return { stopped: true };
+}
+
+async function startOfflineWake(event) {
+  assertTrustedSender(event);
+  if (process.platform !== 'win32') return { started: false, error: 'Offline Windows wake detection is available only in the Windows desktop app.' };
+  if (offlineWakeProcess && !offlineWakeProcess.killed && offlineWakeProcess.exitCode === null) return { started: true, alreadyRunning: true, source: 'Windows offline recognizer' };
+  if (!offlineWakeConsentAsked) {
+    offlineWakeConsentAsked = true;
+    const choice = await dialog.showMessageBox(getDialogParent(), {
+      type: 'question', buttons: ['Not now', 'Enable offline wake word'], defaultId: 0, cancelId: 0,
+      title: 'Enable local Jess wake-word detection?',
+      message: 'Allow Hub-Mind to listen locally for “Jess” while the workspace is running?',
+      detail: 'Speech recognition runs on this PC using Windows speech components. Audio is not sent to Hub-Mind servers by this wake listener. Listening stops when Jess wakes, when you stop it, or when Hub-Mind quits. A compatible Windows speech recognizer and microphone are required.'
+    });
+    offlineWakeConsentGranted = choice.response === 1;
+  }
+  if (!offlineWakeConsentGranted) return { started: false, cancelled: true, error: 'Offline wake-word listening was not enabled.' };
+  const exePath = app.isPackaged
+    ? path.join(process.resourcesPath, 'JessOfflineWake.exe')
+    : path.join(__dirname, '..', 'native', 'JessOfflineWake', 'publish', 'JessOfflineWake.exe');
+  if (!fs.existsSync(exePath)) return { started: false, error: 'The offline wake helper is not installed. Rebuild the Windows desktop package with the native helpers.' };
+  const child = spawn(exePath, [], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], shell: false });
+  offlineWakeProcess = child;
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', chunk => console.warn('[Jess offline wake]', String(chunk).slice(0, 800)));
+  let buffer = '';
+  let resolved = false;
+  let readyTimer;
+  const settle = value => {
+    if (resolved) return;
+    resolved = true;
+    clearTimeout(readyTimer);
+    resolveStart(value);
+  };
+  let resolveStart;
+  const ready = new Promise(resolve => { resolveStart = resolve; });
+  readyTimer = setTimeout(() => {
+    if (offlineWakeProcess === child) stopOfflineWake();
+    settle({ started: false, error: 'Windows offline speech recognizer did not become ready. Check microphone access and installed speech recognition language support.' });
+  }, 5000);
+  child.stdout.on('data', chunk => {
+    buffer += chunk;
+    if (buffer.length > 65536) { stopOfflineWake(); settle({ started: false, error: 'Offline wake helper returned an oversized message.' }); return; }
+    let at;
+    while ((at = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, at).trim();
+      buffer = buffer.slice(at + 1);
+      if (!line) continue;
+      let message;
+      try { message = JSON.parse(line); } catch { continue; }
+      if (message.type === 'ready') settle({ started: true, source: message.source || 'Windows offline recognizer' });
+      if (message.type === 'wake') {
+        stopOfflineWake();
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('hubmind:offline-wake', { prompt: String(message.prompt || '').slice(0, 2000), source: message.source || 'Windows offline recognizer' });
+      }
+    }
+  });
+  child.once('error', error => {
+    if (offlineWakeProcess === child) offlineWakeProcess = null;
+    settle({ started: false, error: String(error?.message || 'Could not start offline wake helper.').slice(0, 500) });
+  });
+  child.once('exit', code => {
+    if (offlineWakeProcess === child) offlineWakeProcess = null;
+    if (!resolved) settle({ started: false, error: 'Offline wake helper exited before becoming ready (code ' + String(code) + ').' });
+  });
+  return await ready;
+}
+
 function auditNativeAction(entry) {
   try {
     if (!controlAuditPath) controlAuditPath = path.join(app.getPath('userData'), 'jess-native-audit.jsonl');
@@ -184,6 +263,8 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
   ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
   ipcMain.handle('hubmind:chrome-status', (event) => { assertTrustedSender(event); return chromeBridge.status(); });
+  ipcMain.handle('hubmind:offline-wake-start', (event) => startOfflineWake(event));
+  ipcMain.handle('hubmind:offline-wake-stop', (event) => { assertTrustedSender(event); return stopOfflineWake(); });
   ipcMain.handle('hubmind:chrome-action', async (event, method, args, userId) => {
     assertTrustedSender(event);
     if (!fullControlActive || typeof userId !== 'string' || userId !== controlSessionUserId) {
@@ -372,5 +453,5 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   app.on('activate', showMain);
 });
 
-app.on('before-quit', () => { stopFullControl('app-quit'); chromeBridge.stop(); globalShortcut.unregisterAll(); quitting = true; });
+app.on('before-quit', () => { stopFullControl('app-quit'); stopOfflineWake(); chromeBridge.stop(); globalShortcut.unregisterAll(); quitting = true; });
 app.on('window-all-closed', () => { /* Keep tray and companion available until explicit Quit. */ });
