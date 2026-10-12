@@ -14,6 +14,7 @@ on:
       - 'electron-builder.yml'
       - 'package.json'
       - 'src/**'
+      - 'tests/**'
       - 'public/**'
       - 'index.html'
       - 'vite.config.ts'
