@@ -501,8 +501,8 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
     if (typeof requestedCommand !== 'string' || !requestedCommand.trim() || requestedCommand.length > 1200) throw new Error('Command must be between 1 and 1,200 characters.');
     if (typeof requestedPurpose !== 'string' || !requestedPurpose.trim() || requestedPurpose.length > 300) throw new Error('A short purpose is required.');
     const command = requestedCommand.trim();
-    const blocked = /(^|[;&|]\\s*)(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\\s+delete|cipher\\s+\\/w)(\\s|$)/i;
-    if (blocked.test(command) || /\\.(ps1|bat|cmd|vbs|js|hta)\\b/i.test(command) || /\\b(start-process\\s+.*-verb\\s+runas)\\b/i.test(command)) {
+    const blocked = /(^|[;&|]\s*)(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)(\s|$)/i;
+    if (blocked.test(command) || /\.(ps1|bat|cmd|vbs|js|hta)\b/i.test(command) || /\b(start-process\s+.*-verb\s+runas)\b/i.test(command)) {
       throw new Error('This command is blocked because it can modify the system, launch a script, or bypass safety checks.');
     }
     // Full Control is the session-level permission; this runs as the current user, never elevated.
