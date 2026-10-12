@@ -366,7 +366,7 @@ export class LiveAudioClient {
         return;
       }
 
-      const nativeToolNames = JESS_TOOLS_DECLARATIONS.filter(tool => /^(jess_full_control|jess_stop|list_windows|manage_windows|control_mouse|drag_windows_mouse|type_windows_text|press_windows_keys|take_windows_screenshot|read_windows_screen|launch_windows_application|open_local_windows_path|run_windows_command_native|get_windows_time|get_windows_system_info)$/.test(tool.name)).map(tool => tool.name);
+      const nativeToolNames = JESS_TOOLS_DECLARATIONS.filter(tool => /^(jess_full_control|jess_stop|list_windows|manage_windows|control_mouse|drag_windows_mouse|type_windows_text|press_windows_keys|take_windows_screenshot|read_windows_screen|find_windows_ui_element|invoke_windows_ui_element|launch_windows_application|open_local_windows_path|run_windows_command_native|get_windows_time|get_windows_system_info)$/.test(tool.name)).map(tool => tool.name);
       const availableTools = JESS_TOOLS_DECLARATIONS.filter(tool => !nativeToolNames.includes(tool.name) || (window as any).hubMindDesktop?.isDesktopApp === true);
       const systemInstruction = [
         'NATIVE WINDOWS HONESTY PROTOCOL: Your available tool registry is provided here: ' + nativeToolNames.join(', ') + '. Use only tools actually listed and successfully returned. Do not claim a Windows action succeeded unless the tool result has ok=true and verified=true. For mouse clicks, typing and keyboard injection, explain that input was sent but the effect could not be independently verified unless a follow-up read/screenshot confirms it.',
