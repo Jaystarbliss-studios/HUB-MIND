@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   startFullControl: (userId) => ipcRenderer.invoke('hubmind:full-control-start', userId),
   stopFullControl: () => ipcRenderer.invoke('hubmind:full-control-stop'),
   nativeStatus: () => ipcRenderer.invoke('hubmind:native-status'),
+  chromeStatus: () => ipcRenderer.invoke('hubmind:chrome-status'),
+  chromeAction: (method, args, userId) => ipcRenderer.invoke('hubmind:chrome-action', method, args, userId),
   nativeAction: (method, args, userId) => ipcRenderer.invoke('hubmind:native-action', method, args, userId),
   showMain: () => ipcRenderer.invoke('hubmind:show-main'),
   showCompanion: () => ipcRenderer.invoke('hubmind:show-companion'),
