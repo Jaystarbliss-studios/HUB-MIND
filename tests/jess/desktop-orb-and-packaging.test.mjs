@@ -18,7 +18,7 @@ test('desktop orb is a compact draggable icon-only surface', () => {
   assert.match(main, /width: 96, height: 96/);
   assert.match(main, /APP_URL \+ '\/companion'/);
   assert.match(main, /mainWindow\.on\('show', \(\) => \{ if \(companionWindow/);
-  assert.match(orb, /jess-orb\.svg/);
+  assert.match(orb, /JessOrbVisualizer/);
   assert.match(orb, /moveCompanionBy/);
   assert.match(orb, /is-transcript-visible/);
 });
