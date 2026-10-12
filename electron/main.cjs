@@ -18,6 +18,7 @@ let controlAuditPath = null;
 let offlineWakeProcess = null;
 let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
+let offlineWakeConsentLoaded = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const trustedAppHosts = new Set(['hub-mind.netlify.app']);
 const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'identitytoolkit.googleapis.com']);
@@ -188,15 +189,29 @@ async function startOfflineWake(event) {
   assertTrustedSender(event);
   if (process.platform !== 'win32') return { started: false, error: 'Offline Windows wake detection is available only in the Windows desktop app.' };
   if (offlineWakeProcess && !offlineWakeProcess.killed && offlineWakeProcess.exitCode === null) return { started: true, alreadyRunning: true, source: 'Windows offline recognizer' };
+  if (!offlineWakeConsentLoaded) {
+    offlineWakeConsentLoaded = true;
+    try {
+      const stored = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'jess-offline-wake-consent.json'), 'utf8'));
+      if (typeof stored.granted === 'boolean') {
+        offlineWakeConsentAsked = true;
+        offlineWakeConsentGranted = stored.granted;
+      }
+    } catch {}
+  }
   if (!offlineWakeConsentAsked) {
-    offlineWakeConsentAsked = true;
+    // Ask once per installation profile, then remember either choice.
     const choice = await dialog.showMessageBox(getDialogParent(), {
       type: 'question', buttons: ['Not now', 'Enable offline wake word'], defaultId: 0, cancelId: 0,
       title: 'Enable local Jess wake-word detection?',
       message: 'Allow Hub-Mind to listen locally for “Jess” while the workspace is running?',
-      detail: 'Speech recognition runs on this PC using Windows speech components. Audio is not sent to Hub-Mind servers by this wake listener. Listening stops when Jess wakes, when you stop it, or when Hub-Mind quits. A compatible Windows speech recognizer and microphone are required.'
+      detail: 'Speech recognition runs locally on this PC. Audio is not sent to Hub-Mind servers by this wake listener. Listening stops when Jess wakes, when you stop it, or when Hub-Mind quits. You can change this by clearing the saved wake consent in Hub-Mind app data.'
     });
+    offlineWakeConsentAsked = true;
     offlineWakeConsentGranted = choice.response === 1;
+    try {
+      fs.writeFileSync(path.join(app.getPath('userData'), 'jess-offline-wake-consent.json'), JSON.stringify({ granted: offlineWakeConsentGranted, savedAt: new Date().toISOString() }), 'utf8');
+    } catch (error) { console.warn('[Hub-Mind] Could not persist offline wake consent:', error); }
   }
   if (!offlineWakeConsentGranted) return { started: false, cancelled: true, error: 'Offline wake-word listening was not enabled.' };
   const exePath = app.isPackaged
@@ -468,12 +483,11 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   });
   ipcMain.handle('hubmind:open-url', async (event, requestedUrl) => {
     assertTrustedSender(event);
+    if (!fullControlActive) throw new Error('Start Jess Full Control before opening websites from voice commands.');
     if (typeof requestedUrl !== 'string' || requestedUrl.length > 2048) throw new Error('Invalid URL.');
     let parsed; try { parsed = new URL(requestedUrl); } catch { throw new Error('Enter a valid URL.'); }
     if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('Only web URLs can be opened.');
-    const choice = await dialog.showMessageBox(getDialogParent(), { type: 'question', buttons: ['Cancel', 'Open website'], defaultId: 0, cancelId: 0, title: 'Open website?', message: parsed.href, detail: 'Jess will open this page in your default browser.' });
-    if (choice.response !== 1) return { opened: false };
-    await shell.openExternal(parsed.href); return { opened: true, url: parsed.href };
+    await shell.openExternal(parsed.href); auditNativeAction({ event: 'open-url', url: parsed.href }); return { opened: true, url: parsed.href };
   });
   ipcMain.handle('hubmind:launch-app', async (event, appName) => {
     assertTrustedSender(event);
