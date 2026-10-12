@@ -108,7 +108,12 @@ async function dispatch(message) {
       const tab = await tabById(a.tabId);
       const [result] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: ({ selector, value }) => {
         const el = document.querySelector(selector);
-        if (!el || !('value' in el) || el.disabled) return { filled: false };
+        if (!el || !('value' in el) || el.disabled) return { filled: false, error: 'Field was not found or is disabled.' };
+        const type = String(el.type || '').toLowerCase();
+        const label = [el.getAttribute('aria-label'), el.getAttribute('autocomplete'), el.getAttribute('name'), el.getAttribute('id'), el.getAttribute('placeholder')].filter(Boolean).join(' ').toLowerCase();
+        if (type === 'password' || /password|credit.?card|card.?number|cvv|cvc|security.?code|one.?time.?code|otp|payment/.test(label)) {
+          return { filled: false, error: 'Jess is blocked from filling password, payment, card, security-code or one-time-code fields.' };
+        }
         const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
         const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
         setter?.call(el, value); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
