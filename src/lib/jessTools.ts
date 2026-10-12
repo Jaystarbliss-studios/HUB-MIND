@@ -398,6 +398,9 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   },
   { behavior: 'NON_BLOCKING', name: 'start_background_operation', description: 'Start a real multi-step background workflow. Jess can continue conversing while it runs. Progress must reflect completed executable steps, never simulated waiting.', parameters: object({ title: { type: 'string' }, description: { type: 'string' }, taskType: { type: 'string' }, steps: { type: 'array', description: 'Ordered executable tool steps.', items: { type: 'object', properties: { tool: { type: 'string' }, args: { type: 'object' }, label: { type: 'string' } }, required: ['tool'] } } }, ['title', 'steps']) },
   { name: 'get_background_tasks_status', description: 'Check the real-time progress percentage and stage of background tasks.', parameters: object({ taskId: { type: 'string' } }) },
+  { name: 'desktop_launch_app', description: 'On the installed Windows Hub-Mind desktop app, request permission to launch an approved built-in application. Only works in the native desktop shell and always shows a confirmation dialog.', parameters: object({ appName: { type: 'string', enum: ['calculator', 'notepad', 'paint', 'explorer', 'taskManager'] } }, ['appName']) },
+  { name: 'desktop_run_readonly_command', description: 'On the installed Windows desktop app, request permission to run an approved read-only Windows diagnostic command. Requires explicit user confirmation; it cannot execute arbitrary shell commands.', parameters: object({ commandName: { type: 'string', enum: ['ipconfig', 'systemInfo', 'runningProcesses', 'diskSpace'] } }, ['commandName']) },
+  { name: 'desktop_open_website', description: 'Ask the installed Windows desktop app to open a web URL in the default browser after confirmation.', parameters: object({ url: { type: 'string' } }, ['url']) },
   { name: 'end_session', description: 'Put the AI assistant to sleep or end the current live voice session when the user says "end this session", "go to sleep", "sleep", "deactivate", or wants to conclude.', parameters: object({ reason: { type: 'string' } }) },
 ];
 
@@ -535,6 +538,17 @@ export async function executeJessTool(
 
   try {
     switch (name) {
+      case 'desktop_launch_app':
+      case 'desktop_run_readonly_command':
+      case 'desktop_open_website': {
+        const desktop = typeof window !== 'undefined' ? (window as any).hubMindDesktop : null;
+        if (!desktop?.isDesktopApp) return { result: { success: false, error: 'This action is available only in the installed Hub-Mind Windows app.' } };
+        let response: any;
+        if (name === 'desktop_launch_app') response = await desktop.launchApp(String(args.appName || ''));
+        else if (name === 'desktop_run_readonly_command') response = await desktop.runReadonlyCommand(String(args.commandName || ''));
+        else response = await desktop.openUrl(String(args.url || ''));
+        return { result: { success: true, ...response } };
+      }
       case 'get_user_profile':
       case 'get_current_user_profile':
       case 'get_current_user':
