@@ -21,8 +21,9 @@ Audit date: 2026-10-12. PR #66 is merged to main. The cross-platform CI, Windows
 | Window listing, focus, close, minimize, maximize, restore, move, resize, snap | Implemented in the PowerShell sidecar and allowlisted IPC | Test against real Windows applications and DPI/multi-monitor setups |
 | Mouse, typing, key combinations | Implemented; input delivery is not proof of target effect | Verify Notepad and real app postconditions |
 | Screenshot and UI Automation text | Implemented through Win32/UIA | Test capture visibility, screen bounds, protected/secure desktop behavior |
-| Jess orb, tray, emergency stop | Implemented in Electron shell | Verify packaged visibility, hotkey registration and stop behavior |
-| Workspace foreground recovery | Desktop-only tool waits for visible and focused main window | Real-machine acceptance test |
+| Jess orb, tray, emergency stop | Native overlay now uses the established animated Jess orb, stays visible over the workspace and desktop, and includes a cross-window transcript panel | Verify packaged visibility, hotkey registration and stop behavior on real Windows |
+| Workspace foreground recovery | Desktop-only tool waits for visible and focused main window; showing/restoring workspace no longer hides the always-on-top companion | Real-machine acceptance test |
+| Minimized conversation transcript | Voice transcript entries are cached in same-origin localStorage and mirrored into the native companion window | Verify multi-window storage events and transcript continuity in packaged runtime |
 | Chrome tab list/open/close/activate/navigate/reload/scroll/read/find/click/fill | Implemented through MV3 extension, .NET 8 native host and named-pipe relay; gated by the signed-in Full Control Session | Build installer, register host, load unpacked extension and test against a real Chrome profile |
 | Native offline wake word | Consent-gated .NET 8 helper using Windows System.Speech; falls back to browser recognition outside the desktop shell | Verify recognizer availability, microphone access, false wakes, latency and cleanup on Windows |
 | Installer and extension packaging | Windows workflow now builds the three self-contained .NET helpers and packages extension/installer scripts | Latest CI must pass and artifacts must be downloaded/installed |
@@ -33,7 +34,10 @@ Audit date: 2026-10-12. PR #66 is merged to main. The cross-platform CI, Windows
 
 ## Changes in this branch
 
-1. Enforces verified-result honesty for native Windows actions.
+1. Keeps the native Jess companion overlay visible both over the workspace and when Hub-Mind is minimized; uses the established animated orb instead of the separate teal-brain SVG.
+2. Adds a compact transcript panel that receives user/Jess voice transcript updates across desktop windows.
+3. Improves real desktop window activation with BringWindowToTop before SetForegroundWindow, and clarifies how Jess should use the window-management tools.
+4. Enforces verified-result honesty for native Windows actions.
 2. Reuses the emergency stop hotkey and adds tray stop/reset controls.
 3. Fixes workspace restoration and adds a foreground tool with a visible/focused postcondition.
 4. Adds a Chrome Native Messaging relay, Chrome extension tool declarations, per-user registry install/uninstall scripts, and CI packaging for the extension and host.
@@ -58,4 +62,4 @@ The packaged installer places `Install-JessChromeBridge.ps1` and `Uninstall-Jess
 
 ## Still outstanding
 
-The Chrome bridge, consent-gated offline wake-word listener and Windows.Media.Ocr fallback are present in source, and the self-contained helpers plus NSIS installer now build successfully in CI. Their packaged runtime behavior remains unverified until the installer is installed and tested on a real Windows machine. Administrator elevation/scheduled-task integration remain intentionally unimplemented because a privileged broker requires a separate threat model, explicit UAC consent and security review. The published installer is unsigned unless protected certificate secrets are configured. Do not describe the feature as fully runtime-accepted until the real-machine acceptance checklist above passes.
+The Chrome bridge, consent-gated offline wake-word listener and Windows.Media.Ocr fallback are present in source. The companion overlay/transcript and window-focus fixes are implemented in this branch; the self-contained helpers plus NSIS installer previously built successfully in CI. Their packaged runtime behavior remains unverified until the installer is installed and tested on a real Windows machine. Administrator elevation/scheduled-task integration remain intentionally unimplemented because a privileged broker requires a separate threat model, explicit UAC consent and security review. The published installer is unsigned unless protected certificate secrets are configured. Do not describe the feature as fully runtime-accepted until the real-machine acceptance checklist above passes.
