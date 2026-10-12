@@ -156,7 +156,7 @@ export class JessPcWakeListener {
             this.interimWakeTimer = null;
             if (!this.running || this.interimWakeTranscript !== transcript) return;
             this.triggerWake(recognition, command || '');
-          }, 280);
+          }, 180);
           continue;
         }
         this.triggerWake(recognition, command || '');

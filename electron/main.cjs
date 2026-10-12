@@ -238,10 +238,18 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
-      const screen = sources.find(source => source.id.startsWith('screen:'));
-      if (!screen) { callback({}); return; }
-      const choice = await dialog.showMessageBox(getDialogParent(), { type: 'question', buttons: ['Cancel', 'Share entire screen'], defaultId: 0, cancelId: 0, title: 'Choose what to share', message: 'Share your entire screen with Hub-Mind?', detail: 'Only continue if you intend to share everything visible on your display. You can stop sharing from the browser controls.' });
-      callback(choice.response === 1 ? { video: screen } : {});
+      if (!sources.length) { callback({}); return; }
+      // On Windows builds where the native system picker is unavailable, show
+      // an explicit source chooser. Never silently share the first screen.
+      const buttons = ['Cancel', ...sources.slice(0, 8).map(source => source.name || source.id)];
+      const choice = await dialog.showMessageBox(getDialogParent(), {
+        type: 'question', buttons, defaultId: 0, cancelId: 0,
+        title: 'Choose what Jess can see',
+        message: 'Select a screen or application window to share.',
+        detail: 'Choose “Share entire screen” only when you intend to share the full display. Only the selected source will be shared, and you can stop sharing at any time.',
+      });
+      const selected = choice.response > 0 ? sources[choice.response - 1] : null;
+      callback(selected ? { video: selected } : {});
     } catch { callback({}); }
   }, { useSystemPicker: true });
   createMainWindow();

@@ -22,12 +22,15 @@ body {
   @apply bg-slate-950 text-slate-200 font-sans antialiased;
 }
 
-/* Hub-Mind workspace is intentionally dark in every OS/browser color scheme. */
+/* Keep the product workspace dark regardless of OS/browser color preference. */
 :root { color-scheme: dark; }
 html, body, #root {
+  min-height: 100%;
   background-color: #020617;
   color: #e2e8f0;
 }
+body { background: #020617; color: #e2e8f0; }
+#root { isolation: isolate; }
 body {
   @apply bg-slate-950 text-slate-200 font-sans antialiased;
 }
