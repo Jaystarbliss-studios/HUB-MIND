@@ -57,7 +57,7 @@ export function CompanionPage() {
     }
     if (!profile?.id) { setRequestError('Sign in to activate Jess.'); return; }
     try {
-      const requestId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : \`request-\${Date.now()}\`;
+      const requestId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `request-${Date.now()}`;
       await setDoc(doc(db, 'users', profile.id, 'private', 'jessActivationRequest'), {
         requestId, requestedAt: Date.now(), requestedBy: 'windows-desktop-companion', prompt: ''
       });
@@ -82,7 +82,7 @@ export function CompanionPage() {
         <span className="jess-orb-fallback"><Sparkles size={26}/></span>
       </button>
     </div>
-    {isActive && <span className={\`jess-status-dot \${localActive ? 'is-local' : 'is-remote'}\`} title={localActive ? 'Jess is active in this desktop app' : 'Jess is active in another Hub-Mind client'} />}
+    {isActive && <span className={`jess-status-dot ${localActive ? 'is-local' : 'is-remote'}`} title={localActive ? 'Jess is active in this desktop app' : 'Jess is active in another Hub-Mind client'} />}
     {requestError && <span className="jess-orb-error" role="status" title={requestError}>!</span>}
     <div className="jess-orb-controls">
       <button type="button" title="Open Hub-Mind workspace" aria-label="Open Hub-Mind workspace" onClick={() => void window.hubMindDesktop?.showMain()}><Maximize2 size={12}/></button>
