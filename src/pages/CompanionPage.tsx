@@ -12,6 +12,7 @@ declare global {
       showMain: () => Promise<boolean>;
       hideCompanion: () => Promise<boolean>;
       moveCompanionBy: (dx: number, dy: number) => Promise<boolean>;
+      nativeStatus: () => Promise<{ active: boolean; startedAt?: string | null }>; 
     };
   }
 }
@@ -20,12 +21,22 @@ export function CompanionPage() {
   const { profile } = useAuth();
   const [owner, setOwner] = useState<JessSessionOwner | null>(null);
   const [requestError, setRequestError] = useState('');
+  const [controlActive, setControlActive] = useState(false);
   const drag = useRef<{ x: number; y: number; startX: number; startY: number; moved: boolean } | null>(null);
 
   useEffect(() => {
     if (!profile?.id) return;
     return watchJessSession(profile.id, setOwner);
   }, [profile?.id]);
+
+  useEffect(() => {
+    if (!window.hubMindDesktop?.nativeStatus) return;
+    let alive = true;
+    const refresh = () => window.hubMindDesktop!.nativeStatus().then(status => { if (alive) setControlActive(status.active); }).catch(() => { if (alive) setControlActive(false); });
+    void refresh();
+    const interval = window.setInterval(refresh, 1000);
+    return () => { alive = false; window.clearInterval(interval); };
+  }, []);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
@@ -84,6 +95,7 @@ export function CompanionPage() {
       </button>
     </div>
     {isActive && <span className={`jess-status-dot ${localActive ? 'is-local' : 'is-remote'}`} title={localActive ? 'Jess is active in this desktop app' : 'Jess is active in another Hub-Mind client'} />}
+    {controlActive && <span className="jess-control-indicator" title="Full Control Session active — Ctrl+Alt+Shift+J stops native control" aria-label="Full Control Session active" />}
     {requestError && <span className="jess-orb-error" role="status" title={requestError}>!</span>}
     <div className="jess-orb-controls">
       <button type="button" title="Open Hub-Mind workspace" aria-label="Open Hub-Mind workspace" onClick={() => void window.hubMindDesktop?.showMain()}><Maximize2 size={12}/></button>
