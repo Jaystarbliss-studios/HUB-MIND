@@ -48,3 +48,10 @@ test('desktop action responses distinguish verified from unverified input', () =
   assert.match(tools, /sent_unverified/);
   assert.match(tools, /Do not repeat non-idempotent actions automatically/);
 });
+
+
+test('Gemini Live ephemeral tokens use the SDK-supported API version', () => {
+  const client = read('../../src/services/liveAudioClient.ts');
+  assert.match(client, /apiKey:\s*token[\s\S]{0,100}apiVersion:\s*'v1alpha'/);
+  assert.doesNotMatch(client, /apiKey:\s*token[\s\S]{0,100}apiVersion:\s*'v1beta'/);
+});
