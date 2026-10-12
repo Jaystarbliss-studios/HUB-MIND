@@ -13,6 +13,7 @@ declare global {
       hideCompanion: () => Promise<boolean>;
       moveCompanionBy: (dx: number, dy: number) => Promise<boolean>;
       setCompanionInteractive?: (interactive: boolean) => Promise<boolean>;
+      setCompanionTranscriptVisible?: (visible: boolean) => Promise<boolean>;
       nativeStatus: () => Promise<{ active: boolean; startedAt?: string | null; userId?: string | null }>;  
     };
   }
@@ -27,6 +28,9 @@ export function CompanionPage() {
   const drag = useRef<{ x: number; y: number; startX: number; startY: number; moved: boolean } | null>(null);
   const transcriptMessagesRef = useRef<HTMLDivElement | null>(null);
   const shouldFollowTranscriptRef = useRef(true);
+  const transcriptSnapshotRef = useRef('');
+  const transcriptHideTimerRef = useRef<number | null>(null);
+  const [transcriptVisible, setTranscriptVisible] = useState(false);
 
   useEffect(() => {
     const element = transcriptMessagesRef.current;
@@ -44,14 +48,28 @@ export function CompanionPage() {
       try {
         const raw = localStorage.getItem(key);
         const parsed = raw ? JSON.parse(raw) : [];
-        if (Array.isArray(parsed)) setTranscript(parsed.filter(item => item && (item.speaker === 'user' || item.speaker === 'jess') && typeof item.text === 'string').slice(-40));
+        if (Array.isArray(parsed)) {
+          const next = parsed.filter(item => item && (item.speaker === 'user' || item.speaker === 'jess') && typeof item.text === 'string').slice(-40);
+          const snapshot = JSON.stringify(next);
+          if (transcriptSnapshotRef.current && snapshot !== transcriptSnapshotRef.current) {
+            setTranscriptVisible(true);
+            void window.hubMindDesktop?.setCompanionTranscriptVisible?.(true);
+            if (transcriptHideTimerRef.current !== null) window.clearTimeout(transcriptHideTimerRef.current);
+            transcriptHideTimerRef.current = window.setTimeout(() => {
+              setTranscriptVisible(false);
+              void window.hubMindDesktop?.setCompanionTranscriptVisible?.(false);
+            }, 12000);
+          }
+          transcriptSnapshotRef.current = snapshot;
+          setTranscript(next);
+        }
       } catch { /* Transcript is a convenience cache; never block the orb if it is unavailable. */ }
     };
     load();
     const onStorage = (event: StorageEvent) => { if (!event.key || event.key === key) load(); };
     window.addEventListener('storage', onStorage);
     const interval = window.setInterval(load, 1500);
-    return () => { window.removeEventListener('storage', onStorage); window.clearInterval(interval); };
+    return () => { window.removeEventListener('storage', onStorage); window.clearInterval(interval); if (transcriptHideTimerRef.current !== null) window.clearTimeout(transcriptHideTimerRef.current); };
   }, []);
 
   useEffect(() => {
@@ -109,13 +127,13 @@ export function CompanionPage() {
   const localActive = isActive && owner?.client === 'windows-desktop';
   const remoteActive = isActive && !localActive;
 
-  return <main className="jess-orb-window" aria-label="Jess desktop companion">
+  return <main className={`jess-orb-window${transcriptVisible ? " is-transcript-visible" : ""}`} aria-label="Jess desktop companion">
     <div className="jess-orb-drag" title="Drag to move Jess" aria-label="Drag to move Jess" onMouseEnter={() => void window.hubMindDesktop?.setCompanionInteractive?.(true)} onMouseLeave={() => void window.hubMindDesktop?.setCompanionInteractive?.(false)}>
       <button className="jess-orb-launch" type="button"
         aria-label={localActive ? 'Open the active Jess workspace' : remoteActive ? 'Jess is active in another Hub-Mind window' : 'Activate Jess'}
         title={localActive ? 'Jess is active — click to open workspace' : remoteActive ? 'Jess is active elsewhere; stop that session before switching' : 'Click to activate Jess'}
         onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onClick={() => void activateJess()}>
-        <img src="/hub-mind%20logo.png" alt="" onError={(event) => { event.currentTarget.src = '/icon.svg'; }} /><span className="jess-orb-fallback"><Sparkles size={26}/></span>
+        <img src="/icon.svg" alt="" onError={(event) => { event.currentTarget.src = '/jess-orb.svg'; }} /><span className="jess-orb-fallback"><Sparkles size={26}/></span>
       </button>
     </div>
     {isActive && <span className={`jess-status-dot ${localActive ? 'is-local' : 'is-remote'}`} title={localActive ? 'Jess is active in this desktop app' : 'Jess is active in another Hub-Mind client'} />}
