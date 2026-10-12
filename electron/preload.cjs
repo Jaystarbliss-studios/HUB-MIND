@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   nativeAction: (method, args, userId) => ipcRenderer.invoke('hubmind:native-action', method, args, userId),
   showMain: () => ipcRenderer.invoke('hubmind:show-main'),
   showCompanion: () => ipcRenderer.invoke('hubmind:show-companion'),
+  resetOrbPosition: () => ipcRenderer.invoke('hubmind:reset-orb-position'),
   hideCompanion: () => ipcRenderer.invoke('hubmind:hide-companion'),
   setCompanionInteractive: (interactive) => ipcRenderer.invoke('hubmind:set-companion-interactive', interactive === true),
   moveCompanionBy: (dx, dy) => ipcRenderer.invoke('hubmind:move-companion-by', dx, dy),
