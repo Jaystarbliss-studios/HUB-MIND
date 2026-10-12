@@ -607,6 +607,29 @@ export function JessFloatingAssistant() {
           }
         }
 
+        if (fc.name === 'take_windows_screenshot' && Array.isArray(result.result?.evidence?.monitors)) {
+          const monitors = result.result.evidence.monitors;
+          const primary = monitors.find((monitor: any) => monitor.primary) || monitors[0];
+          let delivered = false;
+          if (primary?.imageBase64) {
+            delivered = !!clientRef.current?.sendScreenFrame('data:image/jpeg;base64,' + primary.imageBase64);
+          }
+          result.result.evidence = {
+            ...result.result.evidence,
+            monitors: monitors.map((monitor: any) => ({
+              monitor: monitor.monitor,
+              bounds: monitor.bounds,
+              primary: monitor.primary,
+              imageDeliveredToJess: !!monitor.primary && delivered,
+            })),
+            note: delivered
+              ? 'The primary monitor screenshot was sent to Jess as an image frame. Map image coordinates to physical screen coordinates by adding the primary monitor bounds offset; other monitors are listed but were not sent as images.'
+              : 'Screenshot metadata was captured, but the image frame could not be delivered to the live session.',
+          };
+          result.result.verified = false;
+          result.result.success = delivered;
+        }
+
         clientRef.current?.sendFunctionResponse({ name: fc.name, id: fc.id, response: result.result });
 
         if (result.actionPayload?.type === 'navigate' && result.actionPayload.path) {
