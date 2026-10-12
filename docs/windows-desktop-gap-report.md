@@ -45,6 +45,7 @@ Audit date: 2026-10-12. This is a repository audit, not proof that the packaged 
 2. Registers Ctrl+Alt+Shift+J as a global emergency stop; logs a warning if Electron cannot register it.
 3. Adds tray actions to stop the Full Control Session and reset/show the orb at the primary display's bottom-right work-area corner.
 4. Uses the primary display's work area for orb placement instead of inferring the display from stale companion bounds.
+5. Adds a desktop-only `show_hub_mind_workspace` tool and fixes workspace restoration to hide the companion even when the main window must be recreated.
 
 ## Windows smoke tests (not yet run)
 
