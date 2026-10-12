@@ -453,8 +453,8 @@ app.whenReady().then(() => {
     assertTrustedSender(event);
     if (!companionWindow || companionWindow.isDestroyed()) return false;
     const showTranscript = visible === true;
-    const width = showTranscript ? 420 : 96;
-    const height = showTranscript ? 520 : 96;
+    const width = showTranscript ? 520 : 96;
+    const height = showTranscript ? 150 : 96;
     const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay();
     const area = display.workArea;
     const [x, y] = companionWindow.getPosition();
