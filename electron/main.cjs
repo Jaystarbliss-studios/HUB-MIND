@@ -153,10 +153,6 @@ app.whenReady().then(() => {
   if (!hasSingleInstanceLock) { app.quit(); return; }
   app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
-  // Emergency stop is available even when the renderer or voice session is unresponsive.
-  const stopHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+J', () => stopFullControl('global-kill-hotkey'));
-  if (!stopHotkeyRegistered) console.error('[Jess] Could not register Ctrl+Alt+Shift+J emergency stop hotkey. Use the tray Stop Jess item.');
-
   ipcMain.handle('hubmind:full-control-start', (event, userId) => {
     assertTrustedSender(event);
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
