@@ -16,13 +16,13 @@ test('desktop companion is a compact, movable icon with visible close and worksp
   const css = await read('../../src/pages/companion.css');
   const page = await read('../../src/pages/CompanionPage.tsx');
   assert.match(css, /width:116px;height:116px/);
-  assert.match(css, /jess-orb-controls[^}]*opacity:1/);
+  assert.match(css, /jess-orb-controls[^}]*opacity:0/);\n  assert.match(css, /jess-orb-window:hover \.jess-orb-controls[^}]*opacity:1/);
   assert.match(page, /hideCompanion/);
   assert.match(page, /moveCompanionBy/);
   assert.match(page, /onPointerMove/);
 });
 
-test('native system actions use the isolated bridge and require explicit confirmation', async () => {
+test('native system actions use the isolated bridge and a Full Control Session', async () => {
   const main = await read('../../electron/main.cjs');
   const preload = await read('../../electron/preload.cjs');
   const tools = await read('../../src/lib/jessTools.ts');
