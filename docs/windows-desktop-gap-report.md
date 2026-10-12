@@ -1,67 +1,59 @@
 # Jess Windows Desktop Agent — Gap Report
 
-Audit date: 2026-10-12. This is a repository audit, not proof that the packaged Windows executable was run.
+Audit date: 2026-10-12. Repository implementation and CI configuration are inspectable here; a packaged build has not yet been installed and exercised on a real Windows machine.
 
-## Verified architecture
+## Current architecture
 
-- `electron/main.cjs` creates the Electron workspace and companion window, sets `backgroundThrottling: false`, maintains Full Control Session state, appends action/session events to `jess-native-audit.jsonl`, and exposes an allowlisted native-action IPC handler.
-- `electron/preload.cjs` exposes a limited `hubMindDesktop` bridge through context-isolated IPC.
-- `electron/agentBridge.cjs` starts `electron/jess-agent.ps1` on Windows and exchanges newline-delimited JSON over stdio with per-call timeouts.
-- `electron/jess-agent.ps1` contains Win32 interop and UI Automation support. This is a PowerShell sidecar, not the requested .NET 8 self-contained helper.
-- `src/lib/jessTools.ts` declares native window, mouse, screenshot, UI Automation, text, keyboard, app-launch, path and command tools. Its main native wrapper previously considered `ok: true` sufficient for success; this branch now requires both `ok: true` and `verified: true`.
-- `src/pages/CompanionPage.tsx` uses the orb-only `/jess-orb.svg` asset and supports dragging the companion.
-- `src/services/jessWakeListener.ts` uses browser `SpeechRecognition`/`webkitSpeechRecognition`. That does not establish that always-on wake detection works in packaged Electron.
-- `electron-builder.yml` configures an NSIS installer with `perMachine: false`; it does not configure the requested signed installer or elevated scheduled-task setup.
-- `server.ts` provisions a Gemini Live token; `src/services/liveAudioClient.ts` uses browser/Web Audio APIs. A native wake-word engine is not implemented in those files.
+- `electron/main.cjs` creates the workspace and companion window, maintains Full Control Session state, records native action/session events in `jess-native-audit.jsonl`, enforces a method allowlist, and owns the consent-gated offline wake process.
+- `electron/preload.cjs` exposes a narrow context-isolated bridge; renderer code cannot directly access Node child processes or the filesystem.
+- `electron/agentBridge.cjs` and `electron/jess-agent.ps1` still provide the Windows desktop UI Automation/Win32 sidecar. This is not yet replaced by a .NET implementation.
+- `native/JessChromeNativeHost` is a .NET 8 self-contained Chrome Native Messaging relay. `electron/chromeBridge.cjs` connects it to the Electron main process over a named pipe. The extension is in `chrome-extension/`.
+- `native/JessOfflineWake` is a .NET 8 Windows helper using `System.Speech` for local wake-word detection. The desktop asks for consent before enabling the microphone listener. A compatible Windows speech recognizer/language pack and microphone are required.
+- `electron-builder.yml` includes the extension, native host, offline wake helper and per-user install/uninstall scripts as extra resources. The Windows workflows now publish the native helpers before packaging.
+- Native action success is reported by the primary tool wrapper only when both `ok: true` and `verified: true`. Injection-only mouse/keyboard operations intentionally remain unverified until follow-up evidence is available.
 
 ## Feature audit
 
-| Requested feature | Current repository evidence | Status |
+| Capability | Implementation state | Validation still required |
 |---|---|---|
-| Window enumeration/focus/close/minimize/maximize/restore/move/resize/snap | Native declarations, IPC allowlist and PowerShell sidecar | Partially implemented; real postconditions need Windows tests |
-| Mouse move/click/double/right-click/scroll/drag | Native declarations and sidecar | Partially implemented; input delivery is not proof of target effect |
-| Type text / arbitrary key combinations | Sidecar and native declarations | Partially implemented; focus and postcondition checks need testing |
-| Screenshot and screen text | Sidecar screenshot/UIA support and tool declarations | Partially implemented; DPI/multi-monitor mapping needs validation |
-| UI Automation find/invoke | Sidecar and tool declarations | Partially implemented; app-specific reliability unknown |
-| Installed app resolution/launch | Native launch tool claims Start Menu/PATH resolution | Needs Windows acceptance tests |
-| Run arbitrary commands as administrator | Legacy command path explicitly runs with current-user permissions; native runner is not proven elevated | Missing for requested admin behavior |
-| Real Chrome tab/DOM control | No Chrome extension/native-messaging implementation in inspected paths | Missing |
-| “Show me X” brings workspace forward and verifies visible target | `showMain()` creates/shows/focuses the main window; no complete `show_in_app` tool found in inspected registry | Partial; route and visible-target confirmation remain |
-| Honest verified results | Native sidecar returns `ok`, `verified`, `evidence`; renderer wrapper previously checked only `ok` | Primary native wrapper fixed on this branch; audit legacy wrappers next |
-| Full Control Session and audit log | Main-process session state and JSONL log exist | Partial; signed-in identity is passed from renderer and needs stronger binding |
-| Emergency stop hotkey | Advertised in tool copy but not registered in main | Registration added on this branch; runtime test required |
-| Tray stop and orb reset | Previously absent | Added on this branch |
-| Orb position | Previously inferred display from existing companion bounds | Changed to primary display work area on this branch |
-| Single orb in desktop shell | In-app orb hidden when `isDesktopShell` | Present in inspected component; package behavior untested |
-| Native offline wake word | Browser SpeechRecognition only | Missing |
-| Elevated installer/autostart/scheduled task/signing | Current builder config is per-user NSIS | Missing |
-| Chrome native messaging and extension install | No implementation found in inspected paths | Missing |
-| Release workflow producing downloadable installer | Package script targets Windows NSIS; workflow was not fully verified in this audit | Not verified |
-| UAC secure desktop/password prompts/DRM | Platform restrictions | Cannot promise automation or capture |
+| Window listing, focus, close, minimize, maximize, restore, move, resize, snap | Implemented in the PowerShell sidecar and allowlisted IPC | Test against real Windows applications and DPI/multi-monitor setups |
+| Mouse, typing, key combinations | Implemented; input delivery is not proof of target effect | Verify Notepad and real app postconditions |
+| Screenshot and UI Automation text | Implemented through Win32/UIA | Test capture visibility, screen bounds, protected/secure desktop behavior |
+| Jess orb, tray, emergency stop | Implemented in Electron shell | Verify packaged visibility, hotkey registration and stop behavior |
+| Workspace foreground recovery | Desktop-only tool waits for visible and focused main window | Real-machine acceptance test |
+| Chrome tab list/open/close/activate/navigate/reload/scroll/read/find/click/fill | Implemented through MV3 extension, .NET 8 native host and named-pipe relay; gated by the signed-in Full Control Session | Build installer, register host, load unpacked extension and test against a real Chrome profile |
+| Native offline wake word | Consent-gated .NET 8 helper using Windows System.Speech; falls back to browser recognition outside the desktop shell | Verify recognizer availability, microphone access, false wakes, latency and cleanup on Windows |
+| Installer and extension packaging | Windows workflow now builds the two self-contained .NET helpers and packages extension/installer scripts | Latest CI must pass and artifacts must be downloaded/installed |
+| Elevated administrator actions / scheduled task | Not implemented. Native control remains at the current user's permissions | Needs a separately hardened privilege boundary, explicit UAC consent, secure install/uninstall and threat review |
+| Installer code signing | Not configured with a certificate | Requires a real code-signing certificate and protected CI secrets |
+| OCR fallback | Not implemented as a dedicated OCR engine; screenshot bytes alone do not prove Jess saw pixels | Add and test a Windows OCR implementation before claiming screenshot text recognition |
+| Secure desktop, password prompts, DRM and protected browser pages | Restricted by platform and application security | Must remain unsupported; never bypass OS protections |
 
 ## Changes in this branch
 
-1. Native tool execution reports success only when both `ok` and `verified` are true; evidence and error fields remain available to Jess.
-2. Registers Ctrl+Alt+Shift+J as a global emergency stop; logs a warning if Electron cannot register it.
-3. Adds tray actions to stop the Full Control Session and reset/show the orb at the primary display's bottom-right work-area corner.
-4. Uses the primary display's work area for orb placement instead of inferring the display from stale companion bounds.
-5. Adds a desktop-only `show_hub_mind_workspace` tool; the native bridge now waits for the workspace window to be both visible and focused before returning a verified success, and restoration hides the companion even when the main window must be recreated.
+1. Enforces verified-result honesty for native Windows actions.
+2. Reuses the emergency stop hotkey and adds tray stop/reset controls.
+3. Fixes workspace restoration and adds a foreground tool with a visible/focused postcondition.
+4. Adds a Chrome Native Messaging relay, Chrome extension tool declarations, per-user registry install/uninstall scripts, and CI packaging for the extension and host.
+5. Gates Chrome requests on the current signed-in Full Control Session; closing a tab requires an explicit tab ID.
+6. Cancels pending Chrome requests and stops the PowerShell sidecar when Full Control Session ends.
+7. Adds an opt-in offline Windows wake helper; the desktop prompts before enabling local microphone listening.
+8. Adds static contract tests for the Chrome bridge and native host build wiring.
 
-## Windows smoke tests (not yet run)
+## Chrome bridge installation
 
-- Launch the packaged app; confirm only one orb is visible and it starts at the primary display's bottom-right corner.
-- Minimize Hub-Mind; confirm the orb remains. Restore Hub-Mind; confirm the orb hides.
-- Start Full Control Session by voice; confirm the visible indicator and audit-log start entry.
-- Press Ctrl+Alt+Shift+J; confirm native control stops immediately and the audit log records the stop.
-- Use tray → Stop Jess; confirm the same behavior.
-- Drag the orb, then use tray → Reset Jess orb to bottom-right; confirm its position.
-- Ask Jess to list windows, snap Notepad, read screen text, type into Notepad and capture a screenshot. Confirm she reports “done” only when the result contains `verified: true`.
-- Confirm `verified: false` is described as unverified/failure, not success.
+The packaged installer places `Install-JessChromeBridge.ps1` and `Uninstall-JessChromeBridge.ps1` in the app's `resources` directory. After installing Hub-Mind, run the installer script from that directory in the current user's PowerShell session. It registers the native host under HKCU and copies the extension into the user's LocalAppData folder. Then open `chrome://extensions`, enable Developer mode, and choose **Load unpacked** for the copied extension folder. The extension is not silently installed into Chrome.
 
-## Remaining phases
+## Release acceptance checklist — not yet completed
 
-- **P1 (in progress):** dynamic capability manifest/system prompt; remove misleading DOM-only OS controls; add a `show_in_app` flow that focuses the workspace and verifies visibility; audit every legacy wrapper.
-- **P2:** harden sidecar postconditions, DPI/per-monitor coordinates, UIA/OCR and window enumeration; test actual Windows interactions.
-- **P3:** installer-time elevation and secure logon task; do not claim it is done until install/uninstall and privilege boundaries are tested.
-- **P4:** Chrome MV3 extension plus Native Messaging host; verify real-profile tabs and DOM operations.
-- **P5:** native offline wake word, robust session lifetime, startup behavior and packaging/signing.
+- Confirm the latest PR CI is green, including Windows native helper publish and NSIS packaging.
+- Install the produced Windows package and confirm the .NET native host and offline wake executable exist under the packaged resources.
+- Register the Chrome host and load the extension; verify listing tabs, opening/navigating, reading a page and filling a test field.
+- Confirm closing a tab without a tab ID is rejected and emergency stop cancels outstanding work.
+- Accept the offline wake prompt, say “Hey Jess, open Notepad”, verify the command is handled, then confirm listening stops during the active voice session and restarts only after the session ends.
+- Test window listing, snap, UIA text, typing, mouse input, orb transitions and Ctrl+Alt+Shift+J.
+- Confirm no action is described as successful unless independent evidence supports it.
+
+## Still outstanding
+
+The Chrome bridge and offline wake-word implementation are now present in source, but their packaged runtime behavior remains unverified until Windows CI succeeds and the app is installed and tested on a real Windows machine. Dedicated OCR, administrator elevation/scheduled-task integration, and code signing remain intentionally unclaimed. Do not merge or describe this as fully complete until those gates are satisfied.
