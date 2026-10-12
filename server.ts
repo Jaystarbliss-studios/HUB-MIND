@@ -72,56 +72,66 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  const liveTokenRateLimits = new Map<string, { count: number; resetAt: number }>();
   app.post(["/api/live-token", "/live-token"], async (req, res) => {
+    const clientKey = String(req.ip || req.socket?.remoteAddress || "unknown").slice(0, 160);
+    const now = Date.now();
+    const bucket = liveTokenRateLimits.get(clientKey);
+    if (bucket && bucket.resetAt > now && bucket.count >= 20) {
+      return res.status(429).json({ error: "Too many Jess session requests. Please wait a minute and try again." });
+    }
+    if (!bucket || bucket.resetAt <= now) liveTokenRateLimits.set(clientKey, { count: 1, resetAt: now + 60_000 });
+    else bucket.count += 1;
+    if (liveTokenRateLimits.size > 5000) {
+      for (const [key, value] of liveTokenRateLimits) if (value.resetAt <= now) liveTokenRateLimits.delete(key);
+    }
+
     try {
       const authHeader = req.headers.authorization || "";
       const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+      if (!idToken || idToken.length > 10000) return res.status(401).json({ error: "Authentication required. Please sign in again." });
+
+      const firebaseApiKey = process.env.FIREBASE_WEB_API_KEY || process.env.VITE_FIREBASE_WEB_API_KEY || process.env.FIREBASE_API_KEY;
+      if (!firebaseApiKey) return res.status(503).json({ error: "Firebase token verification is not configured on this server." });
+
+      // Ask Firebase Auth to validate the ID token. Never trust a bearer token
+      // merely because the client supplied it.
+      const identityResponse = await fetch(
+        "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + encodeURIComponent(firebaseApiKey),
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken }), signal: AbortSignal.timeout(10_000) },
+      );
+      if (!identityResponse.ok) return res.status(401).json({ error: "Your Hub-Mind session is invalid or expired. Please sign in again." });
+      const identityData = await identityResponse.json() as any;
+      const verifiedUser = identityData?.users?.[0];
+      if (!verifiedUser?.localId || verifiedUser.disabled) return res.status(401).json({ error: "Your Hub-Mind account is unavailable." });
+
       const geminiKey = process.env.GEMINI_API_KEY;
+      if (!geminiKey) return res.status(503).json({ error: "GEMINI_API_KEY is not configured on the server." });
 
-      if (!geminiKey) {
-        return res.status(503).json({ error: "GEMINI_API_KEY is not configured on the server." });
-      }
-
-      const now = Date.now();
-      try {
-        const tokenResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/auth_tokens", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": geminiKey,
+      const tokenResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/auth_tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+        body: JSON.stringify({
+          uses: 1,
+          expireTime: new Date(now + 30 * 60 * 1000).toISOString(),
+          newSessionExpireTime: new Date(now + 60 * 1000).toISOString(),
+          bidiGenerateContentSetup: {
+            model: "models/gemini-3.8-live",
+            generationConfig: { responseModalities: ["AUDIO"] },
+            sessionResumption: {},
           },
-          body: JSON.stringify({
-            uses: 1,
-            expireTime: new Date(now + 30 * 60 * 1000).toISOString(),
-            newSessionExpireTime: new Date(now + 60 * 1000).toISOString(),
-            bidiGenerateContentSetup: {
-              model: "models/gemini-3.8-live",
-              generationConfig: {
-                responseModalities: ["AUDIO"],
-              },
-              sessionResumption: {},
-            },
-          }),
-        });
-
-        const tokenData = (await tokenResponse.json()) as any;
-        if (tokenResponse.ok && tokenData?.name) {
-          return res.json({
-            token: tokenData.name,
-            expiresAt: tokenData.expireTime || null,
-          });
-        }
-      } catch (tokenErr) {
-        console.warn("Live ephemeral token minting failed, using direct key fallback:", tokenErr);
-      }
-
-      return res.json({
-        token: geminiKey,
-        expiresAt: new Date(now + 30 * 60 * 1000).toISOString(),
+        }),
+        signal: AbortSignal.timeout(12_000),
       });
+      const tokenData = await tokenResponse.json() as any;
+      if (!tokenResponse.ok || !tokenData?.name) {
+        console.error("Live ephemeral-token provisioning failed:", tokenData?.error?.message || tokenResponse.status);
+        return res.status(502).json({ error: "Gemini Live token provisioning failed. Please try again shortly." });
+      }
+      return res.json({ token: tokenData.name, userId: verifiedUser.localId, expiresAt: tokenData.expireTime || null });
     } catch (error: any) {
-      console.error("Jess live-token error:", error);
-      return res.status(500).json({ error: error?.message || "Could not initialize Jess Live token." });
+      console.error("Jess live-token error:", error?.message || error);
+      return res.status(500).json({ error: "Could not initialize Jess Live. Please try again." });
     }
   });
 
