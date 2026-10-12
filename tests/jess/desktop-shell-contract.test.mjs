@@ -18,14 +18,17 @@ test('Windows shell identifies itself as an installed app and exposes a real dis
   assert.match(main, /callback\(selected \? \{ video: selected \} : \{\}\)/);
 });
 
-test('Jess overlay is a small always-on-top, transparent, movable and dismissible orb', () => {
-  assert.match(main, /width: 116, height: 116/);
+test('Jess desktop overlay keeps the original icon, transcript, click-through and movement controls', () => {
+  assert.match(main, /width: 420, height: 560/);
+  assert.match(main, /setIgnoreMouseEvents\\(true, \\{ forward: true \\}\\)/);
   assert.match(main, /transparent: true/);
   assert.match(main, /alwaysOnTop: true/);
   assert.match(main, /hubmind:move-companion-by/);
   assert.match(main, /hubmind:hide-companion/);
   assert.match(companion, /hideCompanion/);
   assert.match(companion, /moveCompanionBy/);
+  assert.match(companion, /src=\"\\/icon\\.svg\"/);
+  assert.match(companion, /jess-transcript-messages/);
   assert.match(companionCss, /-webkit-app-region:drag/);
   assert.match(companionCss, /\.jess-orb-controls/);
 });
