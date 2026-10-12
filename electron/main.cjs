@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, session, desktopCapturer } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, session, desktopCapturer, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { execFile } = require('node:child_process');
@@ -64,16 +64,28 @@ function createMainWindow() {
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); } });
-  mainWindow.on('minimize', () => createCompanionWindow());
+  mainWindow.on('show', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
+  mainWindow.on('restore', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
+  mainWindow.on('minimize', () => { createCompanionWindow(); positionCompanionBottomRight(); });
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.loadURL(APP_URL);
+}
+
+function positionCompanionBottomRight() {
+  if (!companionWindow || companionWindow.isDestroyed()) return;
+  const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay();
+  const area = display.workArea;
+  const [width, height] = companionWindow.getSize();
+  companionWindow.setPosition(Math.max(area.x, area.x + area.width - width - 18), Math.max(area.y, area.y + area.height - height - 18), false);
 }
 
 function createCompanionWindow() {
   if (companionWindow && !companionWindow.isDestroyed()) { companionWindow.show(); companionWindow.focus(); return; }
   companionWindow = new BrowserWindow(secureWindowOptions({ width: 116, height: 116, minWidth: 116, minHeight: 116, maxWidth: 116, maxHeight: 116, frame: false, transparent: true, resizable: false, alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000', title: 'Jess · Hub-Mind', show: false }));
+  companionWindow.on('blur', () => { /* The overlay remains available until explicitly hidden or the workspace is restored. */ });
   guardNavigation(companionWindow);
   companionWindow.setAlwaysOnTop(true, 'screen-saver');
+  positionCompanionBottomRight();
   companionWindow.once('ready-to-show', () => companionWindow.show());
   companionWindow.on('closed', () => { companionWindow = null; });
   companionWindow.loadURL(APP_URL + '/companion');
@@ -81,7 +93,7 @@ function createCompanionWindow() {
 
 function showMain() {
   if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
-  else { mainWindow.show(); mainWindow.focus(); }
+  else { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); mainWindow.show(); mainWindow.focus(); }
 }
 
 function createTray() {
