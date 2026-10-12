@@ -43,6 +43,9 @@ permissions:
 jobs:
   windows-installer:
     runs-on: windows-latest
+    env:
+      WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -77,6 +80,15 @@ jobs:
         run: npm run test:unit
       - name: Build web workspace
         run: npm run build
+      - name: Prepare optional Windows code-signing certificate
+        if: ${{ github.event_name != 'pull_request' && env.WINDOWS_CERTIFICATE_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'hubmind-windows-signing.pfx'
+          $certificateBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
+          [System.IO.File]::WriteAllBytes($certificatePath, $certificateBytes)
+          "CSC_LINK=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Package Windows installer
         run: npx electron-builder --win nsis --publish never
       - name: Archive installer as workflow artifact
