@@ -145,8 +145,8 @@ test('server Live tool registry exposes every native tool declared by Jess', asy
   }
 
   assert.ok(
-    liveClient.includes('!JESS_NATIVE_TOOL_NAME_SET.has(tool.name) || (window as any).hubMindDesktop?.isDesktopApp === true'),
-    'direct Live must expose native tools only inside the installed desktop app',
+    liveClient.includes('isDesktopClient ? !desktopOnlyDomTools.has(tool.name) : !JESS_NATIVE_TOOL_NAME_SET.has(tool.name)'),
+    'direct Live must hide native tools in web-only runtimes while retaining desktop UI tools',
   );
 
   const chromeScrollStart = liveRegistry.indexOf('name: "chrome_scroll"');
