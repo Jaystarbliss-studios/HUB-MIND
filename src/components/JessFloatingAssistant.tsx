@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth';
 import { LiveAudioClient, JessState } from '../services/liveAudioClient';
 import { claimJessSession, createJessSessionId, releaseJessSession, renewJessSession, watchJessSession, JessSessionOwner } from '../services/jessSessionCoordinator';
 import { executeJessTool } from '../lib/jessTools';
+import { runJessToolExecution } from '../services/jessExecutionRuntime';
 import { resolveJessContext } from '../lib/jessContext';
 import { JessOrbVisualizer } from './JessOrbVisualizer';
 import { jessBackgroundTasks, JessBackgroundTask } from '../services/jessBackgroundTasks';
@@ -356,7 +357,13 @@ export function JessFloatingAssistant() {
     if (backgroundHydratedUserRef.current !== profile.id) {
       backgroundHydratedUserRef.current = profile.id;
       void jessBackgroundTasks.resumePersistedTasks(profile.id, async (_task, step) => {
-        const result = await executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), (jessPreferencesRef.current.contextEnabled === false ? undefined : resolveJessContext(locationPathRef.current)));
+        const execution = await runJessToolExecution({
+          toolName: String(step.tool),
+          args: step.args || {},
+          userId: profile?.id,
+          turnId: jessTranscriptTurnIdRef.current || undefined,
+        }, () => executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), (jessPreferencesRef.current.contextEnabled === false ? undefined : resolveJessContext(locationPathRef.current))));
+        const result = execution.value;
         if (!result.result?.success) throw new Error(result.result?.error || 'Background step failed.');
       });
     }
@@ -544,7 +551,25 @@ export function JessFloatingAssistant() {
         if (jessPreferencesRef.current.webResearchEnabled === false && webResearchTools.has(fc.name)) {
           result = { result: { success: false, error: 'Web research is disabled in Jess settings. Enable it in Workspace → Jess settings to use online search or website-opening tools.' } };
         } else try {
-          result = await executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context);
+          const execution = await runJessToolExecution({
+            toolName: fc.name,
+            args: toolArgs || {},
+            userId: profile?.id,
+            turnId: jessTranscriptTurnIdRef.current || undefined,
+          }, () => executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context));
+          result = execution.value;
+          if (result?.result && typeof result.result === 'object') {
+            result = {
+              ...result,
+              result: {
+                ...result.result,
+                executionId: execution.executionId,
+                executionStatus: execution.status,
+                retrySafe: execution.retrySafe,
+                durationMs: execution.durationMs,
+              },
+            };
+          }
         } catch (error: any) {
           // A tool failure must become a tool response, not an unhandled promise.
           // Returning the failure to Gemini lets Jess recover conversationally and
