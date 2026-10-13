@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Brain, 
   LogOut, 
   Settings, 
   Pin, 
@@ -117,9 +116,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         {/* Brand / Logo Header */}
         <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80 shrink-0">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 shrink-0">
-              <Brain className="w-5 h-5 text-accent" />
-            </div>
+            <img
+              src="/hub-mind%20logo.png"
+              alt="Hub-Mind"
+              className="w-10 h-10 rounded-xl object-contain shrink-0"
+              width={40}
+              height={40}
+            />
 
             <AnimatePresence initial={false}>
               {isExpanded && (
