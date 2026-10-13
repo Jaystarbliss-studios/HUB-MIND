@@ -110,7 +110,7 @@ export default defineConfig(() => {
           scope: '/',
           start_url: '/login',
           icons: [
-            { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }
+            { src: '/hub-mind%20logo.png', sizes: 'any', type: 'image/png', purpose: 'any' }
           ],
           share_target: {
             action: '/share-target',
