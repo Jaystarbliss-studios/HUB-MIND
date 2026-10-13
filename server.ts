@@ -1273,6 +1273,9 @@ call returns.`;
     let isSessionActive = false;
     let isFallbackMode = false;
     let conversationalHistory: Array<{ role: string; parts: Array<any> }> = [];
+    const MAX_FALLBACK_TOOL_ROUNDS = 8;
+    let fallbackToolRounds = 0;
+    let fallbackToolCallFingerprints: string[] = [];
     const requestUrl = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
     const isDesktopRuntime = requestUrl.searchParams.get("runtime") === "desktop";
     const connectionTools = getJessToolsForRuntime(LIVE_TOOLS, isDesktopRuntime);
@@ -1441,6 +1444,108 @@ call returns.`;
       }
 
       // Handler for client messages
+      // Fallback mode is a real multi-turn tool loop: after a tool response, ask the model
+      // to continue with the observed result instead of leaving the conversation stalled.
+      const generateFallbackTurn = async (chatAi: any) => {
+        const chatRes = await chatAi.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: conversationalHistory as any,
+          config: {
+            systemInstruction: liveSystemPrompt,
+            tools: connectionTools as any,
+          },
+        });
+
+        const replyText = chatRes.text || "";
+        const functionCalls = chatRes.functionCalls || [];
+        const candidateContent = chatRes.candidates?.[0]?.content;
+        if (candidateContent?.parts?.length) {
+          conversationalHistory.push(candidateContent);
+        } else {
+          const parts: any[] = [];
+          for (const call of functionCalls) {
+            parts.push({ functionCall: { name: call.name, args: call.args, id: call.id } });
+          }
+          if (replyText) parts.push({ text: replyText });
+          if (parts.length) conversationalHistory.push({ role: "model", parts });
+        }
+
+        if (functionCalls.length > 0) {
+          const fingerprints = functionCalls.map((call: any) => `${call.name}:${JSON.stringify(call.args || {})}`);
+          const repeatsTooOften = fingerprints.some(
+            (fingerprint: string) => fallbackToolCallFingerprints.filter((seen) => seen === fingerprint).length >= 2,
+          );
+          fallbackToolRounds += 1;
+          if (fallbackToolRounds > MAX_FALLBACK_TOOL_ROUNDS || repeatsTooOften) {
+            conversationalHistory.push({
+              role: "user",
+              parts: functionCalls.map((call: any) => ({
+                functionResponse: {
+                  name: call.name,
+                  id: call.id,
+                  response: { error: "Tool loop stopped to prevent repeated execution." },
+                },
+              })),
+            });
+            if (clientWs.readyState === 1) {
+              clientWs.send(JSON.stringify({
+                type: "error",
+                message: "Jess paused this turn after repeated tool calls. Please rephrase the request or ask for a different approach.",
+              }));
+              clientWs.send(JSON.stringify({ type: "turn_complete" }));
+            }
+            fallbackToolRounds = 0;
+            fallbackToolCallFingerprints = [];
+            return;
+          }
+          fallbackToolCallFingerprints.push(...fingerprints);
+          if (clientWs.readyState === 1) {
+            clientWs.send(JSON.stringify({
+              type: "tool_call",
+              functionCalls,
+              functionCall: functionCalls[0],
+            }));
+          }
+        }
+
+        if (replyText && clientWs.readyState === 1) {
+          clientWs.send(JSON.stringify({ type: "output_transcription", text: replyText }));
+          try {
+            const ttsRes = await chatAi.models.generateContent({
+              model: "gemini-3.8-flash-lite-tts",
+              contents: [{ parts: [{ text: replyText }] }],
+              config: {
+                responseModalities: ["AUDIO"] as any,
+                speechConfig: {
+                  voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
+                },
+              },
+            });
+            const audioB64 = ttsRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (audioB64 && clientWs.readyState === 1) {
+              clientWs.send(JSON.stringify({
+                type: "audio",
+                audio: audioB64,
+                mimeType: "audio/pcm;rate=24000",
+              }));
+            }
+          } catch (ttsErr) {
+            console.warn("TTS synthesis warning in voice bridge:", ttsErr);
+          }
+        }
+
+        // Do not signal the turn as complete while Jess is waiting for a tool to run.
+        if (functionCalls.length === 0) {
+          fallbackToolRounds = 0;
+          fallbackToolCallFingerprints = [];
+          if (clientWs.readyState === 1) {
+            clientWs.send(JSON.stringify({ type: "turn_complete" }));
+          }
+        }
+      };
+
+      // Handler for client messages
+
       clientWs.on("message", async (data: any) => {
         try {
           const payload = JSON.parse(data.toString());
@@ -1479,11 +1584,12 @@ call returns.`;
           // Fallback Bridge Mode: Handle text/tool requests over the same WebSocket
           if (isFallbackMode && isSessionActive) {
             if (payload.type === "text" && payload.text) {
+              fallbackToolRounds = 0;
+              fallbackToolCallFingerprints = [];
               clientWs.send(JSON.stringify({ type: "input_transcription", text: payload.text }));
 
               conversationalHistory.push({ role: "user", parts: [{ text: payload.text }] });
 
-              // Generate response with Gemini
               const chatAi = new GoogleGenAI({
                 apiKey: geminiApiKey,
                 httpOptions: {
@@ -1492,72 +1598,46 @@ call returns.`;
                   },
                 },
               });
-              const chatRes = await chatAi.models.generateContent({
-                model: "gemini-3.8-flash",
-                contents: conversationalHistory as any,
-                config: {
-                  systemInstruction: liveSystemPrompt,
-                  tools: connectionTools as any,
-                },
-              });
-
-              const replyText = chatRes.text || "";
-              const fCalls = chatRes.functionCalls;
-
-              if (fCalls && fCalls.length > 0) {
-                clientWs.send(
-                  JSON.stringify({
-                    type: "tool_call",
-                    functionCalls: fCalls,
-                    functionCall: fCalls[0],
-                  })
-                );
-              }
-
-              if (replyText) {
-                clientWs.send(JSON.stringify({ type: "output_transcription", text: replyText }));
-                conversationalHistory.push({ role: "model", parts: [{ text: replyText }] });
-
-                // Synthesize TTS audio and stream
-                try {
-                  const ttsRes = await chatAi.models.generateContent({
-                    model: "gemini-3.8-flash-lite-tts",
-                    contents: [{ parts: [{ text: replyText }] }],
-                    config: {
-                      responseModalities: ["AUDIO"] as any,
-                      speechConfig: {
-                        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
-                      },
-                    },
-                  });
-                  const audioB64 = ttsRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-                  if (audioB64 && clientWs.readyState === 1) {
-                    clientWs.send(
-                      JSON.stringify({
-                        type: "audio",
-                        audio: audioB64,
-                        mimeType: "audio/pcm;rate=24000",
-                      })
-                    );
-                  }
-                } catch (ttsErr) {
-                  console.warn("TTS synthesis warning in voice bridge:", ttsErr);
-                }
-              }
-
-              clientWs.send(JSON.stringify({ type: "turn_complete" }));
+              await generateFallbackTurn(chatAi);
             } else if (payload.type === "function_response" || payload.type === "tool_response") {
-              const resp = payload.functionResponse || payload.functionResponses?.[0];
-              if (resp) {
+              const functionResponses =
+                payload.functionResponses || (payload.functionResponse ? [payload.functionResponse] : []);
+              if (functionResponses.length > 0) {
+                // Keep Gemini's native function-response shape so call IDs and tool names
+                // remain associated with the result in the next model turn.
                 conversationalHistory.push({
                   role: "user",
-                  parts: [{ text: `[Tool Result for ${resp.name}]: ${JSON.stringify(resp.response)}` }],
+                  parts: functionResponses.map((resp: any) => ({
+                    functionResponse: {
+                      name: resp.name,
+                      id: resp.id,
+                      response: resp.response,
+                    },
+                  })),
                 });
+
+                const chatAi = new GoogleGenAI({
+                  apiKey: geminiApiKey,
+                  httpOptions: {
+                    headers: {
+                      'User-Agent': 'aistudio-build',
+                    },
+                  },
+                });
+                await generateFallbackTurn(chatAi);
               }
             }
           }
         } catch (err: any) {
           console.error("Error processing client message:", err);
+          // Never leave the voice UI waiting forever after a failed tool-result or model turn.
+          if (clientWs.readyState === 1) {
+            const message = String(err?.message || "Jess could not complete this voice turn. Please try again.")
+              .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[redacted API key]")
+              .slice(0, 500);
+            clientWs.send(JSON.stringify({ type: "error", message }));
+            clientWs.send(JSON.stringify({ type: "turn_complete" }));
+          }
         }
       });
 
