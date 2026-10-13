@@ -20,8 +20,12 @@ export function JessTranscriptOverlayPage() {
   const [entry, setEntry] = useState<TranscriptEntry | null>(null);
   const snapshotRef = useRef('');
   const hideTimerRef = useRef<number | null>(null);
+  const hideAtRef = useRef(0);
+  const visibleRef = useRef(false);
 
   const setVisible = useCallback((visible: boolean) => {
+    if (visibleRef.current === visible) return;
+    visibleRef.current = visible;
     if ((window as any).hubMindDesktop?.isDesktopApp) {
       void (window as any).hubMindDesktop.setTranscriptOverlayVisible?.(visible).catch(() => undefined);
     }
@@ -46,11 +50,12 @@ export function JessTranscriptOverlayPage() {
       snapshotRef.current = snapshot;
       setEntry(latest);
 
-      const fresh = !!latest && Date.now() - latest.at < HIDE_AFTER_MS + 1500;
+      const fresh = !!latest && Date.now() - latest.at < HIDE_AFTER_MS + 1500 && latest.at > hideAtRef.current;
       if ((showOnChange && changed && latest) || fresh) {
         setVisible(true);
         if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
         hideTimerRef.current = window.setTimeout(() => {
+          hideAtRef.current = Date.now();
           setVisible(false);
           hideTimerRef.current = null;
         }, HIDE_AFTER_MS);
@@ -74,6 +79,7 @@ export function JessTranscriptOverlayPage() {
       window.removeEventListener('storage', onStorage);
       window.clearInterval(interval);
       if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
+      hideAtRef.current = Date.now();
       setVisible(false);
     };
   }, [loadTranscript, setVisible]);
@@ -87,7 +93,7 @@ export function JessTranscriptOverlayPage() {
           <span className={entry.speaker === 'jess' ? 'jess-transcript-dot is-jess' : 'jess-transcript-dot'} />
           {entry.speaker === 'user' ? 'YOU' : 'JESS'}
         </div>
-        <p key={entry.id + entry.at}>{entry.text}</p>
+        <p key={entry.id}>{entry.text}</p>
       </div>
     </main>
   );
