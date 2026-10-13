@@ -562,7 +562,8 @@ export async function executeJessTool(
   args: any,
   user: User | null,
   onPreferredName?: (name: string) => void,
-  context?: { page?: string; documentId?: string; projectId?: string }
+  context?: { page?: string; documentId?: string; projectId?: string },
+  executionId?: string
 ): Promise<{ result: any; actionPayload?: any }> {
   if (!user?.id || user.status === 'suspended' || user.status === 'inactive') {
     return { result: { success: false, error: 'No active authorized Hub-Mind user is available.' } };
@@ -640,7 +641,7 @@ export async function executeJessTool(
         if (name === 'run_windows_command_native') { method = 'run_command'; payload = { command: String(args?.command || '') }; }
         if (name === 'get_windows_time') { method = 'get_time'; payload = {}; }
         if (name === 'get_windows_system_info') { method = 'system_info'; payload = {}; }
-        const result = await desktop.nativeAction(method, payload, user.id);
+        const result = await desktop.nativeAction(method, payload, user.id, executionId);
         const actionStatus = result?.ok !== true ? 'failed' : result?.verified === true ? 'done_verified' : 'sent_unverified';
         return { result: { ...result, status: actionStatus, success: actionStatus !== 'failed', verified: result?.verified === true, evidence: result?.evidence ?? null, ...(actionStatus === 'sent_unverified' ? { note: 'Input was sent, but the resulting UI state was not independently verified. Do not repeat non-idempotent actions automatically.' } : {}) } };
       }
@@ -661,7 +662,7 @@ export async function executeJessTool(
         if (!status?.active) return { result: { success: false, verified: false, error: 'Full Control Session is off. Say “Jess, full control” first.' } };
         if (name === 'chrome_close_tab' && !Number.isInteger(Number(args?.tabId))) return { result: { success: false, verified: false, error: 'Specify the exact Chrome tab ID to close.' } };
         if (['chrome_find_element','chrome_click_element'].includes(name) && !String(args?.selector || '').trim() && !String(args?.text || '').trim()) return { result: { success: false, verified: false, error: 'Provide visible text or a CSS selector to identify the target element.' } };
-        const result = await desktop.chromeAction(name, args || {}, user.id);
+        const result = await desktop.chromeAction(name, args || {}, user.id, executionId);
         return { result: { ...result, success: result?.ok === true && result?.verified === true } };
       }
       case 'desktop_launch_app':
