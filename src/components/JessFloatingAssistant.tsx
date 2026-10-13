@@ -1124,7 +1124,7 @@ export function JessFloatingAssistant() {
         )}
 
         {/* Minimalist 70% Transparent Subtitle Box matching Gemini Live & Hub-Mind theme */}
-        {speechState.text && (
+        {!isDesktopShell && speechState.text && (
           <div className="w-full bg-slate-950/75 backdrop-blur-md rounded-2xl px-5 py-3.5 shadow-2xl border border-teal-500/20 text-slate-100 text-sm sm:text-base font-normal leading-relaxed text-left select-none animate-in fade-in duration-200">
             <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-teal-300">
               <span className={`inline-block h-1.5 w-1.5 rounded-full ${active ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
