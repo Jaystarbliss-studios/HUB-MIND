@@ -1,6 +1,6 @@
 # Hub-Mind × Open Cowork: Engineering Audit and Execution Plan
 
-**Status:** In progress — PR #69 branch reconciled against current main; no production deployment  
+**Status:** Core Jess desktop/runtime integration and official-logo workspace branding are merged into `main` via PRs #77 and #76. A Netlify production deploy should be triggered by the main-branch update; live publish completion could not be independently verified from the available connected tools.  
 **Hub-Mind PR #69 branch:** `feat/hubmind-branding-workspace-jess-settings`  
 **Reference project:** OpenCoworkAI/open-cowork, inspected at source revision `083130349b1a83362eae31dd1705edc0b73782a7`  
 **Scope:** Evidence-led audit of agent/tool execution, native Windows control, MCP/agent-runner compatibility, and test coverage.
@@ -47,7 +47,7 @@ The repository already has related work on the current default branch; this matt
 - PR #70 (`fix/jess-desktop-control-and-dark-theme`) is merged and includes additional packaging, overlay, screen-share and native-control safeguards.
 - PR #66 is recorded in the main-branch Windows gap report as merged, including native helper CI/package work.
 - PR #58 is still open and overlaps companion/homepage/desktop-control files.
-- PR #69 is the active integration PR from `feat/hubmind-branding-workspace-jess-settings` to `main`. The branch was reconciled with the newer `main` history; at the last check GitHub reported it mergeable. Merge only after the full CI and installer jobs complete successfully.
+- PR #69 was merged earlier, but additional fixes landed on its branch after that merge. PR #77 subsequently integrated those remaining runtime/overlay/native-tool changes into `main`; PR #76 merged the official logo fixes for the login screen and workspace sidebar.
 
 The current main-branch CI runs dependency installation, Jess verification, TypeScript validation, unit/contract tests, Firestore rules tests, production build and Windows-native validation. The targeted workflow on PR #69 additionally uses `npm ci` to verify lockfile reproducibility.
 
@@ -77,7 +77,7 @@ Key source files:
 
 Do not mark this test passed until it is performed on Windows.
 
-## New integration work on the current branch
+## Merged integration now on `main`
 
 - Added a separate Electron transcript-caption window with fixed bottom-center positioning, transparent blur styling, click-through mouse handling, no focus, and no movement. The draggable companion window stays 96×96 and icon-only.
 - Added /companion-transcript as a dedicated renderer route; transcript updates are read from the existing cross-window transcript store. The caption hides after a quiet period and does not reopen from stale cached text.
@@ -116,9 +116,11 @@ Do not mark this test passed until it is performed on Windows.
 
 ## Validation record
 
-- Source inspection: completed for the files listed above; PR #69 is reconciled against current main and retains the newer packaging/overlay work.
-- Server registry and fallback continuation: committed. The PR #69 Jess Native Tool Regression workflow passed on the latest verified head, including `npm ci`, Jess verification, TypeScript checking, Electron syntax checks, the native registry contract test and the existing unit suite. Full repository CI and Windows installer packaging were still running at the last status check.
-- CI status: targeted Jess regression passed; full HUB-MIND CI and Windows installer jobs must be checked again before merging.
-- Native Windows smoke test: **not run in this environment**.
-- PR #69 is the integration PR. Its mergeability was restored after reconciling against current main.
-- Merge/deployment: not performed at this validation checkpoint; merge only after all required CI jobs pass. The packaged Windows runtime smoke test remains manual and cannot be inferred from CI alone.
+- **Main integration:** PR #77 merged at `852b70422dfdd7eb7a0b12820c65803d178fab8d`; official-logo branding PR #76 merged at `0c17778fb5ac8a9d3af25862846635ddd36670c4`.
+- **CI on the PR #77 head:** HUB-MIND CI passed, including TypeScript validation, unit/contract tests, Firestore security emulator tests, production build, Windows-native helper builds, PowerShell syntax validation, and Windows installer packaging. The Jess Native Tool Regression workflow passed, including `npm ci`, Jess verification, typecheck, Electron syntax checks, and the targeted unit suite. The dedicated Windows Installer workflow passed and produced a Windows installer artifact plus the Jess Chrome extension artifact.
+- **Branding:** the official `/hub-mind%20logo.png` asset is now used on the public landing page, sign-in page, workspace sidebar, PWA splash/favicon, and installer-icon generation path. Regression coverage checks these surfaces.
+- **Transcript and session:** source-level tests verify the desktop transcript is a separate fixed, non-movable overlay, the companion remains icon-only and movable, and Jess remains mounted across workspace route changes.
+- **Native Windows smoke test:** **not run in this environment**. CI validates native helper builds and installer packaging, but it cannot prove real-window minimize/maximize/restore behavior on the user's Windows machine.
+- **Production deploy:** merging to `main` triggers the configured Netlify Git deployment flow. The Netlify deploy preview succeeded; the production URL and Netlify dashboard were not accessible through the connected tools for independent confirmation of the final published deployment.
+- **Remaining non-parity items:** Hub-Mind does not yet contain Open Cowork's unified MCP server lifecycle manager, general sandboxed agent filesystem executor, or a generated canonical schema shared by all model providers. Those are not claimed as implemented. Keep Firebase, Electron IPC permission checks, and the existing Jess/Chrome paths as the authorization boundary while these are designed and tested separately.
+- **Next acceptance work:** perform the packaged Windows smoke test; add behavioral IPC/session/cancellation tests; implement canonical schema generation; and scope an MCP manager plus path-contained filesystem tool layer before claiming deeper Open Cowork parity.
