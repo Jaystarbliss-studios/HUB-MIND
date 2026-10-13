@@ -104,7 +104,7 @@ function recordEvent(event: JessExecutionEvent, onEvent?: (event: JessExecutionE
 
 export async function runJessToolExecution<T>(
   input: JessExecutionInput,
-  execute: () => Promise<T>,
+  execute: (executionId: string) => Promise<T>,
 ): Promise<JessExecutionTrace> {
   const executionId = makeExecutionId();
   const startedAt = Date.now();
@@ -123,7 +123,7 @@ export async function runJessToolExecution<T>(
   recordEvent({ ...base, status: 'started', at: startedAt, durationMs: 0 }, input.onEvent);
 
   try {
-    const value = await execute();
+    const value = await execute(executionId);
     const at = Date.now();
     const status = resultStatus(value);
     const result = {
