@@ -1,7 +1,7 @@
 # Hub-Mind × Open Cowork: Engineering Audit and Execution Plan
 
-**Status:** In progress — integration branch based on current main; no production deployment  
-**Hub-Mind branch:** `feat/jess-core-runtime-overlay-integration`  
+**Status:** In progress — PR #69 branch reconciled against current main; no production deployment  
+**Hub-Mind PR #69 branch:** `feat/hubmind-branding-workspace-jess-settings`  
 **Reference project:** OpenCoworkAI/open-cowork, inspected at source revision `083130349b1a83362eae31dd1705edc0b73782a7`  
 **Scope:** Evidence-led audit of agent/tool execution, native Windows control, MCP/agent-runner compatibility, and test coverage.
 
@@ -47,9 +47,9 @@ The repository already has related work on the current default branch; this matt
 - PR #70 (`fix/jess-desktop-control-and-dark-theme`) is merged and includes additional packaging, overlay, screen-share and native-control safeguards.
 - PR #66 is recorded in the main-branch Windows gap report as merged, including native helper CI/package work.
 - PR #58 is still open and overlaps companion/homepage/desktop-control files.
-- PR #69, this working branch, remains open and GitHub currently reports `mergeable: false`. Its base SHA predates the merged desktop-control PRs above, so the branch must not be merged as-is. Reconcile its changes against current `main` before any merge; do not overwrite the newer packaging/overlay/security work.
+- PR #69 is the active integration PR from `feat/hubmind-branding-workspace-jess-settings` to `main`. The branch was reconciled with the newer `main` history; at the last check GitHub reported it mergeable. Merge only after the full CI and installer jobs complete successfully.
 
-The current main-branch CI already runs `npm install`, Jess verification, TypeScript validation, unit/contract tests, Firestore rules tests, production build and Windows-native validation. The targeted workflow added on this branch is supplementary; its own run status must still be checked rather than inferred from source presence.
+The current main-branch CI runs dependency installation, Jess verification, TypeScript validation, unit/contract tests, Firestore rules tests, production build and Windows-native validation. The targeted workflow on PR #69 additionally uses `npm ci` to verify lockfile reproducibility.
 
 ## Native window-control call path
 
@@ -105,10 +105,10 @@ Do not mark this test passed until it is performed on Windows.
 
 ## Outstanding risks and next steps
 
-1. Run the actual typecheck and full unit suite in GitHub Actions and resolve any failures.
+1. Confirm the actual typecheck, full unit suite, Firestore emulator suite, production build and Windows-native CI all pass on the current PR head.
 2. Add behavioral tests for the native IPC allowlist, session ownership, cancellation, and normalized result handling; source-contract checks alone are not sufficient.
 3. Exercise minimize/maximize/restore on a packaged Windows build and validate stale/ambiguous target behavior.
-4. Regenerate `package-lock.json` from the actual `hub-mind@0.1.0` manifest and verify a clean `npm ci` install.
+4. Confirm the clean `npm ci` install passes on the current PR head; keep the lockfile and manifest in sync in a dedicated, reviewed change if needed.
 5. Generate provider-specific native tool schemas from a dependency-free canonical definition, rather than only parity-testing duplicated declarations.
 6. Extend the new normalized execution event/result contract with cancellation propagation and main-process audit correlation IDs; behavioral tests should cover session cancellation and stale-result suppression.
 7. Evaluate MCP integration only after the base execution path is stable; keep MCP credentials, server configuration, and tool permissions isolated from Firebase workspace permissions.
@@ -116,9 +116,9 @@ Do not mark this test passed until it is performed on Windows.
 
 ## Validation record
 
-- Source inspection: completed for the files listed above; the current integration branch is based on main and carries the transcript/session and settings changes without replacing the newer main-branch packaging/overlay work.
-- Server registry and fallback continuation: source-level changes committed. The six earlier regression cases were replayed against fetched repository sources in a source harness; the current branch now has 13 contract tests across native registry, transcript overlay, and execution runtime. The expanded source harness passed all 10 native/overlay checks; the actual Node test runner and TypeScript checks still need CI. This is not a substitute for running the actual Node test runner, TypeScript typecheck, production build or Windows runtime tests; those remain pending in CI.
-- CI status at audit time: no statuses/workflow runs returned for the current PR head. The newly added workflow must be checked again after GitHub schedules it.
+- Source inspection: completed for the files listed above; PR #69 is reconciled against current main and retains the newer packaging/overlay work.
+- Server registry and fallback continuation: committed. The PR #69 Jess Native Tool Regression workflow passed on the latest verified head, including `npm ci`, Jess verification, TypeScript checking, Electron syntax checks, the native registry contract test and the existing unit suite. Full repository CI and Windows installer packaging were still running at the last status check.
+- CI status: targeted Jess regression passed; full HUB-MIND CI and Windows installer jobs must be checked again before merging.
 - Native Windows smoke test: **not run in this environment**.
-- PR #69 remains a conflicted legacy branch; this integration branch ports the intended changes onto current main without merging the stale branch wholesale.
-- Merge/deployment: not performed; the integration PR and CI results must be reviewed before merge.
+- PR #69 is the integration PR. Its mergeability was restored after reconciling against current main.
+- Merge/deployment: not performed at this validation checkpoint; merge only after all required CI jobs pass. The packaged Windows runtime smoke test remains manual and cannot be inferred from CI alone.
