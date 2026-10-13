@@ -4,6 +4,7 @@ import { readJessExecutionEvents, type JessExecutionEvent } from '../services/je
 import { Brain, ShieldCheck, SlidersHorizontal, Save, Loader2, MonitorCog } from 'lucide-react';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
+import { JessMcpServersSettings } from '../components/JessMcpServersSettings';
 
 type JessPreferences = {
   permissionMode: 'ask' | 'always-allow';
@@ -81,6 +82,7 @@ export function JessSettings() {
           <label className="flex gap-3 rounded-xl border border-slate-800 p-4 cursor-pointer mb-3"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='ask'} onChange={() => update('permissionMode','ask')} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Always ask</strong><span className="block text-xs text-slate-400 mt-1">Confirm app launches and system commands each time.</span></span></label>
           <label className="flex gap-3 rounded-xl border border-teal-400/25 bg-teal-400/5 p-4 cursor-pointer"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='always-allow'} onChange={() => update('permissionMode','always-allow')} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Always allow routine actions during Full Control</strong><span className="block text-xs text-slate-400 mt-1">Jess can launch approved apps and perform supported, non-destructive actions without repeated prompts. Destructive or elevated actions remain blocked or require explicit confirmation.</span></span></label>
         </section>
+        <JessMcpServersSettings userId={profile?.id || ''} />
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
           <div className="flex items-center gap-3 mb-4"><MonitorCog className="text-teal-300" size={20}/><div><h2 className="font-semibold">Recent Jess execution activity</h2><p className="text-xs text-slate-400 mt-1">A lightweight trace of tool execution. Argument values are not stored.</p></div></div>
           {executionEvents.length === 0 ? <p className="text-sm text-slate-500">No recent tool executions in this app session.</p> : <div className="space-y-2">
