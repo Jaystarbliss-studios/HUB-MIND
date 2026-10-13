@@ -527,6 +527,26 @@ app.whenReady().then(() => {
     if (method === 'press_keys' && (typeof safeArgs.keys !== 'string' || !safeArgs.keys.trim() || safeArgs.keys.length > 80)) throw new Error('Provide a key combination under 80 characters.');
     if (method === 'launch_app' && (typeof safeArgs.name !== 'string' || !safeArgs.name.trim() || safeArgs.name.length > 160)) throw new Error('Provide an application name under 160 characters.');
     if (method === 'open_path' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid local file path.');
+    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key']);
+    const highRiskActions = new Set(['close_window', 'run_command', 'open_path']);
+    const alwaysAllowed = fullControlActive &&
+      jessPreferencesUserId === controlSessionUserId &&
+      controlSessionUserId === userId &&
+      jessPreferences.permissionMode === 'always-allow' &&
+      !highRiskActions.has(method);
+    if (mutatingActions.has(method) && !alwaysAllowed) {
+      const details = method === 'run_command' ? String(safeArgs.command || '') :
+        method === 'type_text' ? String(safeArgs.text || '').slice(0, 1000) :
+        method === 'open_path' ? String(safeArgs.path || '') :
+        JSON.stringify(safeArgs).slice(0, 1200);
+      const choice = await dialog.showMessageBox(getDialogParent(), {
+        type: 'warning', buttons: ['Cancel action', 'Allow once'], defaultId: 0, cancelId: 0,
+        title: 'Allow Jess to control Windows?',
+        message: 'Jess wants to perform: ' + method.replace(/_/g, ' '),
+        detail: 'Action details:\\n\\n' + details + '\\n\\nThis runs as your current Windows user. You can change the permission mode in Workspace → Jess settings.',
+      });
+      if (choice.response !== 1) return { ok: false, verified: false, evidence: null, error: 'Action cancelled by the user.' };
+    }
     const started = Date.now();
     try {
       let result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
