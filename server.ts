@@ -7,6 +7,7 @@ if (typeof (global as any).__dirname === "string" && !(global as any).__dirname.
 }
 
 import { coreIdentity, groqAdapter, ollamaAdapter, geminiAdapter } from "./src/ai/prompts/adapters.ts";
+import { getJessToolsForRuntime } from "./src/shared/jessNativeToolNames.ts";
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -1019,6 +1020,169 @@ async function startServer() {
           description: "Connect the user's account to Google Calendar with one-time persistent authorization.",
           parameters: { type: "OBJECT", properties: {} }
         },
+// Native Windows and Chrome tools. Keep these names and schemas aligned with
+        // JESS_TOOLS_DECLARATIONS in src/lib/jessTools.ts. The client executes each
+        // tool through executeJessTool and returns the result to this Live session.
+        {
+          name: "jess_full_control",
+          description: "Start the native Windows Full Control Session only after the user explicitly asks Jess to take full control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "jess_stop",
+          description: "Immediately stop Jess native Windows control when the user asks Jess to stop.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "show_hub_mind_workspace",
+          description: "Bring the Hub-Mind desktop workspace to the foreground.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "list_windows",
+          description: "List visible Windows desktop windows, titles, process names, bounds, state and foreground status. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "manage_windows",
+          description: "Focus, close, minimize, maximize, restore, move, resize or snap a real Windows desktop window. Use an exact title or handle when possible; verify the resulting state.",
+          parameters: { type: "OBJECT", properties: {
+            action: { type: "STRING", enum: ["focus_window", "close_window", "minimize_window", "maximize_window", "restore_window", "move_window", "resize_window", "snap_window"] },
+            title: { type: "STRING" }, handle: { type: "STRING" }, x: { type: "NUMBER" }, y: { type: "NUMBER" },
+            width: { type: "NUMBER" }, height: { type: "NUMBER" },
+            position: { type: "STRING", enum: ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right"] }
+          }, required: ["action"] }
+        },
+        {
+          name: "control_mouse",
+          description: "Move or click the Windows mouse, or scroll at physical screen coordinates. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["mouse_move", "click", "double_click", "right_click", "scroll"] }, x: { type: "NUMBER" }, y: { type: "NUMBER" }, delta: { type: "NUMBER" } }, required: ["action", "x", "y"] }
+        },
+        {
+          name: "drag_windows_mouse",
+          description: "Drag the Windows mouse from one physical screen coordinate to another. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { fromX: { type: "NUMBER" }, fromY: { type: "NUMBER" }, toX: { type: "NUMBER" }, toY: { type: "NUMBER" } }, required: ["fromX", "fromY", "toX", "toY"] }
+        },
+        {
+          name: "type_windows_text",
+          description: "Type text into the currently focused Windows app. Never use for password or payment fields. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { text: { type: "STRING" } }, required: ["text"] }
+        },
+        {
+          name: "press_windows_keys",
+          description: "Send a key or key combination to the active Windows app, such as CTRL+S or ALT+TAB. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { keys: { type: "STRING" } }, required: ["keys"] }
+        },
+        {
+          name: "control_system_volume",
+          description: "Request a Windows volume up, down or mute media-key action. Verify the actual state before claiming it changed.",
+          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["up", "down", "mute"] } }, required: ["action"] }
+        },
+        {
+          name: "control_screen_brightness",
+          description: "Request a Windows screen brightness up or down media-key action. Hardware support varies; verify the actual state before claiming it changed.",
+          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["up", "down"] } }, required: ["action"] }
+        },
+        {
+          name: "take_windows_screenshot",
+          description: "Capture screenshots of connected Windows monitors with bounds and scale context. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "find_windows_ui_element",
+          description: "Find an accessible Windows UI element by its visible name and return automation metadata and bounds. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { name: { type: "STRING" } }, required: ["name"] }
+        },
+        {
+          name: "invoke_windows_ui_element",
+          description: "Invoke a matching accessible Windows UI element by visible name. Verify the result with a screen read or screenshot. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { name: { type: "STRING" } }, required: ["name"] }
+        },
+        {
+          name: "read_windows_screen",
+          description: "Read accessible Windows UI text with OCR fallback where available. Secure desktop and protected content remain unavailable. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "open_local_windows_path",
+          description: "Open an existing local file or folder with its default Windows application; do not execute it as a command. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { path: { type: "STRING" } }, required: ["path"] }
+        },
+        {
+          name: "launch_windows_application",
+          description: "Launch an installed Windows desktop application by its visible Start Menu name or executable name and check whether its window appears. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { name: { type: "STRING" } }, required: ["name"] }
+        },
+        {
+          name: "run_windows_command_native",
+          description: "Run a bounded, non-elevated PowerShell command as the current Windows user. Destructive commands are blocked. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { command: { type: "STRING" } }, required: ["command"] }
+        },
+        {
+          name: "get_windows_time",
+          description: "Read the local Windows time and time zone.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "get_windows_system_info",
+          description: "Read basic Windows computer and operating-system information.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "chrome_list_tabs",
+          description: "List open Chrome tabs with IDs, titles, URLs and loading status. Requires the Jess Chrome extension and Full Control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "chrome_open_tab",
+          description: "Open an HTTP or HTTPS website in a new Chrome tab. Requires the Jess Chrome extension and Full Control.",
+          parameters: { type: "OBJECT", properties: { url: { type: "STRING" }, active: { type: "BOOLEAN" } }, required: ["url"] }
+        },
+        {
+          name: "chrome_close_tab",
+          description: "Close a specific Chrome tab by its tab ID; never close an unspecified active tab. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } }, required: ["tabId"] }
+        },
+        {
+          name: "chrome_activate_tab",
+          description: "Activate a Chrome tab by ID, or the current active tab when omitted. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
+        },
+        {
+          name: "chrome_navigate_tab",
+          description: "Navigate a Chrome tab to an HTTP or HTTPS URL. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, url: { type: "STRING" }, active: { type: "BOOLEAN" } }, required: ["url"] }
+        },
+        {
+          name: "chrome_reload_tab",
+          description: "Reload a Chrome tab by ID, or the active tab when omitted. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
+        },
+        {
+          name: "chrome_read_page",
+          description: "Read visible page text and title from a Chrome tab without bypassing browser protections. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
+        },
+        {
+          name: "chrome_find_element",
+          description: "Find an element by visible text or CSS selector; this does not click it. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, selector: { type: "STRING" }, text: { type: "STRING" } } }
+        },
+        {
+          name: "chrome_click_element",
+          description: "Click a page element identified by visible text or CSS selector. Follow with a page read to verify the result. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, selector: { type: "STRING" }, text: { type: "STRING" } } }
+        },
+        {
+          name: "chrome_fill_field",
+          description: "Fill a specific input, textarea or select identified by CSS selector. Never use on password or payment fields. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, selector: { type: "STRING" }, value: { type: "STRING" } }, required: ["selector", "value"] }
+        },
+        {
+          name: "chrome_scroll",
+          description: "Scroll a Chrome page by a bounded amount. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, delta: { type: "NUMBER" } }, required: ["delta"] }
+        },
         {
           name: "end_session",
           description: "Put the AI assistant to sleep and end the live voice session when the user says 'end this session', 'go to sleep', 'sleep', or 'deactivate'.",
@@ -1108,8 +1272,10 @@ call returns.`;
     let liveSession: any = null;
     let isSessionActive = false;
     let isFallbackMode = false;
-    let conversationalHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    let conversationalHistory: Array<{ role: string; parts: Array<any> }> = [];
     const requestUrl = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
+    const isDesktopRuntime = requestUrl.searchParams.get("runtime") === "desktop";
+    const connectionTools = getJessToolsForRuntime(LIVE_TOOLS, isDesktopRuntime);
     const activeDocumentId = requestUrl.searchParams.get("documentId");
     const activeDocumentTitle = requestUrl.searchParams.get("documentTitle");
     const currentUserName = requestUrl.searchParams.get("userName") || requestUrl.searchParams.get("name") || "";
@@ -1158,7 +1324,7 @@ call returns.`;
             inputAudioTranscription: {},
             outputAudioTranscription: {},
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
-            tools: LIVE_TOOLS as any,
+            tools: connectionTools as any,
             systemInstruction: {
               parts: [{
                 text: liveSystemPrompt
@@ -1331,7 +1497,7 @@ call returns.`;
                 contents: conversationalHistory as any,
                 config: {
                   systemInstruction: liveSystemPrompt,
-                  tools: LIVE_TOOLS as any,
+                  tools: connectionTools as any,
                 },
               });
 
