@@ -789,6 +789,7 @@ export function JessFloatingAssistant() {
         userId: profile.id,
         userName: fullName,
         userRole: profile.role,
+        permissionMode: prefs.permissionMode,
         contextEnabled: prefs.contextEnabled !== false,
         memoryEnabled: prefs.memoryEnabled !== false,
         personalization: String(prefs.personalization || '').slice(0, 2000),
