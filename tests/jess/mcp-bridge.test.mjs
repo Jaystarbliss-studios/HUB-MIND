@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { McpBridge, sanitizeServerConfig, safeModelToolName, toGeminiSchema } from '../../electron/mcpBridge.cjs';
+import { McpBridge, sanitizeServerConfig, safeModelToolName, toGeminiSchema, getSafeChildEnvironment } from '../../electron/mcpBridge.cjs';
 
 test('MCP server configuration rejects unsafe transport and malformed executable settings', () => {
   assert.throws(() => sanitizeServerConfig({ name: 'Remote', transport: 'streamable-http', url: 'http://example.com/mcp' }, 'user-a'), /HTTPS/);
@@ -11,6 +11,7 @@ test('MCP server configuration rejects unsafe transport and malformed executable
   assert.throws(() => sanitizeServerConfig({ name: 'Local', transport: 'stdio', command: 'node', cwd: 'relative/path' }, 'user-a'), /absolute path/);
   assert.throws(() => sanitizeServerConfig({ name: 'Local', transport: 'stdio', command: 'node\nwhoami' }, 'user-a'), /unsupported characters/);
   assert.throws(() => sanitizeServerConfig({ name: 'Local', transport: 'stdio', command: 'node', env: { API_TOKEN: 'plaintext-secret' } }, 'user-a'), /encrypted secret storage/);
+  assert.equal(Object.hasOwn(getSafeChildEnvironment(), 'OPENAI_API_KEY'), false);
 });
 
 test('MCP tool schema conversion and generated names stay within Gemini constraints', () => {
