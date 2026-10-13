@@ -9,6 +9,7 @@ const chromeBridge = require('./chromeBridge.cjs');
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
 let companionWindow;
+let transcriptOverlayWindow;
 let companionDismissed = false;
 let tray;
 let quitting = false;
@@ -124,6 +125,39 @@ function createCompanionWindow(force = false) {
   companionWindow.on('closed', () => { companionWindow = null; });
   companionWindow.loadURL(APP_URL + '/companion');
 }
+function positionTranscriptOverlayWindow() {
+  if (!transcriptOverlayWindow || transcriptOverlayWindow.isDestroyed()) return;
+  const area = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(760, Math.max(420, area.width - 32));
+  const height = Math.min(124, Math.max(104, area.height - 32));
+  transcriptOverlayWindow.setBounds({
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + area.height - height - 22),
+    width,
+    height,
+  }, false);
+}
+
+function createTranscriptOverlayWindow() {
+  if (transcriptOverlayWindow && !transcriptOverlayWindow.isDestroyed()) {
+    positionTranscriptOverlayWindow();
+    return transcriptOverlayWindow;
+  }
+  transcriptOverlayWindow = new BrowserWindow(secureWindowOptions({
+    width: 760, height: 124, minWidth: 420, minHeight: 104, maxWidth: 760, maxHeight: 124,
+    frame: false, transparent: true, resizable: false, movable: false, focusable: false,
+    alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
+    title: 'Jess Transcript', show: false, webPreferences: { backgroundThrottling: false },
+  }));
+  guardNavigation(transcriptOverlayWindow);
+  transcriptOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  transcriptOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
+  positionTranscriptOverlayWindow();
+  transcriptOverlayWindow.on('closed', () => { transcriptOverlayWindow = null; });
+  transcriptOverlayWindow.loadURL(APP_URL + '/companion-transcript');
+  return transcriptOverlayWindow;
+}
+
 function orbPositionPath() { return path.join(app.getPath('userData'), 'jess-orb-position.json'); }
 function readOrbPosition() {
   try {
@@ -451,20 +485,21 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionDismissed = true; companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:set-companion-transcript-visible', (event, _visible) => {
     assertTrustedSender(event);
-    if (!companionWindow || companionWindow.isDestroyed()) return false;
-    // The Windows desktop overlay is intentionally the Jess orb only.
-    // Conversation transcripts stay in the main workspace, never expand over other apps.
-    const width = 96;
-    const height = 96;
-    const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay();
-    const area = display.workArea;
-    const [x, y] = companionWindow.getPosition();
-    companionWindow.setSize(width, height, false);
-    companionWindow.setPosition(
-      Math.max(area.x, Math.min(area.x + area.width - width, x)),
-      Math.max(area.y, Math.min(area.y + area.height - height, y)),
-      false
-    );
+    // Legacy compatibility only. The movable companion remains an icon-only window.
+    return true;
+  });
+  ipcMain.handle('hubmind:set-transcript-overlay-visible', (event, visible) => {
+    assertTrustedSender(event);
+    const overlay = createTranscriptOverlayWindow();
+    if (!overlay || overlay.isDestroyed()) return false;
+    positionTranscriptOverlayWindow();
+    overlay.setIgnoreMouseEvents(true, { forward: true });
+    if (visible === true) {
+      overlay.setAlwaysOnTop(true, 'screen-saver');
+      overlay.showInactive();
+      return true;
+    }
+    overlay.hide();
     return true;
   });
   ipcMain.handle('hubmind:reset-orb-position', (event) => { assertTrustedSender(event); resetOrbPosition(); return true; });
@@ -635,7 +670,11 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   });
   if (!stopHotkeyRegistered) console.warn('[Jess native control] Could not register Ctrl+Alt+Shift+J emergency stop hotkey.');
   createMainWindow();
+  createTranscriptOverlayWindow();
   createTray();
+  screen.on('display-metrics-changed', positionTranscriptOverlayWindow);
+  screen.on('display-added', positionTranscriptOverlayWindow);
+  screen.on('display-removed', positionTranscriptOverlayWindow);
   app.on('activate', showMain);
 });
 
