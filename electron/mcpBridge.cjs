@@ -167,18 +167,31 @@ class McpBridge {
     if (!cleanString(userId, 256)) throw new Error('A signed-in Hub-Mind user is required.');
     const config = sanitizeServerConfig(input, userId);
     const key = this.key(userId, config.id);
+    const previous = this.configs.get(key);
     await this.disconnectServer(userId, config.id);
     this.configs.set(key, config);
-    this.persistConfigs();
+    try {
+      this.persistConfigs();
+    } catch (error) {
+      if (previous) this.configs.set(key, previous);
+      else this.configs.delete(key);
+      throw error;
+    }
     if (config.enabled) await this.connectServer(userId, config.id);
     return this.listServers(userId);
   }
 
   async removeServer(userId, id) {
     const key = this.key(userId, id);
+    const previous = this.configs.get(key);
     await this.disconnectServer(userId, id);
     this.configs.delete(key);
-    this.persistConfigs();
+    try {
+      this.persistConfigs();
+    } catch (error) {
+      if (previous) this.configs.set(key, previous);
+      throw error;
+    }
     return this.listServers(userId);
   }
 
