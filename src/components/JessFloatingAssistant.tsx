@@ -155,6 +155,23 @@ interface CurrentSpeechState {
 
 export function JessFloatingAssistant() {
   const { user, profile, updatePreferredName } = useAuth();
+  const jessPreferencesRef = useRef({
+    permissionMode: 'ask' as 'ask' | 'always-allow',
+    memoryEnabled: true,
+    contextEnabled: true,
+    personalization: '',
+    webResearchEnabled: true,
+    screenVerificationEnabled: true,
+  });
+  useEffect(() => {
+    if (!profile?.id) return;
+    return onSnapshot(doc(db, 'users', profile.id, 'private', 'jessSettings'), snapshot => {
+      const prefs = { ...jessPreferencesRef.current, ...(snapshot.exists() ? snapshot.data() : {}) };
+      jessPreferencesRef.current = prefs;
+      try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(prefs)); } catch {}
+      void (window as any).hubMindDesktop?.setJessPreferences?.(prefs, profile.id).catch(() => {});
+    }, error => console.warn('[Jess] Could not load user preferences:', error));
+  }, [profile?.id]);
   const location = useLocation();
   const navigate = useNavigate();
   const locationPathRef = useRef(location.pathname);
@@ -336,7 +353,7 @@ export function JessFloatingAssistant() {
     if (backgroundHydratedUserRef.current !== profile.id) {
       backgroundHydratedUserRef.current = profile.id;
       void jessBackgroundTasks.resumePersistedTasks(profile.id, async (_task, step) => {
-        const result = await executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), resolveJessContext(locationPathRef.current));
+        const result = await executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), (jessPreferencesRef.current.contextEnabled === false ? undefined : resolveJessContext(locationPathRef.current)));
         if (!result.result?.success) throw new Error(result.result?.error || 'Background step failed.');
       });
     }
@@ -499,7 +516,7 @@ export function JessFloatingAssistant() {
         setOutputLevel(output);
       },
       onFunctionCall: async fc => {
-        const context = resolveJessContext(locationPathRef.current);
+        const context = jessPreferencesRef.current.contextEnabled === false ? undefined : resolveJessContext(locationPathRef.current);
         let toolArgs = fc.args;
         if (typeof toolArgs === 'string') {
           try { toolArgs = JSON.parse(toolArgs); } catch { toolArgs = {}; }
@@ -712,7 +729,7 @@ export function JessFloatingAssistant() {
         }
 
         // Auto-extract memory from user statements if explicit preference mentioned
-        if (profile?.id) {
+        if (profile?.id && jessPreferencesRef.current.memoryEnabled !== false) {
           autoExtractMemory(profile.id, text).then(saved => {
             if (saved) {
               setRecentMemorySaved(saved.content);
@@ -744,12 +761,18 @@ export function JessFloatingAssistant() {
     try {
       const fullName = profile.preferredName || profile.displayName || profile.name || user?.displayName || (profile.email ? profile.email.split('@')[0] : 'User');
       const firstName = profile.preferredName || profile.displayName?.split(' ')[0] || profile.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || fullName;
-      const context = resolveJessContext(locationPathRef.current);
-      await client.connect({ 
-        ...context, 
-        userId: profile.id, 
-        userName: fullName, 
-        userRole: profile.role 
+      const prefs = jessPreferencesRef.current;
+      const context = prefs.contextEnabled === false ? undefined : resolveJessContext(locationPathRef.current);
+      await client.connect({
+        ...(context || {}),
+        userId: profile.id,
+        userName: fullName,
+        userRole: profile.role,
+        contextEnabled: prefs.contextEnabled !== false,
+        memoryEnabled: prefs.memoryEnabled !== false,
+        personalization: String(prefs.personalization || '').slice(0, 2000),
+        webResearchEnabled: prefs.webResearchEnabled !== false,
+        screenVerificationEnabled: prefs.screenVerificationEnabled !== false,
       });
       // Manual activation should enter a clean listening state immediately.
       // Do not make Jess speak a startup greeting: it adds latency and can occupy
