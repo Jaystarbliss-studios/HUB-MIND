@@ -340,6 +340,10 @@ test('MCP tools use explicit desktop consent, scoped tool discovery, and no shel
   assert.match(bridge, /Only HTTPS is allowed|MCP HTTP servers must use HTTPS/);
   assert.match(main, /ipcMain\.handle\('hubmind:mcp-tool-call'/);
   assert.match(main, /Approve Jess MCP tool call/);
+  assert.match(main, /requireEncryptedStorage: true/);
+  assert.match(main, /safeStorage\.encryptString/);
+  assert.match(main, /safeStorage\.decryptString/);
+  assert.match(main, /MCP access is scoped to the currently active Hub-Mind account/);
   assert.match(main, /mcpBridge\.resolveTool\(owner/);
   assert.match(main, /mcp-tool-call-approved/);
   assert.match(preload, /mcpCallTool: .*hubmind:mcp-tool-call/);
