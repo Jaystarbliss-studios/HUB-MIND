@@ -102,7 +102,7 @@ test('MCP server configuration is encrypted at rest when secure storage is requi
       enabled: false,
     }, 'user-a');
     const stored = fs.readFileSync(path.join(userDataPath, 'jess-mcp-servers.json'), 'utf8');
-    assert.match(stored, /"encrypted": true/);
+    assert.match(stored, /"encrypted":true/);
     assert.doesNotMatch(stored, /secret-command\.exe/);
     const reloaded = new McpBridge({ userDataPath, encryptConfig, decryptConfig, requireEncryptedStorage: true });
     assert.equal(reloaded.listServers('user-a').length, 1);
