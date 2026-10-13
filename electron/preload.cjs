@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   platform: process.platform, isDesktopApp: true,
   startFullControl: (userId) => ipcRenderer.invoke('hubmind:full-control-start', userId),
+  setJessPreferences: (prefs, userId) => ipcRenderer.invoke('hubmind:jess-preferences-set', prefs, userId),
+  getJessPreferences: (userId) => ipcRenderer.invoke('hubmind:jess-preferences-get', userId),
   stopFullControl: () => ipcRenderer.invoke('hubmind:full-control-stop'),
   nativeStatus: () => ipcRenderer.invoke('hubmind:native-status'),
   chromeStatus: () => ipcRenderer.invoke('hubmind:chrome-status'),
