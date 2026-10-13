@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, session, desktopCapturer, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, session, desktopCapturer, screen, globalShortcut, safeStorage } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { execFile, spawn } = require('node:child_process');
@@ -422,7 +422,14 @@ app.whenReady().then(() => {
   app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
   chromeBridge.start();
-  mcpBridge = new McpBridge({ userDataPath: app.getPath('userData') });
+  let canEncryptMcpConfig = false;
+  try { canEncryptMcpConfig = safeStorage.isEncryptionAvailable(); } catch {}
+  mcpBridge = new McpBridge({
+    userDataPath: app.getPath('userData'),
+    requireEncryptedStorage: true,
+    encryptConfig: canEncryptMcpConfig ? value => safeStorage.encryptString(value).toString('base64') : null,
+    decryptConfig: canEncryptMcpConfig ? value => safeStorage.decryptString(Buffer.from(value, 'base64')) : null,
+  });
   loadJessPreferences();
 
   const requireMcpUser = userId => {
