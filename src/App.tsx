@@ -54,6 +54,7 @@ const Knowledge = safeLazy(() => import('./pages/Knowledge'), 'Knowledge');
 const FollowUps = safeLazy(() => import('./pages/FollowUps'), 'FollowUps');
 const SharedRecord = safeLazy(() => import('./pages/SharedRecord'), 'SharedRecord');
 const CompanionPage = safeLazy(() => import('./pages/CompanionPage'), 'CompanionPage');
+const JessTranscriptOverlayPage = safeLazy(() => import('./pages/JessTranscriptOverlayPage'), 'JessTranscriptOverlayPage');
 const JessOrbPage = safeLazy(() => import('./pages/JessOrbPage'), 'JessOrbPage');
 
 const LoadingScreen = () => <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-slate-400"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
@@ -87,8 +88,12 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
 function AuthenticatedAssistantWidgets() {
   const { user, profile } = useAuth();
   const location = useLocation();
-  // Keep the desktop companion window icon-only: do not mount the full workspace assistant UI there.
-  if (!location.pathname.startsWith('/workspace')) return null;
+  // The native orb and caption run in dedicated Electron windows. Keep the actual
+  // Jess session mounted across authenticated route changes so navigation never
+  // disconnects the microphone/Live client or resets the transcript.
+  const desktopOverlayRoute = ['/companion', '/companion-transcript', '/orb'].includes(location.pathname);
+  const publicOrLoginRoute = location.pathname === '/' || location.pathname === '/login';
+  if (desktopOverlayRoute || publicOrLoginRoute) return null;
   if (!user || !profile || profile.status !== 'active') return null;
   return <><JessDocumentBridge /><JessFloatingAssistant /></>;
 }
@@ -105,6 +110,7 @@ export default function App() {
         <Route path="/" element={<AppHomeRoute />} />
         <Route path="/login" element={<Login />} />
         <Route path="/companion" element={<ProtectedRoute><CompanionPage /></ProtectedRoute>} />
+        <Route path="/companion-transcript" element={<JessTranscriptOverlayPage />} />
         <Route path="/orb" element={<ProtectedRoute><JessOrbPage /></ProtectedRoute>} />
         <Route path="/share-target" element={<Navigate to="/workspace/inbox?shared=true" replace />} />
         <Route path="/share/:type/:id" element={<ProtectedRoute><SharedRecord /></ProtectedRoute>} />
