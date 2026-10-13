@@ -104,11 +104,14 @@ function truncateToolResult(value) {
 }
 
 class McpBridge {
-  constructor({ userDataPath, spawnImpl = spawn, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+  constructor({ userDataPath, spawnImpl = spawn, timeoutMs = REQUEST_TIMEOUT_MS, encryptConfig = null, decryptConfig = null, requireEncryptedStorage = false } = {}) {
     this.userDataPath = userDataPath || process.cwd();
     this.configPath = path.join(this.userDataPath, 'jess-mcp-servers.json');
     this.spawnImpl = spawnImpl;
     this.timeoutMs = timeoutMs;
+    this.encryptConfig = typeof encryptConfig === 'function' ? encryptConfig : null;
+    this.decryptConfig = typeof decryptConfig === 'function' ? decryptConfig : null;
+    this.requireEncryptedStorage = requireEncryptedStorage === true;
     this.configs = new Map();
     this.connections = new Map();
     this.toolIndex = new Map();
@@ -118,7 +121,15 @@ class McpBridge {
 
   loadConfigs() {
     try {
-      const parsed = JSON.parse(fs.readFileSync(this.configPath, 'utf8'));
+      const stored = JSON.parse(fs.readFileSync(this.configPath, 'utf8'));
+      let parsed;
+      if (stored && stored.encrypted === true && typeof stored.payload === 'string') {
+        if (!this.decryptConfig) return;
+        parsed = JSON.parse(this.decryptConfig(stored.payload));
+      } else {
+        if (this.requireEncryptedStorage) return;
+        parsed = stored;
+      }
       if (!Array.isArray(parsed)) return;
       for (const item of parsed) {
         try {
@@ -126,13 +137,20 @@ class McpBridge {
           if (config.userId) this.configs.set(this.key(config.userId, config.id), config);
         } catch { /* Ignore malformed persisted entries and keep the app launchable. */ }
       }
-    } catch { /* First launch. */ }
+    } catch { /* First launch or unavailable device encryption. */ }
   }
 
   persistConfigs() {
+    if (this.requireEncryptedStorage && !this.encryptConfig) {
+      throw new Error('Encrypted MCP configuration storage is unavailable on this device. Configure Windows secure storage before saving MCP servers.');
+    }
     fs.mkdirSync(path.dirname(this.configPath), { recursive: true });
+    const rows = JSON.stringify([...this.configs.values()], null, 2);
+    const stored = this.encryptConfig
+      ? JSON.stringify({ encrypted: true, payload: this.encryptConfig(rows) })
+      : rows;
     const temp = this.configPath + '.tmp';
-    fs.writeFileSync(temp, JSON.stringify([...this.configs.values()], null, 2), { encoding: 'utf8', mode: 0o600 });
+    fs.writeFileSync(temp, stored, { encoding: 'utf8', mode: 0o600 });
     fs.renameSync(temp, this.configPath);
   }
 
