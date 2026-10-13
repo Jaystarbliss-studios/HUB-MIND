@@ -84,3 +84,30 @@ test('stdio MCP servers initialize, publish tools, execute calls, and stay scope
     fs.rmSync(userDataPath, { recursive: true, force: true });
   }
 });
+
+
+test('MCP server configuration is encrypted at rest when secure storage is required', async () => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'hubmind-mcp-encrypted-test-'));
+  const encryptConfig = value => Buffer.from(value, 'utf8').toString('base64');
+  const decryptConfig = value => Buffer.from(value, 'base64').toString('utf8');
+  const bridge = new McpBridge({ userDataPath, encryptConfig, decryptConfig, requireEncryptedStorage: true });
+  try {
+    await bridge.saveServer({
+      id: 'stored-server',
+      name: 'Stored server',
+      transport: 'stdio',
+      command: 'secret-command.exe',
+      args: ['--demo'],
+      enabled: false,
+    }, 'user-a');
+    const stored = fs.readFileSync(path.join(userDataPath, 'jess-mcp-servers.json'), 'utf8');
+    assert.match(stored, /"encrypted": true/);
+    assert.doesNotMatch(stored, /secret-command\.exe/);
+    const reloaded = new McpBridge({ userDataPath, encryptConfig, decryptConfig, requireEncryptedStorage: true });
+    assert.equal(reloaded.listServers('user-a').length, 1);
+    await reloaded.shutdown();
+  } finally {
+    await bridge.shutdown();
+    fs.rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
