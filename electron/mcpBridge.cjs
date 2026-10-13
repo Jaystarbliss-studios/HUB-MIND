@@ -31,18 +31,12 @@ function sanitizeServerConfig(input, userId) {
       if (typeof v !== 'string' || v.length > 2000 || /[\0]/.test(v)) throw new Error('MCP arguments must be strings no longer than 2,000 characters.');
       return v;
     }) : [];
-    const env = {};
-    if (input.env && typeof input.env === 'object' && !Array.isArray(input.env)) {
-      for (const [key, value] of Object.entries(input.env).slice(0, 40)) {
-        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || typeof value !== 'string' || value.length > 4000 || /[\0]/.test(value)) {
-          throw new Error('Invalid MCP environment variable: ' + key);
-        }
-        env[key] = value;
-      }
+    if (input.env && typeof input.env === 'object' && Object.keys(input.env).length > 0) {
+      throw new Error('Custom MCP environment variables are not enabled until encrypted secret storage is configured.');
     }
     const cwd = cleanString(input.cwd, 1000);
     if (cwd && !path.isAbsolute(cwd)) throw new Error('The MCP working directory must be an absolute path.');
-    return { ...config, command, args, env, ...(cwd ? { cwd } : {}) };
+    return { ...config, command, args, ...(cwd ? { cwd } : {}) };
   }
   let url;
   try { url = new URL(cleanString(input.url, 2000)); } catch { throw new Error('Enter a valid MCP Streamable HTTP URL.'); }
@@ -172,7 +166,7 @@ class McpBridge {
       else await this.connectHttp(key, state);
       const response = await this.request(state, 'tools/list', {});
       const tools = Array.isArray(response?.tools) ? response.tools.slice(0, MAX_TOOLS_PER_SERVER) : [];
-      const used = new Set([...this.toolIndex.keys()].filter(name => this.toolIndex.get(name)?.userId !== userId));
+      const used = new Set(this.toolIndex.keys());
       state.tools = tools.filter(tool => tool && typeof tool.name === 'string' && /^[\w.-]{1,200}$/.test(tool.name)).map(tool => ({
         name: safeModelToolName(config.id, tool.name, used),
         originalName: tool.name,
@@ -196,7 +190,7 @@ class McpBridge {
     const config = state.config;
     const child = this.spawnImpl(config.command, config.args || [], {
       cwd: config.cwd || undefined,
-      env: { ...process.env, ...(config.env || {}) },
+      env: process.env,
       shell: false,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -344,10 +338,12 @@ class McpBridge {
   }
 
   listTools(userId) {
-    return [...this.toolIndex.entries()].filter(([, entry]) => entry.userId === userId).map(([name, entry]) => ({
-      name, description: entry.description, parameters: entry.parameters,
-      serverId: entry.serverId, serverName: entry.serverName, originalName: entry.originalName,
-    }));
+    return [...this.toolIndex.entries()]
+      .filter(([, entry]) => entry.userId === userId && this.connections.get(entry.serverKey)?.connected)
+      .map(([name, entry]) => ({
+        name, description: entry.description, parameters: entry.parameters,
+        serverId: entry.serverId, serverName: entry.serverName, originalName: entry.originalName,
+      }));
   }
 
   resolveTool(userId, modelName) {
