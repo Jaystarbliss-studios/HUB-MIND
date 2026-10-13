@@ -184,7 +184,7 @@ test('native tool results can travel from the desktop executor back to the Live 
   assert.match(assistant, /MAX_JESS_TOOL_CALLS_PER_TURN = 12/);
   assert.match(assistant, /toolLoopRef\.current\.rounds > MAX_JESS_TOOL_CALLS_PER_TURN/);
   assert.match(assistant, /previousCalls >= 2/);
-  assert.match(assistant, /await executeJessTool\(fc\.name/);
+  assert.match(assistant, /executionId => executeJessTool\(fc\.name/);
   assert.match(assistant, /sendFunctionResponse\(\{ name: fc\.name, id: fc\.id, response: result\.result \}\)/);
   assert.match(assistant, /A tool failure must become a tool response/);
   assert.match(executor, /tools: \[\{ functionDeclarations: availableTools as any \}\]/);
