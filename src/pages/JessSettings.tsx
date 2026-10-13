@@ -39,11 +39,15 @@ export function JessSettings() {
   }, [profile?.id]);
 
   useEffect(() => {
-    const refresh = () => setExecutionEvents(readJessExecutionEvents().slice().reverse().slice(0, 8));
+    const refresh = () => setExecutionEvents(
+      profile?.id
+        ? readJessExecutionEvents().filter(event => event.userId === profile.id).slice().reverse().slice(0, 8)
+        : [],
+    );
     refresh();
     window.addEventListener('hubmind:jess-execution-event', refresh);
     return () => window.removeEventListener('hubmind:jess-execution-event', refresh);
-  }, []);
+  }, [profile?.id]);
 
   const update = <K extends keyof JessPreferences,>(key: K, value: JessPreferences[K]) => {
     setPrefs(current => ({ ...current, [key]: value }));
