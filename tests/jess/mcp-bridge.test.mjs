@@ -69,7 +69,7 @@ test('stdio MCP servers initialize, publish tools, execute calls, and stay scope
 
     const tools = bridge.listTools('user-a');
     assert.equal(tools.length, 1);
-    assert.match(tools[0].name, /^mcp_test-server_echo_tool$/);
+    assert.match(tools[0].name, /^mcp_test_server_echo_tool$/);
     assert.equal(bridge.listTools('user-b').length, 0);
 
     const result = await bridge.callTool('user-a', tools[0].name, { message: 'hello from Jess' });
