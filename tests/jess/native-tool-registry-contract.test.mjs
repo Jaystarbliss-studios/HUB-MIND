@@ -287,7 +287,7 @@ test('execution correlation IDs reach native IPC and the local audit log', async
     read('../../electron/preload.cjs'),
     read('../../electron/main.cjs'),
   ]);
-  assert.match(runtime, /const executionId = makeExecutionId\\(\\)/);
+  assert.match(runtime, /const executionId = makeExecutionId\(\)/);
   assert.match(assistant, /runJessToolExecution/);
   assert.match(assistant, /executionId: execution\.executionId/);
   assert.match(tools, /desktop\.nativeAction\(method, payload, user\.id, executionId\)/);
