@@ -7,6 +7,11 @@ on:
       - 'src/lib/jessTools.ts'
       - 'src/services/liveAudioClient.ts'
       - 'src/components/JessFloatingAssistant.tsx'
+      - 'src/App.tsx'
+      - 'src/pages/JessTranscriptOverlayPage.tsx'
+      - 'src/pages/jess-transcript-overlay.css'
+      - 'src/shared/jessNativeToolNames.ts'
+      - 'src/components/Layout.tsx'
       - 'electron/**'
       - 'tests/jess/**'
       - 'package.json'
@@ -14,7 +19,7 @@ on:
       - '.github/workflows/jess-native-regression.yml'
   push:
     branches:
-      - feat/hubmind-branding-workspace-jess-settings
+      - feat/jess-core-runtime-overlay-integration
     paths:
       - 'server.ts'
       - 'src/lib/jessTools.ts'
