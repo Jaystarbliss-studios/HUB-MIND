@@ -310,6 +310,8 @@ test('Jess account preferences are enforced by the assistant and tool executor',
   assert.match(settings, /doc\(db, 'users', profile\.id, 'private', 'jessSettings'\)/);
   assert.match(settings, /memoryEnabled/);
   assert.match(settings, /webResearchEnabled/);
+  assert.match(settings, /filter\(event => event\.userId === profile\.id\)/);
+  assert.match(settings, /\}, \[profile\?\.id\]\);/);
   assert.match(settings, /permissionMode/);
   assert.match(assistant, /jessPreferencesRef\.current\.memoryEnabled !== false/);
   assert.match(assistant, /jessPreferencesRef\.current\.webResearchEnabled === false/);
