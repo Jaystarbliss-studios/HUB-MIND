@@ -42,7 +42,24 @@ function Get-Windows {
  }
  [void][JessWin32]::EnumWindows($cb,[IntPtr]::Zero);return @($items)
 }
-function Find-Window($a){$ws=Get-Windows;if($a.handle){$w=$ws|Where-Object{[string]$_.handle -eq [string]$a.handle}|Select-Object -First 1;if($w){return $w}};if($a.title){$w=$ws|Where-Object{$_.title -like ('*'+[string]$a.title+'*')}|Select-Object -First 1;if($w){return $w}};return $null}
+function Find-Window($a){
+ $ws=Get-Windows
+ if($null -ne $a.handle -and [string]$a.handle -ne ''){
+  $handleMatches=@($ws|Where-Object{[string]$_.handle -eq [string]$a.handle})
+  if($handleMatches.Count -eq 1){return $handleMatches[0]}
+  return $null
+ }
+ if($a.title){
+  $needle=[string]$a.title
+  $exact=@($ws|Where-Object{[string]::Equals([string]$_.title,$needle,[StringComparison]::OrdinalIgnoreCase)})
+  if($exact.Count -eq 1){return $exact[0]}
+  if($exact.Count -gt 1){throw 'Window title is ambiguous; provide the exact window handle.'}
+  $titleMatches=@($ws|Where-Object{$_.title.IndexOf($needle,[StringComparison]::OrdinalIgnoreCase) -ge 0})
+  if($titleMatches.Count -eq 1){return $titleMatches[0]}
+  if($titleMatches.Count -gt 1){throw 'Window title is ambiguous; provide the exact window handle.'}
+ }
+ return $null
+}
 function Send-Key($key){
  $map=@{ENTER=13;ESC=27;TAB=9;SPACE=32;BACKSPACE=8;DELETE=46;UP=38;DOWN=40;LEFT=37;RIGHT=39;HOME=36;END=35;CTRL=17;ALT=18;SHIFT=16;WIN=91;F1=112;F2=113;F3=114;F4=115;F5=116;F6=117;F7=118;F8=119;F9=120;F10=121;F11=122;F12=123}
  $list=New-Object System.Collections.Generic.List[JessWin32+INPUT];foreach($p in $key.ToUpperInvariant().Split('+')){$v=$map[$p];if(!$v -and $p.Length -eq 1){$v=[int][char]$p};if(!$v){throw ('Unsupported key '+$p)};$i=New-Object JessWin32+INPUT;$i.type=1;$i.U.ki.vk=[uint16]$v;$list.Add($i)}
