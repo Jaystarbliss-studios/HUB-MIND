@@ -429,6 +429,9 @@ app.whenReady().then(() => {
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) {
       throw new Error('A signed-in Hub-Mind user ID is required.');
     }
+    if (jessPreferencesUserId && jessPreferencesUserId !== userId) {
+      throw new Error('MCP access is scoped to the currently active Hub-Mind account.');
+    }
     return userId;
   };
   ipcMain.handle('hubmind:mcp-list-servers', (event, userId) => {
