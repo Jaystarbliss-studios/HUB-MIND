@@ -332,6 +332,45 @@ class McpBridge {
     try { state.process?.stdin.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n'); } catch {}
   }
 
+  async readSseResponse(response, expectedId) {
+    if (!response.body || typeof response.body.getReader !== 'function') {
+      throw new Error('MCP server returned an unreadable event stream.');
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let dataLines = [];
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        let newline;
+        while ((newline = buffer.indexOf('\n')) >= 0) {
+          let line = buffer.slice(0, newline);
+          buffer = buffer.slice(newline + 1);
+          if (line.endsWith('\r')) line = line.slice(0, -1);
+          if (line === '') {
+            if (dataLines.length) {
+              const raw = dataLines.join('\n');
+              dataLines = [];
+              if (raw !== '[DONE]') {
+                let message;
+                try { message = JSON.parse(raw); } catch { continue; }
+                if (String(message?.id) === String(expectedId)) return message;
+              }
+            }
+          } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).replace(/^ /, ''));
+          }
+        }
+      }
+    } finally {
+      try { await reader.cancel(); } catch {}
+    }
+    throw new Error('MCP event stream ended before returning the requested response.');
+  }
+
   async httpRequest(state, method, params, initialize = false, notification = false) {
     const body = { jsonrpc: '2.0', ...(notification ? {} : { id: ++this.requestCounter }), method, params };
     const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
@@ -355,9 +394,7 @@ class McpBridge {
       if (message?.error) throw new Error(cleanString(message.error.message, 1000) || 'MCP JSON-RPC error.');
       result = message?.result || {};
     } else if (contentType.includes('text/event-stream')) {
-      const text = await response.text();
-      const data = text.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).filter(Boolean).join('\n');
-      const message = JSON.parse(data);
+      const message = await this.readSseResponse(response, body.id);
       if (message?.error) throw new Error(cleanString(message.error.message, 1000) || 'MCP JSON-RPC error.');
       result = message?.result || {};
     } else {
