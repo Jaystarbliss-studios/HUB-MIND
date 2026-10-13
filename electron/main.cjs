@@ -537,6 +537,10 @@ app.whenReady().then(() => {
     auditNativeAction({ event: 'mcp-tool-call-approved', serverId: resolved.entry.serverId, toolName: resolved.entry.originalName, executionId: correlationId, userId: owner });
     try {
       const result = await mcpBridge.callTool(owner, String(modelToolName), args);
+      if (result?.isError === true) {
+        auditNativeAction({ event: 'mcp-tool-call-failed', serverId: resolved.entry.serverId, toolName: resolved.entry.originalName, executionId: correlationId, userId: owner, error: 'MCP server returned an error result.' });
+        return { success: false, error: 'The MCP server reported that this tool call failed.', result };
+      }
       auditNativeAction({ event: 'mcp-tool-call-completed', serverId: resolved.entry.serverId, toolName: resolved.entry.originalName, executionId: correlationId, userId: owner });
       return { success: true, result };
     } catch (error) {
