@@ -1,7 +1,7 @@
 # Hub-Mind × Open Cowork: Engineering Audit and Execution Plan
 
 **Status:** Core Jess desktop/runtime integration and official-logo workspace branding are merged into `main` via PRs #77 and #76. A Netlify production deploy should be triggered by the main-branch update; live publish completion could not be independently verified from the available connected tools.  
-**Hub-Mind PR #69 branch:** `feat/hubmind-branding-workspace-jess-settings`  
+**Jess MCP follow-up branch:** `feat/jess-mcp-runtime-current`  
 **Reference project:** OpenCoworkAI/open-cowork, inspected at source revision `083130349b1a83362eae31dd1705edc0b73782a7`  
 **Scope:** Evidence-led audit of agent/tool execution, native Windows control, MCP/agent-runner compatibility, and test coverage.
 
@@ -31,7 +31,7 @@
 | Tool-call result lifecycle | Direct Live sends function responses through the client; server Live relays responses; Voice Bridge fallback now resumes after tool result | Agent runner has explicit tool-use/result content blocks and trace steps | Add focused lifecycle tests for success, failure, multiple calls, and bounded recovery |
 | Windows windows/input | `electron/main.cjs`, `electron/agentBridge.cjs`, `electron/jess-agent.ps1`; state evidence is returned for window operations | Desktop integrations are mediated by main process and agent tools; not a drop-in replacement for Hub-Mind's native helper | Keep current native helper; validate actual Windows behavior |
 | Browser automation | Chrome extension ↔ native messaging pipe ↔ `electron/chromeBridge.cjs` and IPC allowlist | MCP manager supports stdio, SSE, and Streamable HTTP; MCP tools are discovered dynamically | Keep Chrome extension path; consider MCP as an additional integration layer |
-| MCP lifecycle | No verified unified MCP manager in the audited Hub-Mind path | `src/main/mcp/mcp-manager.ts` owns config, lifecycle, health, and tool discovery | Defer integration until basic tool lifecycle and permission contract are stable |
+| MCP lifecycle | First-pass tool-focused manager is implemented on the follow-up branch: stdio + HTTPS Streamable HTTP, per-user encrypted config, tool discovery/calls, native approval and bounded outputs | `src/main/mcp/mcp-manager.ts` also covers lifecycle/health and broader MCP features | Run CI and packaged acceptance; SSE-only, OAuth, resources and prompts remain unimplemented |
 | Filesystem boundaries | Hub-Mind has explicit path opening and bounded native command routes; no proof yet of a general agent filesystem sandbox | `src/main/tools/tool-executor.ts` resolves file access through `PathResolver` and mount boundaries | Design scoped workspace file tools separately; never import Open Cowork's paths unchanged |
 | Permissions | Main-process Full Control ownership/session checks, allowlist, user confirmation in ask mode, audit events | `src/main/config/permission-rules-store.ts` defaults unknown/malformed rules to ask | Strengthen authorization boundaries; do not let model output stand in for user consent |
 | Progress/cancellation | Native bridge has per-call timeouts and can stop its child; voice fallback has no durable operation ledger | Agent runner has loop guard, abort signal, trace events and MCP timeouts | Add normalized execution events/cancellation after lifecycle tests |
@@ -111,7 +111,7 @@ Do not mark this test passed until it is performed on Windows.
 4. Confirm the clean `npm ci` install passes on the current PR head; keep the lockfile and manifest in sync in a dedicated, reviewed change if needed.
 5. Generate provider-specific native tool schemas from a dependency-free canonical definition, rather than only parity-testing duplicated declarations.
 6. Extend the new normalized execution event/result contract with cancellation propagation and main-process audit correlation IDs; behavioral tests should cover session cancellation and stale-result suppression.
-7. Evaluate MCP integration only after the base execution path is stable; keep MCP credentials, server configuration, and tool permissions isolated from Firebase workspace permissions.
+7. The MCP tool-runtime follow-up is implemented on its current branch and under validation. Keep MCP identity/config/tool permissions isolated from Firebase workspace permissions; do not merge until all CI jobs pass.
 8. Validate homepage, authentication, workspace operations, documents/tasks, chat/voice, installer startup, and update workflow before requesting merge.
 
 ## Validation record
@@ -122,5 +122,5 @@ Do not mark this test passed until it is performed on Windows.
 - **Transcript and session:** source-level tests verify the desktop transcript is a separate fixed, non-movable overlay, the companion remains icon-only and movable, and Jess remains mounted across workspace route changes.
 - **Native Windows smoke test:** **not run in this environment**. CI validates native helper builds and installer packaging, but it cannot prove real-window minimize/maximize/restore behavior on the user's Windows machine.
 - **Production deploy:** merging to `main` triggers the configured Netlify Git deployment flow. The Netlify deploy preview succeeded; the production URL and Netlify dashboard were not accessible through the connected tools for independent confirmation of the final published deployment.
-- **Remaining non-parity items:** Hub-Mind does not yet contain Open Cowork's unified MCP server lifecycle manager, general sandboxed agent filesystem executor, or a generated canonical schema shared by all model providers. Those are not claimed as implemented. Keep Firebase, Electron IPC permission checks, and the existing Jess/Chrome paths as the authorization boundary while these are designed and tested separately.
-- **Next acceptance work:** perform the packaged Windows smoke test; add behavioral IPC/session/cancellation tests; implement canonical schema generation; and scope an MCP manager plus path-contained filesystem tool layer before claiming deeper Open Cowork parity.
+- **Remaining non-parity items:** the MCP tool runtime is in a follow-up branch and is not yet part of main. A general sandboxed agent filesystem executor and generated canonical schema shared by all model providers are not implemented. Keep Firebase, Electron IPC permission checks, and existing Jess/Chrome paths as the authorization boundary.
+- **Next acceptance work:** finish PR CI for the MCP tool runtime; perform packaged Windows native-control and MCP approval/account-isolation tests; add behavioral IPC/session/cancellation tests; implement canonical schema generation and a path-contained filesystem tool layer before claiming deeper Open Cowork parity.
