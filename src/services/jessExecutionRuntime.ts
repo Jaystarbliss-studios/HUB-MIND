@@ -144,8 +144,15 @@ export async function runJessToolExecution<T>(
   } catch (error) {
     const at = Date.now();
     const message = safeMessage(error) || 'Tool execution failed.';
-    recordEvent({ ...base, status: 'failed', at, durationMs: Math.max(0, at - startedAt), message }, input.onEvent);
-    throw error;
+    const durationMs = Math.max(0, at - startedAt);
+    recordEvent({ ...base, status: 'failed', at, durationMs, message }, input.onEvent);
+    return {
+      executionId,
+      status: 'failed',
+      retrySafe,
+      durationMs,
+      value: { result: { success: false, error: message } },
+    };
   }
 }
 
