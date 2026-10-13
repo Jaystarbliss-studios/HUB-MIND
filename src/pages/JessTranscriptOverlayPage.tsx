@@ -11,15 +11,6 @@ type TranscriptEntry = {
 const TRANSCRIPT_KEY = 'hubmind.jess.desktopTranscript.v1';
 const HIDE_AFTER_MS = 7000;
 
-declare global {
-  interface Window {
-    hubMindDesktop?: {
-      isDesktopApp?: boolean;
-      setTranscriptOverlayVisible?: (visible: boolean) => Promise<boolean>;
-    };
-  }
-}
-
 /**
  * Dedicated, non-draggable desktop caption surface. The Electron main process
  * owns its fixed screen position; this renderer only supplies transcript content
@@ -31,8 +22,8 @@ export function JessTranscriptOverlayPage() {
   const hideTimerRef = useRef<number | null>(null);
 
   const setVisible = useCallback((visible: boolean) => {
-    if (window.hubMindDesktop?.isDesktopApp) {
-      void window.hubMindDesktop.setTranscriptOverlayVisible?.(visible).catch(() => undefined);
+    if ((window as any).hubMindDesktop?.isDesktopApp) {
+      void (window as any).hubMindDesktop.setTranscriptOverlayVisible?.(visible).catch(() => undefined);
     }
   }, []);
 
@@ -72,7 +63,7 @@ export function JessTranscriptOverlayPage() {
   }, [setVisible]);
 
   useEffect(() => {
-    if (!window.hubMindDesktop?.isDesktopApp) return;
+    if (!(window as any).hubMindDesktop?.isDesktopApp) return;
     loadTranscript(false);
     const onStorage = (event: StorageEvent) => {
       if (!event.key || event.key === TRANSCRIPT_KEY) loadTranscript(true);
@@ -87,7 +78,7 @@ export function JessTranscriptOverlayPage() {
     };
   }, [loadTranscript, setVisible]);
 
-  if (!window.hubMindDesktop?.isDesktopApp || !entry?.text) return null;
+  if (!(window as any).hubMindDesktop?.isDesktopApp || !entry?.text) return null;
 
   return (
     <main className="jess-transcript-overlay-page" aria-live="polite" aria-atomic="true">
