@@ -393,9 +393,9 @@ function stopFullControl(reason = 'user-stop') {
   auditNativeAction({ event: 'full-control-stopped', reason, userId: previousUserId });
   return { ok: true, active: false, reason };
 }
-function requireFullControl(method) {
+function requireFullControl(method, metadata = {}) {
   if (!fullControlActive) throw new Error('Full Control Session is off. Say “Jess, full control” to enable native actions, or use the tray control.');
-  auditNativeAction({ event: 'native-action-request', method });
+  auditNativeAction({ event: 'native-action-request', method, ...metadata });
 }
 
 function createTray() {
@@ -479,8 +479,9 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:chrome-status', (event) => { assertTrustedSender(event); return chromeBridge.status(); });
   ipcMain.handle('hubmind:offline-wake-start', (event) => startOfflineWake(event));
   ipcMain.handle('hubmind:offline-wake-stop', (event) => { assertTrustedSender(event); return stopOfflineWake(); });
-  ipcMain.handle('hubmind:chrome-action', async (event, method, args, userId) => {
+  ipcMain.handle('hubmind:chrome-action', async (event, method, args, userId, executionId) => {
     assertTrustedSender(event);
+    const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
     if (!fullControlActive || typeof userId !== 'string' || userId !== controlSessionUserId) {
       return { ok: false, verified: false, error: 'Chrome control requires an active Full Control Session owned by the signed-in user.' };
     }
@@ -491,19 +492,20 @@ app.whenReady().then(() => {
     if (['chrome_open_tab','chrome_navigate_tab'].includes(method) && (typeof safeArgs.url !== 'string' || safeArgs.url.length > 2048)) return { ok: false, verified: false, error: 'A valid HTTP or HTTPS URL is required.' };
     if (method === 'chrome_fill_field' && (typeof safeArgs.selector !== 'string' || !safeArgs.selector.trim() || safeArgs.selector.length > 500 || typeof safeArgs.value !== 'string' || safeArgs.value.length > 10000)) return { ok: false, verified: false, error: 'A field selector and value under 10,000 characters are required.' };
     if (['chrome_find_element','chrome_click_element'].includes(method) && ((safeArgs.selector && (typeof safeArgs.selector !== 'string' || safeArgs.selector.length > 500)) || (safeArgs.text && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 500)))) return { ok: false, verified: false, error: 'Element selectors and text queries must be under 500 characters.' };
-    auditNativeAction({ event: 'chrome-action-request', method, userId });
+    auditNativeAction({ event: 'chrome-action-request', method, userId, executionId: correlationId });
     const started = Date.now();
     const result = await chromeBridge.request(method, safeArgs, method === 'chrome_read_page' ? 20000 : 12000);
-    auditNativeAction({ event: 'chrome-action-result', method, userId, durationMs: Date.now() - started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
+    auditNativeAction({ event: 'chrome-action-result', method, userId, executionId: correlationId, durationMs: Date.now() - started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
     return result;
   });
-  ipcMain.handle('hubmind:native-action', async (event, method, args, userId) => {
+  ipcMain.handle('hubmind:native-action', async (event, method, args, userId, executionId) => {
     assertTrustedSender(event);
+    const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
     if (!['get_time','system_info'].includes(method) && userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
     const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
-    if (!['get_time','system_info'].includes(method)) requireFullControl(method);
+    if (!['get_time','system_info'].includes(method)) requireFullControl(method, { userId, executionId: correlationId });
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
     if (method === 'media_key' && !['volume_up','volume_down','volume_mute','brightness_up','brightness_down'].includes(String(safeArgs.action))) throw new Error('Unsupported volume or brightness action.');
     if (method === 'run_command') {
@@ -575,7 +577,7 @@ app.whenReady().then(() => {
           result = { ...result, evidence: { ...(result?.evidence || {}), ocrFallback: { ok: false, error: String(ocrError?.message || ocrError).slice(0, 500) } } };
         }
       }
-      auditNativeAction({ event: 'native-action-result', method, userId, durationMs: Date.now()-started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
+      auditNativeAction({ event: 'native-action-result', method, userId, executionId: correlationId, durationMs: Date.now()-started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
       return result;
     } catch (error) {
       auditNativeAction({ event: 'native-action-error', method, userId, durationMs: Date.now()-started, error: String(error?.message || error) });
