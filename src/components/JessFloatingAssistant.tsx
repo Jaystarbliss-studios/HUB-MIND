@@ -362,7 +362,7 @@ export function JessFloatingAssistant() {
           args: step.args || {},
           userId: profile?.id,
           turnId: jessTranscriptTurnIdRef.current || undefined,
-        }, () => executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), (jessPreferencesRef.current.contextEnabled === false ? undefined : resolveJessContext(locationPathRef.current))));
+        }, executionId => executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), (jessPreferencesRef.current.contextEnabled === false ? undefined : resolveJessContext(locationPathRef.current)), executionId));
         const result = execution.value;
         if (!result.result?.success) throw new Error(result.result?.error || 'Background step failed.');
       });
@@ -556,7 +556,7 @@ export function JessFloatingAssistant() {
             args: toolArgs || {},
             userId: profile?.id,
             turnId: jessTranscriptTurnIdRef.current || undefined,
-          }, () => executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context));
+          }, executionId => executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context, executionId));
           result = execution.value;
           if (result?.result && typeof result.result === 'object') {
             result = {
