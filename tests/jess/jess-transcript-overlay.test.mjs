@@ -39,6 +39,7 @@ test('workspace route changes do not unmount Jess or rebuild Live callbacks', as
   assert.match(assistant, /const locationPathRef = useRef\(location\.pathname\)/);
   assert.match(assistant, /locationPathRef\.current = location\.pathname/);
   assert.match(assistant, /resolveJessContext\(locationPathRef\.current\)/);
+  assert.match(assistant, /!isDesktopShell && speechState\.text/);
   assert.doesNotMatch(assistant, /\}, \[connection, location\.pathname, navigate, profile/);
 });
 
