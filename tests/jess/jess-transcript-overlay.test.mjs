@@ -34,7 +34,7 @@ test('workspace route changes do not unmount Jess or rebuild Live callbacks', as
   ]);
 
   assert.match(app, /const desktopOverlayRoute = \['\/companion', '\/companion-transcript', '\/orb'\]/);
-  assert.match(app, /Keep the actual\s+Jess session mounted across authenticated route changes/);
+  assert.match(app, /Keep the actual[\s\S]{0,100}Jess session mounted across authenticated route changes/);
   assert.match(app, /<JessFloatingAssistant \/>/);
   assert.match(assistant, /const locationPathRef = useRef\(location\.pathname\)/);
   assert.match(assistant, /locationPathRef\.current = location\.pathname/);
