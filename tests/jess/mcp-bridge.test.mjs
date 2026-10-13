@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 import { McpBridge, sanitizeServerConfig, safeModelToolName, toGeminiSchema, getSafeChildEnvironment } from '../../electron/mcpBridge.cjs';
 
 test('MCP server configuration rejects unsafe transport and malformed executable settings', () => {
@@ -108,6 +109,61 @@ test('MCP server configuration is encrypted at rest when secure storage is requi
     await reloaded.shutdown();
   } finally {
     await bridge.shutdown();
+    fs.rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+
+test('Streamable HTTP transport reads an MCP response before an SSE stream closes', async () => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'hubmind-mcp-http-test-'));
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      let message;
+      try { message = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch {
+        res.writeHead(400); res.end(); return;
+      }
+      if (message.method === 'notifications/initialized') {
+        res.writeHead(202, { 'Mcp-Session-Id': 'test-session' }); res.end(); return;
+      }
+      let result = {};
+      if (message.method === 'initialize') {
+        result = { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'http-test', version: '1' } };
+      } else if (message.method === 'tools/list') {
+        result = { tools: [{ name: 'http_echo', description: 'Echo over HTTP', inputSchema: { type: 'object', properties: { message: { type: 'string' } }, required: ['message'] } }] };
+      } else if (message.method === 'tools/call') {
+        result = { content: [{ type: 'text', text: String(message.params.arguments.message) }] };
+      }
+      if (message.method === 'initialize' || message.method === 'tools/call') {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Mcp-Session-Id': 'test-session' });
+        res.write('data: ' + JSON.stringify({ jsonrpc: '2.0', id: message.id, result }) + '\n\n');
+        const timeout = setTimeout(() => res.end(), 10000);
+        res.on('close', () => clearTimeout(timeout));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Mcp-Session-Id': 'test-session' });
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: message.id, result }));
+    });
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const bridge = new McpBridge({ userDataPath, timeoutMs: 5000 });
+  try {
+    await bridge.saveServer({
+      id: 'http-server',
+      name: 'Local HTTP test',
+      transport: 'streamable-http',
+      url: 'http://127.0.0.1:' + address.port + '/mcp',
+      enabled: true,
+    }, 'user-a');
+    const tool = bridge.listTools('user-a')[0];
+    assert.equal(tool.originalName, 'http_echo');
+    const result = await bridge.callTool('user-a', tool.name, { message: 'streamed hello' });
+    assert.equal(result.content[0].text, 'streamed hello');
+  } finally {
+    bridge.shutdown();
+    await new Promise(resolve => server.close(resolve));
     fs.rmSync(userDataPath, { recursive: true, force: true });
   }
 });
