@@ -157,6 +157,10 @@ export function JessFloatingAssistant() {
   const { user, profile, updatePreferredName } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const locationPathRef = useRef(location.pathname);
+  useEffect(() => {
+    locationPathRef.current = location.pathname;
+  }, [location.pathname]);
   const clientRef = useRef<LiveAudioClient | null>(null);
   const sessionLeaseRef = useRef<{ userId: string; sessionId: string; timer: number | null } | null>(null);
   const activationRequestSeenRef = useRef<string | null>(null);
@@ -332,7 +336,7 @@ export function JessFloatingAssistant() {
     if (backgroundHydratedUserRef.current !== profile.id) {
       backgroundHydratedUserRef.current = profile.id;
       void jessBackgroundTasks.resumePersistedTasks(profile.id, async (_task, step) => {
-        const result = await executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), resolveJessContext(location.pathname));
+        const result = await executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), resolveJessContext(locationPathRef.current));
         if (!result.result?.success) throw new Error(result.result?.error || 'Background step failed.');
       });
     }
@@ -495,7 +499,7 @@ export function JessFloatingAssistant() {
         setOutputLevel(output);
       },
       onFunctionCall: async fc => {
-        const context = resolveJessContext(location.pathname);
+        const context = resolveJessContext(locationPathRef.current);
         let toolArgs = fc.args;
         if (typeof toolArgs === 'string') {
           try { toolArgs = JSON.parse(toolArgs); } catch { toolArgs = {}; }
@@ -740,7 +744,7 @@ export function JessFloatingAssistant() {
     try {
       const fullName = profile.preferredName || profile.displayName || profile.name || user?.displayName || (profile.email ? profile.email.split('@')[0] : 'User');
       const firstName = profile.preferredName || profile.displayName?.split(' ')[0] || profile.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || fullName;
-      const context = resolveJessContext(location.pathname);
+      const context = resolveJessContext(locationPathRef.current);
       await client.connect({ 
         ...context, 
         userId: profile.id, 
@@ -769,7 +773,7 @@ export function JessFloatingAssistant() {
       setState('error');
       scheduleFade(10000);
     }
-  }, [connection, location.pathname, navigate, profile, selectedAudioInputId, stop, stopScreenSharing, updatePreferredName, scheduleFade]);
+  }, [connection, navigate, profile, selectedAudioInputId, stop, stopScreenSharing, updatePreferredName, scheduleFade]);
 
   const activate = useCallback(() => {
     if (connection === 'connected' || connection === 'connecting') void stop();
