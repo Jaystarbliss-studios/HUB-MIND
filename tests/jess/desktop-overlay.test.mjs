@@ -9,8 +9,11 @@ const electronMain = readFileSync(new URL('../../electron/main.cjs', import.meta
 test('desktop Jess overlay remains a compact orb and never expands into a transcript panel', () => {
   assert.match(css, /\.jess-orb-window\.is-transcript-visible,\s*\.jess-orb-window\s*\{[^}]*width:\s*96px!important/s);
   assert.match(css, /\.jess-orb-window\.is-transcript-visible \.jess-transcript\s*\{\s*display:none!important/s);
-  assert.match(electronMain, /const width = 96;\s*const height = 96;/);
-  assert.match(electronMain, /The Windows desktop overlay is intentionally the Jess orb only/);
+  assert.match(electronMain, /width: 96, height: 96, minWidth: 96, minHeight: 96/);
+  assert.match(electronMain, /function createTranscriptOverlayWindow\(\)/);
+  assert.match(electronMain, /movable: false, focusable: false/);
+  assert.match(electronMain, /area\.x \+ \(area\.width - width\) \/ 2/);
+  assert.match(electronMain, /Legacy compatibility only\. The movable companion remains an icon-only window/);
 });
 
 test('workspace palette remains dark regardless of Windows/browser theme preferences', () => {
