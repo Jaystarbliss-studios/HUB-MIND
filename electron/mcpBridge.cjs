@@ -83,6 +83,17 @@ function toGeminiSchema(schema, depth = 0) {
   return out;
 }
 
+function getSafeChildEnvironment() {
+  const allowed = process.platform === 'win32'
+    ? ['PATH', 'Path', 'SystemRoot', 'WINDIR', 'ComSpec', 'PATHEXT', 'TEMP', 'TMP', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432']
+    : ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL'];
+  const env = {};
+  for (const key of allowed) {
+    if (typeof process.env[key] === 'string') env[key] = process.env[key];
+  }
+  return env;
+}
+
 function truncateToolResult(value) {
   let serialized;
   try { serialized = JSON.stringify(value); } catch { serialized = String(value); }
@@ -190,7 +201,7 @@ class McpBridge {
     const config = state.config;
     const child = this.spawnImpl(config.command, config.args || [], {
       cwd: config.cwd || undefined,
-      env: process.env,
+      env: getSafeChildEnvironment(),
       shell: false,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -373,4 +384,4 @@ class McpBridge {
   }
 }
 
-module.exports = { McpBridge, sanitizeServerConfig, safeModelToolName, toGeminiSchema };
+module.exports = { McpBridge, sanitizeServerConfig, safeModelToolName, toGeminiSchema, getSafeChildEnvironment };
