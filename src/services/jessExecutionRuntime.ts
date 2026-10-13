@@ -89,17 +89,18 @@ function safeMessage(value: unknown): string | undefined {
 }
 
 function recordEvent(event: JessExecutionEvent, onEvent?: (event: JessExecutionEvent) => void): void {
-  try { onEvent?.(event); } catch {}
   try {
-    if (typeof window === 'undefined') return;
-    window.dispatchEvent(new CustomEvent('hubmind:jess-execution-event', { detail: event }));
-    const previous = JSON.parse(localStorage.getItem(EVENT_STORAGE_KEY) || '[]');
-    const events = Array.isArray(previous) ? previous : [];
-    events.push(event);
-    localStorage.setItem(EVENT_STORAGE_KEY, JSON.stringify(events.slice(-MAX_STORED_EVENTS)));
+    if (typeof window !== 'undefined') {
+      const previous = JSON.parse(localStorage.getItem(EVENT_STORAGE_KEY) || '[]');
+      const events = Array.isArray(previous) ? previous : [];
+      events.push(event);
+      localStorage.setItem(EVENT_STORAGE_KEY, JSON.stringify(events.slice(-MAX_STORED_EVENTS)));
+      window.dispatchEvent(new CustomEvent('hubmind:jess-execution-event', { detail: event }));
+    }
   } catch {
     // Trace persistence is best-effort and must never interrupt an actual tool call.
   }
+  try { onEvent?.(event); } catch {}
 }
 
 export async function runJessToolExecution<T>(
