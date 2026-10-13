@@ -277,3 +277,23 @@ test('runtime filtering hides native tools outside the installed desktop app', (
   ]);
   assert.equal(JESS_NATIVE_TOOL_NAMES.length, 31);
 });
+
+
+test('execution correlation IDs reach native IPC and the local audit log', async () => {
+  const [runtime, assistant, tools, preload, main] = await Promise.all([
+    read('../../src/services/jessExecutionRuntime.ts'),
+    read('../../src/components/JessFloatingAssistant.tsx'),
+    read('../../src/lib/jessTools.ts'),
+    read('../../electron/preload.cjs'),
+    read('../../electron/main.cjs'),
+  ]);
+  assert.match(runtime, /executionId: makeExecutionId\(\)/);
+  assert.match(assistant, /runJessToolExecution/);
+  assert.match(assistant, /executionId: execution\.executionId/);
+  assert.match(tools, /desktop\.nativeAction\(method, payload, user\.id, executionId\)/);
+  assert.match(tools, /desktop\.chromeAction\(name, args \|\| \{\}, user\.id, executionId\)/);
+  assert.match(preload, /nativeAction: \(method, args, userId, executionId\)/);
+  assert.match(preload, /chromeAction: \(method, args, userId, executionId\)/);
+  assert.match(main, /executionId: correlationId/);
+  assert.match(main, /jess-exec-\[A-Za-z0-9_-\]/);
+});
