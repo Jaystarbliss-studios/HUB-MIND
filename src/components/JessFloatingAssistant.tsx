@@ -147,6 +147,8 @@ function wakeTone() {
   }
 }
 
+const MAX_JESS_TOOL_CALLS_PER_TURN = 12;
+
 interface CurrentSpeechState {
   text: string;
   speaker: 'user' | 'jess';
@@ -179,6 +181,7 @@ export function JessFloatingAssistant() {
     locationPathRef.current = location.pathname;
   }, [location.pathname]);
   const clientRef = useRef<LiveAudioClient | null>(null);
+  const toolLoopRef = useRef<{ rounds: number; fingerprints: string[] }>({ rounds: 0, fingerprints: [] });
   const sessionLeaseRef = useRef<{ userId: string; sessionId: string; timer: number | null } | null>(null);
   const activationRequestSeenRef = useRef<string | null>(null);
   const [remoteJessOwner, setRemoteJessOwner] = useState<JessSessionOwner | null>(null);
@@ -498,6 +501,7 @@ export function JessFloatingAssistant() {
       onTurnComplete: () => {
         jessSpeechAccumulatorRef.current = '';
         jessTranscriptTurnIdRef.current = null;
+        toolLoopRef.current = { rounds: 0, fingerprints: [] };
         scheduleFade(5000);
       },
       onError: error => {
@@ -521,8 +525,25 @@ export function JessFloatingAssistant() {
         if (typeof toolArgs === 'string') {
           try { toolArgs = JSON.parse(toolArgs); } catch { toolArgs = {}; }
         }
+        const fingerprint = `${fc.name}:${JSON.stringify(toolArgs || {})}`;
+        const previousCalls = toolLoopRef.current.fingerprints.filter(value => value === fingerprint).length;
+        toolLoopRef.current.rounds += 1;
+        if (toolLoopRef.current.rounds > MAX_JESS_TOOL_CALLS_PER_TURN || previousCalls >= 2) {
+          const failure = {
+            success: false,
+            error: 'Jess stopped this turn to prevent repeated tool execution. Please rephrase the request or choose a different approach.',
+          };
+          clientRef.current?.sendFunctionResponse({ name: fc.name, id: fc.id, response: failure });
+          setSpeechState({ text: failure.error, speaker: 'jess', visible: true });
+          scheduleFade(6000);
+          return;
+        }
+        toolLoopRef.current.fingerprints.push(fingerprint);
         let result: any;
-        try {
+        const webResearchTools = new Set(['search_web', 'desktop_open_website']);
+        if (jessPreferencesRef.current.webResearchEnabled === false && webResearchTools.has(fc.name)) {
+          result = { result: { success: false, error: 'Web research is disabled in Jess settings. Enable it in Workspace → Jess settings to use online search or website-opening tools.' } };
+        } else try {
           result = await executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context);
         } catch (error: any) {
           // A tool failure must become a tool response, not an unhandled promise.
