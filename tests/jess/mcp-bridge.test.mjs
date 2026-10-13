@@ -163,6 +163,7 @@ test('Streamable HTTP transport reads an MCP response before an SSE stream close
     assert.equal(result.content[0].text, 'streamed hello');
   } finally {
     bridge.shutdown();
+    server.closeAllConnections?.();
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(userDataPath, { recursive: true, force: true });
   }
