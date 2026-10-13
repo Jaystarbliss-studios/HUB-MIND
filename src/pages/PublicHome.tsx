@@ -145,6 +145,23 @@ export function PublicHome() {
           </div>
           <div className="hm-desktop-art"><div className="hm-monitor"><div className="hm-monitor-top"><span/><span/><span/><small>HUB-MIND / WORKSPACE</small></div><div className="hm-monitor-content"><div className="hm-monitor-sidebar"><i/><i/><i/><i/></div><div className="hm-monitor-main"><div className="hm-monitor-kicker">YOUR WORKSPACE</div><div className="hm-monitor-title">Make today count.</div><div className="hm-monitor-bars"><i/><i/><i/></div><div className="hm-monitor-bottom"><span/><span/><span/></div></div></div></div><div className="hm-monitor-stand"/><div className="hm-monitor-base"/><div className="hm-desktop-orb"><Sparkles size={20}/></div></div>
         </section>
+
+        <section id="getting-started" className="hm-desktop-section hm-getting-started">
+          <div className="hm-desktop-copy">
+            <div className="hm-eyebrow">GETTING STARTED</div>
+            <h2>Set up Hub-Mind.<br/><span>Make it yours.</span></h2>
+            <p>Use Hub-Mind on the web, install it as a Chrome app, or use the Windows desktop client. Sign in with the account invited to your workspace to keep your work and Jess preferences connected.</p>
+            <div className="hm-desktop-points">
+              <span><Check size={15}/> <strong>Web:</strong> Open Hub-Mind and sign in with your invited account.</span>
+              <span><Check size={15}/> <strong>Chrome app:</strong> Use the browser's Install Hub-Mind option, then launch it from your apps.</span>
+              <span><Check size={15}/> <strong>Chrome extension:</strong> Download the ZIP, extract it, open Chrome → Extensions → Manage extensions, enable Developer mode, then choose Load unpacked and select the extracted folder. Review its permissions before enabling it.</span>
+              {release?.extensionUrl && <a className="hm-button hm-button-quiet" href={release.extensionUrl}><Download size={15}/> Download Jess Chrome extension</a>}
+              <span><Check size={15}/> <strong>Windows:</strong> Download the installer, run it, then open Hub-Mind from the Start menu. Windows may show a publisher warning if the release is unsigned.</span>
+              <span><Check size={15}/> <strong>Jess:</strong> Allow microphone access for voice use. Configure memory, personalization, web research, and desktop permissions in Jess settings.</span>
+            </div>
+            <button className="hm-button hm-button-primary hm-button-large" onClick={openWorkspace}>Sign in and get started <ArrowRight size={16}/></button>
+          </div>
+        </section>
       </main>
 
       <footer className="hm-footer"><div className="hm-footer-top"><a href="/" className="hm-brand"><span className="hm-brand-mark"><img src="/hub-mind%20logo.png" alt=""/></span><span>Hub<span className="hm-brand-dash">-</span>Mind</span></a><p>Make room for meaningful work.</p><button className="hm-button hm-button-outline" onClick={openWorkspace}>Open workspace <ArrowRight size={15}/></button></div><div className="hm-footer-bottom"><span>© {new Date().getFullYear()} Hub-Mind</span><span>Designed and built by <a href="https://jaystarbliss-studios.name.ng" target="_blank" rel="noreferrer">Jaystarbliss Studios</a> (JSW)</span><a href="mailto:hello@jaystarbliss-studios.name.ng">Contact</a></div></footer>

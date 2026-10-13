@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth';
 import { LiveAudioClient, JessState } from '../services/liveAudioClient';
 import { claimJessSession, createJessSessionId, releaseJessSession, renewJessSession, watchJessSession, JessSessionOwner } from '../services/jessSessionCoordinator';
 import { executeJessTool } from '../lib/jessTools';
+import { runJessToolExecution } from '../services/jessExecutionRuntime';
 import { resolveJessContext } from '../lib/jessContext';
 import { JessOrbVisualizer } from './JessOrbVisualizer';
 import { jessBackgroundTasks, JessBackgroundTask } from '../services/jessBackgroundTasks';
@@ -147,6 +148,8 @@ function wakeTone() {
   }
 }
 
+const MAX_JESS_TOOL_CALLS_PER_TURN = 12;
+
 interface CurrentSpeechState {
   text: string;
   speaker: 'user' | 'jess';
@@ -155,9 +158,31 @@ interface CurrentSpeechState {
 
 export function JessFloatingAssistant() {
   const { user, profile, updatePreferredName } = useAuth();
+  const jessPreferencesRef = useRef({
+    permissionMode: 'ask' as 'ask' | 'always-allow',
+    memoryEnabled: true,
+    contextEnabled: true,
+    personalization: '',
+    webResearchEnabled: true,
+    screenVerificationEnabled: true,
+  });
+  useEffect(() => {
+    if (!profile?.id) return;
+    return onSnapshot(doc(db, 'users', profile.id, 'private', 'jessSettings'), snapshot => {
+      const prefs = { ...jessPreferencesRef.current, ...(snapshot.exists() ? snapshot.data() : {}) };
+      jessPreferencesRef.current = prefs;
+      try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(prefs)); } catch {}
+      void (window as any).hubMindDesktop?.setJessPreferences?.(prefs, profile.id).catch(() => {});
+    }, error => console.warn('[Jess] Could not load user preferences:', error));
+  }, [profile?.id]);
   const location = useLocation();
   const navigate = useNavigate();
+  const locationPathRef = useRef(location.pathname);
+  useEffect(() => {
+    locationPathRef.current = location.pathname;
+  }, [location.pathname]);
   const clientRef = useRef<LiveAudioClient | null>(null);
+  const toolLoopRef = useRef<{ rounds: number; fingerprints: string[] }>({ rounds: 0, fingerprints: [] });
   const sessionLeaseRef = useRef<{ userId: string; sessionId: string; timer: number | null } | null>(null);
   const activationRequestSeenRef = useRef<string | null>(null);
   const [remoteJessOwner, setRemoteJessOwner] = useState<JessSessionOwner | null>(null);
@@ -332,7 +357,13 @@ export function JessFloatingAssistant() {
     if (backgroundHydratedUserRef.current !== profile.id) {
       backgroundHydratedUserRef.current = profile.id;
       void jessBackgroundTasks.resumePersistedTasks(profile.id, async (_task, step) => {
-        const result = await executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), resolveJessContext(location.pathname));
+        const execution = await runJessToolExecution({
+          toolName: String(step.tool),
+          args: step.args || {},
+          userId: profile?.id,
+          turnId: jessTranscriptTurnIdRef.current || undefined,
+        }, executionId => executeJessTool(String(step.tool), step.args || {}, profile, name => void updatePreferredName(name), (jessPreferencesRef.current.contextEnabled === false ? undefined : resolveJessContext(locationPathRef.current)), executionId));
+        const result = execution.value;
         if (!result.result?.success) throw new Error(result.result?.error || 'Background step failed.');
       });
     }
@@ -477,6 +508,7 @@ export function JessFloatingAssistant() {
       onTurnComplete: () => {
         jessSpeechAccumulatorRef.current = '';
         jessTranscriptTurnIdRef.current = null;
+        toolLoopRef.current = { rounds: 0, fingerprints: [] };
         scheduleFade(5000);
       },
       onError: error => {
@@ -495,14 +527,49 @@ export function JessFloatingAssistant() {
         setOutputLevel(output);
       },
       onFunctionCall: async fc => {
-        const context = resolveJessContext(location.pathname);
+        const context = jessPreferencesRef.current.contextEnabled === false ? undefined : resolveJessContext(locationPathRef.current);
         let toolArgs = fc.args;
         if (typeof toolArgs === 'string') {
           try { toolArgs = JSON.parse(toolArgs); } catch { toolArgs = {}; }
         }
+        const fingerprint = `${fc.name}:${JSON.stringify(toolArgs || {})}`;
+        const previousCalls = toolLoopRef.current.fingerprints.filter(value => value === fingerprint).length;
+        toolLoopRef.current.rounds += 1;
+        if (toolLoopRef.current.rounds > MAX_JESS_TOOL_CALLS_PER_TURN || previousCalls >= 2) {
+          const failure = {
+            success: false,
+            error: 'Jess stopped this turn to prevent repeated tool execution. Please rephrase the request or choose a different approach.',
+          };
+          clientRef.current?.sendFunctionResponse({ name: fc.name, id: fc.id, response: failure });
+          setSpeechState({ text: failure.error, speaker: 'jess', visible: true });
+          scheduleFade(6000);
+          return;
+        }
+        toolLoopRef.current.fingerprints.push(fingerprint);
         let result: any;
-        try {
-          result = await executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context);
+        const webResearchTools = new Set(['search_web', 'desktop_open_website']);
+        if (jessPreferencesRef.current.webResearchEnabled === false && webResearchTools.has(fc.name)) {
+          result = { result: { success: false, error: 'Web research is disabled in Jess settings. Enable it in Workspace → Jess settings to use online search or website-opening tools.' } };
+        } else try {
+          const execution = await runJessToolExecution({
+            toolName: fc.name,
+            args: toolArgs || {},
+            userId: profile?.id,
+            turnId: jessTranscriptTurnIdRef.current || undefined,
+          }, executionId => executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context, executionId));
+          result = execution.value;
+          if (result?.result && typeof result.result === 'object') {
+            result = {
+              ...result,
+              result: {
+                ...result.result,
+                executionId: execution.executionId,
+                executionStatus: execution.status,
+                retrySafe: execution.retrySafe,
+                durationMs: execution.durationMs,
+              },
+            };
+          }
         } catch (error: any) {
           // A tool failure must become a tool response, not an unhandled promise.
           // Returning the failure to Gemini lets Jess recover conversationally and
@@ -708,7 +775,7 @@ export function JessFloatingAssistant() {
         }
 
         // Auto-extract memory from user statements if explicit preference mentioned
-        if (profile?.id) {
+        if (profile?.id && jessPreferencesRef.current.memoryEnabled !== false) {
           autoExtractMemory(profile.id, text).then(saved => {
             if (saved) {
               setRecentMemorySaved(saved.content);
@@ -740,12 +807,19 @@ export function JessFloatingAssistant() {
     try {
       const fullName = profile.preferredName || profile.displayName || profile.name || user?.displayName || (profile.email ? profile.email.split('@')[0] : 'User');
       const firstName = profile.preferredName || profile.displayName?.split(' ')[0] || profile.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || fullName;
-      const context = resolveJessContext(location.pathname);
-      await client.connect({ 
-        ...context, 
-        userId: profile.id, 
-        userName: fullName, 
-        userRole: profile.role 
+      const prefs = jessPreferencesRef.current;
+      const context = prefs.contextEnabled === false ? undefined : resolveJessContext(locationPathRef.current);
+      await client.connect({
+        ...(context || {}),
+        userId: profile.id,
+        userName: fullName,
+        userRole: profile.role,
+        permissionMode: prefs.permissionMode,
+        contextEnabled: prefs.contextEnabled !== false,
+        memoryEnabled: prefs.memoryEnabled !== false,
+        personalization: String(prefs.personalization || '').slice(0, 2000),
+        webResearchEnabled: prefs.webResearchEnabled !== false,
+        screenVerificationEnabled: prefs.screenVerificationEnabled !== false,
       });
       // Manual activation should enter a clean listening state immediately.
       // Do not make Jess speak a startup greeting: it adds latency and can occupy
@@ -769,7 +843,7 @@ export function JessFloatingAssistant() {
       setState('error');
       scheduleFade(10000);
     }
-  }, [connection, location.pathname, navigate, profile, selectedAudioInputId, stop, stopScreenSharing, updatePreferredName, scheduleFade]);
+  }, [connection, navigate, profile, selectedAudioInputId, stop, stopScreenSharing, updatePreferredName, scheduleFade]);
 
   const activate = useCallback(() => {
     if (connection === 'connected' || connection === 'connecting') void stop();
@@ -1050,7 +1124,7 @@ export function JessFloatingAssistant() {
         )}
 
         {/* Minimalist 70% Transparent Subtitle Box matching Gemini Live & Hub-Mind theme */}
-        {speechState.text && (
+        {!isDesktopShell && speechState.text && (
           <div className="w-full bg-slate-950/75 backdrop-blur-md rounded-2xl px-5 py-3.5 shadow-2xl border border-teal-500/20 text-slate-100 text-sm sm:text-base font-normal leading-relaxed text-left select-none animate-in fade-in duration-200">
             <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-teal-300">
               <span className={`inline-block h-1.5 w-1.5 rounded-full ${active ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />

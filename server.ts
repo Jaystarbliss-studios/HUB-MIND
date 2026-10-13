@@ -7,6 +7,7 @@ if (typeof (global as any).__dirname === "string" && !(global as any).__dirname.
 }
 
 import { coreIdentity, groqAdapter, ollamaAdapter, geminiAdapter } from "./src/ai/prompts/adapters.ts";
+import { getJessToolsForRuntime } from "./src/shared/jessNativeToolNames.ts";
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -1019,6 +1020,169 @@ async function startServer() {
           description: "Connect the user's account to Google Calendar with one-time persistent authorization.",
           parameters: { type: "OBJECT", properties: {} }
         },
+// Native Windows and Chrome tools. Keep these names and schemas aligned with
+        // JESS_TOOLS_DECLARATIONS in src/lib/jessTools.ts. The client executes each
+        // tool through executeJessTool and returns the result to this Live session.
+        {
+          name: "jess_full_control",
+          description: "Start the native Windows Full Control Session only after the user explicitly asks Jess to take full control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "jess_stop",
+          description: "Immediately stop Jess native Windows control when the user asks Jess to stop.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "show_hub_mind_workspace",
+          description: "Bring the Hub-Mind desktop workspace to the foreground.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "list_windows",
+          description: "List visible Windows desktop windows, titles, process names, bounds, state and foreground status. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "manage_windows",
+          description: "Focus, close, minimize, maximize, restore, move, resize or snap a real Windows desktop window. Use an exact title or handle when possible; verify the resulting state.",
+          parameters: { type: "OBJECT", properties: {
+            action: { type: "STRING", enum: ["focus_window", "close_window", "minimize_window", "maximize_window", "restore_window", "move_window", "resize_window", "snap_window"] },
+            title: { type: "STRING" }, handle: { type: "STRING" }, x: { type: "NUMBER" }, y: { type: "NUMBER" },
+            width: { type: "NUMBER" }, height: { type: "NUMBER" },
+            position: { type: "STRING", enum: ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right"] }
+          }, required: ["action"] }
+        },
+        {
+          name: "control_mouse",
+          description: "Move or click the Windows mouse, or scroll at physical screen coordinates. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["mouse_move", "click", "double_click", "right_click", "scroll"] }, x: { type: "NUMBER" }, y: { type: "NUMBER" }, delta: { type: "NUMBER" } }, required: ["action", "x", "y"] }
+        },
+        {
+          name: "drag_windows_mouse",
+          description: "Drag the Windows mouse from one physical screen coordinate to another. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { fromX: { type: "NUMBER" }, fromY: { type: "NUMBER" }, toX: { type: "NUMBER" }, toY: { type: "NUMBER" } }, required: ["fromX", "fromY", "toX", "toY"] }
+        },
+        {
+          name: "type_windows_text",
+          description: "Type text into the currently focused Windows app. Never use for password or payment fields. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { text: { type: "STRING" } }, required: ["text"] }
+        },
+        {
+          name: "press_windows_keys",
+          description: "Send a key or key combination to the active Windows app, such as CTRL+S or ALT+TAB. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { keys: { type: "STRING" } }, required: ["keys"] }
+        },
+        {
+          name: "control_system_volume",
+          description: "Send a Windows volume up, down, or mute key event. The actual audio state must be checked separately; some audio drivers may not expose a readable state. Requires Full Control Session.",
+          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["volume_up", "volume_down", "volume_mute"] } }, required: ["action"] }
+        },
+        {
+          name: "control_screen_brightness",
+          description: "Send a Windows brightness up or down key event. Hardware and display-driver support varies; do not claim the brightness changed without independent verification. Requires Full Control Session.",
+          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["brightness_up", "brightness_down"] } }, required: ["action"] }
+        },
+        {
+          name: "take_windows_screenshot",
+          description: "Capture screenshots of connected Windows monitors with bounds and scale context. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "find_windows_ui_element",
+          description: "Find an accessible Windows UI element by its visible name and return automation metadata and bounds. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { name: { type: "STRING" } }, required: ["name"] }
+        },
+        {
+          name: "invoke_windows_ui_element",
+          description: "Invoke a matching accessible Windows UI element by visible name. Verify the result with a screen read or screenshot. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { name: { type: "STRING" } }, required: ["name"] }
+        },
+        {
+          name: "read_windows_screen",
+          description: "Read accessible Windows UI text with OCR fallback where available. Secure desktop and protected content remain unavailable. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "open_local_windows_path",
+          description: "Open an existing local file or folder with its default Windows application; do not execute it as a command. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { path: { type: "STRING" } }, required: ["path"] }
+        },
+        {
+          name: "launch_windows_application",
+          description: "Launch an installed Windows desktop application by its visible Start Menu name or executable name and check whether its window appears. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { name: { type: "STRING" } }, required: ["name"] }
+        },
+        {
+          name: "run_windows_command_native",
+          description: "Run a bounded, non-elevated PowerShell command as the current Windows user. Destructive commands are blocked. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { command: { type: "STRING" } }, required: ["command"] }
+        },
+        {
+          name: "get_windows_time",
+          description: "Read the local Windows time and time zone.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "get_windows_system_info",
+          description: "Read basic Windows computer and operating-system information.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "chrome_list_tabs",
+          description: "List open Chrome tabs with IDs, titles, URLs and loading status. Requires the Jess Chrome extension and Full Control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "chrome_open_tab",
+          description: "Open an HTTP or HTTPS website in a new Chrome tab. Requires the Jess Chrome extension and Full Control.",
+          parameters: { type: "OBJECT", properties: { url: { type: "STRING" }, active: { type: "BOOLEAN" } }, required: ["url"] }
+        },
+        {
+          name: "chrome_close_tab",
+          description: "Close a specific Chrome tab by its tab ID; never close an unspecified active tab. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } }, required: ["tabId"] }
+        },
+        {
+          name: "chrome_activate_tab",
+          description: "Activate a Chrome tab by ID, or the current active tab when omitted. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
+        },
+        {
+          name: "chrome_navigate_tab",
+          description: "Navigate a Chrome tab to an HTTP or HTTPS URL. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, url: { type: "STRING" }, active: { type: "BOOLEAN" } }, required: ["url"] }
+        },
+        {
+          name: "chrome_reload_tab",
+          description: "Reload a Chrome tab by ID, or the active tab when omitted. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
+        },
+        {
+          name: "chrome_read_page",
+          description: "Read visible page text and title from a Chrome tab without bypassing browser protections. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
+        },
+        {
+          name: "chrome_find_element",
+          description: "Find an element by visible text or CSS selector; this does not click it. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, selector: { type: "STRING" }, text: { type: "STRING" } } }
+        },
+        {
+          name: "chrome_click_element",
+          description: "Click a page element identified by visible text or CSS selector. Follow with a page read to verify the result. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, selector: { type: "STRING" }, text: { type: "STRING" } } }
+        },
+        {
+          name: "chrome_fill_field",
+          description: "Fill a specific input, textarea or select identified by CSS selector. Never use on password or payment fields. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, selector: { type: "STRING" }, value: { type: "STRING" } }, required: ["selector", "value"] }
+        },
+        {
+          name: "chrome_scroll",
+          description: "Scroll a Chrome page by a bounded amount. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, delta: { type: "NUMBER" } }, required: ["delta"] }
+        },
         {
           name: "end_session",
           description: "Put the AI assistant to sleep and end the live voice session when the user says 'end this session', 'go to sleep', 'sleep', or 'deactivate'.",
@@ -1108,8 +1272,13 @@ call returns.`;
     let liveSession: any = null;
     let isSessionActive = false;
     let isFallbackMode = false;
-    let conversationalHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    let conversationalHistory: Array<{ role: string; parts: Array<any> }> = [];
+    const MAX_FALLBACK_TOOL_ROUNDS = 8;
+    let fallbackToolRounds = 0;
+    let fallbackToolCallFingerprints: string[] = [];
     const requestUrl = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
+    const isDesktopRuntime = requestUrl.searchParams.get("runtime") === "desktop";
+    const connectionTools = getJessToolsForRuntime(LIVE_TOOLS, isDesktopRuntime);
     const activeDocumentId = requestUrl.searchParams.get("documentId");
     const activeDocumentTitle = requestUrl.searchParams.get("documentTitle");
     const currentUserName = requestUrl.searchParams.get("userName") || requestUrl.searchParams.get("name") || "";
@@ -1158,7 +1327,7 @@ call returns.`;
             inputAudioTranscription: {},
             outputAudioTranscription: {},
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
-            tools: LIVE_TOOLS as any,
+            tools: connectionTools as any,
             systemInstruction: {
               parts: [{
                 text: liveSystemPrompt
@@ -1275,6 +1444,108 @@ call returns.`;
       }
 
       // Handler for client messages
+      // Fallback mode is a real multi-turn tool loop: after a tool response, ask the model
+      // to continue with the observed result instead of leaving the conversation stalled.
+      const generateFallbackTurn = async (chatAi: any) => {
+        const chatRes = await chatAi.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: conversationalHistory as any,
+          config: {
+            systemInstruction: liveSystemPrompt,
+            tools: connectionTools as any,
+          },
+        });
+
+        const replyText = chatRes.text || "";
+        const functionCalls = chatRes.functionCalls || [];
+        const candidateContent = chatRes.candidates?.[0]?.content;
+        if (candidateContent?.parts?.length) {
+          conversationalHistory.push(candidateContent);
+        } else {
+          const parts: any[] = [];
+          for (const call of functionCalls) {
+            parts.push({ functionCall: { name: call.name, args: call.args, id: call.id } });
+          }
+          if (replyText) parts.push({ text: replyText });
+          if (parts.length) conversationalHistory.push({ role: "model", parts });
+        }
+
+        if (functionCalls.length > 0) {
+          const fingerprints = functionCalls.map((call: any) => `${call.name}:${JSON.stringify(call.args || {})}`);
+          const repeatsTooOften = fingerprints.some(
+            (fingerprint: string) => fallbackToolCallFingerprints.filter((seen) => seen === fingerprint).length >= 2,
+          );
+          fallbackToolRounds += 1;
+          if (fallbackToolRounds > MAX_FALLBACK_TOOL_ROUNDS || repeatsTooOften) {
+            conversationalHistory.push({
+              role: "user",
+              parts: functionCalls.map((call: any) => ({
+                functionResponse: {
+                  name: call.name,
+                  id: call.id,
+                  response: { error: "Tool loop stopped to prevent repeated execution." },
+                },
+              })),
+            });
+            if (clientWs.readyState === 1) {
+              clientWs.send(JSON.stringify({
+                type: "error",
+                message: "Jess paused this turn after repeated tool calls. Please rephrase the request or ask for a different approach.",
+              }));
+              clientWs.send(JSON.stringify({ type: "turn_complete" }));
+            }
+            fallbackToolRounds = 0;
+            fallbackToolCallFingerprints = [];
+            return;
+          }
+          fallbackToolCallFingerprints.push(...fingerprints);
+          if (clientWs.readyState === 1) {
+            clientWs.send(JSON.stringify({
+              type: "tool_call",
+              functionCalls,
+              functionCall: functionCalls[0],
+            }));
+          }
+        }
+
+        if (replyText && clientWs.readyState === 1) {
+          clientWs.send(JSON.stringify({ type: "output_transcription", text: replyText }));
+          try {
+            const ttsRes = await chatAi.models.generateContent({
+              model: "gemini-3.8-flash-lite-tts",
+              contents: [{ parts: [{ text: replyText }] }],
+              config: {
+                responseModalities: ["AUDIO"] as any,
+                speechConfig: {
+                  voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
+                },
+              },
+            });
+            const audioB64 = ttsRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (audioB64 && clientWs.readyState === 1) {
+              clientWs.send(JSON.stringify({
+                type: "audio",
+                audio: audioB64,
+                mimeType: "audio/pcm;rate=24000",
+              }));
+            }
+          } catch (ttsErr) {
+            console.warn("TTS synthesis warning in voice bridge:", ttsErr);
+          }
+        }
+
+        // Do not signal the turn as complete while Jess is waiting for a tool to run.
+        if (functionCalls.length === 0) {
+          fallbackToolRounds = 0;
+          fallbackToolCallFingerprints = [];
+          if (clientWs.readyState === 1) {
+            clientWs.send(JSON.stringify({ type: "turn_complete" }));
+          }
+        }
+      };
+
+      // Handler for client messages
+
       clientWs.on("message", async (data: any) => {
         try {
           const payload = JSON.parse(data.toString());
@@ -1313,11 +1584,12 @@ call returns.`;
           // Fallback Bridge Mode: Handle text/tool requests over the same WebSocket
           if (isFallbackMode && isSessionActive) {
             if (payload.type === "text" && payload.text) {
+              fallbackToolRounds = 0;
+              fallbackToolCallFingerprints = [];
               clientWs.send(JSON.stringify({ type: "input_transcription", text: payload.text }));
 
               conversationalHistory.push({ role: "user", parts: [{ text: payload.text }] });
 
-              // Generate response with Gemini
               const chatAi = new GoogleGenAI({
                 apiKey: geminiApiKey,
                 httpOptions: {
@@ -1326,72 +1598,46 @@ call returns.`;
                   },
                 },
               });
-              const chatRes = await chatAi.models.generateContent({
-                model: "gemini-3.8-flash",
-                contents: conversationalHistory as any,
-                config: {
-                  systemInstruction: liveSystemPrompt,
-                  tools: LIVE_TOOLS as any,
-                },
-              });
-
-              const replyText = chatRes.text || "";
-              const fCalls = chatRes.functionCalls;
-
-              if (fCalls && fCalls.length > 0) {
-                clientWs.send(
-                  JSON.stringify({
-                    type: "tool_call",
-                    functionCalls: fCalls,
-                    functionCall: fCalls[0],
-                  })
-                );
-              }
-
-              if (replyText) {
-                clientWs.send(JSON.stringify({ type: "output_transcription", text: replyText }));
-                conversationalHistory.push({ role: "model", parts: [{ text: replyText }] });
-
-                // Synthesize TTS audio and stream
-                try {
-                  const ttsRes = await chatAi.models.generateContent({
-                    model: "gemini-3.8-flash-lite-tts",
-                    contents: [{ parts: [{ text: replyText }] }],
-                    config: {
-                      responseModalities: ["AUDIO"] as any,
-                      speechConfig: {
-                        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
-                      },
-                    },
-                  });
-                  const audioB64 = ttsRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-                  if (audioB64 && clientWs.readyState === 1) {
-                    clientWs.send(
-                      JSON.stringify({
-                        type: "audio",
-                        audio: audioB64,
-                        mimeType: "audio/pcm;rate=24000",
-                      })
-                    );
-                  }
-                } catch (ttsErr) {
-                  console.warn("TTS synthesis warning in voice bridge:", ttsErr);
-                }
-              }
-
-              clientWs.send(JSON.stringify({ type: "turn_complete" }));
+              await generateFallbackTurn(chatAi);
             } else if (payload.type === "function_response" || payload.type === "tool_response") {
-              const resp = payload.functionResponse || payload.functionResponses?.[0];
-              if (resp) {
+              const functionResponses =
+                payload.functionResponses || (payload.functionResponse ? [payload.functionResponse] : []);
+              if (functionResponses.length > 0) {
+                // Keep Gemini's native function-response shape so call IDs and tool names
+                // remain associated with the result in the next model turn.
                 conversationalHistory.push({
                   role: "user",
-                  parts: [{ text: `[Tool Result for ${resp.name}]: ${JSON.stringify(resp.response)}` }],
+                  parts: functionResponses.map((resp: any) => ({
+                    functionResponse: {
+                      name: resp.name,
+                      id: resp.id,
+                      response: resp.response,
+                    },
+                  })),
                 });
+
+                const chatAi = new GoogleGenAI({
+                  apiKey: geminiApiKey,
+                  httpOptions: {
+                    headers: {
+                      'User-Agent': 'aistudio-build',
+                    },
+                  },
+                });
+                await generateFallbackTurn(chatAi);
               }
             }
           }
         } catch (err: any) {
           console.error("Error processing client message:", err);
+          // Never leave the voice UI waiting forever after a failed tool-result or model turn.
+          if (clientWs.readyState === 1) {
+            const message = String(err?.message || "Jess could not complete this voice turn. Please try again.")
+              .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[redacted API key]")
+              .slice(0, 500);
+            clientWs.send(JSON.stringify({ type: "error", message }));
+            clientWs.send(JSON.stringify({ type: "turn_complete" }));
+          }
         }
       });
 

@@ -36,7 +36,7 @@ test('Electron renderer is isolated and native file opening asks first', () => {
   assert.match(electronMain, /sandbox: true/);
   assert.match(electronMain, /showMessageBox/);
   assert.match(preload, /contextBridge\.exposeInMainWorld/);
-  assert.doesNotMatch(preload, /exec|spawn|writeFile|readFile/);
+  assert.doesNotMatch(preload, /\b(?:exec|spawn|writeFile|readFile)\s*\(/);
 });
 
 test('Windows release is tag/dispatch driven and publishes an installer', () => {

@@ -56,11 +56,9 @@ export function CompanionPage() {
           const snapshot = JSON.stringify(next);
           if (transcriptSnapshotRef.current && snapshot !== transcriptSnapshotRef.current) {
             setTranscriptVisible(true);
-            void window.hubMindDesktop?.setCompanionTranscriptVisible?.(true);
             if (transcriptHideTimerRef.current !== null) window.clearTimeout(transcriptHideTimerRef.current);
             transcriptHideTimerRef.current = window.setTimeout(() => {
               setTranscriptVisible(false);
-              void window.hubMindDesktop?.setCompanionTranscriptVisible?.(false);
             }, 12000);
           }
           transcriptSnapshotRef.current = snapshot;

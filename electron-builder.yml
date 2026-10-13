@@ -24,6 +24,7 @@ extraResources:
   - from: scripts/uninstall-jess-chrome-bridge.ps1
     to: Uninstall-JessChromeBridge.ps1
 win:
+  icon: build-resources/icon.ico
   target:
     - target: nsis
       arch:

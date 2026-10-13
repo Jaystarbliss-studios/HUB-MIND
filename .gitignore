@@ -10,3 +10,6 @@ native/**/bin/
 native/**/obj/
 native/**/publish/
 release/
+
+# Generated from the official logo during Windows packaging
+build-resources/icon.ico

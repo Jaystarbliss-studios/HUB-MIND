@@ -2,10 +2,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   platform: process.platform, isDesktopApp: true,
   startFullControl: (userId) => ipcRenderer.invoke('hubmind:full-control-start', userId),
+  setJessPreferences: (prefs, userId) => ipcRenderer.invoke('hubmind:jess-preferences-set', prefs, userId),
+  getJessPreferences: (userId) => ipcRenderer.invoke('hubmind:jess-preferences-get', userId),
   stopFullControl: () => ipcRenderer.invoke('hubmind:full-control-stop'),
   nativeStatus: () => ipcRenderer.invoke('hubmind:native-status'),
   chromeStatus: () => ipcRenderer.invoke('hubmind:chrome-status'),
-  chromeAction: (method, args, userId) => ipcRenderer.invoke('hubmind:chrome-action', method, args, userId),
+  chromeAction: (method, args, userId, executionId) => ipcRenderer.invoke('hubmind:chrome-action', method, args, userId, executionId),
   startOfflineWake: () => ipcRenderer.invoke('hubmind:offline-wake-start'),
   stopOfflineWake: () => ipcRenderer.invoke('hubmind:offline-wake-stop'),
   onOfflineWake: (callback) => {
@@ -14,13 +16,14 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
     ipcRenderer.on('hubmind:offline-wake', listener);
     return () => ipcRenderer.removeListener('hubmind:offline-wake', listener);
   },
-  nativeAction: (method, args, userId) => ipcRenderer.invoke('hubmind:native-action', method, args, userId),
+  nativeAction: (method, args, userId, executionId) => ipcRenderer.invoke('hubmind:native-action', method, args, userId, executionId),
   showMain: () => ipcRenderer.invoke('hubmind:show-main'),
   showWorkspace: () => ipcRenderer.invoke('hubmind:show-workspace'),
   showCompanion: () => ipcRenderer.invoke('hubmind:show-companion'),
   resetOrbPosition: () => ipcRenderer.invoke('hubmind:reset-orb-position'),
   hideCompanion: () => ipcRenderer.invoke('hubmind:hide-companion'),
   setCompanionTranscriptVisible: (visible) => ipcRenderer.invoke('hubmind:set-companion-transcript-visible', visible === true),
+  setTranscriptOverlayVisible: (visible) => ipcRenderer.invoke('hubmind:set-transcript-overlay-visible', visible === true),
   setCompanionInteractive: (interactive) => ipcRenderer.invoke('hubmind:set-companion-interactive', interactive === true),
   moveCompanionBy: (dx, dy) => ipcRenderer.invoke('hubmind:move-companion-by', dx, dy),
   openUserPath: (path) => ipcRenderer.invoke('hubmind:open-user-path', path),

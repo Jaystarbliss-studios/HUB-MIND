@@ -29,6 +29,7 @@ const navItems = [
   { to: '/workspace/clients', label: 'Clients', icon: Book },
   { to: '/workspace/knowledge', label: 'Knowledge', icon: Brain },
   { to: '/workspace/follow-ups', label: 'Follow-ups', icon: Clock3 },
+  { to: '/workspace/settings', label: 'Jess settings', icon: Settings },
 ];
 
 export function Layout() {
