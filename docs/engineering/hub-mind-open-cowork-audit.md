@@ -1,7 +1,7 @@
 # Hub-Mind × Open Cowork: Engineering Audit and Execution Plan
 
-**Status:** In progress — branch-only changes; no merge or production deployment  
-**Hub-Mind branch:** `feat/hubmind-branding-workspace-jess-settings`  
+**Status:** In progress — integration branch based on current main; no production deployment  
+**Hub-Mind branch:** `feat/jess-core-runtime-overlay-integration`  
 **Reference project:** OpenCoworkAI/open-cowork, inspected at source revision `083130349b1a83362eae31dd1705edc0b73782a7`  
 **Scope:** Evidence-led audit of agent/tool execution, native Windows control, MCP/agent-runner compatibility, and test coverage.
 
@@ -77,6 +77,17 @@ Key source files:
 
 Do not mark this test passed until it is performed on Windows.
 
+## New integration work on the current branch
+
+- Added a separate Electron transcript-caption window with fixed bottom-center positioning, transparent blur styling, click-through mouse handling, no focus, and no movement. The draggable companion window stays 96×96 and icon-only.
+- Added /companion-transcript as a dedicated renderer route; transcript updates are read from the existing cross-window transcript store. The caption hides after a quiet period and does not reopen from stale cached text.
+- Kept the signed-in Jess assistant mounted across authenticated route transitions and moved route context into a ref, so navigating between workspace sections does not recreate the Live client or restart the wake-listener effect solely because the path changed.
+- Added account-level Jess settings for permission mode, memory, workspace context, personalization, web research and visual verification. Memory/context/web-research settings are enforced in the active assistant/tool dispatcher; native permissions remain checked in Electron.
+- Added explicit desktop confirmation before Full Control begins, a pending-confirmation lock, and a separate approval prompt for native mutations unless the current user's settings allow routine actions. High-risk close-window, command, and path-opening actions still prompt.
+- Ported the 31 native Windows/Chrome tool declarations into the server Live registry, with desktop-runtime filtering and fallback continuation after tool results. Added repeated-call/round limits to direct Live and fallback dispatch.
+- Added a public setup guide for web, Chrome app, Chrome extension, Windows desktop and Jess settings; the PWA splash, installed-app icon and Windows installer icon now use the official Hub-Mind logo.
+- Added source-contract regression coverage for the native registry, tool result lifecycle, Full Control confirmation, window targeting, transcript overlay and route-persistent assistant.
+
 ## Implementation changes recorded on this branch
 
 - Added native Windows and Chrome declarations to server-side `LIVE_TOOLS`.
@@ -104,8 +115,9 @@ Do not mark this test passed until it is performed on Windows.
 
 ## Validation record
 
-- Source inspection: completed for the files listed above.
+- Source inspection: completed for the files listed above; the current integration branch is based on main and carries the transcript/session and settings changes without replacing the newer main-branch packaging/overlay work.
 - Server registry and fallback continuation: source-level changes committed. The six regression test cases were replayed against the latest fetched repository sources in a local source harness and all 6 passed. This is not a substitute for running the actual Node test runner, TypeScript typecheck, production build or Windows runtime tests; those remain pending in CI.
 - CI status at audit time: no statuses/workflow runs returned for the current PR head. The newly added workflow must be checked again after GitHub schedules it.
 - Native Windows smoke test: **not run in this environment**.
-- Merge/deployment: intentionally not performed.
+- PR #69 remains a conflicted legacy branch; this integration branch ports the intended changes onto current main without merging the stale branch wholesale.
+- Merge/deployment: not performed; the integration PR and CI results must be reviewed before merge.
