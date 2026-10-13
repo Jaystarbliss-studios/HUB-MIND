@@ -55,6 +55,7 @@ const FollowUps = safeLazy(() => import('./pages/FollowUps'), 'FollowUps');
 const SharedRecord = safeLazy(() => import('./pages/SharedRecord'), 'SharedRecord');
 const CompanionPage = safeLazy(() => import('./pages/CompanionPage'), 'CompanionPage');
 const JessTranscriptOverlayPage = safeLazy(() => import('./pages/JessTranscriptOverlayPage'), 'JessTranscriptOverlayPage');
+const JessSettings = safeLazy(() => import('./pages/JessSettings'), 'JessSettings');
 const JessOrbPage = safeLazy(() => import('./pages/JessOrbPage'), 'JessOrbPage');
 
 const LoadingScreen = () => <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-slate-400"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
@@ -131,6 +132,7 @@ export default function App() {
           <Route path="people" element={<Navigate to="/workspace/colleagues" replace />} />
           <Route path="documents" element={<Documents />} />
           <Route path="documents/:id" element={<DocumentEditor />} />
+          <Route path="settings" element={<JessSettings />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/workspace" replace />} />
