@@ -48,7 +48,7 @@ function sanitizeServerConfig(input, userId) {
 }
 
 function safeModelToolName(serverId, originalName, used = new Set()) {
-  const clean = value => String(value || '').trim().replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'tool';
+  const clean = value => String(value || '').trim().replace(/[^a-zA-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'tool';
   const base = 'mcp_' + clean(serverId) + '_' + clean(originalName);
   const suffix = createHash('sha256').update(String(serverId) + ':' + String(originalName)).digest('hex').slice(0, 8);
   let candidate = base.length <= 64 ? base : base.slice(0, 55) + '_' + suffix;
@@ -373,13 +373,13 @@ class McpBridge {
     return truncateToolResult(result);
   }
 
-  async shutdown() {
+  shutdown() {
     const keys = [...this.connections.keys()];
     for (const key of keys) {
       const index = key.indexOf(':');
       const userId = key.slice(0, index);
       const id = key.slice(index + 1);
-      await this.disconnectServer(userId, id);
+      void this.disconnectServer(userId, id);
     }
   }
 }
