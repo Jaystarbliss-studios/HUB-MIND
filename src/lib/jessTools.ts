@@ -569,6 +569,18 @@ export async function executeJessTool(
   }
 
   try {
+    const prefs = JSON.parse(localStorage.getItem('hubmind.jess.preferences') || '{}');
+    if (prefs.memoryEnabled === false && name === 'save_user_memory') {
+      return { result: { success: false, error: 'Memory saving is disabled in Jess settings. Enable it in Workspace → Jess settings first.' } };
+    }
+    if (prefs.webResearchEnabled === false && ['search_web', 'desktop_open_website'].includes(name)) {
+      return { result: { success: false, error: 'Web research is disabled in Jess settings. Enable it in Workspace → Jess settings first.' } };
+    }
+  } catch {
+    // Settings storage may be unavailable in a non-browser test; tool authorization still applies.
+  }
+
+  try {
     switch (name) {
       case 'jess_full_control': {
         if (!/full control/i.test(String(context?.page || '')) && !(args?.userExplicitlyRequested === true)) {
