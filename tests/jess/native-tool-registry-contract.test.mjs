@@ -297,3 +297,27 @@ test('execution correlation IDs reach native IPC and the local audit log', async
   assert.match(main, /executionId: correlationId/);
   assert.match(main, /jess-exec-\[A-Za-z0-9_-\]/);
 });
+
+
+test('Jess account preferences are enforced by the assistant and tool executor', async () => {
+  const [settings, assistant, tools, liveClient, main] = await Promise.all([
+    read('../../src/pages/JessSettings.tsx'),
+    read('../../src/components/JessFloatingAssistant.tsx'),
+    read('../../src/lib/jessTools.ts'),
+    read('../../src/services/liveAudioClient.ts'),
+    read('../../electron/main.cjs'),
+  ]);
+  assert.match(settings, /doc\(db, 'users', profile\.id, 'private', 'jessSettings'\)/);
+  assert.match(settings, /memoryEnabled/);
+  assert.match(settings, /webResearchEnabled/);
+  assert.match(settings, /permissionMode/);
+  assert.match(assistant, /jessPreferencesRef\.current\.memoryEnabled !== false/);
+  assert.match(assistant, /jessPreferencesRef\.current\.webResearchEnabled === false/);
+  assert.match(tools, /prefs\.memoryEnabled === false && name === 'save_user_memory'/);
+  assert.match(tools, /prefs\.webResearchEnabled === false/);
+  assert.match(liveClient, /context\?\.personalization/);
+  assert.match(liveClient, /context\?\.contextEnabled === false/);
+  assert.match(liveClient, /context\?\.screenVerificationEnabled === false/);
+  assert.match(main, /jessPreferences\.permissionMode === 'always-allow'/);
+  assert.match(main, /highRiskActions\.has\(method\)/);
+});
