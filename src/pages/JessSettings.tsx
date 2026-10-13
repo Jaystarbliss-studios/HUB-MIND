@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { readJessExecutionEvents, type JessExecutionEvent } from '../services/jessExecutionRuntime';
 import { Brain, ShieldCheck, SlidersHorizontal, Save, Loader2, MonitorCog } from 'lucide-react';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
@@ -24,6 +25,7 @@ export function JessSettings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [executionEvents, setExecutionEvents] = useState<JessExecutionEvent[]>([]);
 
   useEffect(() => {
     if (!profile?.id) { setLoading(false); return; }
@@ -35,6 +37,13 @@ export function JessSettings() {
       setLoading(false);
     }, () => { setError('Could not load Jess settings. Check your connection and permissions.'); setLoading(false); });
   }, [profile?.id]);
+
+  useEffect(() => {
+    const refresh = () => setExecutionEvents(readJessExecutionEvents().slice().reverse().slice(0, 8));
+    refresh();
+    window.addEventListener('hubmind:jess-execution-event', refresh);
+    return () => window.removeEventListener('hubmind:jess-execution-event', refresh);
+  }, []);
 
   const update = <K extends keyof JessPreferences,>(key: K, value: JessPreferences[K]) => {
     setPrefs(current => ({ ...current, [key]: value }));
@@ -68,6 +77,16 @@ export function JessSettings() {
           <label className="flex gap-3 rounded-xl border border-slate-800 p-4 cursor-pointer mb-3"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='ask'} onChange={() => update('permissionMode','ask')} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Always ask</strong><span className="block text-xs text-slate-400 mt-1">Confirm app launches and system commands each time.</span></span></label>
           <label className="flex gap-3 rounded-xl border border-teal-400/25 bg-teal-400/5 p-4 cursor-pointer"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='always-allow'} onChange={() => update('permissionMode','always-allow')} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Always allow routine actions during Full Control</strong><span className="block text-xs text-slate-400 mt-1">Jess can launch approved apps and perform supported, non-destructive actions without repeated prompts. Destructive or elevated actions remain blocked or require explicit confirmation.</span></span></label>
         </section>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
+          <div className="flex items-center gap-3 mb-4"><MonitorCog className="text-teal-300" size={20}/><div><h2 className="font-semibold">Recent Jess execution activity</h2><p className="text-xs text-slate-400 mt-1">A lightweight trace of tool execution. Argument values are not stored.</p></div></div>
+          {executionEvents.length === 0 ? <p className="text-sm text-slate-500">No recent tool executions in this app session.</p> : <div className="space-y-2">
+            {executionEvents.map(event => <div key={event.executionId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+              <div className="min-w-0"><p className="text-sm font-medium truncate">{event.toolName}</p><p className="text-xs text-slate-500">{new Date(event.at).toLocaleTimeString()} · {event.durationMs} ms</p></div>
+              <div className="flex items-center gap-2"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${event.status === 'failed' ? 'bg-rose-400/10 text-rose-300' : event.status === 'sent_unverified' ? 'bg-amber-400/10 text-amber-200' : 'bg-teal-400/10 text-teal-200'}`}>{event.status.replace(/_/g, ' ')}</span><span className="text-[10px] text-slate-500">{event.retrySafe ? 'read-only' : 'do not auto-retry'}</span></div>
+            </div>)}
+          </div>}
+        </section>
+
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
           <div className="flex items-center gap-3 mb-4"><Brain className="text-teal-300" size={20}/><div><h2 className="font-semibold">Memory and personalization</h2><p className="text-xs text-slate-400 mt-1">Control how Jess adapts to your working style.</p></div></div>
           <label className="flex items-center justify-between gap-4 py-3 border-b border-slate-800"><span><strong className="block text-sm">Remember useful details</strong><span className="text-xs text-slate-400">Allow Jess to store and use saved memories.</span></span><input type="checkbox" checked={prefs.memoryEnabled} onChange={e => update('memoryEnabled',e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
