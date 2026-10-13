@@ -71,8 +71,8 @@ export function JessMcpServersSettings({ userId }: { userId: string }) {
       setName(''); setCommand(''); setArgsText(''); setCwd(''); setUrl('');
       await refresh();
     } catch (e: any) {
-      setError(e?.message || 'Could not add the MCP server.');
       await refresh();
+      setError(e?.message || 'Could not add the MCP server.');
     } finally {
       setBusy(false);
     }
@@ -86,8 +86,8 @@ export function JessMcpServersSettings({ userId }: { userId: string }) {
       else setNotice('MCP server connected.');
       await refresh();
     } catch (e: any) {
-      setError(e?.message || 'Could not connect to the MCP server.');
       await refresh();
+      setError(e?.message || 'Could not connect to the MCP server.');
     } finally { setBusy(false); }
   };
 
@@ -99,8 +99,8 @@ export function JessMcpServersSettings({ userId }: { userId: string }) {
       else setNotice('MCP server removed.');
       await refresh();
     } catch (e: any) {
-      setError(e?.message || 'Could not remove the MCP server.');
       await refresh();
+      setError(e?.message || 'Could not remove the MCP server.');
     } finally { setBusy(false); }
   };
 
