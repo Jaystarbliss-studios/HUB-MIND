@@ -87,6 +87,7 @@ Do not mark this test passed until it is performed on Windows.
 - Ported the 31 native Windows/Chrome tool declarations into the server Live registry, with desktop-runtime filtering and fallback continuation after tool results. Added repeated-call/round limits to direct Live and fallback dispatch.
 - Added a public setup guide for web, Chrome app, Chrome extension, Windows desktop and Jess settings; the PWA splash, installed-app icon and Windows installer icon now use the official Hub-Mind logo.
 - Added source-contract regression coverage for the native registry, tool result lifecycle, Full Control confirmation, window targeting, transcript overlay and route-persistent assistant.
+- Added a shared execution-trace runtime for foreground and queued tools. It emits start/result events with correlation IDs, duration, safe argument-key summaries, normalized verified/unverified/failed states, and a conservative retry-safety flag without logging argument values. Thrown tool failures are normalized into tool results rather than escaping the Live callback.
 
 ## Implementation changes recorded on this branch
 
@@ -109,14 +110,14 @@ Do not mark this test passed until it is performed on Windows.
 3. Exercise minimize/maximize/restore on a packaged Windows build and validate stale/ambiguous target behavior.
 4. Regenerate `package-lock.json` from the actual `hub-mind@0.1.0` manifest and verify a clean `npm ci` install.
 5. Generate provider-specific native tool schemas from a dependency-free canonical definition, rather than only parity-testing duplicated declarations.
-6. Define a normalized execution event/result contract with bounded tool rounds, cancellation propagation, idempotency guidance, and audit correlation IDs.
+6. Extend the new normalized execution event/result contract with cancellation propagation and main-process audit correlation IDs; behavioral tests should cover session cancellation and stale-result suppression.
 7. Evaluate MCP integration only after the base execution path is stable; keep MCP credentials, server configuration, and tool permissions isolated from Firebase workspace permissions.
 8. Validate homepage, authentication, workspace operations, documents/tasks, chat/voice, installer startup, and update workflow before requesting merge.
 
 ## Validation record
 
 - Source inspection: completed for the files listed above; the current integration branch is based on main and carries the transcript/session and settings changes without replacing the newer main-branch packaging/overlay work.
-- Server registry and fallback continuation: source-level changes committed. The six regression test cases were replayed against the latest fetched repository sources in a local source harness and all 6 passed. This is not a substitute for running the actual Node test runner, TypeScript typecheck, production build or Windows runtime tests; those remain pending in CI.
+- Server registry and fallback continuation: source-level changes committed. The six earlier regression cases were replayed against fetched repository sources in a source harness; the current branch now has 12 contract tests across native registry, transcript overlay, and execution runtime. The expanded source harness passed the 9 native/overlay checks; the actual Node test runner and TypeScript checks still need CI. This is not a substitute for running the actual Node test runner, TypeScript typecheck, production build or Windows runtime tests; those remain pending in CI.
 - CI status at audit time: no statuses/workflow runs returned for the current PR head. The newly added workflow must be checked again after GitHub schedules it.
 - Native Windows smoke test: **not run in this environment**.
 - PR #69 remains a conflicted legacy branch; this integration branch ports the intended changes onto current main without merging the stale branch wholesale.
