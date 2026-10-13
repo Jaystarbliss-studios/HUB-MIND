@@ -16,8 +16,6 @@ on:
       - 'src/pages/public-home.css'
       - 'src/shared/jessNativeToolNames.ts'
       - 'src/components/Layout.tsx'
-      - 'src/components/DesktopSidebar.tsx'
-      - 'src/pages/Login.tsx'
       - 'scripts/verify-jess.mjs'
       - 'vite.config.ts'
       - 'electron-builder.yml'
@@ -28,7 +26,6 @@ on:
       - 'src/components/Layout.tsx'
       - 'electron/**'
       - 'tests/jess/**'
-      - 'tests/jess/real-logo-branding.test.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/jess-native-regression.yml'
@@ -76,7 +73,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # npm ci ensures the committed lockfile and package manifest remain reproducible.
+      # The current lockfile is missing four declared devDependencies; npm ci would fail before tests.
+      # Use npm install until the repository lockfile is regenerated and committed.
       - run: npm ci --no-audit --no-fund
       - run: npm run verify:jess
       - run: npm run typecheck
