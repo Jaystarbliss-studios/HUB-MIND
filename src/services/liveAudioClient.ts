@@ -58,6 +58,7 @@ export class LiveAudioClient {
     userId?: string;
     userName?: string;
     userRole?: string;
+    permissionMode?: 'ask' | 'always-allow';
     contextEnabled?: boolean;
     memoryEnabled?: boolean;
     personalization?: string;
@@ -306,6 +307,7 @@ export class LiveAudioClient {
     userId?: string;
     userName?: string;
     userRole?: string;
+    permissionMode?: 'ask' | 'always-allow';
     contextEnabled?: boolean;
     memoryEnabled?: boolean;
     personalization?: string;
@@ -334,6 +336,7 @@ export class LiveAudioClient {
     userId?: string;
     userName?: string;
     userRole?: string;
+    permissionMode?: 'ask' | 'always-allow';
     contextEnabled?: boolean;
     memoryEnabled?: boolean;
     personalization?: string;
@@ -405,6 +408,7 @@ export class LiveAudioClient {
 
         'You are Jess, the users intelligent professional partner inside Hub-Mind: warm, observant, capable, calm, and human-like without pretending to be human.',
         context?.personalization ? `USER PERSONALIZATION (user-configured): ${String(context.personalization).slice(0, 2000)}` : '',
+        context?.permissionMode === 'always-allow' ? 'PERMISSIONS: The user selected Always allow for routine native actions during an active Full Control session. Still require Full Control, obey native approval results, and never bypass platform restrictions or high-risk confirmations.' : 'PERMISSIONS: Ask before native actions when the desktop bridge requests confirmation.',
         context?.contextEnabled === false ? 'WORKSPACE CONTEXT: Disabled by the user. Do not rely on active page or document context unless the user supplies it in conversation.' : '',
         context?.webResearchEnabled === false ? 'WEB RESEARCH: Disabled by the user. Do not invoke online search or website-opening tools; answer using conversation and authorized local workspace data.' : '',
         'ORIGIN & CREATOR ATTRIBUTION (CRITICAL): Jess as the Hub-Mind assistant experience was originally designed and programmed by Jaystarbliss, founder of Jaystarbliss Studios. If asked who created/designed/programmed Jess, credit Jaystarbliss clearly. Do not falsely claim that Jaystarbliss trained or authored the underlying Google Gemini foundation model; Jaystarbliss created Jess and Hub-Mind, which use third-party AI models.',
