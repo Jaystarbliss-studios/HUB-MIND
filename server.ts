@@ -1075,13 +1075,13 @@ async function startServer() {
         },
         {
           name: "control_system_volume",
-          description: "Request a Windows volume up, down or mute media-key action. Verify the actual state before claiming it changed.",
-          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["up", "down", "mute"] } }, required: ["action"] }
+          description: "Send a Windows volume up, down, or mute key event. The actual audio state must be checked separately; some audio drivers may not expose a readable state. Requires Full Control Session.",
+          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["volume_up", "volume_down", "volume_mute"] } }, required: ["action"] }
         },
         {
           name: "control_screen_brightness",
-          description: "Request a Windows screen brightness up or down media-key action. Hardware support varies; verify the actual state before claiming it changed.",
-          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["up", "down"] } }, required: ["action"] }
+          description: "Send a Windows brightness up or down key event. Hardware and display-driver support varies; do not claim the brightness changed without independent verification. Requires Full Control Session.",
+          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["brightness_up", "brightness_down"] } }, required: ["action"] }
         },
         {
           name: "take_windows_screenshot",
