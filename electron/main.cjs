@@ -102,7 +102,7 @@ function guardNavigation(win) {
 }
 
 function createMainWindow(initialPath = '/login') {
-  mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, backgroundColor: '#020617', title: 'Hub-Mind', autoHideMenuBar: true, show: false, webPreferences: { backgroundThrottling: false } }));
+  mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, icon: path.join(__dirname, '..', 'dist', 'hub-mind logo.png'), backgroundColor: '#020617', title: 'Hub-Mind', autoHideMenuBar: true, show: false, webPreferences: { backgroundThrottling: false } }));
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); positionCompanionBottomRightIfNeeded(); } });
@@ -134,6 +134,7 @@ function createCompanionWindow(force = false) {
   const saved = readOrbPosition();
   companionWindow = new BrowserWindow(secureWindowOptions({
     width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 420, maxHeight: 520,
+    icon: path.join(__dirname, '..', 'dist', 'hub-mind logo.png'),
     frame: false, transparent: true, resizable: false, movable: true, focusable: true,
     alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
     title: 'Jess', show: false, webPreferences: { backgroundThrottling: false }
