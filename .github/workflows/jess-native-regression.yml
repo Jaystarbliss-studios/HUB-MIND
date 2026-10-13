@@ -8,6 +8,18 @@ on:
       - 'src/services/liveAudioClient.ts'
       - 'src/components/JessFloatingAssistant.tsx'
       - 'src/App.tsx'
+      - 'src/pages/JessSettings.tsx'
+      - 'src/pages/JessTranscriptOverlayPage.tsx'
+      - 'src/pages/jess-transcript-overlay.css'
+      - 'src/pages/CompanionPage.tsx'
+      - 'src/pages/PublicHome.tsx'
+      - 'src/pages/public-home.css'
+      - 'src/shared/jessNativeToolNames.ts'
+      - 'src/components/Layout.tsx'
+      - 'scripts/verify-jess.mjs'
+      - 'vite.config.ts'
+      - 'electron-builder.yml'
+      - 'src/App.tsx'
       - 'src/pages/JessTranscriptOverlayPage.tsx'
       - 'src/pages/jess-transcript-overlay.css'
       - 'src/shared/jessNativeToolNames.ts'
@@ -25,6 +37,18 @@ on:
       - 'src/lib/jessTools.ts'
       - 'src/services/liveAudioClient.ts'
       - 'src/components/JessFloatingAssistant.tsx'
+      - 'src/App.tsx'
+      - 'src/pages/JessSettings.tsx'
+      - 'src/pages/JessTranscriptOverlayPage.tsx'
+      - 'src/pages/jess-transcript-overlay.css'
+      - 'src/pages/CompanionPage.tsx'
+      - 'src/pages/PublicHome.tsx'
+      - 'src/pages/public-home.css'
+      - 'src/shared/jessNativeToolNames.ts'
+      - 'src/components/Layout.tsx'
+      - 'scripts/verify-jess.mjs'
+      - 'vite.config.ts'
+      - 'electron-builder.yml'
       - 'electron/**'
       - 'tests/jess/**'
       - 'package.json'
@@ -52,6 +76,9 @@ jobs:
       # The current lockfile is missing four declared devDependencies; npm ci would fail before tests.
       # Use npm install until the repository lockfile is regenerated and committed.
       - run: npm install --no-audit --no-fund
+      - run: npm run verify:jess
       - run: npm run typecheck
+      - run: node --check electron/main.cjs
+      - run: node --check electron/preload.cjs
       - run: node --import tsx --test tests/jess/native-tool-registry-contract.test.mjs
       - run: npm run test:unit
