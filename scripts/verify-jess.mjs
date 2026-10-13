@@ -38,6 +38,7 @@ const requiredFiles = [
   'src/components/JessOrbVisualizer.tsx',
   'src/components/JessDocumentBridge.tsx',
   'src/services/liveAudioClient.ts',
+  'src/services/jessExecutionRuntime.ts',
   'netlify/functions/live-token.mjs',
 ];
 for (const file of requiredFiles) if (!existsSync(resolve(root, file))) failures.push(`${file}: required Jess integration file is missing`);
@@ -87,6 +88,10 @@ if (!transcriptOverlay.includes('hubmind.jess.desktopTranscript.v1') || !transcr
 const sharedNativeNames = readFileSync(resolve(root, 'src/shared/jessNativeToolNames.ts'), 'utf8');
 for (const tool of ['list_windows','manage_windows','take_windows_screenshot','chrome_list_tabs','chrome_scroll']) {
   if (!sharedNativeNames.includes(`'${tool}'`)) failures.push(`jessNativeToolNames.ts: native tool ${tool} is missing`);
+const executionRuntime = readFileSync(resolve(root, 'src/services/jessExecutionRuntime.ts'), 'utf8');
+for (const contract of ['runJessToolExecution','executionId','retrySafe','argumentKeys','hubmind:jess-execution-event']) {
+  if (!executionRuntime.includes(contract)) failures.push(`jessExecutionRuntime.ts: execution trace contract ${contract} is missing`);
+}
 }
 if (!floating.includes('screen_control') || !floating.includes('getJessScrollTarget')) failures.push('JessFloatingAssistant.tsx: direct screen control bridge is missing');
 if (!tools.includes('scroll_screen') || !tools.includes('click_screen') || !tools.includes('type_screen')) failures.push('jessTools.ts: direct screen control tools are missing');
