@@ -76,6 +76,13 @@ jobs:
       # The current lockfile is missing four declared devDependencies; npm ci would fail before tests.
       # Use npm install until the repository lockfile is regenerated and committed.
       - run: npm install --no-audit --no-fund
+      - name: Export regenerated lockfile for clean-install validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: regenerated-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
       - run: npm run verify:jess
       - run: npm run typecheck
       - run: node --check electron/main.cjs
