@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   stopFullControl: () => ipcRenderer.invoke('hubmind:full-control-stop'),
   nativeStatus: () => ipcRenderer.invoke('hubmind:native-status'),
   chromeStatus: () => ipcRenderer.invoke('hubmind:chrome-status'),
-  chromeAction: (method, args, userId) => ipcRenderer.invoke('hubmind:chrome-action', method, args, userId),
+  chromeAction: (method, args, userId, executionId) => ipcRenderer.invoke('hubmind:chrome-action', method, args, userId, executionId),
   startOfflineWake: () => ipcRenderer.invoke('hubmind:offline-wake-start'),
   stopOfflineWake: () => ipcRenderer.invoke('hubmind:offline-wake-stop'),
   onOfflineWake: (callback) => {
@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
     ipcRenderer.on('hubmind:offline-wake', listener);
     return () => ipcRenderer.removeListener('hubmind:offline-wake', listener);
   },
-  nativeAction: (method, args, userId) => ipcRenderer.invoke('hubmind:native-action', method, args, userId),
+  nativeAction: (method, args, userId, executionId) => ipcRenderer.invoke('hubmind:native-action', method, args, userId, executionId),
   showMain: () => ipcRenderer.invoke('hubmind:show-main'),
   showWorkspace: () => ipcRenderer.invoke('hubmind:show-workspace'),
   showCompanion: () => ipcRenderer.invoke('hubmind:show-companion'),
