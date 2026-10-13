@@ -14,6 +14,7 @@ let companionDismissed = false;
 let tray;
 let quitting = false;
 let fullControlActive = false;
+let fullControlStartPending = false;
 let controlSessionStartedAt = null;
 let controlSessionUserId = null;
 let controlAuditPath = null;
@@ -21,6 +22,31 @@ let offlineWakeProcess = null;
 let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
 let offlineWakeConsentLoaded = false;
+let jessPreferences = { permissionMode: 'ask', memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true };
+let jessPreferencesUserId = null;
+function persistJessPreferences(prefs, userId) {
+  const allowedModes = new Set(['ask', 'always-allow']);
+  if (!prefs || typeof prefs !== 'object' || !allowedModes.has(prefs.permissionMode)) throw new Error('Invalid Jess permission preferences.');
+  jessPreferences = {
+    permissionMode: prefs.permissionMode,
+    memoryEnabled: prefs.memoryEnabled !== false,
+    contextEnabled: prefs.contextEnabled !== false,
+    personalization: typeof prefs.personalization === 'string' ? prefs.personalization.slice(0, 2000) : '',
+    webResearchEnabled: prefs.webResearchEnabled !== false,
+    screenVerificationEnabled: prefs.screenVerificationEnabled !== false,
+  };
+  jessPreferencesUserId = userId;
+  const file = path.join(app.getPath('userData'), 'jess-preferences.json');
+  fs.writeFileSync(file, JSON.stringify({ userId, preferences: jessPreferences }, null, 2), { encoding: 'utf8', mode: 0o600 });
+  return { ok: true, preferences: jessPreferences };
+}
+function loadJessPreferences() {
+  try {
+    const file = path.join(app.getPath('userData'), 'jess-preferences.json');
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (saved && saved.userId && saved.preferences) persistJessPreferences(saved.preferences, saved.userId);
+  } catch { /* First run or unreadable preferences use safe defaults. */ }
+}
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const trustedAppHosts = new Set(['hub-mind.netlify.app']);
 const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'identitytoolkit.googleapis.com']);
@@ -393,9 +419,54 @@ app.whenReady().then(() => {
   app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
   chromeBridge.start();
-  ipcMain.handle('hubmind:full-control-start', (event, userId) => {
+  loadJessPreferences();
+  ipcMain.handle('hubmind:jess-preferences-set', (event, prefs, userId) => {
     assertTrustedSender(event);
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
+    if (fullControlActive && controlSessionUserId !== userId) throw new Error('Jess preferences cannot be changed for a different active user.');
+    return persistJessPreferences(prefs, userId);
+  });
+  ipcMain.handle('hubmind:jess-preferences-get', (event, userId) => {
+    assertTrustedSender(event);
+    if (typeof userId !== 'string' || userId !== jessPreferencesUserId) return { preferences: null };
+    return { preferences: jessPreferences };
+  });
+  ipcMain.handle('hubmind:full-control-start', async (event, userId) => {
+    assertTrustedSender(event);
+    if (process.platform !== 'win32') throw new Error('Jess Full Control is available only in the Windows desktop application.');
+    if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
+    if (fullControlActive) {
+      if (controlSessionUserId !== userId) throw new Error('A different signed-in user already owns the active Full Control Session.');
+      return { ok: true, active: true, alreadyActive: true, startedAt: controlSessionStartedAt, userId, stopHotkey: 'Ctrl+Alt+Shift+J' };
+    }
+    if (fullControlStartPending) {
+      return { ok: false, active: false, error: 'A Full Control confirmation is already pending.' };
+    }
+    fullControlStartPending = true;
+
+    // Model instructions are not an authorization boundary. Always ask the person at
+    // the desktop before enabling system-wide keyboard, mouse, window and process control.
+    let choice;
+    try {
+      choice = await dialog.showMessageBox(getDialogParent(), {
+        type: 'warning',
+        buttons: ['Cancel', 'Enable Full Control'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'Enable Jess Full Control?',
+        message: 'Allow Jess to control Windows applications and windows?',
+        detail: 'While Full Control is active, Jess can move or resize windows, send keyboard and mouse input, open files and applications, and run approved non-elevated commands. Individual actions may still require approval based on your Jess settings. Stop at any time by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.',
+      });
+    } catch (error) {
+      fullControlStartPending = false;
+      throw error;
+    }
+    fullControlStartPending = false;
+    if (choice.response !== 1) {
+      auditNativeAction({ event: 'full-control-start-cancelled', userId });
+      return { ok: false, active: false, cancelled: true, error: 'Full Control was not enabled because the user cancelled.' };
+    }
+
     fullControlActive = true;
     controlSessionUserId = userId;
     controlSessionStartedAt = new Date().toISOString();
