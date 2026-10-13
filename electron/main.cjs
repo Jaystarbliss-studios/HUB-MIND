@@ -431,9 +431,11 @@ app.whenReady().then(() => {
     }
     return userId;
   };
-  ipcMain.handle('hubmind:mcp-list-servers', event => {
+  ipcMain.handle('hubmind:mcp-list-servers', (event, userId) => {
     assertTrustedSender(event);
-    return mcpBridge ? mcpBridge.listServers(jessPreferencesUserId || '') : [];
+    const owner = requireMcpUser(userId);
+    if (jessPreferencesUserId && jessPreferencesUserId !== owner) throw new Error('MCP settings belong to a different signed-in user.');
+    return mcpBridge ? mcpBridge.listServers(owner) : [];
   });
   ipcMain.handle('hubmind:mcp-list-tools', async (event, userId) => {
     assertTrustedSender(event);
