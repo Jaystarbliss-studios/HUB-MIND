@@ -13,7 +13,7 @@ Hub-Mind keeps its existing Firebase workspace, Electron desktop shell, Jess Liv
 - **Consent:** adding/connecting a server requires a native confirmation dialog. Every MCP tool call requires its own native approval dialog. Calls are recorded in the existing local audit log without recording full tool arguments.
 - **Isolation:** stdio processes launch without a shell and inherit only a small allowlist of environment variables, not Hub-Mind API keys or the full application environment. Custom environment variables are rejected until encrypted secret storage exists.
 - **Network:** HTTP redirects are rejected; remote endpoints must use HTTPS. URL credentials and fragments are rejected.
-- **Privacy:** server configuration is stored in the desktop user's application-data directory and filtered by the signed-in Hub-Mind user ID. Tool calls and tool lists are not exposed to browser-only clients.
+- **Privacy:** server configuration is encrypted at rest using Electron safeStorage and stored in the desktop user's application-data directory, then filtered by the signed-in Hub-Mind user ID. Saving is disabled if secure storage is unavailable. Tool calls and tool lists are not exposed to browser-only clients.
 - **Untrusted content:** MCP tool names, descriptions, metadata and returned content are treated as external untrusted data. They cannot provide user consent or override Jess's system instructions.
 
 ## Current limitations
