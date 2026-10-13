@@ -323,3 +323,29 @@ test('Jess account preferences are enforced by the assistant and tool executor',
   assert.match(main, /jessPreferences\.permissionMode === 'always-allow'/);
   assert.match(main, /highRiskActions\.has\(method\)/);
 });
+
+
+test('MCP tools use explicit desktop consent, scoped tool discovery, and no shell execution', async () => {
+  const [bridge, main, preload, live, tools, settings, settingsPage] = await Promise.all([
+    read('../../electron/mcpBridge.cjs'),
+    read('../../electron/main.cjs'),
+    read('../../electron/preload.cjs'),
+    read('../../src/services/liveAudioClient.ts'),
+    read('../../src/lib/jessTools.ts'),
+    read('../../src/components/JessMcpServersSettings.tsx'),
+    read('../../src/pages/JessSettings.tsx'),
+  ]);
+  assert.match(bridge, /shell: false/);
+  assert.match(bridge, /Custom MCP environment variables are not enabled until encrypted secret storage is configured/);
+  assert.match(bridge, /Only HTTPS is allowed|MCP HTTP servers must use HTTPS/);
+  assert.match(main, /ipcMain\.handle\('hubmind:mcp-tool-call'/);
+  assert.match(main, /Approve Jess MCP tool call/);
+  assert.match(main, /mcpBridge\.resolveTool\(owner/);
+  assert.match(main, /mcp-tool-call-approved/);
+  assert.match(preload, /mcpCallTool: .*hubmind:mcp-tool-call/);
+  assert.match(live, /await desktop\.mcpListTools\(context\.userId\)/);
+  assert.match(live, /\.\.\.mcpToolDeclarations/);
+  assert.match(tools, /name\.startsWith\('mcp_'\)/);
+  assert.match(settings, /Add and connect/);
+  assert.match(settingsPage, /JessMcpServersSettings userId=\{profile\?\.id \|\| ''\}/);
+});
