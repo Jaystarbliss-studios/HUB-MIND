@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { McpBridge, sanitizeServerConfig, safeModelToolName, toGeminiSchema } from '../../electron/mcpBridge.cjs';
 
 test('MCP server configuration rejects unsafe transport and malformed executable settings', () => {
@@ -11,6 +10,7 @@ test('MCP server configuration rejects unsafe transport and malformed executable
   assert.throws(() => sanitizeServerConfig({ name: 'Remote', transport: 'streamable-http', url: 'https://user:pass@example.com/mcp' }, 'user-a'), /credentials/);
   assert.throws(() => sanitizeServerConfig({ name: 'Local', transport: 'stdio', command: 'node', cwd: 'relative/path' }, 'user-a'), /absolute path/);
   assert.throws(() => sanitizeServerConfig({ name: 'Local', transport: 'stdio', command: 'node\nwhoami' }, 'user-a'), /unsupported characters/);
+  assert.throws(() => sanitizeServerConfig({ name: 'Local', transport: 'stdio', command: 'node', env: { API_TOKEN: 'plaintext-secret' } }, 'user-a'), /encrypted secret storage/);
 });
 
 test('MCP tool schema conversion and generated names stay within Gemini constraints', () => {
