@@ -109,6 +109,7 @@ const nativeToolNames = [
   'open_local_windows_path',
   'launch_windows_application',
   'run_windows_command_native',
+  'manage_windows_files',
   'get_windows_time',
   'get_windows_system_info',
   'chrome_list_tabs',
@@ -272,7 +273,7 @@ test('runtime filtering hides native tools outside the installed desktop app', (
     'list_windows',
     'chrome_open_tab',
   ]);
-  assert.equal(JESS_NATIVE_TOOL_NAMES.length, 31);
+  assert.equal(JESS_NATIVE_TOOL_NAMES.length, 32);
 });
 
 
