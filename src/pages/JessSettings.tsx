@@ -41,7 +41,7 @@ export function JessSettings() {
       setPrefs(current => JSON.stringify(current) === JSON.stringify(loaded) ? current : loaded);
       setHydrated(true);
       try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(loaded)); } catch {}
-      void (async () => { try { const desktop = (window as any).hubMindDesktop; if (!desktop) return; const live = await desktop.setJessPreferences(loaded, profile.id); setDesktopState({ active: live?.fullControlActive === true, startedAt: live?.startedAt || null, permissionMode: live?.preferences?.permissionMode || loaded.permissionMode }); } catch { /* Browser workspace may run without the desktop shell. */ } })();
+      void (async () => { try { const desktop = (window as any).hubMindDesktop; if (!desktop?.getJessPreferences) return; const live = await desktop.getJessPreferences(); setDesktopState({ active: live?.fullControlActive === true, startedAt: live?.startedAt || null, permissionMode: live?.preferences?.permissionMode || loaded.permissionMode }); } catch { /* Browser workspace may run without the desktop shell. */ } })();
       setLoading(false);
     }, () => { setError('Could not load Jess settings. Check your connection and permissions.'); setLoading(false); });
   }, [profile?.id]);
