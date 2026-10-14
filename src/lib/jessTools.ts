@@ -227,6 +227,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'chrome_click_element', description: 'Click a matching page button/link/element by visible text or CSS selector. Supply at least one. The click is not considered complete until a follow-up page read verifies the intended outcome. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, selector: { type: 'string' }, text: { type: 'string' } }) },
   { name: 'chrome_fill_field', description: 'Fill a specific input, textarea or select identified by a CSS selector. Requires Full Control Session. Never use on password or payment fields.', parameters: object({ tabId: { type: 'number' }, selector: { type: 'string' }, value: { type: 'string' } }, ['selector','value']) },
   { name: 'chrome_scroll', description: 'Scroll a Chrome page by a number of pixels. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, delta: { type: 'number' }, axis: { type: 'string', enum: ['x','y'] }, target: { type: 'string' } }, ['delta']) },
+  { name: 'chrome_capture_screenshot', description: 'Capture a compressed thumbnail preview of the active visible Chrome tab. The preview is displayed to the user in the desktop assistant; use page text or screen OCR for actual content analysis. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }) },
   { name: 'get_user_profile', description: 'Get the signed-in Hub-Mind user profile, role, name, preferred name, email, and preferences.', parameters: object({}) },
   { name: 'get_current_user_profile', description: 'Get the currently signed-in user identity, name, preferred name, email, role, and preferences.', parameters: object({}) },
   { name: 'get_current_context', description: 'Get the current Hub-Mind route and active workspace context.', parameters: object({}) },
@@ -672,6 +673,7 @@ export async function executeJessTool(
       case 'chrome_navigate_tab':
       case 'chrome_reload_tab':
       case 'chrome_scroll':
+      case 'chrome_capture_screenshot':
       case 'chrome_read_page':
       case 'chrome_find_element':
       case 'chrome_click_element':
