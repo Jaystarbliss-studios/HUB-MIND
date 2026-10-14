@@ -36,7 +36,8 @@ export function JessSettings() {
   useEffect(() => {
     if (!profile?.id) { setLoading(false); return; }
     return onSnapshot(doc(db, 'users', profile.id, 'private', 'jessSettings'), snapshot => {
-      const loaded = { ...DEFAULTS, ...(snapshot.exists() ? snapshot.data() as Partial<JessPreferences> : {}) };
+      const raw = snapshot.exists() ? snapshot.data() : {};
+      const loaded = Object.fromEntries(Object.keys(DEFAULTS).map(key => [key, raw[key] ?? (DEFAULTS as any)[key]])) as JessPreferences;
       setPrefs(current => JSON.stringify(current) === JSON.stringify(loaded) ? current : loaded);
       setHydrated(true);
       try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(loaded)); } catch {}
