@@ -623,6 +623,7 @@ export function JessFloatingAssistant() {
               };
             }
           } catch (error: any) {
+            // A tool failure must become a tool response, not an unhandled promise.
             result = {
               result: {
                 success: false,
