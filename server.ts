@@ -1047,10 +1047,10 @@ async function startServer() {
           name: "manage_windows",
           description: "Focus, close, minimize, maximize, restore, move, resize or snap a real Windows desktop window. Use an exact title or handle when possible; verify the resulting state.",
           parameters: { type: "OBJECT", properties: {
-            action: { type: "STRING", enum: ["focus_window", "close_window", "minimize_window", "maximize_window", "restore_window", "move_window", "resize_window", "snap_window"] },
+            action: { type: "STRING", enum: ["focus_window", "close_window", "minimize_window", "maximize_window", "restore_window", "move_window", "resize_window", "snap_window", "show_desktop", "minimize_all", "start_menu", "switch_window"] },
             title: { type: "STRING" }, handle: { type: "STRING" }, x: { type: "NUMBER" }, y: { type: "NUMBER" },
             width: { type: "NUMBER" }, height: { type: "NUMBER" },
-            position: { type: "STRING", enum: ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right"] }
+            position: { type: "STRING", enum: ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right", "left-third", "center-third", "right-third"] }
           }, required: ["action"] }
         },
         {
@@ -1071,7 +1071,7 @@ async function startServer() {
         {
           name: "press_windows_keys",
           description: "Send a key or key combination to the active Windows app, such as CTRL+S or ALT+TAB. Requires Full Control.",
-          parameters: { type: "OBJECT", properties: { keys: { type: "STRING" } }, required: ["keys"] }
+          parameters: { type: "OBJECT", properties: { keys: { type: "STRING" }, holdMs: { type: "NUMBER" } }, required: ["keys"] }
         },
         {
           name: "control_system_volume",
