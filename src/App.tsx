@@ -55,6 +55,7 @@ const FollowUps = safeLazy(() => import('./pages/FollowUps'), 'FollowUps');
 const SharedRecord = safeLazy(() => import('./pages/SharedRecord'), 'SharedRecord');
 const CompanionPage = safeLazy(() => import('./pages/CompanionPage'), 'CompanionPage');
 const JessTranscriptOverlayPage = safeLazy(() => import('./pages/JessTranscriptOverlayPage'), 'JessTranscriptOverlayPage');
+const ScreenShareChooserPage = safeLazy(() => import('./pages/ScreenShareChooserPage'), 'ScreenShareChooserPage');
 const JessSettings = safeLazy(() => import('./pages/JessSettings'), 'JessSettings');
 const JessOrbPage = safeLazy(() => import('./pages/JessOrbPage'), 'JessOrbPage');
 
@@ -112,6 +113,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/companion" element={<ProtectedRoute><CompanionPage /></ProtectedRoute>} />
         <Route path="/companion-transcript" element={<JessTranscriptOverlayPage />} />
+        <Route path="/screen-share-chooser" element={<ScreenShareChooserPage />} />
         <Route path="/orb" element={<ProtectedRoute><JessOrbPage /></ProtectedRoute>} />
         <Route path="/share-target" element={<Navigate to="/workspace/inbox?shared=true" replace />} />
         <Route path="/share/:type/:id" element={<ProtectedRoute><SharedRecord /></ProtectedRoute>} />
