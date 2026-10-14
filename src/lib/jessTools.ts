@@ -666,6 +666,9 @@ export async function executeJessTool(
       case 'chrome_activate_tab':
       case 'chrome_navigate_tab':
       case 'chrome_reload_tab':
+      case 'chrome_back':
+      case 'chrome_forward':
+      case 'chrome_screenshot':
       case 'chrome_scroll':
       case 'chrome_read_page':
       case 'chrome_find_element':
