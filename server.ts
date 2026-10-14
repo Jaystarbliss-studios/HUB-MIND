@@ -1127,6 +1127,13 @@ async function startServer() {
           }, required: ["action", "path"] }
         },
         {
+          name: "manage_windows_clipboard",
+          description: "Read, set, clear or paste the current Windows clipboard. Clipboard reads are bounded; paste uses Ctrl+V in the focused app. Mutating operations follow the configured permission mode.",
+          parameters: { type: "OBJECT", properties: {
+            action: { type: "STRING", enum: ["read", "write", "clear", "paste"] }, text: { type: "STRING" }
+          }, required: ["action"] }
+        },
+        {
           name: "get_windows_time",
           description: "Read the local Windows time and time zone.",
           parameters: { type: "OBJECT", properties: {} }
