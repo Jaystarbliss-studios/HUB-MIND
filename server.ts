@@ -1134,6 +1134,11 @@ async function startServer() {
           }, required: ["action"] }
         },
         {
+          name: "control_windows_power",
+          description: "Lock the Windows workstation, schedule shutdown in 15 seconds, or schedule restart in 15 seconds. Shutdown/restart require a fresh spoken yes/no confirmation and can be cancelled with shutdown /a before they begin.",
+          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["lock", "shutdown", "restart"] } }, required: ["action"] }
+        },
+        {
           name: "get_windows_time",
           description: "Read the local Windows time and time zone.",
           parameters: { type: "OBJECT", properties: {} }
