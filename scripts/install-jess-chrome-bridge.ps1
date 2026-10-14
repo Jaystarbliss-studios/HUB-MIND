@@ -83,7 +83,7 @@ if ($ForceInstallExtension) {
   New-Item -Path $policyRoot -Force | Out-Null
   $properties = Get-ItemProperty -LiteralPath $policyRoot -ErrorAction SilentlyContinue
   $slot = 1
-  while ($properties -and $properties.PSObject.Properties.Name -contains [string]$slot) { $slot++ }
+  while ($properties -and ($properties.PSObject.Properties.Name -contains [string]$slot)) { $slot++ }
   Set-ItemProperty -LiteralPath $policyRoot -Name ([string]$slot) -Value "$extensionId;https://clients2.google.com/service/update2/crx"
   Write-Output "Chrome force-install policy added for extension $extensionId. This works only after that exact extension version has been published to the Chrome Web Store."
 }
@@ -94,3 +94,5 @@ Write-Output '2. Enable Developer mode.'
 if (-not $ForceInstallExtension) { Write-Output "3. Select Load unpacked and choose: $extensionTarget" } else { Write-Output '3. Chrome will force-install the unlisted store extension once it is published and Chrome refreshes policy.' }
 Write-Output '4. Keep Hub-Mind running, then start a Full Control Session before asking Jess to control Chrome.'
 Write-Output 'Chrome tab/page access is active only while the installed desktop app and extension are connected.'
+Write-Output 'Optional: run this script as Administrator with -MachineWide to register the native host under HKLM.'
+Write-Output 'After publishing the extension as Unlisted in the Chrome Web Store, run with -ForceInstallExtension to add the matching Chrome force-install policy.'
