@@ -178,5 +178,5 @@ test('MCP environment only permits non-secret Windows-MCP settings and telemetry
   assert.equal(config.env.ANONYMIZED_TELEMETRY, 'false');
   assert.equal(getSafeChildEnvironment(config.env).ANONYMIZED_TELEMETRY, 'false');
   assert.throws(() => sanitizeServerConfig({ name: 'Unsafe', transport: 'stdio', command: 'node', env: { API_TOKEN: 'secret' } }, 'user-a'), /not allowlisted/);
-  assert.throws(() => sanitizeServerConfig({ name: 'Unsafe', transport: 'stdio', command: 'node', env: { ANONYMIZED_TELEMETRY: 'false\\nINJECTED=1' } }, 'user-a'), /single-line/);
+  assert.throws(() => sanitizeServerConfig({ name: 'Unsafe', transport: 'stdio', command: 'node', env: { ANONYMIZED_TELEMETRY: 'false\nINJECTED=1' } }, 'user-a'), /single-line/);
 });
