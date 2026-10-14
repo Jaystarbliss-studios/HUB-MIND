@@ -981,8 +981,8 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   });
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
-      // On Windows, provide an explicit native source chooser. Automatically
-      // selecting the full screen made it impossible to share a single app window.
+      // On Windows, provide an explicit thumbnail source picker. Automatically
+      // selecting the full screen is reserved for the explicitly enabled Allow everything mode.
       const sources = await desktopCapturer.getSources({
         types: ['screen', 'window'],
         thumbnailSize: { width: 320, height: 180 },
