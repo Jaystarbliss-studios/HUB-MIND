@@ -788,7 +788,7 @@ app.whenReady().then(() => {
       assertControlCapability(event, capability);
       if (userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
     }
-    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path','clipboard_get','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window','file_list','file_read','file_write','file_copy','file_move','file_rename','file_search','file_delete']);
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path','clipboard_get','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window','file_list','file_read','file_write','file_copy','file_move','file_rename','file_search','file_delete','bring_to_front','send_to_back','click_window_point','move_to_monitor']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method, { userId, executionId: correlationId });
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
@@ -800,7 +800,7 @@ app.whenReady().then(() => {
       // or a one-time spoken yes/no when Allow Everything is enabled. Execution remains
       // under the current Windows token; Windows UAC is never automated or bypassed.
     }
-    if (['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','switch_window'].includes(method)) {
+    if (['focus_window','bring_to_front','send_to_back','click_window_point','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','move_to_monitor','switch_window'].includes(method)) {
       if (safeArgs.handle !== undefined && safeArgs.handle !== null &&
           (!Number.isSafeInteger(Number(safeArgs.handle)) || Number(safeArgs.handle) <= 0)) {
         throw new Error('Window handle must be a positive integer returned by list_windows.');
@@ -815,7 +815,10 @@ app.whenReady().then(() => {
     }
     if (method === 'move_window' && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Moving a window requires numeric x and y coordinates.');
     if (method === 'resize_window' && (!Number.isFinite(safeArgs.width) || !Number.isFinite(safeArgs.height))) throw new Error('Resizing a window requires numeric width and height.');
-    if (method === 'snap_window' && !['left','right','top-left','top-right','bottom-left','bottom-right'].includes(String(safeArgs.position))) throw new Error('Choose a supported snap position.');
+    if (method === 'snap_window' && !['left','right','top-left','top-right','bottom-left','bottom-right','left-third','center-third','right-third','top-third','bottom-third','top-left-third','top-right-third','bottom-left-third','bottom-right-third'].includes(String(safeArgs.position))) throw new Error('Choose a supported snap position.');
+    if (method === 'move_to_monitor' && (!Number.isInteger(Number(safeArgs.monitor)) || Number(safeArgs.monitor) < 1 || Number(safeArgs.monitor) > 16)) throw new Error('Choose a connected monitor index from 1 to 16.');
+    if (method === 'click_window_point' && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y) || safeArgs.x < 0 || safeArgs.x > 1 || safeArgs.y < 0 || safeArgs.y > 1)) throw new Error('Window-relative click coordinates must be between 0 and 1.');
+
     if (['mouse_move','click','double_click','right_click','scroll'].includes(method) && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Mouse actions require numeric screen coordinates.');
     if (method === 'drag' && !['fromX','fromY','toX','toY'].every(key => Number.isFinite(safeArgs[key]))) throw new Error('Drag requires start and end screen coordinates.');
     if (method === 'type_text' && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 10000)) throw new Error('Text must be a string no longer than 10,000 characters.');
@@ -832,7 +835,7 @@ app.whenReady().then(() => {
     if (method === 'file_rename' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || typeof safeArgs.newName !== 'string' || !safeArgs.newName.trim() || safeArgs.newName.length > 240)) throw new Error('File rename requires a source path and a valid new file name.');
     if (method === 'file_search' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || typeof safeArgs.query !== 'string' || !safeArgs.query.trim() || safeArgs.query.length > 300)) throw new Error('File search requires a folder and a query.');
     if (method === 'clipboard_get' && !fullControlActive) throw new Error('Full Control is required to read the clipboard.');
-    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window','file_write','file_copy','file_move','file_rename']);
+    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window','file_write','file_copy','file_move','file_rename','bring_to_front','send_to_back','click_window_point','move_to_monitor']);
     const highRiskActions = new Set(['close_window', 'run_command', 'open_path', 'file_delete']);
     const sameOwner = fullControlActive && jessPreferencesUserId === controlSessionUserId && controlSessionUserId === userId;
     let spokenApproved = false;
