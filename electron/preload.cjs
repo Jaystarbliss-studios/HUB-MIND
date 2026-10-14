@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   setJessPreferences: (prefs, userId) => ipcRenderer.invoke('hubmind:jess-preferences-set', prefs, userId),
   getJessPreferences: (userId) => ipcRenderer.invoke('hubmind:jess-preferences-get', userId),
   stopFullControl,
+  confirmSpokenHighRisk: (utterance, userId) => ipcRenderer.invoke('hubmind:spoken-high-risk-confirm', utterance, userId, controlCapability),
   nativeStatus: () => ipcRenderer.invoke('hubmind:native-status'),
   chromeStatus: () => ipcRenderer.invoke('hubmind:chrome-status'),
   mcpListServers: (userId) => ipcRenderer.invoke('hubmind:mcp-list-servers', userId),
