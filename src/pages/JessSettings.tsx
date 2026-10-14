@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { readJessExecutionEvents, type JessExecutionEvent } from '../services/jessExecutionRuntime';
-import { Brain, ShieldCheck, SlidersHorizontal, Save, Loader2, MonitorCog } from 'lucide-react';
+import { Brain, ShieldCheck, SlidersHorizontal, Loader2, MonitorCog } from 'lucide-react';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { JessMcpServersSettings } from '../components/JessMcpServersSettings';
 
 type JessPreferences = {
-  permissionMode: 'ask' | 'always-allow';
+  permissionMode: 'ask' | 'allow-routine' | 'allow-everything';
+  fullControlEnabled: boolean;
+  startInFullControl: boolean;
+  confirmHighRiskOutLoud: boolean;
   memoryEnabled: boolean;
   contextEnabled: boolean;
   personalization: string;
@@ -15,7 +18,7 @@ type JessPreferences = {
   screenVerificationEnabled: boolean;
 };
 const DEFAULTS: JessPreferences = {
-  permissionMode: 'ask', memoryEnabled: true, contextEnabled: true,
+  permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, confirmHighRiskOutLoud: true, memoryEnabled: true, contextEnabled: true,
   personalization: '', webResearchEnabled: true, screenVerificationEnabled: true,
 };
 
@@ -25,16 +28,23 @@ export function JessSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [desktopState, setDesktopState] = useState<{ active?: boolean; startedAt?: string | null; permissionMode?: string } | null>(null);
   const [error, setError] = useState('');
   const [executionEvents, setExecutionEvents] = useState<JessExecutionEvent[]>([]);
+  const [chromeBridgeState, setChromeBridgeState] = useState<{ available?: boolean; transport?: string; pipe?: string } | null>(null);
+  const [chromeSetupBusy, setChromeSetupBusy] = useState(false);
+  const [chromeSetupMessage, setChromeSetupMessage] = useState('');
 
   useEffect(() => {
     if (!profile?.id) { setLoading(false); return; }
     return onSnapshot(doc(db, 'users', profile.id, 'private', 'jessSettings'), snapshot => {
-      const loaded = { ...DEFAULTS, ...(snapshot.exists() ? snapshot.data() as Partial<JessPreferences> : {}) };
-      setPrefs(loaded);
+      const raw = snapshot.exists() ? snapshot.data() : {};
+      const loaded = Object.fromEntries(Object.keys(DEFAULTS).map(key => [key, raw[key] ?? (DEFAULTS as any)[key]])) as JessPreferences;
+      setPrefs(current => JSON.stringify(current) === JSON.stringify(loaded) ? current : loaded);
+      setHydrated(true);
       try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(loaded)); } catch {}
-      void (window as any).hubMindDesktop?.setJessPreferences?.(loaded, profile.id).catch(() => {});
+      void (async () => { try { const desktop = (window as any).hubMindDesktop; if (!desktop?.getJessPreferences) return; const live = await desktop.getJessPreferences(); setDesktopState({ active: live?.fullControlActive === true, startedAt: live?.startedAt || null, permissionMode: live?.preferences?.permissionMode || loaded.permissionMode }); } catch { /* Browser workspace may run without the desktop shell. */ } })();
       setLoading(false);
     }, () => { setError('Could not load Jess settings. Check your connection and permissions.'); setLoading(false); });
   }, [profile?.id]);
@@ -50,23 +60,61 @@ export function JessSettings() {
     return () => window.removeEventListener('hubmind:jess-execution-event', refresh);
   }, [profile?.id]);
 
+  useEffect(() => {
+    const desktop = (window as any).hubMindDesktop;
+    if (!desktop?.chromeStatus) return;
+    let disposed = false;
+    const refresh = async () => {
+      try { const status = await desktop.chromeStatus(); if (!disposed) setChromeBridgeState(status); }
+      catch { if (!disposed) setChromeBridgeState({ available: false }); }
+    };
+    void refresh();
+    const timer = window.setInterval(() => { void refresh(); }, 4000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, []);
+
+  const setupChromeBridge = async () => {
+    const desktop = (window as any).hubMindDesktop;
+    if (!desktop?.installChromeBridge) { setChromeSetupMessage('Chrome setup is available in the installed Windows desktop app, not the browser workspace.'); return; }
+    setChromeSetupBusy(true); setChromeSetupMessage('');
+    try {
+      const result = await desktop.installChromeBridge();
+      if (result?.ok) setChromeSetupMessage('Native host registered. ' + String(result.output || '') + ' In Chrome, open chrome://extensions, enable Developer mode, and load the extension folder printed above.');
+      else if (result?.cancelled) setChromeSetupMessage('Chrome setup cancelled.');
+      else setChromeSetupMessage(String(result?.error || 'Chrome setup failed.'));
+      const status = await desktop.chromeStatus();
+      setChromeBridgeState(status);
+    } catch (e: any) { setChromeSetupMessage(e?.message || 'Chrome setup failed.'); }
+    finally { setChromeSetupBusy(false); }
+  };
+
   const update = <K extends keyof JessPreferences,>(key: K, value: JessPreferences[K]) => {
     setPrefs(current => ({ ...current, [key]: value }));
     setSaved(false);
   };
-  const save = async () => {
-    if (!profile?.id) return;
-    setSaving(true); setError(''); setSaved(false);
-    try {
-      await setDoc(doc(db, 'users', profile.id, 'private', 'jessSettings'), {
-        ...prefs, updatedAt: new Date().toISOString(), updatedBy: profile.id,
-      }, { merge: true });
-      try { await (window as any).hubMindDesktop?.setJessPreferences?.(prefs, profile.id); } catch { /* Browser settings remain saved in the workspace. */ }
-      try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(prefs)); } catch {}
-      setSaved(true);
-    } catch (e: any) { setError(e?.message || 'Could not save Jess settings.'); }
-    finally { setSaving(false); }
-  };
+  useEffect(() => {
+    if (!hydrated || !profile?.id) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setSaving(true); setError('');
+      try {
+        await setDoc(doc(db, 'users', profile.id, 'private', 'jessSettings'), {
+          ...prefs, updatedAt: new Date().toISOString(), updatedBy: profile.id,
+        }, { merge: true });
+        const desktop = (window as any).hubMindDesktop;
+        if (desktop?.setJessPreferences) {
+          const live = await desktop.setJessPreferences(prefs, profile.id);
+          if (!cancelled) setDesktopState({ active: live?.fullControlActive === true, startedAt: live?.startedAt || null, permissionMode: live?.preferences?.permissionMode || prefs.permissionMode });
+          if (live?.cancelled && !cancelled) { setPrefs({ ...DEFAULTS, ...(live.preferences || {}) }); setError('Full Control was not enabled because the native confirmation was cancelled.'); }
+        }
+        try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(prefs)); } catch {}
+        if (!cancelled) setSaved(true);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || 'Could not auto-save Jess settings.');
+      } finally { if (!cancelled) setSaving(false); }
+    }, 450);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [hydrated, profile?.id, prefs]);
 
   if (loading) return <div className="p-8 text-slate-400 flex items-center gap-2"><Loader2 className="animate-spin" size={18}/> Loading Jess settings…</div>;
   return <div className="min-h-full bg-slate-950 text-slate-100 p-5 md:p-8">
@@ -78,9 +126,28 @@ export function JessSettings() {
       {error && <div role="alert" className="mb-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
       <div className="space-y-5">
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
-          <div className="flex items-center gap-3 mb-4"><ShieldCheck className="text-teal-300" size={20}/><div><h2 className="font-semibold">Desktop permissions</h2><p className="text-xs text-slate-400 mt-1">Choose how often Jess asks before native actions.</p></div></div>
-          <label className="flex gap-3 rounded-xl border border-slate-800 p-4 cursor-pointer mb-3"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='ask'} onChange={() => update('permissionMode','ask')} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Always ask</strong><span className="block text-xs text-slate-400 mt-1">Confirm app launches and system commands each time.</span></span></label>
-          <label className="flex gap-3 rounded-xl border border-teal-400/25 bg-teal-400/5 p-4 cursor-pointer"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='always-allow'} onChange={() => update('permissionMode','always-allow')} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Always allow routine actions during Full Control</strong><span className="block text-xs text-slate-400 mt-1">Jess can launch approved apps and perform supported, non-destructive actions without repeated prompts. Destructive or elevated actions remain blocked or require explicit confirmation.</span></span></label>
+          <div className="flex items-center gap-3 mb-4"><ShieldCheck className="text-teal-300" size={20}/><div><h2 className="font-semibold">Desktop permissions</h2><p className="text-xs text-slate-400 mt-1">Changes auto-save and the desktop reports its live session state.</p></div></div>
+          <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-800 p-4 mb-4"><span><strong className="block text-sm">Full Control</strong><span className="block text-xs text-slate-400 mt-1">Enable Windows and connected Chrome controls when the desktop session is active.</span></span><input type="checkbox" checked={prefs.fullControlEnabled} onChange={e => update('fullControlEnabled', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
+          <div className="text-xs uppercase tracking-wider text-slate-500 mb-2">Permission mode</div>
+          <label className="flex gap-3 rounded-xl border border-slate-800 p-4 cursor-pointer mb-3"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='ask'} onChange={() => update('permissionMode','ask')} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Ask</strong><span className="block text-xs text-slate-400 mt-1">Ask before each mutating native action.</span></span></label>
+          <label className="flex gap-3 rounded-xl border border-slate-800 p-4 cursor-pointer mb-3"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='allow-routine'} onChange={() => setPrefs(current => ({ ...current, permissionMode: 'allow-routine', fullControlEnabled: true }))} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Allow routine</strong><span className="block text-xs text-slate-400 mt-1">Routine desktop actions proceed without repeated prompts. High-impact operations still require explicit handling.</span></span></label>
+          <label className="flex gap-3 rounded-xl border border-rose-400/25 bg-rose-400/5 p-4 cursor-pointer mb-4"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='allow-everything'} onChange={() => setPrefs(current => ({ ...current, permissionMode: 'allow-everything', fullControlEnabled: true }))} className="mt-1 accent-rose-400"/><span><strong className="block text-sm">Allow everything</strong><span className="block text-xs text-slate-400 mt-1">One native confirmation on first activation; then no per-action approval prompts while this mode remains enabled. Windows secure-desktop/UAC prompts cannot be automated.</span></span></label>
+          <label className="flex items-center justify-between gap-4 py-3 border-t border-slate-800"><span><strong className="block text-sm">Start in Full Control when Hub-Mind launches</strong><span className="block text-xs text-slate-400">Uses your saved consent and current permission mode.</span></span><input type="checkbox" checked={prefs.startInFullControl} onChange={e => update('startInFullControl', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
+          <label className="flex items-center justify-between gap-4 py-3"><span><strong className="block text-sm">Ask out loud before high-impact actions</strong><span className="block text-xs text-slate-400">For deleting, formatting, shutting down or sending. Requires a verified spoken yes/no flow; this switch does not itself create speech confirmation.</span></span><input type="checkbox" checked={prefs.confirmHighRiskOutLoud} onChange={e => update('confirmHighRiskOutLoud', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
+          <div className="mt-3 rounded-lg bg-slate-950 p-3 text-xs text-slate-400" aria-live="polite">Desktop live state: <strong className={desktopState?.active ? 'text-emerald-300' : 'text-amber-200'}>{desktopState?.active ? 'Full Control active' : 'Not active / browser only'}</strong>{desktopState?.permissionMode ? ` · Main-process mode: ${desktopState.permissionMode}` : ''}{desktopState?.startedAt ? ` · Started ${new Date(desktopState.startedAt).toLocaleTimeString()}` : ''}</div>
+        </section>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
+          <div className="flex items-center gap-3 mb-4"><MonitorCog className="text-teal-300" size={20}/><div><h2 className="font-semibold">Chrome browser bridge</h2><p className="text-xs text-slate-400 mt-1">Connect Jess to real Chrome tabs through the installed desktop app.</p></div></div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm flex flex-wrap items-center justify-between gap-3">
+            <span className="text-slate-300">Native host status</span>
+            <span className={chromeBridgeState?.available ? 'text-emerald-300' : 'text-amber-200'}>{chromeBridgeState?.available ? 'Connected to Chrome' : chromeBridgeState ? 'Not connected' : 'Checking…'}</span>
+          </div>
+          <p className="text-xs text-slate-500 mt-3">Setup registers the local native-messaging host for your Windows account. It does not bypass Chrome extension consent or automatically force-install the extension.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button type="button" onClick={() => void setupChromeBridge()} disabled={chromeSetupBusy || !((window as any).hubMindDesktop?.isDesktopApp)} className="rounded-lg bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40">{chromeSetupBusy ? 'Setting up…' : 'Set up Chrome bridge'}</button>
+            <button type="button" onClick={() => { void (async () => { try { const status = await (window as any).hubMindDesktop?.chromeStatus?.(); setChromeBridgeState(status || { available: false }); } catch { setChromeBridgeState({ available: false }); } })(); }} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:opacity-40">Refresh status</button>
+          </div>
+          {chromeSetupMessage && <p className="mt-3 text-xs text-slate-300" role="status">{chromeSetupMessage}</p>}
         </section>
         <JessMcpServersSettings userId={profile?.id || ''} />
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
@@ -101,8 +168,8 @@ export function JessSettings() {
           <label className="flex items-center justify-between gap-4 py-3 border-t border-slate-800"><span><strong className="block text-sm">Verify actions visually</strong><span className="text-xs text-slate-400">When screen access is available, ask Jess to inspect the result before claiming success.</span></span><input type="checkbox" checked={prefs.screenVerificationEnabled} onChange={e => update('screenVerificationEnabled',e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
           <label className="block mt-4"><span className="text-sm font-medium">Personalization instructions</span><textarea value={prefs.personalization} onChange={e => update('personalization',e.target.value.slice(0,2000))} rows={4} maxLength={2000} placeholder="For example: be concise, explain unfamiliar terms, prefer keyboard shortcuts, and use my preferred writing tone." className="mt-2 w-full resize-y rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-100 placeholder:text-slate-600 focus:border-teal-400 focus:outline-none"/></label>
         </section>
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 flex gap-3"><MonitorCog className="text-slate-400 shrink-0" size={19}/><p className="text-xs leading-relaxed text-slate-400">Windows system access is available only in the signed-in desktop app during an active Full Control session. Browser and Chrome-app permissions are limited by the browser sandbox.</p></section>
-        <div className="flex items-center justify-end gap-3"><span aria-live="polite" className="text-xs text-emerald-300">{saved ? 'Settings saved' : ''}</span><button onClick={() => void save()} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-teal-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:opacity-60">{saving ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Save Jess settings</button></div>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 flex gap-3"><MonitorCog className="text-slate-400 shrink-0" size={19}/><p className="text-xs leading-relaxed text-slate-400">Full Control operates through the installed desktop app. The web workspace cannot itself control Windows. UAC secure-desktop prompts require user interaction.</p></section>
+        <div className="flex items-center justify-end gap-3"><span aria-live="polite" className="text-xs text-emerald-300">{saving ? 'Saving…' : saved ? 'Auto-saved' : 'Changes save automatically'}</span></div>
       </div>
     </div>
   </div>;

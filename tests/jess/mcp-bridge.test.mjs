@@ -11,7 +11,7 @@ test('MCP server configuration rejects unsafe transport and malformed executable
   assert.throws(() => sanitizeServerConfig({ name: 'Remote', transport: 'streamable-http', url: 'https://user:pass@example.com/mcp' }, 'user-a'), /credentials/);
   assert.throws(() => sanitizeServerConfig({ name: 'Local', transport: 'stdio', command: 'node', cwd: 'relative/path' }, 'user-a'), /absolute path/);
   assert.throws(() => sanitizeServerConfig({ name: 'Local', transport: 'stdio', command: 'node\nwhoami' }, 'user-a'), /unsupported characters/);
-  assert.throws(() => sanitizeServerConfig({ name: 'Local', transport: 'stdio', command: 'node', env: { API_TOKEN: 'plaintext-secret' } }, 'user-a'), /encrypted secret storage/);
+  assert.throws(() => sanitizeServerConfig({ name: 'Local', transport: 'stdio', command: 'node', env: { API_TOKEN: 'plaintext-secret' } }, 'user-a'), /not allowlisted/);
   assert.equal(Object.hasOwn(getSafeChildEnvironment(), 'OPENAI_API_KEY'), false);
 });
 
@@ -167,4 +167,16 @@ test('Streamable HTTP transport reads an MCP response before an SSE stream close
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(userDataPath, { recursive: true, force: true });
   }
+});
+
+test('MCP environment only permits non-secret Windows-MCP settings and telemetry can be disabled', () => {
+  const config = sanitizeServerConfig({
+    id: 'windows-mcp', name: 'Windows-MCP', transport: 'stdio', command: 'uvx',
+    args: ['windows-mcp', 'serve'],
+    env: { ANONYMIZED_TELEMETRY: 'false', WINDOWS_MCP_EXCLUDE_TOOLS: 'PowerShell,Registry,Process,FileSystem,Screenshot' },
+  }, 'user-a');
+  assert.equal(config.env.ANONYMIZED_TELEMETRY, 'false');
+  assert.equal(getSafeChildEnvironment(config.env).ANONYMIZED_TELEMETRY, 'false');
+  assert.throws(() => sanitizeServerConfig({ name: 'Unsafe', transport: 'stdio', command: 'node', env: { API_TOKEN: 'secret' } }, 'user-a'), /not allowlisted/);
+  assert.throws(() => sanitizeServerConfig({ name: 'Unsafe', transport: 'stdio', command: 'node', env: { ANONYMIZED_TELEMETRY: 'false\nINJECTED=1' } }, 'user-a'), /single-line/);
 });

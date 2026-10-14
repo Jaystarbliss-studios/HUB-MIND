@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Pipes;
 using System.Text;
+using System.Text.Json;
 
 const int MaxMessageBytes = 1024 * 1024;
 const string PipeName = "hubmind-jess-chrome-v1";
@@ -25,6 +26,39 @@ using var nativeIn = Console.OpenStandardInput();
 using var nativeOut = Console.OpenStandardOutput();
 using var pipeReader = new StreamReader(pipe, new UTF8Encoding(false), false, 4096, leaveOpen: true);
 using var pipeWriter = new StreamWriter(pipe, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
+var tokenPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Jaystarbliss", "Hub-Mind", "JessChromeBridge", "bridge-token");
+string bridgeToken;
+try
+{
+    bridgeToken = (await File.ReadAllTextAsync(tokenPath)).Trim();
+    if (bridgeToken.Length < 32) throw new InvalidDataException("Bridge token is missing or too short.");
+}
+catch
+{
+    Environment.ExitCode = 3;
+    return;
+}
+await pipeWriter.WriteLineAsync(JsonSerializer.Serialize(new { type = "hello", token = bridgeToken }));
+var acknowledgement = await pipeReader.ReadLineAsync();
+if (string.IsNullOrWhiteSpace(acknowledgement))
+{
+    Environment.ExitCode = 4;
+    return;
+}
+try
+{
+    using var document = JsonDocument.Parse(acknowledgement);
+    if (!document.RootElement.TryGetProperty("type", out var ackType) || ackType.GetString() != "hello-ack")
+    {
+        Environment.ExitCode = 4;
+        return;
+    }
+}
+catch
+{
+    Environment.ExitCode = 4;
+    return;
+}
 using var stop = new CancellationTokenSource();
 
 var fromChrome = PumpNativeMessagesToPipeAsync(nativeIn, pipeWriter, stop.Token);

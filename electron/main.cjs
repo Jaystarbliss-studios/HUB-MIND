@@ -11,6 +11,9 @@ const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
 let companionWindow;
 let transcriptOverlayWindow;
+let screenSharePickerWindow = null;
+let pendingDisplayMediaResolve = null;
+let pendingDisplayMediaSources = [];
 let companionDismissed = false;
 let tray;
 let quitting = false;
@@ -18,19 +21,24 @@ let fullControlActive = false;
 let fullControlStartPending = false;
 let controlSessionStartedAt = null;
 let controlSessionUserId = null;
+let controlSessionSecret = null;
+let fullControlConsentGranted = false;
 let controlAuditPath = null;
 let offlineWakeProcess = null;
 let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
 let offlineWakeConsentLoaded = false;
-let jessPreferences = { permissionMode: 'ask', memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true };
+let jessPreferences = { permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, confirmHighRiskOutLoud: true, memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true };
 let jessPreferencesUserId = null;
 let mcpBridge = null;
 function persistJessPreferences(prefs, userId) {
-  const allowedModes = new Set(['ask', 'always-allow']);
+  const allowedModes = new Set(['ask', 'allow-routine', 'allow-everything']);
   if (!prefs || typeof prefs !== 'object' || !allowedModes.has(prefs.permissionMode)) throw new Error('Invalid Jess permission preferences.');
   jessPreferences = {
     permissionMode: prefs.permissionMode,
+    fullControlEnabled: prefs.fullControlEnabled === true,
+    startInFullControl: prefs.startInFullControl === true,
+    confirmHighRiskOutLoud: prefs.confirmHighRiskOutLoud !== false,
     memoryEnabled: prefs.memoryEnabled !== false,
     contextEnabled: prefs.contextEnabled !== false,
     personalization: typeof prefs.personalization === 'string' ? prefs.personalization.slice(0, 2000) : '',
@@ -39,14 +47,18 @@ function persistJessPreferences(prefs, userId) {
   };
   jessPreferencesUserId = userId;
   const file = path.join(app.getPath('userData'), 'jess-preferences.json');
-  fs.writeFileSync(file, JSON.stringify({ userId, preferences: jessPreferences }, null, 2), { encoding: 'utf8', mode: 0o600 });
+  fs.writeFileSync(file, JSON.stringify({ userId, preferences: jessPreferences, fullControlConsentGranted }, null, 2), { encoding: 'utf8', mode: 0o600 });
   return { ok: true, preferences: jessPreferences };
 }
 function loadJessPreferences() {
   try {
     const file = path.join(app.getPath('userData'), 'jess-preferences.json');
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (saved && saved.userId && saved.preferences) persistJessPreferences(saved.preferences, saved.userId);
+    if (saved && saved.preferences) {
+      fullControlConsentGranted = saved.fullControlConsentGranted === true;
+      persistJessPreferences(saved.preferences, typeof saved.userId === 'string' ? saved.userId : 'local-session');
+      if (jessPreferences.fullControlEnabled && jessPreferences.startInFullControl && fullControlConsentGranted) activateFullControl('launch-autostart');
+    }
   } catch { /* First run or unreadable preferences use safe defaults. */ }
 }
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -103,14 +115,81 @@ function guardNavigation(win) {
   });
 }
 
+function finishDisplaySourceChoice(source = null) {
+  const resolve = pendingDisplayMediaResolve;
+  pendingDisplayMediaResolve = null;
+  pendingDisplayMediaSources = [];
+  const picker = screenSharePickerWindow;
+  screenSharePickerWindow = null;
+  if (resolve) resolve(source || null);
+  if (picker && !picker.isDestroyed()) {
+    try { picker.close(); } catch {}
+  }
+}
+function chooseDisplaySource(sources) {
+  if (pendingDisplayMediaResolve) finishDisplaySourceChoice(null);
+  pendingDisplayMediaSources = Array.isArray(sources) ? sources : [];
+  return new Promise(resolve => {
+    pendingDisplayMediaResolve = resolve;
+    const picker = new BrowserWindow({
+      width: 980, height: 720, minWidth: 660, minHeight: 520,
+      show: false, frame: false, resizable: true, movable: true,
+      alwaysOnTop: true, skipTaskbar: false, autoHideMenuBar: true,
+      backgroundColor: '#020617', title: 'Choose what to share · Hub-Mind',
+      webPreferences: {
+        contextIsolation: true, nodeIntegration: false, sandbox: true,
+        preload: path.join(__dirname, 'screen-share-preload.cjs'),
+      },
+    });
+    screenSharePickerWindow = picker;
+    picker.setAlwaysOnTop(true, 'screen-saver');
+    picker.once('ready-to-show', () => { if (!picker.isDestroyed()) picker.show(); });
+    picker.on('closed', () => {
+      if (screenSharePickerWindow === picker) screenSharePickerWindow = null;
+      if (pendingDisplayMediaResolve) finishDisplaySourceChoice(null);
+    });
+    picker.webContents.on('did-finish-load', () => {
+      if (picker.isDestroyed() || screenSharePickerWindow !== picker) return;
+      const sanitized = pendingDisplayMediaSources.map(source => {
+        let thumbnail = '';
+        try { thumbnail = source.thumbnail?.toDataURL?.() || ''; } catch {}
+        return {
+          id: String(source.id),
+          name: String(source.name || 'Application window').replace(/[\r\n]+/g, ' ').slice(0, 160),
+          kind: String(source.id || '').startsWith('screen:') ? 'screen' : 'window',
+          thumbnail,
+        };
+      });
+      picker.webContents.send('hubmind:screen-share-sources', sanitized);
+    });
+    picker.loadFile(path.join(__dirname, 'screen-share-picker.html')).catch(error => {
+      auditNativeAction({ event: 'screen-share-picker-load-failed', error: String(error?.message || error).slice(0, 500) });
+      finishDisplaySourceChoice(null);
+    });
+  });
+}
+ipcMain.on('hubmind:screen-share-select', (event, sourceId) => {
+  if (!screenSharePickerWindow || event.sender !== screenSharePickerWindow.webContents || typeof sourceId !== 'string') return;
+  const source = pendingDisplayMediaSources.find(item => item.id === sourceId);
+  if (!source) return;
+  auditNativeAction({ event: 'screen-share-source-selected', sourceId: source.id });
+  finishDisplaySourceChoice(source);
+});
+ipcMain.on('hubmind:screen-share-cancel', event => {
+  if (!screenSharePickerWindow || event.sender !== screenSharePickerWindow.webContents) return;
+  auditNativeAction({ event: 'screen-share-cancelled' });
+  finishDisplaySourceChoice(null);
+});
+
 function createMainWindow(initialPath = '/login') {
   mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, icon: path.join(__dirname, '..', 'dist', 'hub-mind logo.png'), backgroundColor: '#020617', title: 'Hub-Mind', autoHideMenuBar: true, show: false, webPreferences: { backgroundThrottling: false } }));
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); positionCompanionBottomRightIfNeeded(); } });
-  // The orb is intentionally hidden while the full workspace is visible.
-  mainWindow.on('show', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
-  mainWindow.on('restore', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
+  // The native orb belongs to the desktop shell and stays visible above the workspace and other apps.
+  // JessFloatingAssistant intentionally hides its in-app orb in desktop mode to avoid duplicates.
+  mainWindow.on('show', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });
+  mainWindow.on('restore', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });
   mainWindow.on('minimize', () => { createCompanionWindow(); positionCompanionBottomRight(); });
   mainWindow.on('closed', () => { mainWindow = null; });
   return mainWindow.loadURL(APP_URL + initialPath);
@@ -225,7 +304,7 @@ function showMain() {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
-  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+  // Keep the floating Jess orb visible independently of workspace minimize/restore state.
 }
 
 async function showMainVerified(timeoutMs = 5000) {
@@ -384,8 +463,19 @@ function auditNativeAction(entry) {
     fs.appendFileSync(controlAuditPath, JSON.stringify({ at: new Date().toISOString(), sessionActive: fullControlActive, ...entry }) + '\n', { encoding: 'utf8' });
   } catch (error) { console.error('[Jess audit] Could not append audit entry:', error); }
 }
+function activateFullControl(reason = 'settings') {
+  if (process.platform !== 'win32' || !jessPreferences.fullControlEnabled) return { ok: false, active: false };
+  if (fullControlActive) return { ok: true, active: true, alreadyActive: true, startedAt: controlSessionStartedAt };
+  fullControlActive = true;
+  controlSessionSecret = randomUUID();
+  controlSessionUserId = jessPreferencesUserId || 'local-session';
+  controlSessionStartedAt = new Date().toISOString();
+  auditNativeAction({ event: 'full-control-started', reason, startedAt: controlSessionStartedAt, userId: controlSessionUserId });
+  return { ok: true, active: true, startedAt: controlSessionStartedAt, stopHotkey: 'Ctrl+Alt+Shift+J' };
+}
 function stopFullControl(reason = 'user-stop') {
   fullControlActive = false;
+  controlSessionSecret = null;
   controlSessionStartedAt = null;
   const previousUserId = controlSessionUserId;
   controlSessionUserId = null;
@@ -396,7 +486,7 @@ function stopFullControl(reason = 'user-stop') {
   return { ok: true, active: false, reason };
 }
 function requireFullControl(method, metadata = {}) {
-  if (!fullControlActive) throw new Error('Full Control Session is off. Say “Jess, full control” to enable native actions, or use the tray control.');
+  if (!fullControlActive || !controlSessionSecret) throw new Error('Jess Full Control is off. Enable it in Jess settings or use the tray control.');
   auditNativeAction({ event: 'native-action-request', method, ...metadata });
 }
 
@@ -523,18 +613,18 @@ app.whenReady().then(() => {
     const resolved = mcpBridge.resolveTool(owner, String(modelToolName || ''));
     if (!resolved) return { success: false, error: 'MCP tool is not available for this account or its server is disconnected.' };
     const details = JSON.stringify(args && typeof args === 'object' ? args : {}).slice(0, 1600);
-    const choice = await dialog.showMessageBox(getDialogParent(), {
-      type: 'warning',
-      buttons: ['Cancel tool call', 'Allow this call'],
-      defaultId: 0,
-      cancelId: 0,
-      title: 'Approve Jess MCP tool call?',
-      message: resolved.entry.serverName + ' wants to run ' + resolved.entry.originalName,
-      detail: 'Tool arguments:\n' + details + '\n\nExternal MCP tools are not trusted by default. Approve only if you recognize this server and intended action.',
-    });
-    if (choice.response !== 1) return { success: false, cancelled: true, error: 'The MCP tool call was cancelled by the user.' };
+    const allowMcpWithoutPrompt = fullControlActive && !!controlSessionSecret && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-everything';
+    if (!allowMcpWithoutPrompt) {
+      const choice = await dialog.showMessageBox(getDialogParent(), {
+        type: 'warning', buttons: ['Cancel tool call', 'Allow this call'], defaultId: 0, cancelId: 0,
+        title: 'Approve Jess MCP tool call?',
+        message: resolved.entry.serverName + ' wants to run ' + resolved.entry.originalName,
+        detail: 'Tool arguments:\n' + details + '\n\nExternal MCP tools are not trusted by default. Approve only if you recognize this server and intended action.',
+      });
+      if (choice.response !== 1) return { success: false, cancelled: true, error: 'The MCP tool call was cancelled by the user.' };
+    }
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
-    auditNativeAction({ event: 'mcp-tool-call-approved', serverId: resolved.entry.serverId, toolName: resolved.entry.originalName, executionId: correlationId, userId: owner });
+    auditNativeAction({ event: allowMcpWithoutPrompt ? 'mcp-tool-call-auto-allowed' : 'mcp-tool-call-approved', serverId: resolved.entry.serverId, toolName: resolved.entry.originalName, executionId: correlationId, userId: owner });
     try {
       const result = await mcpBridge.callTool(owner, String(modelToolName), args);
       if (result?.isError === true) {
@@ -549,71 +639,92 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('hubmind:jess-preferences-set', (event, prefs, userId) => {
+  ipcMain.handle('hubmind:jess-preferences-set', async (event, prefs, userId) => {
     assertTrustedSender(event);
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
     if (fullControlActive && controlSessionUserId !== userId) throw new Error('Jess preferences cannot be changed for a different active user.');
-    return persistJessPreferences(prefs, userId);
+    const enablingEverything = prefs?.permissionMode === 'allow-everything' && (!jessPreferences.fullControlEnabled || !fullControlConsentGranted);
+    if (enablingEverything && !fullControlConsentGranted) {
+      if (fullControlStartPending) return { ok: false, cancelled: true, pending: true, preferences: jessPreferences, fullControlActive };
+      fullControlStartPending = true;
+      let choice;
+      try {
+        choice = await dialog.showMessageBox(getDialogParent(), {
+          type: 'warning', buttons: ['Cancel', 'Allow everything'], defaultId: 0, cancelId: 0,
+          title: 'Allow Jess Full Control?',
+          message: 'Allow Jess to operate Windows and connected browser tools without per-action prompts?',
+          detail: 'Jess can type, click, launch apps, modify files and run commands available to your Windows account. Destructive actions may be configured to require a spoken confirmation. You can stop Jess at any time using “Jess, stop”, Ctrl+Alt+Shift+J, or the tray menu. This does not bypass Windows secure desktop prompts.',
+        });
+      } finally { fullControlStartPending = false; }
+      if (choice.response !== 1) return { ok: false, cancelled: true, preferences: jessPreferences, fullControlActive };
+      fullControlConsentGranted = true;
+    }
+    const result = persistJessPreferences(prefs, userId);
+    if (jessPreferences.fullControlEnabled && jessPreferences.permissionMode !== 'ask') activateFullControl('settings-enabled');
+    else if (!jessPreferences.fullControlEnabled || jessPreferences.permissionMode === 'ask') stopFullControl('settings-disabled');
+    return { ...result, fullControlActive, startedAt: controlSessionStartedAt, liveState: { ...jessPreferences, fullControlActive, startedAt: controlSessionStartedAt } };
   });
-  ipcMain.handle('hubmind:jess-preferences-get', (event, userId) => {
+  ipcMain.handle('hubmind:jess-preferences-get', (event) => {
     assertTrustedSender(event);
-    if (typeof userId !== 'string' || userId !== jessPreferencesUserId) return { preferences: null };
-    return { preferences: jessPreferences };
+    return { preferences: { ...jessPreferences }, fullControlConsentGranted, fullControlActive, startedAt: controlSessionStartedAt };
   });
-  ipcMain.handle('hubmind:full-control-start', async (event, userId) => {
+  ipcMain.handle('hubmind:full-control-start', async (event) => {
     assertTrustedSender(event);
     if (process.platform !== 'win32') throw new Error('Jess Full Control is available only in the Windows desktop application.');
-    if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
-    if (fullControlActive) {
-      if (controlSessionUserId !== userId) throw new Error('A different signed-in user already owns the active Full Control Session.');
-      return { ok: true, active: true, alreadyActive: true, startedAt: controlSessionStartedAt, userId, stopHotkey: 'Ctrl+Alt+Shift+J' };
-    }
-    if (fullControlStartPending) {
-      return { ok: false, active: false, error: 'A Full Control confirmation is already pending.' };
-    }
+    if (!jessPreferences.fullControlEnabled) return { ok: false, active: false, error: 'Enable Full Control in Jess settings first.' };
+    if (jessPreferences.permissionMode === 'allow-everything' && fullControlConsentGranted) return activateFullControl('settings');
+    if (fullControlActive) return { ok: true, active: true, alreadyActive: true, startedAt: controlSessionStartedAt, stopHotkey: 'Ctrl+Alt+Shift+J' };
+    if (fullControlStartPending) return { ok: false, active: false, error: 'A Full Control confirmation is already pending.' };
     fullControlStartPending = true;
-
-    // Model instructions are not an authorization boundary. Always ask the person at
-    // the desktop before enabling system-wide keyboard, mouse, window and process control.
-    let choice;
     try {
-      choice = await dialog.showMessageBox(getDialogParent(), {
-        type: 'warning',
-        buttons: ['Cancel', 'Enable Full Control'],
-        defaultId: 0,
-        cancelId: 0,
+      const choice = await dialog.showMessageBox(getDialogParent(), {
+        type: 'warning', buttons: ['Cancel', 'Enable Full Control'], defaultId: 0, cancelId: 0,
         title: 'Enable Jess Full Control?',
         message: 'Allow Jess to control Windows applications and windows?',
-        detail: 'While Full Control is active, Jess can move or resize windows, send keyboard and mouse input, open files and applications, and run approved non-elevated commands. Individual actions may still require approval based on your Jess settings. Stop at any time by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.',
+        detail: 'Stop at any time by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.',
       });
-    } catch (error) {
-      fullControlStartPending = false;
-      throw error;
-    }
-    fullControlStartPending = false;
-    if (choice.response !== 1) {
-      auditNativeAction({ event: 'full-control-start-cancelled', userId });
-      return { ok: false, active: false, cancelled: true, error: 'Full Control was not enabled because the user cancelled.' };
-    }
-
-    fullControlActive = true;
-    controlSessionUserId = userId;
-    controlSessionStartedAt = new Date().toISOString();
-    auditNativeAction({ event: 'full-control-started', startedAt: controlSessionStartedAt, userId });
-    return { ok: true, active: true, startedAt: controlSessionStartedAt, userId, stopHotkey: 'Ctrl+Alt+Shift+J' };
+      if (choice.response !== 1) return { ok: false, active: false, cancelled: true };
+      return activateFullControl('manual-start');
+    } finally { fullControlStartPending = false; }
   });
   ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
   ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
   ipcMain.handle('hubmind:chrome-status', (event) => { assertTrustedSender(event); return chromeBridge.status(); });
+  ipcMain.handle('hubmind:install-chrome-bridge', async (event) => {
+    assertTrustedSender(event);
+    if (process.platform !== 'win32') return { ok: false, error: 'Chrome bridge setup is available only on Windows.' };
+    if (!app.isPackaged) return { ok: false, error: 'Build/install the packaged Windows app before setting up the Chrome native host.' };
+    const script = path.join(process.resourcesPath, 'Install-JessChromeBridge.ps1');
+    if (!fs.existsSync(script)) return { ok: false, error: 'The Chrome setup script is missing from this installation. Repair or reinstall Hub-Mind.' };
+    const choice = await dialog.showMessageBox(getDialogParent(), {
+      type: 'info', buttons: ['Cancel', 'Set up Chrome bridge'], defaultId: 0, cancelId: 0,
+      title: 'Set up Jess for Chrome',
+      message: 'Register the Hub-Mind Jess native-messaging host for this Windows user?',
+      detail: 'This copies the bundled extension into your local AppData folder and registers a Chrome native-messaging host under your Windows user account. It does not install or force-enable the extension. You will still need to load/enable the extension in Chrome.',
+    });
+    if (choice.response !== 1) return { ok: false, cancelled: true };
+    const started = Date.now();
+    try {
+      const result = await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true, timeout: 30000, maxBuffer: 1024 * 1024, shell: false }, (error, stdout, stderr) => {
+        if (error) return reject(new Error(String(stderr || error.message || 'Chrome setup failed').slice(0, 1200)));
+        resolve(String(stdout || '').slice(0, 5000));
+      }));
+      auditNativeAction({ event: 'chrome-bridge-installed', durationMs: Date.now() - started });
+      return { ok: true, output: result, status: chromeBridge.status() };
+    } catch (error) {
+      auditNativeAction({ event: 'chrome-bridge-install-failed', durationMs: Date.now() - started, error: String(error?.message || error).slice(0, 500) });
+      return { ok: false, error: String(error?.message || error).slice(0, 1200) };
+    }
+  });
   ipcMain.handle('hubmind:offline-wake-start', (event) => startOfflineWake(event));
   ipcMain.handle('hubmind:offline-wake-stop', (event) => { assertTrustedSender(event); return stopOfflineWake(); });
   ipcMain.handle('hubmind:chrome-action', async (event, method, args, userId, executionId) => {
     assertTrustedSender(event);
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
-    if (!fullControlActive || typeof userId !== 'string' || userId !== controlSessionUserId) {
-      return { ok: false, verified: false, error: 'Chrome control requires an active Full Control Session owned by the signed-in user.' };
+    if (!fullControlActive || !controlSessionSecret) {
+      return { ok: false, verified: false, error: 'Chrome control requires an active Full Control Session.' };
     }
-    const allowed = new Set(['chrome_list_tabs','chrome_open_tab','chrome_close_tab','chrome_activate_tab','chrome_navigate_tab','chrome_reload_tab','chrome_scroll','chrome_read_page','chrome_find_element','chrome_click_element','chrome_fill_field']);
+    const allowed = new Set(['chrome_list_tabs','chrome_open_tab','chrome_close_tab','chrome_activate_tab','chrome_navigate_tab','chrome_reload_tab','chrome_scroll','chrome_capture_screenshot','chrome_read_page','chrome_find_element','chrome_click_element','chrome_fill_field']);
     if (typeof method !== 'string' || !allowed.has(method)) return { ok: false, verified: false, error: 'Unsupported Chrome action.' };
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
     if (safeArgs.tabId !== undefined && (!Number.isInteger(Number(safeArgs.tabId)) || Number(safeArgs.tabId) < 1)) return { ok: false, verified: false, error: 'Invalid Chrome tab ID.' };
@@ -629,15 +740,15 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:native-action', async (event, method, args, userId, executionId) => {
     assertTrustedSender(event);
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
-    if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
-    if (!['get_time','system_info'].includes(method) && userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
-    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path']);
+    if (!['get_time','system_info'].includes(method) && (!fullControlActive || !controlSessionSecret)) throw new Error('Native action blocked because Jess Full Control is not active.');
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','file_action','clipboard_action','system_power_action','media_key','get_time','system_info','open_path']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method, { userId, executionId: correlationId });
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
     if (method === 'media_key' && !['volume_up','volume_down','volume_mute','brightness_up','brightness_down'].includes(String(safeArgs.action))) throw new Error('Unsupported volume or brightness action.');
     if (method === 'run_command') {
       const command = String(safeArgs.command || '');
+      if (safeArgs.timeoutMs !== undefined && (!Number.isFinite(safeArgs.timeoutMs) || safeArgs.timeoutMs < 1000 || safeArgs.timeoutMs > 10000)) throw new Error('Command timeout must be between 1,000 and 10,000 milliseconds.');
       if (command.length > 4000) throw new Error('Command exceeds the 4,000-character limit.');
       // This runner uses the current Windows user's token only. Refuse common
       // destructive aliases and script-based bypasses; high-risk operations
@@ -663,21 +774,41 @@ app.whenReady().then(() => {
     }
     if (method === 'move_window' && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Moving a window requires numeric x and y coordinates.');
     if (method === 'resize_window' && (!Number.isFinite(safeArgs.width) || !Number.isFinite(safeArgs.height))) throw new Error('Resizing a window requires numeric width and height.');
-    if (method === 'snap_window' && !['left','right','top-left','top-right','bottom-left','bottom-right'].includes(String(safeArgs.position))) throw new Error('Choose a supported snap position.');
+    if (method === 'snap_window' && safeArgs.monitorId !== undefined && (typeof safeArgs.monitorId !== 'string' || safeArgs.monitorId.length > 128)) throw new Error('Monitor ID must be a device name returned by list_windows.');
+    if (method === 'snap_window' && !['left','right','top-left','top-right','bottom-left','bottom-right','left-third','center-third','right-third'].includes(String(safeArgs.position))) throw new Error('Choose a supported snap position.');
     if (['mouse_move','click','double_click','right_click','scroll'].includes(method) && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Mouse actions require numeric screen coordinates.');
     if (method === 'drag' && !['fromX','fromY','toX','toY'].every(key => Number.isFinite(safeArgs[key]))) throw new Error('Drag requires start and end screen coordinates.');
     if (method === 'type_text' && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 10000)) throw new Error('Text must be a string no longer than 10,000 characters.');
     if (method === 'press_keys' && (typeof safeArgs.keys !== 'string' || !safeArgs.keys.trim() || safeArgs.keys.length > 80)) throw new Error('Provide a key combination under 80 characters.');
+    if (method === 'press_keys' && safeArgs.holdMs !== undefined && (!Number.isFinite(safeArgs.holdMs) || safeArgs.holdMs < 0 || safeArgs.holdMs > 5000)) throw new Error('Key hold duration must be between 0 and 5,000 milliseconds.');
     if (method === 'launch_app' && (typeof safeArgs.name !== 'string' || !safeArgs.name.trim() || safeArgs.name.length > 160)) throw new Error('Provide an application name under 160 characters.');
     if (method === 'open_path' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid local file path.');
-    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key']);
-    const highRiskActions = new Set(['close_window', 'run_command', 'open_path']);
-    const alwaysAllowed = fullControlActive &&
-      jessPreferencesUserId === controlSessionUserId &&
-      controlSessionUserId === userId &&
-      jessPreferences.permissionMode === 'always-allow' &&
-      !highRiskActions.has(method);
-    if (mutatingActions.has(method) && !alwaysAllowed) {
+    if (method === 'system_power_action' && !['lock','shutdown','restart','cancel_shutdown'].includes(String(safeArgs.action || ''))) throw new Error('Unsupported Windows power action.');
+    if (method === 'clipboard_action') {
+      if (!['read','write','clear','paste'].includes(String(safeArgs.action || ''))) throw new Error('Unsupported clipboard action.');
+      if (safeArgs.text !== undefined && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 100000)) throw new Error('Clipboard text exceeds the 100,000-character limit.');
+      if (safeArgs.action === 'write' && typeof safeArgs.text !== 'string') throw new Error('Clipboard write requires text.');
+    }
+    if (method === 'file_action') {
+      const actions = new Set(['list','read','write','copy','move','rename','search','recycle']);
+      if (!actions.has(String(safeArgs.action || ''))) throw new Error('Unsupported local file action.');
+      if (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048 || safeArgs.path.includes('\\0')) throw new Error('Provide a valid local file path.');
+      if (safeArgs.destination !== undefined && (typeof safeArgs.destination !== 'string' || safeArgs.destination.length > 2048 || safeArgs.destination.includes('\\0'))) throw new Error('Destination path is invalid.');
+      if (safeArgs.content !== undefined && (typeof safeArgs.content !== 'string' || safeArgs.content.length > 500000)) throw new Error('File content exceeds the 500,000-character limit.');
+      if (safeArgs.pattern !== undefined && (typeof safeArgs.pattern !== 'string' || safeArgs.pattern.length > 120)) throw new Error('File search pattern is too long.');
+      if (safeArgs.offset !== undefined && (!Number.isInteger(safeArgs.offset) || safeArgs.offset < 0 || safeArgs.offset > 1048576)) throw new Error('File read offset must be an integer from 0 to 1,048,576.');
+      if (safeArgs.limit !== undefined && (!Number.isInteger(safeArgs.limit) || safeArgs.limit < 1000 || safeArgs.limit > 100000)) throw new Error('File read limit must be an integer from 1,000 to 100,000 characters.');
+      if (['copy','move','rename'].includes(String(safeArgs.action)) && !String(safeArgs.destination || '').trim()) throw new Error('This file action requires a destination.');
+    }
+    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','file_action','clipboard_action','system_power_action','open_path','media_key']);
+    const routineActions = new Set(['list_windows','focus_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','open_path','media_key','screenshot','read_screen_text','find_ui_element']);
+    const allowEverything = fullControlActive && !!controlSessionSecret && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-everything';
+    const readOnlyFileAction = method === 'file_action' && ['list','read','search'].includes(String(safeArgs.action || ''));
+    const readOnlyClipboardAction = method === 'clipboard_action' && String(safeArgs.action || '') === 'read';
+    const allowRoutine = fullControlActive && !!controlSessionSecret && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-routine' && (routineActions.has(method) || readOnlyFileAction || readOnlyClipboardAction);
+    const alwaysAllowed = allowEverything || allowRoutine;
+    const isMutation = mutatingActions.has(method) && !readOnlyFileAction && !readOnlyClipboardAction;
+    if (isMutation && !alwaysAllowed) {
       const details = method === 'run_command' ? String(safeArgs.command || '') :
         method === 'type_text' ? String(safeArgs.text || '').slice(0, 1000) :
         method === 'open_path' ? String(safeArgs.path || '') :
@@ -693,6 +824,7 @@ app.whenReady().then(() => {
     const started = Date.now();
     try {
       let result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
+      if (method === 'system_info' && result?.evidence && typeof result.evidence === 'object') result.evidence.hubMindDesktopVersion = app.getVersion();
       if (method === 'read_screen_text' && !String(result?.evidence?.text || '').trim()) {
         try {
           const ocr = await readWindowsOcrFallback();
@@ -851,16 +983,23 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   });
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
-      // On Windows, provide an explicit native source chooser. Automatically
-      // selecting the full screen made it impossible to share a single app window.
+      // On Windows, provide an explicit thumbnail source picker. Automatically
+      // selecting the full screen is reserved for the explicitly enabled Allow everything mode.
       const sources = await desktopCapturer.getSources({
         types: ['screen', 'window'],
-        thumbnailSize: { width: 0, height: 0 },
+        thumbnailSize: { width: 320, height: 180 },
         fetchWindowIcons: true,
       });
       if (!sources.length) { callback({}); return; }
       const primaryId = String(screen.getPrimaryDisplay().id);
       const primaryScreen = sources.find(source => source.display_id === primaryId && source.id.startsWith('screen:'));
+      // A user-triggered getDisplayMedia request can use the primary screen directly only
+      // after the user has explicitly enabled Allow everything. Other modes keep the chooser.
+      if (fullControlActive && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-everything' && primaryScreen) {
+        auditNativeAction({ event: 'display-share-auto-primary', sourceId: primaryScreen.id, reason: 'user-triggered-share-in-allow-everything-mode' });
+        callback({ video: primaryScreen });
+        return;
+      }
       // Put Hub-Mind's real top-level window near the front of the chooser so it
       // remains selectable even when many unrelated windows are open.
       const hubMindWindow = sources.find(source => source.id.startsWith('window:') && /hub-mind/i.test(String(source.name || '')));
@@ -873,32 +1012,13 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       ];
       const unique = [...new Map(ordered.map(source => [source.id, source])).values()].slice(0, 8);
       if (!unique.length) { callback({}); return; }
-      const labels = unique.map(source => {
-        const name = String(source.name || 'Application window').replace(/[\r\n]+/g, ' ').slice(0, 64);
-        return (source.id.startsWith('screen:') ? 'Share screen: ' : 'Share app: ') + name;
-      });
-      const cancelIndex = labels.length;
-      const options = {
-        type: 'question',
-        title: 'Choose what to share',
-        message: 'Choose a screen or application window to share.',
-        detail: 'Only the source you select will be shared. Cancel to keep your screen private.',
-        buttons: [...labels, 'Cancel'],
-        defaultId: cancelIndex,
-        cancelId: cancelIndex,
-        noLink: true,
-      };
-      const parent = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? mainWindow : undefined;
-      const choice = parent
-        ? await dialog.showMessageBox(parent, options)
-        : await dialog.showMessageBox(options);
-      const selected = unique[choice.response];
+      const selected = await chooseDisplaySource(unique);
       callback(selected ? { video: selected } : {});
     } catch (error) {
       console.warn('[Hub-Mind] Display source picker failed:', error);
       callback({});
     }
-  }, { useSystemPicker: true });
+  });
   const stopHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+J', () => {
     if (fullControlActive) stopFullControl('global-hotkey');
   });
@@ -909,8 +1029,11 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   screen.on('display-metrics-changed', positionTranscriptOverlayWindow);
   screen.on('display-added', positionTranscriptOverlayWindow);
   screen.on('display-removed', positionTranscriptOverlayWindow);
+  screen.on('display-metrics-changed', positionCompanionBottomRightIfNeeded);
+  screen.on('display-added', positionCompanionBottomRightIfNeeded);
+  screen.on('display-removed', positionCompanionBottomRightIfNeeded);
   app.on('activate', showMain);
 });
 
-app.on('before-quit', () => { stopFullControl('app-quit'); stopOfflineWake(); chromeBridge.stop(); try { void mcpBridge?.shutdown(); } catch {} globalShortcut.unregisterAll(); quitting = true; });
+app.on('before-quit', () => { finishDisplaySourceChoice(null); stopFullControl('app-quit'); stopOfflineWake(); chromeBridge.stop(); try { void mcpBridge?.shutdown(); } catch {} globalShortcut.unregisterAll(); quitting = true; });
 app.on('window-all-closed', () => { /* Keep tray and companion available until explicit Quit. */ });

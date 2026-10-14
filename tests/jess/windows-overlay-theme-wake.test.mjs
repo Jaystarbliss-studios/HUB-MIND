@@ -10,16 +10,16 @@ test('workspace CSS explicitly fixes the original dark color scheme', async () =
   assert.match(css, /html, body, #root\s*\{[\s\S]*?background-color:\s*#020617/i);
 });
 
-test('Windows screen sharing uses the native system picker with a safe fallback', async () => {
+test('Windows screen sharing uses the thumbnail picker with a safe fallback', async () => {
   const main = await read('electron/main.cjs');
   const start = main.indexOf('setDisplayMediaRequestHandler');
   const end = main.indexOf('const stopHotkeyRegistered', start);
   assert.ok(start >= 0 && end > start);
   const handler = main.slice(start, end);
   assert.match(handler, /desktopCapturer\.getSources/);
-  assert.match(handler, /useSystemPicker: true/);
-  assert.match(handler, /showMessageBox/);
-  assert.match(handler, /Share app:/);
+  assert.match(handler, /chooseDisplaySource\(unique\)/);
+  assert.match(main, /screen-share-picker\.html/);
+  assert.match(handler, /thumbnailSize: \{ width: 320, height: 180 \}/);
   assert.match(handler, /callback\(selected \? \{ video: selected \} : \{\}\)/);
 });
 

@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   stopFullControl: () => ipcRenderer.invoke('hubmind:full-control-stop'),
   nativeStatus: () => ipcRenderer.invoke('hubmind:native-status'),
   chromeStatus: () => ipcRenderer.invoke('hubmind:chrome-status'),
+  installChromeBridge: () => ipcRenderer.invoke('hubmind:install-chrome-bridge'),
   mcpListServers: (userId) => ipcRenderer.invoke('hubmind:mcp-list-servers', userId),
   mcpListTools: (userId) => ipcRenderer.invoke('hubmind:mcp-list-tools', userId),
   mcpSaveServer: (config, userId) => ipcRenderer.invoke('hubmind:mcp-save-server', config, userId),

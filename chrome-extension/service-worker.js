@@ -73,8 +73,62 @@ async function dispatch(message) {
     }
     case 'chrome_scroll': {
       const tab = await tabById(a.tabId);
-      const [result] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: (delta) => { const before = window.scrollY; window.scrollBy({ top: delta, behavior: 'instant' }); return { before, after: window.scrollY, max: document.documentElement.scrollHeight - window.innerHeight, title: document.title }; }, args: [Number(a.delta) || 600] });
-      return { ok: true, verified: result?.result?.before !== result?.result?.after, evidence: { tabId: tab.id, ...result?.result } };
+      const delta = Number.isFinite(Number(a.delta)) ? Math.max(-10000, Math.min(10000, Number(a.delta))) : 600;
+      const axis = a.axis === 'x' ? 'x' : 'y';
+      const target = String(a.target || '').slice(0, 300);
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: ({ delta, axis, target }) => {
+          const visible = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden' && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth; };
+          const candidates = Array.from(document.querySelectorAll('html, body, main, aside, section, article, div, [role="main"], [role="dialog"], [data-scrollable]')).filter(el => {
+            if (!(el instanceof HTMLElement) || !visible(el)) return false;
+            const style = getComputedStyle(el);
+            const overflow = axis === 'x' ? style.overflowX : style.overflowY;
+            const extent = axis === 'x' ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight;
+            return extent > 8 && (overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay' || el === document.body || el === document.documentElement);
+          }).map(el => {
+            const label = [el.getAttribute('aria-label'), el.getAttribute('title'), el.id, typeof el.className === 'string' ? el.className : '', (el.innerText || '').slice(0, 120)].join(' ').toLowerCase();
+            const r = el.getBoundingClientRect();
+            const extent = axis === 'x' ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight;
+            return { el, label, extent, area: r.width * r.height, tag: el.tagName, id: el.id || '', className: typeof el.className === 'string' ? el.className.slice(0, 160) : '', before: (el === document.documentElement || el === document.body) ? (axis === 'x' ? window.scrollX : window.scrollY) : (axis === 'x' ? el.scrollLeft : el.scrollTop), max: extent };
+          });
+          const needle = target.toLowerCase().trim();
+          candidates.sort((a,b) => {
+            const am = needle && a.label.includes(needle) ? 1 : 0, bm = needle && b.label.includes(needle) ? 1 : 0;
+            return bm-am || b.area-a.area;
+          });
+          const chosen = candidates.find(c => !needle || c.label.includes(needle)) || (!needle ? candidates[0] : null);
+          if (!chosen) return { changed: false, error: needle ? 'No scrollable container matched that target. Omit target to scroll the largest visible container.' : 'No scrollable container was found.', candidates: candidates.slice(0, 8).map(c => ({ tag:c.tag,id:c.id,className:c.className,max:c.max })) };
+          if (chosen.el === document.documentElement || chosen.el === document.body) window.scrollBy({ left: axis === 'x' ? delta : 0, top: axis === 'y' ? delta : 0, behavior: 'instant' });
+          else if (axis === 'x') chosen.el.scrollBy({ left: delta, behavior: 'instant' }); else chosen.el.scrollBy({ top: delta, behavior: 'instant' });
+          const after = (chosen.el === document.documentElement || chosen.el === document.body) ? (axis === 'x' ? window.scrollX : window.scrollY) : (axis === 'x' ? chosen.el.scrollLeft : chosen.el.scrollTop);
+          return { changed: chosen.before !== after, before: chosen.before, after, max: chosen.max, axis, delta, target: target || null, container: { tag: chosen.tag, id: chosen.id, className: chosen.className }, title: document.title, url: location.href };
+        },
+        args: [{ delta, axis, target }],
+      });
+      return { ok: !!result?.result && !result.result.error, verified: result?.result?.changed === true, evidence: { tabId: tab.id, ...result?.result } };
+    }
+    case 'chrome_capture_screenshot': {
+      const tab = await tabById(a.tabId);
+      if (!tab.active) return { ok: false, verified: false, error: 'Activate the target Chrome tab first; screenshots are captured only from the visible tab.' };
+      const raw = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 45 });
+      const response = await fetch(raw);
+      const bitmap = await createImageBitmap(await response.blob());
+      try {
+        const scale = Math.min(1, 320 / bitmap.width, 180 / bitmap.height);
+        const width = Math.max(1, Math.round(bitmap.width * scale));
+        const height = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = new OffscreenCanvas(width, height);
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Could not create a screenshot compression canvas.');
+        context.drawImage(bitmap, 0, 0, width, height);
+        const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.5 });
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let binary = '';
+        for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+        const dataUrl = 'data:image/jpeg;base64,' + btoa(binary);
+        return { ok: true, verified: true, evidence: { dataUrl, title: tab.title || '', url: tab.url || '', tabId: tab.id, width, height, capturedAt: new Date().toISOString(), note: 'Compressed screenshot preview captured; the assistant receives metadata and a preview URL, not direct visual pixels for analysis.' } };
+      } finally { bitmap.close(); }
     }
     case 'chrome_read_page': {
       const tab = await tabById(a.tabId);

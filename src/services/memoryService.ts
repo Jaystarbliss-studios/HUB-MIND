@@ -33,6 +33,13 @@ function setLocalMemories(userId: string, memories: UserMemory[]) {
   } catch {}
 }
 
+// Tool capabilities are runtime-dependent. Never persist assistant capability claims
+// as user memories; purge old claims narrowly without touching user preferences.
+function isCapabilityClaimMemory(memory: Partial<UserMemory>): boolean {
+  const text = `${String(memory.key || '')} ${String(memory.content || '')}`;
+  return /\b(?:jess|hub-?mind|assistant|native tool|desktop agent)\b[\s\S]{0,100}\b(?:can't|cannot|unable to|doesn't support|not supported|not available|lacks)\b|\b(?:can't|cannot|unable to|doesn't support|not supported|not available|lacks)\b[\s\S]{0,100}\b(?:minimize windows|control windows|click|type|launch apps|desktop control|native actions|access the screen)\b/i.test(text);
+}
+
 /**
  * Resolves the authenticated user ID safely to prevent unauthenticated Firestore queries.
  */
@@ -56,6 +63,9 @@ export async function saveUserMemory(
   const cleanContent = data.content?.trim();
   if (!cleanContent) {
     throw new Error('Memory content is required.');
+  }
+  if (isCapabilityClaimMemory({ key: data.key, content: cleanContent })) {
+    throw new Error('Runtime capability claims are not stored as user memories.');
   }
 
   const effectiveUid = getEffectiveUserId(userId);
@@ -110,18 +120,34 @@ export async function getUserMemories(userId: string): Promise<UserMemory[]> {
   const effectiveUid = getEffectiveUserId(userId);
   if (!effectiveUid) return [];
 
-  const local = getLocalMemories(effectiveUid);
+  const cached = getLocalMemories(effectiveUid);
+  const invalidLocal = cached.filter(isCapabilityClaimMemory);
+  const local = cached.filter(memory => !isCapabilityClaimMemory(memory));
+  if (invalidLocal.length) {
+    setLocalMemories(effectiveUid, local);
+    for (const memory of invalidLocal) {
+      if (auth.currentUser && memory.id) {
+        void deleteDoc(doc(db, 'users', auth.currentUser.uid, 'memories', memory.id)).catch(() => {});
+      }
+    }
+  }
 
   // Memory is cache-first. Jess must never block voice startup on a network round-trip.
   // Firestore's persistent web cache is queried immediately; a server refresh runs in
   // the background and updates the local user-scoped memory cache when available.
   if (auth.currentUser) {
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'memories');
+    const memoryOwnerUid = auth.currentUser.uid;
+    const colRef = collection(db, 'users', memoryOwnerUid, 'memories');
     const mergeAndCache = (firestoreMemories: UserMemory[]) => {
-      if (!firestoreMemories.length) return;
+      const invalidRemote = firestoreMemories.filter(isCapabilityClaimMemory);
+      for (const memory of invalidRemote) {
+        if (memory.id) void deleteDoc(doc(db, 'users', memoryOwnerUid, 'memories', memory.id)).catch(() => {});
+      }
+      const safeRemote = firestoreMemories.filter(memory => !isCapabilityClaimMemory(memory));
+      if (!safeRemote.length && !local.length) return;
       const map = new Map<string, UserMemory>();
       local.forEach(m => map.set(m.id, m));
-      firestoreMemories.forEach(m => map.set(m.id, m));
+      safeRemote.forEach(m => map.set(m.id, m));
       const merged = Array.from(map.values()).sort(
         (a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
       );

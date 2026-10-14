@@ -1,20 +1,39 @@
 'use strict';
 const net = require('node:net');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
 
 const PIPE_NAME = '\\\\.\\pipe\\hubmind-jess-chrome-v1';
 const MAX_LINE = 1024 * 1024;
 let server = null;
 let client = null;
 let buffer = '';
+let authenticated = false;
+let authTimer = null;
 const pending = new Map();
+function readBridgeToken() {
+  const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  const file = path.join(local, 'Jaystarbliss', 'Hub-Mind', 'JessChromeBridge', 'bridge-token');
+  try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
+}
+function tokenMatches(received) {
+  const expected = readBridgeToken();
+  if (!expected || typeof received !== 'string') return false;
+  const left = Buffer.from(expected, 'utf8'), right = Buffer.from(received, 'utf8');
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
 
 function start() {
   if (process.platform !== 'win32' || server) return;
   server = net.createServer(socket => {
     if (client && !client.destroyed) { socket.destroy(); return; }
     client = socket;
+    authenticated = false;
     buffer = '';
+    if (authTimer) clearTimeout(authTimer);
+    authTimer = setTimeout(() => { if (client === socket && !authenticated) socket.destroy(); }, 5000);
     socket.setEncoding('utf8');
     socket.on('data', chunk => {
       buffer += chunk;
@@ -25,7 +44,15 @@ function start() {
         buffer = buffer.slice(at + 1);
         if (!line) continue;
         let response;
-        try { response = JSON.parse(line); } catch { continue; }
+        try { response = JSON.parse(line); } catch { socket.destroy(); return; }
+        if (!authenticated) {
+          if (response?.type !== 'hello' || !tokenMatches(response.token)) { console.warn('[Jess Chrome bridge] Rejected unauthenticated named-pipe client.'); socket.destroy(); return; }
+          authenticated = true;
+          if (authTimer) clearTimeout(authTimer);
+          authTimer = null;
+          socket.write(JSON.stringify({ type: 'hello-ack' }) + '\\n');
+          continue;
+        }
         const waiter = pending.get(String(response.id || ''));
         if (!waiter) continue;
         pending.delete(String(response.id));
@@ -35,7 +62,8 @@ function start() {
     });
     socket.on('error', () => {});
     socket.on('close', () => {
-      if (client === socket) client = null;
+      if (client === socket) { client = null; authenticated = false; }
+      if (authTimer) { clearTimeout(authTimer); authTimer = null; }
       for (const [id, waiter] of pending) {
         clearTimeout(waiter.timer);
         waiter.resolve({ ok: false, verified: false, error: 'Chrome native messaging connection closed.' });
@@ -48,12 +76,12 @@ function start() {
 }
 
 function status() {
-  return { available: !!client && !client.destroyed, transport: 'Chrome Native Messaging', pipe: PIPE_NAME };
+  return { available: !!client && !client.destroyed && authenticated, authenticated, transport: 'Authenticated Chrome Native Messaging', pipe: PIPE_NAME };
 }
 
 function request(method, args = {}, timeoutMs = 12000) {
   if (process.platform !== 'win32') return Promise.resolve({ ok: false, verified: false, error: 'Chrome native messaging is available only in the Windows desktop app.' });
-  if (!client || client.destroyed) return Promise.resolve({ ok: false, verified: false, error: 'Chrome bridge is not connected. Install/enable the Jess Chrome extension and keep Hub-Mind running.' });
+  if (!client || client.destroyed || !authenticated) return Promise.resolve({ ok: false, verified: false, error: 'Chrome bridge is not connected. Install/enable the Jess Chrome extension and keep Hub-Mind running.' });
   const id = crypto.randomUUID();
   const message = JSON.stringify({ id, method, args });
   if (Buffer.byteLength(message, 'utf8') > MAX_LINE) return Promise.resolve({ ok: false, verified: false, error: 'Chrome request exceeds the 1 MiB limit.' });
@@ -77,6 +105,8 @@ function request(method, args = {}, timeoutMs = 12000) {
 function cancelPending(reason = 'Full Control Session stopped.') {
   const socket = client;
   client = null;
+  authenticated = false;
+  if (authTimer) { clearTimeout(authTimer); authTimer = null; }
   for (const [id, waiter] of pending) {
     clearTimeout(waiter.timer);
     waiter.resolve({ ok: false, verified: false, error: reason });

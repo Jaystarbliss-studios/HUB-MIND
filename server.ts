@@ -1045,12 +1045,12 @@ async function startServer() {
         },
         {
           name: "manage_windows",
-          description: "Focus, close, minimize, maximize, restore, move, resize or snap a real Windows desktop window. Use an exact title or handle when possible; verify the resulting state.",
+          description: "Focus, close, minimize, maximize, restore, move, resize or snap a real Windows desktop window. Snap supports halves, corners, thirds, and an optional monitorId from list_windows; verify the resulting state.",
           parameters: { type: "OBJECT", properties: {
-            action: { type: "STRING", enum: ["focus_window", "close_window", "minimize_window", "maximize_window", "restore_window", "move_window", "resize_window", "snap_window"] },
+            action: { type: "STRING", enum: ["focus_window", "close_window", "minimize_window", "maximize_window", "restore_window", "move_window", "resize_window", "snap_window", "show_desktop", "minimize_all", "start_menu", "switch_window"] },
             title: { type: "STRING" }, handle: { type: "STRING" }, x: { type: "NUMBER" }, y: { type: "NUMBER" },
-            width: { type: "NUMBER" }, height: { type: "NUMBER" },
-            position: { type: "STRING", enum: ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right"] }
+            width: { type: "NUMBER" }, height: { type: "NUMBER" }, monitorId: { type: "STRING" },
+            position: { type: "STRING", enum: ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right", "left-third", "center-third", "right-third"] }
           }, required: ["action"] }
         },
         {
@@ -1071,7 +1071,7 @@ async function startServer() {
         {
           name: "press_windows_keys",
           description: "Send a key or key combination to the active Windows app, such as CTRL+S or ALT+TAB. Requires Full Control.",
-          parameters: { type: "OBJECT", properties: { keys: { type: "STRING" } }, required: ["keys"] }
+          parameters: { type: "OBJECT", properties: { keys: { type: "STRING" }, holdMs: { type: "NUMBER" } }, required: ["keys"] }
         },
         {
           name: "control_system_volume",
@@ -1116,7 +1116,27 @@ async function startServer() {
         {
           name: "run_windows_command_native",
           description: "Run a bounded, non-elevated PowerShell command as the current Windows user. Destructive commands are blocked. Requires Full Control.",
-          parameters: { type: "OBJECT", properties: { command: { type: "STRING" } }, required: ["command"] }
+          parameters: { type: "OBJECT", properties: { command: { type: "STRING" }, timeoutMs: { type: "NUMBER" } }, required: ["command"] }
+        },
+        {
+          name: "manage_windows_files",
+          description: "Manage local files with explicit bounded operations: list, read, write, copy, move, rename, search, or send to Recycle Bin. Writes and file changes follow the configured permission mode; permanent deletion is not offered.",
+          parameters: { type: "OBJECT", properties: {
+            action: { type: "STRING", enum: ["list", "read", "write", "copy", "move", "rename", "search", "recycle"] },
+            path: { type: "STRING" }, destination: { type: "STRING" }, content: { type: "STRING" }, pattern: { type: "STRING" }, offset: { type: "NUMBER" }, limit: { type: "NUMBER" }
+          }, required: ["action", "path"] }
+        },
+        {
+          name: "manage_windows_clipboard",
+          description: "Read, set, clear or paste the current Windows clipboard. Clipboard reads are bounded; paste uses Ctrl+V in the focused app. Mutating operations follow the configured permission mode.",
+          parameters: { type: "OBJECT", properties: {
+            action: { type: "STRING", enum: ["read", "write", "clear", "paste"] }, text: { type: "STRING" }
+          }, required: ["action"] }
+        },
+        {
+          name: "control_windows_power",
+          description: "Lock the Windows workstation, schedule shutdown/restart in 15 seconds, or cancel a pending shutdown/restart. Shutdown/restart require a fresh spoken yes/no confirmation.",
+          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["lock", "shutdown", "restart", "cancel_shutdown"] } }, required: ["action"] }
         },
         {
           name: "get_windows_time",
@@ -1181,7 +1201,12 @@ async function startServer() {
         {
           name: "chrome_scroll",
           description: "Scroll a Chrome page by a bounded amount. Requires Full Control.",
-          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, delta: { type: "NUMBER" } }, required: ["delta"] }
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, delta: { type: "NUMBER" }, axis: { type: "STRING", enum: ["x", "y"] }, target: { type: "STRING" } }, required: ["delta"] }
+        },
+        {
+          name: "chrome_capture_screenshot",
+          description: "Capture a compressed thumbnail preview of the active visible Chrome tab. The preview is shown to the user; use page text or screen OCR for actual content analysis. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
         },
         {
           name: "end_session",

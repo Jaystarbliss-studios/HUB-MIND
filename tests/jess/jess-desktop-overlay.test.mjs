@@ -4,10 +4,10 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
-test('native Jess orb hides with the workspace and returns after minimize or close', () => {
+test('native Jess orb remains visible over workspace and returns after minimize or close', () => {
   const main = read('../../electron/main.cjs');
-  assert.ok(main.includes("mainWindow.on('show', () => { if (companionWindow"));
-  assert.ok(main.includes("mainWindow.on('restore', () => { if (companionWindow"));
+  assert.ok(main.includes("mainWindow.on('show', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });"));
+  assert.ok(main.includes("mainWindow.on('restore', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });"));
   assert.ok(main.includes("mainWindow.on('minimize', () => { createCompanionWindow();"));
   assert.ok(main.includes("mainWindow.on('close', (event) => { if (!quitting)"));
   assert.ok(main.includes('width: 96, height: 96'));
