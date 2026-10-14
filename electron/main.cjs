@@ -23,14 +23,20 @@ let offlineWakeProcess = null;
 let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
 let offlineWakeConsentLoaded = false;
-let jessPreferences = { permissionMode: 'ask', memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true };
+let jessPreferences = { permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, spokenConfirmationEnabled: true, memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true };
+let allowEverythingConsentGranted = false;
+let controlSessionSenderId = null;
 let jessPreferencesUserId = null;
 let mcpBridge = null;
 function persistJessPreferences(prefs, userId) {
-  const allowedModes = new Set(['ask', 'always-allow']);
+  const allowedModes = new Set(['ask', 'routine', 'everything', 'always-allow']);
   if (!prefs || typeof prefs !== 'object' || !allowedModes.has(prefs.permissionMode)) throw new Error('Invalid Jess permission preferences.');
+  const permissionMode = prefs.permissionMode === 'always-allow' ? 'routine' : prefs.permissionMode;
   jessPreferences = {
-    permissionMode: prefs.permissionMode,
+    permissionMode,
+    fullControlEnabled: prefs.fullControlEnabled === true,
+    startInFullControl: prefs.startInFullControl === true,
+    spokenConfirmationEnabled: prefs.spokenConfirmationEnabled !== false,
     memoryEnabled: prefs.memoryEnabled !== false,
     contextEnabled: prefs.contextEnabled !== false,
     personalization: typeof prefs.personalization === 'string' ? prefs.personalization.slice(0, 2000) : '',
@@ -40,9 +46,16 @@ function persistJessPreferences(prefs, userId) {
   jessPreferencesUserId = userId;
   const file = path.join(app.getPath('userData'), 'jess-preferences.json');
   fs.writeFileSync(file, JSON.stringify({ userId, preferences: jessPreferences }, null, 2), { encoding: 'utf8', mode: 0o600 });
-  return { ok: true, preferences: jessPreferences };
+  const policyFile = path.join(app.getPath('userData'), 'jess-desktop-control-policy.json');
+  fs.writeFileSync(policyFile, JSON.stringify({ userId, fullControlEnabled: jessPreferences.fullControlEnabled, permissionMode: jessPreferences.permissionMode, startInFullControl: jessPreferences.startInFullControl, spokenConfirmationEnabled: jessPreferences.spokenConfirmationEnabled, allowEverythingConsentGranted }, null, 2), { encoding: 'utf8', mode: 0o600 });
+  return { ok: true, preferences: jessPreferences, live: { active: fullControlActive, userId: controlSessionUserId, mode: jessPreferences.permissionMode, fullControlEnabled: jessPreferences.fullControlEnabled, startedAt: controlSessionStartedAt } };
 }
 function loadJessPreferences() {
+  try {
+    const policyFile = path.join(app.getPath('userData'), 'jess-desktop-control-policy.json');
+    const policy = JSON.parse(fs.readFileSync(policyFile, 'utf8'));
+    allowEverythingConsentGranted = policy?.allowEverythingConsentGranted === true;
+  } catch { allowEverythingConsentGranted = false; }
   try {
     const file = path.join(app.getPath('userData'), 'jess-preferences.json');
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -549,16 +562,31 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('hubmind:jess-preferences-set', (event, prefs, userId) => {
+  ipcMain.handle('hubmind:jess-preferences-set', async (event, prefs, userId) => {
     assertTrustedSender(event);
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
     if (fullControlActive && controlSessionUserId !== userId) throw new Error('Jess preferences cannot be changed for a different active user.');
-    return persistJessPreferences(prefs, userId);
+    const wantsEverything = prefs?.fullControlEnabled === true && prefs?.permissionMode === 'everything';
+    if (wantsEverything && !allowEverythingConsentGranted) {
+      const choice = await dialog.showMessageBox(getDialogParent(), {
+        type: 'warning', buttons: ['Cancel', 'Allow everything'], defaultId: 0, cancelId: 0,
+        title: 'Enable Jess Allow Everything mode?',
+        message: 'Allow Jess to operate Windows apps and connected MCP tools without repeated confirmation dialogs?',
+        detail: 'This is a powerful setting. Jess can type, click, launch apps, manipulate windows, and call connected MCP tools as your current Windows user. It does not bypass Windows UAC secure desktop or other OS security boundaries. Keep the emergency stop hotkey Ctrl+Alt+Shift+J available. You can switch back to Ask or Allow routine at any time.',
+      });
+      if (choice.response !== 1) {
+        auditNativeAction({ event: 'allow-everything-consent-cancelled', userId });
+        return { ok: false, cancelled: true, preferences: jessPreferences, live: { active: fullControlActive, userId: controlSessionUserId, mode: jessPreferences.permissionMode, fullControlEnabled: jessPreferences.fullControlEnabled } };
+      }
+      allowEverythingConsentGranted = true;
+    }
+    const saved = persistJessPreferences(prefs, userId);
+    return saved;
   });
   ipcMain.handle('hubmind:jess-preferences-get', (event, userId) => {
     assertTrustedSender(event);
-    if (typeof userId !== 'string' || userId !== jessPreferencesUserId) return { preferences: null };
-    return { preferences: jessPreferences };
+    if (typeof userId !== 'string' || userId !== jessPreferencesUserId) return { preferences: null, live: { active: fullControlActive, userId: controlSessionUserId, mode: jessPreferences.permissionMode, fullControlEnabled: jessPreferences.fullControlEnabled, startedAt: controlSessionStartedAt } };
+    return { preferences: jessPreferences, live: { active: fullControlActive, userId: controlSessionUserId, mode: jessPreferences.permissionMode, fullControlEnabled: jessPreferences.fullControlEnabled, startedAt: controlSessionStartedAt } };
   });
   ipcMain.handle('hubmind:full-control-start', async (event, userId) => {
     assertTrustedSender(event);
