@@ -307,7 +307,7 @@ export class LiveAudioClient {
     userId?: string;
     userName?: string;
     userRole?: string;
-    permissionMode?: 'ask' | 'always-allow';
+    permissionMode?: 'ask' | 'allow-routine' | 'allow-everything';
     contextEnabled?: boolean;
     memoryEnabled?: boolean;
     personalization?: string;
@@ -336,7 +336,7 @@ export class LiveAudioClient {
     userId?: string;
     userName?: string;
     userRole?: string;
-    permissionMode?: 'ask' | 'always-allow';
+    permissionMode?: 'ask' | 'allow-routine' | 'allow-everything';
     contextEnabled?: boolean;
     memoryEnabled?: boolean;
     personalization?: string;
