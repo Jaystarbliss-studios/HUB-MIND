@@ -37,7 +37,8 @@ $tokenAcl = New-Object System.Security.AccessControl.FileSecurity
 $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
 $tokenAcl.SetOwner($currentSid)
 $tokenAcl.SetAccessRuleProtection($true, $false)
-$tokenAcl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($currentSid, 'FullControl', 'Allow')))
+$tokenRule = New-Object System.Security.AccessControl.FileSystemAccessRule -ArgumentList @($currentSid, 'FullControl', 'Allow')
+$tokenAcl.AddAccessRule($tokenRule)
 Set-Acl -LiteralPath $tokenPath -AclObject $tokenAcl
 
 $registryPath = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\$hostName"
