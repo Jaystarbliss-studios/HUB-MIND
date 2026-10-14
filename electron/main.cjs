@@ -620,6 +620,32 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
   ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
   ipcMain.handle('hubmind:chrome-status', (event) => { assertTrustedSender(event); return chromeBridge.status(); });
+  ipcMain.handle('hubmind:install-chrome-bridge', async (event) => {
+    assertTrustedSender(event);
+    if (process.platform !== 'win32') return { ok: false, error: 'Chrome bridge setup is available only on Windows.' };
+    if (!app.isPackaged) return { ok: false, error: 'Build/install the packaged Windows app before setting up the Chrome native host.' };
+    const script = path.join(process.resourcesPath, 'Install-JessChromeBridge.ps1');
+    if (!fs.existsSync(script)) return { ok: false, error: 'The Chrome setup script is missing from this installation. Repair or reinstall Hub-Mind.' };
+    const choice = await dialog.showMessageBox(getDialogParent(), {
+      type: 'info', buttons: ['Cancel', 'Set up Chrome bridge'], defaultId: 0, cancelId: 0,
+      title: 'Set up Jess for Chrome',
+      message: 'Register the Hub-Mind Jess native-messaging host for this Windows user?',
+      detail: 'This copies the bundled extension into your local AppData folder and registers a Chrome native-messaging host under your Windows user account. It does not install or force-enable the extension. You will still need to load/enable the extension in Chrome.',
+    });
+    if (choice.response !== 1) return { ok: false, cancelled: true };
+    const started = Date.now();
+    try {
+      const result = await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true, timeout: 30000, maxBuffer: 1024 * 1024, shell: false }, (error, stdout, stderr) => {
+        if (error) return reject(new Error(String(stderr || error.message || 'Chrome setup failed').slice(0, 1200)));
+        resolve(String(stdout || '').slice(0, 5000));
+      }));
+      auditNativeAction({ event: 'chrome-bridge-installed', durationMs: Date.now() - started });
+      return { ok: true, output: result, status: chromeBridge.status() };
+    } catch (error) {
+      auditNativeAction({ event: 'chrome-bridge-install-failed', durationMs: Date.now() - started, error: String(error?.message || error).slice(0, 500) });
+      return { ok: false, error: String(error?.message || error).slice(0, 1200) };
+    }
+  });
   ipcMain.handle('hubmind:offline-wake-start', (event) => startOfflineWake(event));
   ipcMain.handle('hubmind:offline-wake-stop', (event) => { assertTrustedSender(event); return stopOfflineWake(); });
   ipcMain.handle('hubmind:chrome-action', async (event, method, args, userId, executionId) => {
