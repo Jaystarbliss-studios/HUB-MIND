@@ -724,7 +724,7 @@ app.whenReady().then(() => {
     if (!fullControlActive || !controlSessionSecret) {
       return { ok: false, verified: false, error: 'Chrome control requires an active Full Control Session.' };
     }
-    const allowed = new Set(['chrome_list_tabs','chrome_open_tab','chrome_close_tab','chrome_activate_tab','chrome_navigate_tab','chrome_reload_tab','chrome_scroll','chrome_read_page','chrome_find_element','chrome_click_element','chrome_fill_field']);
+    const allowed = new Set(['chrome_list_tabs','chrome_open_tab','chrome_close_tab','chrome_activate_tab','chrome_navigate_tab','chrome_reload_tab','chrome_scroll','chrome_capture_screenshot','chrome_read_page','chrome_find_element','chrome_click_element','chrome_fill_field']);
     if (typeof method !== 'string' || !allowed.has(method)) return { ok: false, verified: false, error: 'Unsupported Chrome action.' };
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
     if (safeArgs.tabId !== undefined && (!Number.isInteger(Number(safeArgs.tabId)) || Number(safeArgs.tabId) < 1)) return { ok: false, verified: false, error: 'Invalid Chrome tab ID.' };
