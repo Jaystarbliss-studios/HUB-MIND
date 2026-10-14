@@ -1119,6 +1119,14 @@ async function startServer() {
           parameters: { type: "OBJECT", properties: { command: { type: "STRING" } }, required: ["command"] }
         },
         {
+          name: "manage_windows_files",
+          description: "Manage local files with explicit bounded operations: list, read, write, copy, move, rename, search, or send to Recycle Bin. Writes and file changes follow the configured permission mode; permanent deletion is not offered.",
+          parameters: { type: "OBJECT", properties: {
+            action: { type: "STRING", enum: ["list", "read", "write", "copy", "move", "rename", "search", "recycle"] },
+            path: { type: "STRING" }, destination: { type: "STRING" }, content: { type: "STRING" }, pattern: { type: "STRING" }
+          }, required: ["action", "path"] }
+        },
+        {
           name: "get_windows_time",
           description: "Read the local Windows time and time zone.",
           parameters: { type: "OBJECT", properties: {} }
