@@ -41,6 +41,15 @@ export interface JessToolDefinition {
 }
 
 
+function isAssistantCapabilityClaimMemory(value: unknown): boolean {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  const capability = '(?:minimiz(?:e|ing|ed)|maximiz(?:e|ing|ed)|control (?:the )?(?:desktop|computer|windows)|open apps?|close windows?|click|type|scroll|take screenshots?|read the screen|control chrome|browse the internet|access the internet|run commands?|manage files?|move windows?)';
+  const subject = '(?:jess|the assistant|assistant|the ai|ai assistant|the agent|i)';
+  const modal = '(?:can|can.t|cannot|could|couldn.t|is able to|is unable to|does not have the ability to|doesn.t have the ability to|is not capable of|is capable of)';
+  return new RegExp('\\b' + subject + '\\b.{0,60}\\b' + modal + '\\b.{0,90}\\b' + capability + '\\b', 'i').test(text) ||
+    new RegExp('\\b' + capability + '\\b.{0,70}\\b(?:is not supported by|is supported by|cannot be done by|can be done by)\\b.{0,30}\\b(?:jess|the assistant|the agent)\\b', 'i').test(text);
+}
 function normalizeSearchText(value: any): string {
   return String(value || '')
     .toLowerCase()
@@ -2789,6 +2798,7 @@ export async function executeJessTool(
       case 'save_user_memory': {
         const content = String(args.content || '').trim();
         if (!content) return { result: { success: false, error: 'Memory content is required.' } };
+        if (isAssistantCapabilityClaimMemory(content)) return { result: { success: false, error: 'Assistant capability claims are not stored as user memories. Jess must derive available abilities from the live tool registry each session.' } };
         const key = args.key ? String(args.key).trim() : undefined;
         const category = (args.category || 'preference') as any;
         const importance = (args.importance || 'medium') as any;
@@ -2815,11 +2825,17 @@ export async function executeJessTool(
 
       case 'get_user_memories': {
         const memories = await getUserMemories(user.id);
-        const filtered = args.category ? memories.filter(m => m.category === args.category) : memories;
+        const capabilityClaims = memories.filter(memory => isAssistantCapabilityClaimMemory(memory.content));
+        if (capabilityClaims.length) {
+          await Promise.all(capabilityClaims.map(memory => deleteUserMemory(user.id, memory.id || memory.key).catch(() => false)));
+        }
+        const cleanMemories = memories.filter(memory => !isAssistantCapabilityClaimMemory(memory.content));
+        const filtered = args.category ? cleanMemories.filter(m => m.category === args.category) : cleanMemories;
         return {
           result: {
             success: true,
             total: filtered.length,
+            purgedCapabilityClaims: capabilityClaims.length,
             memories: filtered.map(m => ({
               id: m.id,
               key: m.key,
