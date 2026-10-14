@@ -1204,6 +1204,11 @@ async function startServer() {
           parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, delta: { type: "NUMBER" }, axis: { type: "STRING", enum: ["x", "y"] }, target: { type: "STRING" } }, required: ["delta"] }
         },
         {
+          name: "chrome_capture_screenshot",
+          description: "Capture a compressed thumbnail preview of the active visible Chrome tab. The preview is shown to the user; use page text or screen OCR for actual content analysis. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
+        },
+        {
           name: "end_session",
           description: "Put the AI assistant to sleep and end the live voice session when the user says 'end this session', 'go to sleep', 'sleep', or 'deactivate'.",
           parameters: { type: "OBJECT", properties: { reason: { type: "STRING" } } }
