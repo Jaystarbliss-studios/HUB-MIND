@@ -24,6 +24,7 @@ export const JESS_NATIVE_TOOL_NAMES = [
   'launch_windows_application',
   'run_windows_command_native',
   'manage_windows_files',
+  'manage_windows_clipboard',
   'get_windows_time',
   'get_windows_system_info',
   'chrome_list_tabs',
