@@ -13,9 +13,9 @@ test('Windows shell identifies itself as an installed app and uses the native di
   assert.match(main, /app\.setAppUserModelId\(['"]studios\.jaystarbliss\.hubmind['"]\)/);
   assert.match(main, /setDisplayMediaRequestHandler/);
   assert.match(main, /desktopCapturer\.getSources/);
-  assert.match(main, /useSystemPicker:\s*true/);
+  assert.match(main, /chooseDisplaySource\(unique\)/);
   assert.match(main, /Choose what to share/);
-  assert.match(main, /Share app:/);
+  assert.match(main, /screen-share-picker\.html/);
 });
 
 test('Jess desktop overlay is a compact, movable, closeable orb', () => {
