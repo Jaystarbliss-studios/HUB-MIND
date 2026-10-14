@@ -2,7 +2,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, ses
 const path = require('node:path');
 const fs = require('node:fs');
 const { execFile, spawn } = require('node:child_process');
-const { randomUUID, randomBytes, timingSafeEqual } = require('node:crypto');
+const { randomUUID, randomBytes, timingSafeEqual, createHash } = require('node:crypto');
 const nativeAgent = require('./agentBridge.cjs');
 const chromeBridge = require('./chromeBridge.cjs');
 const { McpBridge } = require('./mcpBridge.cjs');
@@ -29,6 +29,8 @@ let fullControlConsentGranted = false;
 let allowEverythingConsentGranted = false;
 let controlSessionSenderId = null;
 let controlSessionCapability = null;
+let pendingSpokenConfirmation = null;
+let grantedSpokenConfirmation = null;
 let appVersionHistory = [];
 let jessPreferencesUserId = null;
 let mcpBridge = null;
@@ -428,12 +430,22 @@ function stopFullControl(reason = 'user-stop') {
   controlSessionUserId = null;
   controlSessionSenderId = null;
   controlSessionCapability = null;
+  pendingSpokenConfirmation = null;
+  grantedSpokenConfirmation = null;
   try { mainWindow?.webContents.send('hubmind:full-control-capability', null); } catch {}
   // End the PowerShell sidecar and drop in-flight Chrome messages immediately.
   try { nativeAgent.stop(); } catch {}
   try { chromeBridge.cancelPending('Full Control Session stopped.'); } catch {}
   auditNativeAction({ event: 'full-control-stopped', reason, userId: previousUserId });
   return { ok: true, active: false, reason };
+}
+function stableSerialize(value) {
+  if (Array.isArray(value)) return '[' + value.map(stableSerialize).join(',') + ']';
+  if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + stableSerialize(value[key])).join(',') + '}';
+  return JSON.stringify(value);
+}
+function spokenActionFingerprint(method, args) {
+  return createHash('sha256').update(String(method) + '\n' + stableSerialize(args)).digest('hex');
 }
 function assertControlCapability(event, capability) {
   assertTrustedSender(event);
@@ -694,6 +706,28 @@ app.whenReady().then(() => {
     auditNativeAction({ event: 'full-control-started', startedAt: controlSessionStartedAt, userId, senderId: controlSessionSenderId });
     return { ok: true, active: true, startedAt: controlSessionStartedAt, userId, capability: controlSessionCapability, stopHotkey: 'Ctrl+Alt+Shift+J' };
   });
+  ipcMain.handle('hubmind:spoken-high-risk-confirm', (event, utterance, userId, capability) => {
+    assertControlCapability(event, capability);
+    if (userId !== controlSessionUserId) throw new Error('Spoken confirmation is not bound to the active session owner.');
+    const pending = pendingSpokenConfirmation;
+    if (!pending || pending.userId !== userId || pending.expiresAt < Date.now()) {
+      pendingSpokenConfirmation = null;
+      return { confirmed: false, pending: false };
+    }
+    const text = typeof utterance === 'string' ? utterance.trim().toLowerCase().replace(/[.!?]+$/g, '').replace(/\s+/g, ' ') : '';
+    const yes = /^(yes|yes please|confirm|confirmed|go ahead|do it|proceed|approved|that's right|that is right|correct|okay proceed|okay do it)$/.test(text);
+    const no = /^(no|no thanks|cancel|stop|don't|do not|never mind|not now|negative|cancel it)$/.test(text);
+    if (yes) {
+      grantedSpokenConfirmation = { fingerprint: pending.fingerprint, userId, expiresAt: Date.now() + 30000 };
+      pendingSpokenConfirmation = null;
+      auditNativeAction({ event: 'high-risk-spoken-confirmed', userId, method: pending.method, fingerprint: pending.fingerprint });
+      return { confirmed: true, method: pending.method };
+    }
+    pendingSpokenConfirmation = null;
+    grantedSpokenConfirmation = null;
+    auditNativeAction({ event: 'high-risk-spoken-declined-or-interrupted', userId, method: pending.method });
+    return { confirmed: false, declined: no, pending: false };
+  });
   ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
   ipcMain.handle('hubmind:native-status', (event) => {
     assertTrustedSender(event);
@@ -788,10 +822,26 @@ app.whenReady().then(() => {
     if (method === 'clipboard_get' && !fullControlActive) throw new Error('Full Control is required to read the clipboard.');
     const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window']);
     const highRiskActions = new Set(['close_window', 'run_command', 'open_path', 'file_delete']);
-    const alwaysAllowed = fullControlActive &&
-      jessPreferencesUserId === controlSessionUserId &&
-      controlSessionUserId === userId &&
-      (jessPreferences.permissionMode === 'routine' || jessPreferences.permissionMode === 'always-allow' || (jessPreferences.permissionMode === 'everything' && allowEverythingConsentGranted && !highRiskActions.has(method)));
+    const sameOwner = fullControlActive && jessPreferencesUserId === controlSessionUserId && controlSessionUserId === userId;
+    let spokenApproved = false;
+    const allowEverything = sameOwner && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'everything' && allowEverythingConsentGranted;
+    if (allowEverything && highRiskActions.has(method) && jessPreferences.spokenConfirmationEnabled) {
+      const fingerprint = spokenActionFingerprint(method, safeArgs);
+      if (grantedSpokenConfirmation && grantedSpokenConfirmation.userId === userId && grantedSpokenConfirmation.fingerprint === fingerprint && grantedSpokenConfirmation.expiresAt >= Date.now()) {
+        spokenApproved = true;
+        grantedSpokenConfirmation = null;
+      } else {
+        if (pendingSpokenConfirmation && pendingSpokenConfirmation.expiresAt >= Date.now() && pendingSpokenConfirmation.fingerprint !== fingerprint) {
+          return { ok: false, verified: false, requiresSpokenConfirmation: true, error: 'Another high-risk action is waiting for a spoken yes or no. Ask the user to answer that question first.' };
+        }
+        pendingSpokenConfirmation = { fingerprint, method, userId, createdAt: Date.now(), expiresAt: Date.now() + 45000 };
+        auditNativeAction({ event: 'high-risk-spoken-confirmation-requested', userId, method, fingerprint });
+        return { ok: false, verified: false, requiresSpokenConfirmation: true, confirmationPrompt: 'Ask the user aloud whether to proceed with ' + method.replace(/_/g, ' ') + '. Do not execute until the user answers yes.', method };
+      }
+    }
+    const alwaysAllowed = sameOwner &&
+      (jessPreferences.permissionMode === 'routine' || jessPreferences.permissionMode === 'always-allow' ||
+        (allowEverything && (!highRiskActions.has(method) || !jessPreferences.spokenConfirmationEnabled || spokenApproved)));
     if (mutatingActions.has(method) && !alwaysAllowed) {
       const details = method === 'run_command' ? String(safeArgs.command || '') :
         method === 'type_text' ? String(safeArgs.text || '').slice(0, 1000) :
