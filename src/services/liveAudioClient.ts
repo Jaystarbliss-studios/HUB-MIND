@@ -310,7 +310,10 @@ export class LiveAudioClient {
     userId?: string;
     userName?: string;
     userRole?: string;
-    permissionMode?: 'ask' | 'always-allow';
+    permissionMode?: 'ask' | 'routine' | 'everything' | 'always-allow';
+    fullControlEnabled?: boolean;
+    startInFullControl?: boolean;
+    spokenConfirmationEnabled?: boolean;
     contextEnabled?: boolean;
     memoryEnabled?: boolean;
     personalization?: string;
@@ -339,7 +342,10 @@ export class LiveAudioClient {
     userId?: string;
     userName?: string;
     userRole?: string;
-    permissionMode?: 'ask' | 'always-allow';
+    permissionMode?: 'ask' | 'routine' | 'everything' | 'always-allow';
+    fullControlEnabled?: boolean;
+    startInFullControl?: boolean;
+    spokenConfirmationEnabled?: boolean;
     contextEnabled?: boolean;
     memoryEnabled?: boolean;
     personalization?: string;
