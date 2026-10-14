@@ -31,8 +31,8 @@ test('transparent companion styles stay scoped to the companion route', () => {
 });
 
 test('desktop workspace and icon-only orb visibility follow the requested lifecycle', () => {
-  assert.ok(electron.includes("mainWindow.on('show', () => { if (companionWindow"));
-  assert.ok(electron.includes("mainWindow.on('restore', () => { if (companionWindow"));
+  assert.ok(electron.includes("mainWindow.on('show', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });"));
+  assert.ok(electron.includes("mainWindow.on('restore', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });"));
   assert.ok(electron.includes("mainWindow.on('minimize', () => { createCompanionWindow();"));
   assert.ok(electron.includes("mainWindow.on('close', (event) => { if (!quitting)"));
   assert.ok(electron.includes('width: 96, height: 96'));
