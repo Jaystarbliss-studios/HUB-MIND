@@ -671,7 +671,7 @@ app.whenReady().then(() => {
     assertTrustedSender(event);
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
     if (!['get_time','system_info'].includes(method) && (!fullControlActive || !controlSessionSecret)) throw new Error('Native action blocked because Jess Full Control is not active.');
-    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','file_action','media_key','get_time','system_info','open_path']);
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','file_action','clipboard_action','media_key','get_time','system_info','open_path']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method, { userId, executionId: correlationId });
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
@@ -711,6 +711,11 @@ app.whenReady().then(() => {
     if (method === 'press_keys' && safeArgs.holdMs !== undefined && (!Number.isFinite(safeArgs.holdMs) || safeArgs.holdMs < 0 || safeArgs.holdMs > 5000)) throw new Error('Key hold duration must be between 0 and 5,000 milliseconds.');
     if (method === 'launch_app' && (typeof safeArgs.name !== 'string' || !safeArgs.name.trim() || safeArgs.name.length > 160)) throw new Error('Provide an application name under 160 characters.');
     if (method === 'open_path' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid local file path.');
+    if (method === 'clipboard_action') {
+      if (!['read','write','clear','paste'].includes(String(safeArgs.action || ''))) throw new Error('Unsupported clipboard action.');
+      if (safeArgs.text !== undefined && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 100000)) throw new Error('Clipboard text exceeds the 100,000-character limit.');
+      if (safeArgs.action === 'write' && typeof safeArgs.text !== 'string') throw new Error('Clipboard write requires text.');
+    }
     if (method === 'file_action') {
       const actions = new Set(['list','read','write','copy','move','rename','search','recycle']);
       if (!actions.has(String(safeArgs.action || ''))) throw new Error('Unsupported local file action.');
@@ -720,13 +725,14 @@ app.whenReady().then(() => {
       if (safeArgs.pattern !== undefined && (typeof safeArgs.pattern !== 'string' || safeArgs.pattern.length > 120)) throw new Error('File search pattern is too long.');
       if (['copy','move','rename'].includes(String(safeArgs.action)) && !String(safeArgs.destination || '').trim()) throw new Error('This file action requires a destination.');
     }
-    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','file_action','open_path','media_key']);
+    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','file_action','clipboard_action','open_path','media_key']);
     const routineActions = new Set(['list_windows','focus_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','open_path','media_key','screenshot','read_screen_text','find_ui_element']);
     const allowEverything = fullControlActive && !!controlSessionSecret && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-everything';
     const readOnlyFileAction = method === 'file_action' && ['list','read','search'].includes(String(safeArgs.action || ''));
-    const allowRoutine = fullControlActive && !!controlSessionSecret && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-routine' && (routineActions.has(method) || readOnlyFileAction);
+    const readOnlyClipboardAction = method === 'clipboard_action' && String(safeArgs.action || '') === 'read';
+    const allowRoutine = fullControlActive && !!controlSessionSecret && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-routine' && (routineActions.has(method) || readOnlyFileAction || readOnlyClipboardAction);
     const alwaysAllowed = allowEverything || allowRoutine;
-    const isMutation = mutatingActions.has(method) && !readOnlyFileAction;
+    const isMutation = mutatingActions.has(method) && !readOnlyFileAction && !readOnlyClipboardAction;
     if (isMutation && !alwaysAllowed) {
       const details = method === 'run_command' ? String(safeArgs.command || '') :
         method === 'type_text' ? String(safeArgs.text || '').slice(0, 1000) :
