@@ -117,9 +117,10 @@ function createMainWindow(initialPath = '/login') {
   guardNavigation(mainWindow);
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); positionCompanionBottomRightIfNeeded(); } });
-  // The orb is intentionally hidden while the full workspace is visible.
-  mainWindow.on('show', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
-  mainWindow.on('restore', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
+  // The native orb belongs to the desktop shell and stays visible above the workspace and other apps.
+  // JessFloatingAssistant intentionally hides its in-app orb in desktop mode to avoid duplicates.
+  mainWindow.on('show', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });
+  mainWindow.on('restore', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });
   mainWindow.on('minimize', () => { createCompanionWindow(); positionCompanionBottomRight(); });
   mainWindow.on('closed', () => { mainWindow = null; });
   return mainWindow.loadURL(APP_URL + initialPath);
