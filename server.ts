@@ -1056,7 +1056,7 @@ async function startServer() {
         {
           name: "control_mouse",
           description: "Move or click the Windows mouse, or scroll at physical screen coordinates. Requires Full Control.",
-          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["mouse_move", "click", "double_click", "right_click", "scroll"] }, x: { type: "NUMBER" }, y: { type: "NUMBER" }, delta: { type: "NUMBER" } }, required: ["action", "x", "y"] }
+          parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["mouse_move", "click", "double_click", "right_click", "scroll"] }, x: { type: "NUMBER" }, y: { type: "NUMBER" }, delta: { type: "NUMBER" }, axis: { type: "STRING", enum: ["vertical", "horizontal"] } }, required: ["action", "x", "y"] }
         },
         {
           name: "drag_windows_mouse",
@@ -1071,7 +1071,7 @@ async function startServer() {
         {
           name: "press_windows_keys",
           description: "Send a key or key combination to the active Windows app, such as CTRL+S or ALT+TAB. Requires Full Control.",
-          parameters: { type: "OBJECT", properties: { keys: { type: "STRING" } }, required: ["keys"] }
+          parameters: { type: "OBJECT", properties: { keys: { type: "STRING" }, holdMs: { type: "NUMBER" } }, required: ["keys"] }
         },
         {
           name: "control_system_volume",
