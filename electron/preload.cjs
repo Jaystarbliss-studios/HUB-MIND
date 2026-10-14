@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   mcpRemoveServer: (serverId, userId) => ipcRenderer.invoke('hubmind:mcp-remove-server', serverId, userId),
   mcpCallTool: (modelToolName, args, userId, executionId) => ipcRenderer.invoke('hubmind:mcp-tool-call', modelToolName, args, userId, executionId, controlCapability),
   chromeAction: (method, args, userId, executionId) => ipcRenderer.invoke('hubmind:chrome-action', method, args, userId, executionId, controlCapability),
+  chromeStatus: () => ipcRenderer.invoke('hubmind:chrome-status'),
+  setupChromeBridge: () => ipcRenderer.invoke('hubmind:chrome-setup'),
   startOfflineWake: () => ipcRenderer.invoke('hubmind:offline-wake-start'),
   stopOfflineWake: () => ipcRenderer.invoke('hubmind:offline-wake-stop'),
   onOfflineWake: (callback) => {
