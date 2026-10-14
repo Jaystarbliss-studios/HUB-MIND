@@ -32,7 +32,8 @@ win:
   artifactName: Hub-Mind-Setup-${version}-${arch}.${ext}
 nsis:
   oneClick: false
-  perMachine: false
+  perMachine: true
+  allowElevation: true
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
