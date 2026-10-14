@@ -1009,12 +1009,12 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       const unique = [...new Map(ordered.map(source => [source.id, source])).values()].slice(0, 8);
       if (!unique.length) { callback({}); return; }
       const selected = await chooseDisplaySource(unique);
-
+      callback(selected ? { video: selected } : {});
     } catch (error) {
       console.warn('[Hub-Mind] Display source picker failed:', error);
       callback({});
     }
-  }, { useSystemPicker: true });
+  });
   const stopHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+J', () => {
     if (fullControlActive) stopFullControl('global-hotkey');
   });
