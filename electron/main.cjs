@@ -754,7 +754,7 @@ app.whenReady().then(() => {
         throw new Error('This command is blocked because it can modify the system, launch a script, or bypass the command safety checks. Elevated commands are not silently executed.');
       }
     }
-    if (['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'].includes(method)) {
+    if (['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','switch_window'].includes(method)) {
       if (safeArgs.handle !== undefined && safeArgs.handle !== null &&
           (!Number.isSafeInteger(Number(safeArgs.handle)) || Number(safeArgs.handle) <= 0)) {
         throw new Error('Window handle must be a positive integer returned by list_windows.');
@@ -763,7 +763,7 @@ app.whenReady().then(() => {
           (typeof safeArgs.title !== 'string' || safeArgs.title.length > 300)) {
         throw new Error('Window title must be a string no longer than 300 characters.');
       }
-      if (safeArgs.handle === undefined && !String(safeArgs.title || '').trim()) {
+      if (method !== 'switch_window' && safeArgs.handle === undefined && !String(safeArgs.title || '').trim()) {
         throw new Error('Provide a window title or handle.');
       }
     }
