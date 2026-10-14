@@ -108,6 +108,28 @@ async function dispatch(message) {
       });
       return { ok: !!result?.result && !result.result.error, verified: result?.result?.changed === true, evidence: { tabId: tab.id, ...result?.result } };
     }
+    case 'chrome_capture_screenshot': {
+      const tab = await tabById(a.tabId);
+      if (!tab.active) return { ok: false, verified: false, error: 'Activate the target Chrome tab first; screenshots are captured only from the visible tab.' };
+      const raw = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 45 });
+      const response = await fetch(raw);
+      const bitmap = await createImageBitmap(await response.blob());
+      try {
+        const scale = Math.min(1, 320 / bitmap.width, 180 / bitmap.height);
+        const width = Math.max(1, Math.round(bitmap.width * scale));
+        const height = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = new OffscreenCanvas(width, height);
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Could not create a screenshot compression canvas.');
+        context.drawImage(bitmap, 0, 0, width, height);
+        const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.5 });
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let binary = '';
+        for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+        const dataUrl = 'data:image/jpeg;base64,' + btoa(binary);
+        return { ok: true, verified: true, evidence: { dataUrl, title: tab.title || '', url: tab.url || '', tabId: tab.id, width, height, capturedAt: new Date().toISOString(), note: 'Compressed screenshot preview captured; the assistant receives metadata and a preview URL, not direct visual pixels for analysis.' } };
+      } finally { bitmap.close(); }
+    }
     case 'chrome_read_page': {
       const tab = await tabById(a.tabId);
       const [result] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => ({ title: document.title, url: location.href, text: (document.body?.innerText || '').slice(0, 20000), readyState: document.readyState }) });
