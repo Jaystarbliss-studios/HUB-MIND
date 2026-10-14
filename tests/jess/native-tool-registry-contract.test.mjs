@@ -191,7 +191,7 @@ test('native tool results can travel from the desktop executor back to the Live 
 });
 
 
-test('Full Control requires a desktop confirmation and remains Windows-only', async () => {
+test('Full Control uses saved main-process consent and a main-process session secret', async () => {
   const main = await read('../../electron/main.cjs');
   const start = main.indexOf("ipcMain.handle('hubmind:full-control-start'");
   const end = main.indexOf("ipcMain.handle('hubmind:full-control-stop'", start);
@@ -199,17 +199,14 @@ test('Full Control requires a desktop confirmation and remains Windows-only', as
   assert.notEqual(end, -1, 'main process must register Full Control stop');
   const handler = main.slice(start, end);
   assert.match(handler, /process\.platform !== 'win32'/);
-  assert.match(handler, /dialog\.showMessageBox/);
-  assert.match(handler, /buttons: \['Cancel', 'Enable Full Control'\]/);
-  assert.match(handler, /if \(choice\.response !== 1\)/);
-  assert.ok(handler.indexOf('if (choice.response !== 1)') < handler.indexOf('fullControlActive = true'),
-    'Full Control must not be enabled before the user confirms');
-  assert.match(handler, /full-control-start-cancelled/);
-  assert.match(handler, /if \(fullControlStartPending\)/);
-  assert.match(handler, /fullControlStartPending = false/);
-  assert.ok(handler.indexOf('fullControlStartPending = true') < handler.indexOf('dialog.showMessageBox'),
-    'only one Full Control consent prompt may be pending');
-  assert.match(main, /userId !== controlSessionUserId\) throw new Error\('Native action blocked because the signed-in user does not own this Full Control Session\.'/);
+  assert.match(handler, /jessPreferences\.fullControlEnabled/);
+  assert.match(handler, /permissionMode === 'allow-everything'/);
+  assert.match(main, /buttons: \['Cancel', 'Allow everything'\]/);
+  assert.match(main, /fullControlConsentGranted/);
+  assert.match(main, /controlSessionSecret = randomUUID\(\)/);
+  assert.match(main, /assertTrustedSender\(event\)/);
+  assert.match(main, /Control\+Alt\+Shift\+J/);
+  assert.match(main, /jess-native-audit\.jsonl/);
 });
 
 
@@ -320,8 +317,10 @@ test('Jess account preferences are enforced by the assistant and tool executor',
   assert.match(liveClient, /context\?\.personalization/);
   assert.match(liveClient, /context\?\.contextEnabled === false/);
   assert.match(liveClient, /context\?\.screenVerificationEnabled === false/);
-  assert.match(main, /jessPreferences\.permissionMode === 'always-allow'/);
-  assert.match(main, /highRiskActions\.has\(method\)/);
+  assert.match(main, /jessPreferences\.permissionMode === 'allow-routine'/);
+  assert.match(main, /jessPreferences\.permissionMode === 'allow-everything'/);
+  assert.match(settings, /window\.setTimeout/);
+  assert.match(settings, /Main-process mode/);
 });
 
 
