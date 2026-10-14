@@ -1123,7 +1123,7 @@ async function startServer() {
           description: "Manage local files with explicit bounded operations: list, read, write, copy, move, rename, search, or send to Recycle Bin. Writes and file changes follow the configured permission mode; permanent deletion is not offered.",
           parameters: { type: "OBJECT", properties: {
             action: { type: "STRING", enum: ["list", "read", "write", "copy", "move", "rename", "search", "recycle"] },
-            path: { type: "STRING" }, destination: { type: "STRING" }, content: { type: "STRING" }, pattern: { type: "STRING" }
+            path: { type: "STRING" }, destination: { type: "STRING" }, content: { type: "STRING" }, pattern: { type: "STRING" }, offset: { type: "NUMBER" }, limit: { type: "NUMBER" }
           }, required: ["action", "path"] }
         },
         {
