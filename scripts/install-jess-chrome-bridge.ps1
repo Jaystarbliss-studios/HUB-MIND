@@ -66,8 +66,8 @@ New-Item -Path $registryPath -Force | Out-Null
 Set-Item -Path $registryPath -Value $manifestPath
 
 if ($ForceInstallExtension) {
-  if (-not $MachineWide) { $policyRoot = 'HKCU:\Software\Policies\Google\Chrome\ExtensionInstallForcelist' }
-  else { $policyRoot = 'HKLM:\Software\Policies\Google\Chrome\ExtensionInstallForcelist' }
+  # Keep force-install policy per-user because the bridge token is intentionally per-user.
+  $policyRoot = 'HKCU:\Software\Policies\Google\Chrome\ExtensionInstallForcelist'
   $extensionManifest = Get-Content -LiteralPath (Join-Path $extensionSource 'manifest.json') -Raw | ConvertFrom-Json
   if (-not $extensionManifest.key) { throw 'The Chrome extension manifest must contain its stable public key before force-install policy can be configured.' }
   $publicKeyBytes = [Convert]::FromBase64String([string]$extensionManifest.key)
@@ -85,7 +85,7 @@ if ($ForceInstallExtension) {
   $slot = 1
   while ($properties -and ($properties.PSObject.Properties.Name -contains [string]$slot)) { $slot++ }
   Set-ItemProperty -LiteralPath $policyRoot -Name ([string]$slot) -Value "$extensionId;https://clients2.google.com/service/update2/crx"
-  Write-Output "Chrome force-install policy added for extension $extensionId. This works only after that exact extension version has been published to the Chrome Web Store."
+  Write-Output "Per-user Chrome force-install policy added for extension $extensionId. This works only after that exact extension version has been published to the Chrome Web Store."
 }
 
 Write-Output $(if ($MachineWide) { 'Jess Chrome native host registered machine-wide (elevated setup).' } else { 'Jess Chrome native host registered for the current Windows user.' })
