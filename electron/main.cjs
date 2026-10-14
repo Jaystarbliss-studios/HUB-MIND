@@ -2,7 +2,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog, ses
 const path = require('node:path');
 const fs = require('node:fs');
 const { execFile, spawn } = require('node:child_process');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, randomBytes, timingSafeEqual } = require('node:crypto');
 const nativeAgent = require('./agentBridge.cjs');
 const chromeBridge = require('./chromeBridge.cjs');
 const { McpBridge } = require('./mcpBridge.cjs');
@@ -27,6 +27,7 @@ let jessPreferences = { permissionMode: 'ask', fullControlEnabled: false, startI
 let fullControlConsentGranted = false;
 let allowEverythingConsentGranted = false;
 let controlSessionSenderId = null;
+let controlSessionCapability = null;
 let jessPreferencesUserId = null;
 let mcpBridge = null;
 function persistJessPreferences(prefs, userId) {
@@ -404,11 +405,28 @@ function stopFullControl(reason = 'user-stop') {
   controlSessionStartedAt = null;
   const previousUserId = controlSessionUserId;
   controlSessionUserId = null;
+  controlSessionSenderId = null;
+  controlSessionCapability = null;
+  try { mainWindow?.webContents.send('hubmind:full-control-capability', null); } catch {}
   // End the PowerShell sidecar and drop in-flight Chrome messages immediately.
   try { nativeAgent.stop(); } catch {}
   try { chromeBridge.cancelPending('Full Control Session stopped.'); } catch {}
   auditNativeAction({ event: 'full-control-stopped', reason, userId: previousUserId });
   return { ok: true, active: false, reason };
+}
+function assertControlCapability(event, capability) {
+  assertTrustedSender(event);
+  if (!fullControlActive || !controlSessionCapability || event.sender.id !== controlSessionSenderId) {
+    throw new Error('This renderer does not own the active Full Control session.');
+  }
+  if (typeof capability !== 'string' || !/^[a-f0-9]{64}$/.test(capability)) {
+    throw new Error('Missing or invalid main-process Full Control capability.');
+  }
+  const expected = Buffer.from(controlSessionCapability, 'hex');
+  const actual = Buffer.from(capability, 'hex');
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    throw new Error('Invalid Full Control capability.');
+  }
 }
 function requireFullControl(method, metadata = {}) {
   if (!fullControlActive) throw new Error('Full Control Session is off. Say “Jess, full control” to enable native actions, or use the tray control.');
@@ -531,7 +549,7 @@ app.whenReady().then(() => {
     if (choice.response !== 1) return { ok: false, cancelled: true, servers: mcpBridge.listServers(owner) };
     return { ok: true, servers: await mcpBridge.removeServer(owner, String(serverId || '')) };
   });
-  ipcMain.handle('hubmind:mcp-tool-call', async (event, modelToolName, args, userId, executionId) => {
+  ipcMain.handle('hubmind:mcp-tool-call', async (event, modelToolName, args, userId, executionId, capability) => {
     assertTrustedSender(event);
     const owner = requireMcpUser(userId);
     if (!mcpBridge) return { success: false, error: 'MCP runtime is not initialized.' };
@@ -539,6 +557,7 @@ app.whenReady().then(() => {
     if (!resolved) return { success: false, error: 'MCP tool is not available for this account or its server is disconnected.' };
     const skipApproval = fullControlActive && jessPreferencesUserId === owner && controlSessionUserId === owner &&
       jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'everything' && allowEverythingConsentGranted;
+    if (skipApproval) assertControlCapability(event, capability);
     if (!skipApproval) {
       const details = JSON.stringify(args && typeof args === 'object' ? args : {}).slice(0, 1600);
       const choice = await dialog.showMessageBox(getDialogParent(), {
@@ -611,8 +630,8 @@ app.whenReady().then(() => {
     if (process.platform !== 'win32') throw new Error('Jess Full Control is available only in the Windows desktop application.');
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
     if (fullControlActive) {
-      if (controlSessionUserId !== userId) throw new Error('A different signed-in user already owns the active Full Control Session.');
-      return { ok: true, active: true, alreadyActive: true, startedAt: controlSessionStartedAt, userId, stopHotkey: 'Ctrl+Alt+Shift+J' };
+      if (controlSessionUserId !== userId || controlSessionSenderId !== event.sender.id) throw new Error('A different signed-in user or renderer already owns the active Full Control Session.');
+      return { ok: true, active: true, alreadyActive: true, startedAt: controlSessionStartedAt, userId, capability: controlSessionCapability, stopHotkey: 'Ctrl+Alt+Shift+J' };
     }
     if (fullControlStartPending) {
       return { ok: false, active: false, error: 'A Full Control confirmation is already pending.' };
@@ -647,20 +666,25 @@ app.whenReady().then(() => {
 
     fullControlActive = true;
     controlSessionUserId = userId;
+    controlSessionSenderId = event.sender.id;
+    controlSessionCapability = randomBytes(32).toString('hex');
     controlSessionStartedAt = new Date().toISOString();
-    auditNativeAction({ event: 'full-control-started', startedAt: controlSessionStartedAt, userId });
-    return { ok: true, active: true, startedAt: controlSessionStartedAt, userId, stopHotkey: 'Ctrl+Alt+Shift+J' };
+    auditNativeAction({ event: 'full-control-started', startedAt: controlSessionStartedAt, userId, senderId: controlSessionSenderId });
+    return { ok: true, active: true, startedAt: controlSessionStartedAt, userId, capability: controlSessionCapability, stopHotkey: 'Ctrl+Alt+Shift+J' };
   });
   ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
   ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
   ipcMain.handle('hubmind:chrome-status', (event) => { assertTrustedSender(event); return chromeBridge.status(); });
   ipcMain.handle('hubmind:offline-wake-start', (event) => startOfflineWake(event));
   ipcMain.handle('hubmind:offline-wake-stop', (event) => { assertTrustedSender(event); return stopOfflineWake(); });
-  ipcMain.handle('hubmind:chrome-action', async (event, method, args, userId, executionId) => {
+  ipcMain.handle('hubmind:chrome-action', async (event, method, args, userId, executionId, capability) => {
     assertTrustedSender(event);
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
-    if (!fullControlActive || typeof userId !== 'string' || userId !== controlSessionUserId) {
-      return { ok: false, verified: false, error: 'Chrome control requires an active Full Control Session owned by the signed-in user.' };
+    try { assertControlCapability(event, capability); } catch (error) {
+      return { ok: false, verified: false, error: String(error?.message || error) };
+    }
+    if (typeof userId !== 'string' || userId !== controlSessionUserId) {
+      return { ok: false, verified: false, error: 'Chrome control requires the signed-in owner of the active Full Control Session.' };
     }
     const allowed = new Set(['chrome_list_tabs','chrome_open_tab','chrome_close_tab','chrome_activate_tab','chrome_navigate_tab','chrome_reload_tab','chrome_scroll','chrome_read_page','chrome_find_element','chrome_click_element','chrome_fill_field']);
     if (typeof method !== 'string' || !allowed.has(method)) return { ok: false, verified: false, error: 'Unsupported Chrome action.' };
@@ -675,11 +699,14 @@ app.whenReady().then(() => {
     auditNativeAction({ event: 'chrome-action-result', method, userId, executionId: correlationId, durationMs: Date.now() - started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
     return result;
   });
-  ipcMain.handle('hubmind:native-action', async (event, method, args, userId, executionId) => {
+  ipcMain.handle('hubmind:native-action', async (event, method, args, userId, executionId, capability) => {
     assertTrustedSender(event);
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
-    if (!['get_time','system_info'].includes(method) && userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
+    if (!['get_time','system_info'].includes(method)) {
+      assertControlCapability(event, capability);
+      if (userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
+    }
     const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path','clipboard_get','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method, { userId, executionId: correlationId });
@@ -796,8 +823,8 @@ app.whenReady().then(() => {
     return true;
   });
   ipcMain.handle('hubmind:move-companion-by', (event, dx, dy) => { assertTrustedSender(event); if (!companionWindow || !Number.isFinite(dx) || !Number.isFinite(dy)) return false; const [x, y] = companionWindow.getPosition(); const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay(); const area = display.workArea; const [width, height] = companionWindow.getSize(); const nextX = Math.max(area.x, Math.min(area.x + area.width - width, x + Math.max(-200, Math.min(200, dx)))); const nextY = Math.max(area.y, Math.min(area.y + area.height - height, y + Math.max(-200, Math.min(200, dy)))); companionWindow.setPosition(Math.round(nextX), Math.round(nextY)); return true; });
-  ipcMain.handle('hubmind:open-user-path', async (event, requestedPath) => {
-    assertTrustedSender(event);
+  ipcMain.handle('hubmind:open-user-path', async (event, requestedPath, capability) => {
+    assertControlCapability(event, capability);
     if (!fullControlActive) throw new Error('Start Jess Full Control before opening local paths.');
     if (typeof requestedPath !== 'string' || requestedPath.length > 2048 || requestedPath.includes('\0')) throw new Error('Invalid path.');
     const resolved = path.resolve(requestedPath);
@@ -806,8 +833,8 @@ app.whenReady().then(() => {
     if (error) throw new Error(error);
     return { opened: true };
   });
-  ipcMain.handle('hubmind:type-text', async (event, requestedText) => {
-    assertTrustedSender(event);
+  ipcMain.handle('hubmind:type-text', async (event, requestedText, capability) => {
+    assertControlCapability(event, capability);
     if (!fullControlActive) throw new Error('Start Jess Full Control before typing into Windows apps.');
     if (typeof requestedText !== 'string' || !requestedText.length || requestedText.length > 3000) throw new Error('Text must be between 1 and 3,000 characters.');
     const textBase64 = Buffer.from(requestedText, 'utf8').toString('base64');
@@ -834,8 +861,8 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
     await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024, shell: false }, error => error ? reject(new Error(String(error.message || 'Text entry failed.').slice(0, 1000))) : resolve(true)));
     return { typed: true, characterCount: requestedText.length };
   });
-  ipcMain.handle('hubmind:press-shortcut', async (event, shortcutName) => {
-    assertTrustedSender(event);
+  ipcMain.handle('hubmind:press-shortcut', async (event, shortcutName, capability) => {
+    assertControlCapability(event, capability);
     if (typeof shortcutName !== 'string' || !Object.prototype.hasOwnProperty.call(WINDOWS_SHORTCUTS, shortcutName)) throw new Error('That keyboard shortcut is not approved.');
     if (!fullControlActive) throw new Error('Start Jess Full Control before sending Windows shortcuts.');
     const sequence = WINDOWS_SHORTCUTS[shortcutName];
@@ -843,23 +870,23 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
     await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, timeout: 10000, shell: false }, error => error ? reject(new Error(String(error.message || 'Keyboard shortcut failed.').slice(0, 1000))) : resolve(true)));
     return { pressed: true, shortcut: shortcutName };
   });
-  ipcMain.handle('hubmind:open-url', async (event, requestedUrl) => {
-    assertTrustedSender(event);
+  ipcMain.handle('hubmind:open-url', async (event, requestedUrl, capability) => {
+    assertControlCapability(event, capability);
     if (!fullControlActive) throw new Error('Start Jess Full Control before opening websites from voice commands.');
     if (typeof requestedUrl !== 'string' || requestedUrl.length > 2048) throw new Error('Invalid URL.');
     let parsed; try { parsed = new URL(requestedUrl); } catch { throw new Error('Enter a valid URL.'); }
     if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('Only web URLs can be opened.');
     await shell.openExternal(parsed.href); auditNativeAction({ event: 'open-url', url: parsed.href }); return { opened: true, url: parsed.href };
   });
-  ipcMain.handle('hubmind:launch-app', async (event, appName) => {
-    assertTrustedSender(event);
+  ipcMain.handle('hubmind:launch-app', async (event, appName, capability) => {
+    assertControlCapability(event, capability);
     if (typeof appName !== 'string' || !Object.prototype.hasOwnProperty.call(WINDOWS_APPS, appName)) throw new Error('That application is not on the approved launch list.');
     if (!fullControlActive) throw new Error('Start Jess Full Control before launching Windows apps.');
     await new Promise((resolve, reject) => { const child = spawn(WINDOWS_APPS[appName], [], { windowsHide: true, detached: true, stdio: 'ignore', shell: false }); child.once('error', reject); child.once('spawn', () => { child.unref(); resolve(true); }); });
     return { launched: true, app: appName };
   });
-  ipcMain.handle('hubmind:run-system-command', async (event, requestedCommand, requestedPurpose) => {
-    assertTrustedSender(event);
+  ipcMain.handle('hubmind:run-system-command', async (event, requestedCommand, requestedPurpose, capability) => {
+    assertControlCapability(event, capability);
     if (!fullControlActive) throw new Error('Start Jess Full Control before running Windows commands.');
     if (typeof requestedCommand !== 'string' || !requestedCommand.trim() || requestedCommand.length > 1200) throw new Error('Command must be between 1 and 1,200 characters.');
     if (typeof requestedPurpose !== 'string' || !requestedPurpose.trim() || requestedPurpose.length > 300) throw new Error('A short purpose is required.');
@@ -876,8 +903,8 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
     }));
     return { ran: true, purpose: requestedPurpose.trim(), command, ...result };
   });
-  ipcMain.handle('hubmind:run-readonly-command', async (event, commandName) => {
-    assertTrustedSender(event);
+  ipcMain.handle('hubmind:run-readonly-command', async (event, commandName, capability) => {
+    assertControlCapability(event, capability);
     if (typeof commandName !== 'string' || !Object.prototype.hasOwnProperty.call(READ_ONLY_COMMANDS, commandName)) throw new Error('That command is not on the approved read-only list.');
     if (!fullControlActive) throw new Error('Start Jess Full Control before running Windows diagnostics.');
     const [binary, args] = READ_ONLY_COMMANDS[commandName];
