@@ -1045,11 +1045,11 @@ async function startServer() {
         },
         {
           name: "manage_windows",
-          description: "Focus, close, minimize, maximize, restore, move, resize or snap a real Windows desktop window. Use an exact title or handle when possible; verify the resulting state.",
+          description: "Focus, close, minimize, maximize, restore, move, resize or snap a real Windows desktop window. Snap supports halves, corners, thirds, and an optional monitorId from list_windows; verify the resulting state.",
           parameters: { type: "OBJECT", properties: {
             action: { type: "STRING", enum: ["focus_window", "close_window", "minimize_window", "maximize_window", "restore_window", "move_window", "resize_window", "snap_window", "show_desktop", "minimize_all", "start_menu", "switch_window"] },
             title: { type: "STRING" }, handle: { type: "STRING" }, x: { type: "NUMBER" }, y: { type: "NUMBER" },
-            width: { type: "NUMBER" }, height: { type: "NUMBER" },
+            width: { type: "NUMBER" }, height: { type: "NUMBER" }, monitorId: { type: "STRING" },
             position: { type: "STRING", enum: ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right", "left-third", "center-third", "right-third"] }
           }, required: ["action"] }
         },
