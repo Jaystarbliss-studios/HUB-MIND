@@ -1174,6 +1174,21 @@ async function startServer() {
           parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
         },
         {
+          name: "chrome_back",
+          description: "Navigate the active Chrome tab back one history entry and report the resulting URL.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
+        },
+        {
+          name: "chrome_forward",
+          description: "Navigate the active Chrome tab forward one history entry and report the resulting URL.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
+        },
+        {
+          name: "chrome_screenshot",
+          description: "Capture the visible content of a Chrome tab. If the Live channel cannot interpret image bytes, use page text or a screen preview instead.",
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
+        },
+        {
           name: "chrome_read_page",
           description: "Read visible page text and title from a Chrome tab without bypassing browser protections. Requires Full Control.",
           parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" } } }
@@ -1196,7 +1211,7 @@ async function startServer() {
         {
           name: "chrome_scroll",
           description: "Scroll a Chrome page by a bounded amount. Requires Full Control.",
-          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, delta: { type: "NUMBER" } }, required: ["delta"] }
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, delta: { type: "NUMBER" }, axis: { type: "STRING", enum: ["vertical", "horizontal"] }, selector: { type: "STRING" }, x: { type: "NUMBER" }, y: { type: "NUMBER" } }, required: ["delta"] }
         },
         {
           name: "end_session",
