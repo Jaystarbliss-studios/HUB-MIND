@@ -796,6 +796,8 @@ app.whenReady().then(() => {
       if (safeArgs.destination !== undefined && (typeof safeArgs.destination !== 'string' || safeArgs.destination.length > 2048 || safeArgs.destination.includes('\\0'))) throw new Error('Destination path is invalid.');
       if (safeArgs.content !== undefined && (typeof safeArgs.content !== 'string' || safeArgs.content.length > 500000)) throw new Error('File content exceeds the 500,000-character limit.');
       if (safeArgs.pattern !== undefined && (typeof safeArgs.pattern !== 'string' || safeArgs.pattern.length > 120)) throw new Error('File search pattern is too long.');
+      if (safeArgs.offset !== undefined && (!Number.isInteger(safeArgs.offset) || safeArgs.offset < 0 || safeArgs.offset > 1048576)) throw new Error('File read offset must be an integer from 0 to 1,048,576.');
+      if (safeArgs.limit !== undefined && (!Number.isInteger(safeArgs.limit) || safeArgs.limit < 1000 || safeArgs.limit > 100000)) throw new Error('File read limit must be an integer from 1,000 to 100,000 characters.');
       if (['copy','move','rename'].includes(String(safeArgs.action)) && !String(safeArgs.destination || '').trim()) throw new Error('This file action requires a destination.');
     }
     const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','file_action','clipboard_action','system_power_action','open_path','media_key']);
