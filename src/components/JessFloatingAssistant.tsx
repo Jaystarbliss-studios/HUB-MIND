@@ -153,7 +153,7 @@ const MAX_JESS_TOOL_CALLS_PER_TURN = 12;
 function stableJessArgs(value: any): string {
   if (Array.isArray(value)) return '[' + value.map(stableJessArgs).join(',') + ']';
   if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + stableJessArgs(value[key])).join(',') + '}';
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? 'null';
 }
 function highRiskJessConfirmation(toolName: string, args: any): string | null {
   const name = String(toolName || '');
@@ -167,7 +167,7 @@ function highRiskJessConfirmation(toolName: string, args: any): string | null {
     return 'run a high-impact Windows command: ' + String(args?.command || '').slice(0, 220);
   }
   const normalized = name.replace(/_/g, ' ');
-  if (/(delete|remove|format|shutdown|restart|send email|send message|send information|transfer|payment|purchase|publish|submit|charge)/i.test(normalized)) {
+  if (/(delete|remove|format|shutdown|restart|send email|send message|send information|send direct information|transfer|payment|purchase|publish|submit|charge)/i.test(normalized)) {
     const details = ['recipient','to','email','subject','path','destination','file','document','amount','account','url','title']
       .map(key => args?.[key] ? key + '=' + String(args[key]).slice(0, 100) : '')
       .filter(Boolean).slice(0, 5).join(', ');
