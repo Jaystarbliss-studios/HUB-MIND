@@ -32,7 +32,8 @@ This document is a live checklist for the work requested in the October 2026 des
 - [ ] Chrome native host: authentication, installer registration, Settings setup/connection status, browser navigation/scroll/screenshots and non-managed-PC test.
 - [x] Jess prompt now receives the bundled package version and official workspace URL, and is instructed to verify older releases through official GitHub releases/tags rather than inventing them.
 - [ ] Confirm the installed executable version independently and verify historical release/tag retrieval works through the actual live internet tools.
-- [ ] Memory policy audit: always load relevant saved memories; remove capability-claim memories; build capabilities from the live tool registry.
+- [x] Memory service now filters narrowly matched assistant-capability claims from local and fetched memories and attempts to remove matching Firestore records; new matching claims are rejected as memories.
+- [ ] Verify relevant saved memories are injected on every voice turn and that the capability list is generated from the live tool registry.
 - [ ] Voice-only acceptance run on a real Windows desktop for every user-provided utterance.
 
 ## Windows elevation boundary
