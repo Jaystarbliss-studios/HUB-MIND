@@ -585,7 +585,7 @@ app.whenReady().then(() => {
       fullControlConsentGranted = true;
     }
     const result = persistJessPreferences(prefs, userId);
-    if (jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-everything') activateFullControl('settings-enabled');
+    if (jessPreferences.fullControlEnabled && jessPreferences.permissionMode !== 'ask') activateFullControl('settings-enabled');
     else if (!jessPreferences.fullControlEnabled || jessPreferences.permissionMode === 'ask') stopFullControl('settings-disabled');
     return { ...result, fullControlActive, startedAt: controlSessionStartedAt, liveState: { ...jessPreferences, fullControlActive, startedAt: controlSessionStartedAt } };
   });
