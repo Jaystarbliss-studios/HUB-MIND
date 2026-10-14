@@ -173,7 +173,7 @@ test('MCP environment only permits non-secret Windows-MCP settings and telemetry
   const config = sanitizeServerConfig({
     id: 'windows-mcp', name: 'Windows-MCP', transport: 'stdio', command: 'uvx',
     args: ['windows-mcp', 'serve'],
-    env: { ANONYMIZED_TELEMETRY: 'false', WINDOWS_MCP_EXCLUDE_TOOLS: 'PowerShell,Registry,Process,FileSystem' },
+    env: { ANONYMIZED_TELEMETRY: 'false', WINDOWS_MCP_EXCLUDE_TOOLS: 'PowerShell,Registry,Process,FileSystem,Screenshot' },
   }, 'user-a');
   assert.equal(config.env.ANONYMIZED_TELEMETRY, 'false');
   assert.equal(getSafeChildEnvironment(config.env).ANONYMIZED_TELEMETRY, 'false');
