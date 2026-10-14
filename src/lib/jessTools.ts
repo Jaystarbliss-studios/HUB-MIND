@@ -198,6 +198,14 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'show_hub_mind_workspace', description: 'Bring the Hub-Mind workspace window to the foreground while keeping the native Jess orb and transcript overlay visible above it. Use when the user asks to show/open/bring Hub-Mind back to the screen. This does not claim that a separate Windows app or website has been opened.', parameters: object({}) },
   { name: 'list_windows', description: 'List visible Windows desktop windows with titles, process names, bounds, state and foreground status. Requires Full Control Session.', parameters: object({}) },
   { name: 'manage_windows', description: 'Manage real Windows desktop windows (not just Hub-Mind panels): focus/bring to foreground, close, minimize, maximize, restore, move, resize or snap. If the target is ambiguous, call list_windows first and use its exact title/handle. Move/resize need coordinates/dimensions; snap position is left, right, top-left, top-right, bottom-left or bottom-right. After acting, use list_windows or read_windows_screen to verify the postcondition. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','minimize_all','show_desktop','start_menu','switch_window'] }, title: { type: 'string' }, handle: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, position: { type: 'string', enum: ['left','right','top-left','top-right','bottom-left','bottom-right'] } }, ['action']) },
+  { name: 'file_list', description: 'List files in the current user Desktop, Documents, Downloads or OneDrive folders. Returns names, sizes and timestamps.', parameters: object({ path: { type: 'string' } }, ['path']) },
+  { name: 'file_read', description: 'Read a text file up to 1 MB from the current user Desktop, Documents, Downloads or OneDrive folders.', parameters: object({ path: { type: 'string' } }, ['path']) },
+  { name: 'file_write', description: 'Create a new text file up to 1 MB in the current user Desktop, Documents, Downloads or OneDrive folders. Existing files are never overwritten.', parameters: object({ path: { type: 'string' }, text: { type: 'string' } }, ['path','text']) },
+  { name: 'file_copy', description: 'Copy a file within approved user folders. Existing destination files are never overwritten.', parameters: object({ path: { type: 'string' }, destination: { type: 'string' } }, ['path','destination']) },
+  { name: 'file_move', description: 'Move a file within approved user folders. Existing destination files are never overwritten.', parameters: object({ path: { type: 'string' }, destination: { type: 'string' } }, ['path','destination']) },
+  { name: 'file_rename', description: 'Rename a file within its current approved user folder. Existing files are never overwritten.', parameters: object({ path: { type: 'string' }, newName: { type: 'string' } }, ['path','newName']) },
+  { name: 'file_search', description: 'Search file names and optionally text contents in approved user folders. Results are bounded.', parameters: object({ path: { type: 'string' }, query: { type: 'string' }, searchContent: { type: 'boolean' } }, ['path','query']) },
+  { name: 'file_delete', description: 'Move a file or folder inside approved user folders to the Windows Recycle Bin. Never permanently deletes files.', parameters: object({ path: { type: 'string' } }, ['path']) },
   { name: 'clipboard_get', description: 'Read the current Windows clipboard text. Clipboard contents may contain private data; only use when the user asks.', parameters: object({}) },
   { name: 'clipboard_set', description: 'Set Windows clipboard text and read it back to verify the clipboard write.', parameters: object({ text: { type: 'string' } }, ['text']) },
   { name: 'paste', description: 'Paste text into the currently focused Windows application. Clipboard readback cannot prove the target app accepted it; never paste into password or payment fields.', parameters: object({ text: { type: 'string' } }) },
@@ -628,6 +636,17 @@ export async function executeJessTool(
       case 'open_local_windows_path':
       case 'launch_windows_application':
       case 'run_windows_command_native':
+      case 'file_list':
+      case 'file_read':
+      case 'file_write':
+      case 'file_copy':
+      case 'file_move':
+      case 'file_rename':
+      case 'file_search':
+      case 'file_delete':
+      case 'clipboard_get':
+      case 'clipboard_set':
+      case 'paste':
       case 'type_windows_text':
       case 'press_windows_keys':
       case 'control_system_volume':
@@ -641,6 +660,12 @@ export async function executeJessTool(
         if (!status?.active && !['get_windows_time','get_windows_system_info'].includes(name)) return { result: { success: false, error: 'Full Control Session is off. Say “Jess, full control” first, or use the tray Stop Jess control.' } };
         let method: string = name, payload: any = args || {};
         if (name === 'manage_windows') { method = String(args?.action || ''); payload = { title: args?.title, handle: args?.handle, x: args?.x, y: args?.y, width: args?.width, height: args?.height, position: args?.position }; }
+        if (name === 'clipboard_set' || name === 'paste') payload = { text: String(args?.text ?? '') };
+        if (name === 'file_write') payload = { path: String(args?.path || ''), text: String(args?.text ?? '') };
+        if (name === 'file_copy' || name === 'file_move') payload = { path: String(args?.path || ''), destination: String(args?.destination || '') };
+        if (name === 'file_rename') payload = { path: String(args?.path || ''), newName: String(args?.newName || '') };
+        if (name === 'file_search') payload = { path: String(args?.path || ''), query: String(args?.query || ''), searchContent: args?.searchContent === true };
+        if (['file_list','file_read','file_delete'].includes(name)) payload = { path: String(args?.path || '') };
         if (name === 'clipboard_set' || name === 'paste') payload = { text: String(args?.text ?? '') };
         if (name === 'control_mouse') { method = String(args?.action || ''); payload = { x: args?.x, y: args?.y, delta: args?.delta ?? -120, axis: args?.axis === 'horizontal' ? 'horizontal' : 'vertical' }; }
         if (name === 'drag_windows_mouse') { method = 'drag'; payload = { fromX: args?.fromX, fromY: args?.fromY, toX: args?.toX, toY: args?.toY }; }
