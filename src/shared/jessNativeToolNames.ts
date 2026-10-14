@@ -38,7 +38,8 @@ export const JESS_NATIVE_TOOL_NAMES = [
   'chrome_find_element',
   'chrome_click_element',
   'chrome_fill_field',
-  'chrome_scroll'
+  'chrome_scroll',
+  'chrome_capture_screenshot'
 ] as const;
 
 export const JESS_NATIVE_TOOL_NAME_SET: ReadonlySet<string> = new Set(JESS_NATIVE_TOOL_NAMES);
