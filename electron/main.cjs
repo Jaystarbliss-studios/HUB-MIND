@@ -575,12 +575,17 @@ app.whenReady().then(() => {
     if (fullControlActive && controlSessionUserId !== userId) throw new Error('Jess preferences cannot be changed for a different active user.');
     const enablingEverything = prefs?.permissionMode === 'allow-everything' && (!jessPreferences.fullControlEnabled || !fullControlConsentGranted);
     if (enablingEverything && !fullControlConsentGranted) {
-      const choice = await dialog.showMessageBox(getDialogParent(), {
-        type: 'warning', buttons: ['Cancel', 'Allow everything'], defaultId: 0, cancelId: 0,
-        title: 'Allow Jess Full Control?',
-        message: 'Allow Jess to operate Windows and connected browser tools without per-action prompts?',
-        detail: 'Jess can type, click, launch apps, modify files and run commands available to your Windows account. Destructive actions may be configured to require a spoken confirmation. You can stop Jess at any time using “Jess, stop”, Ctrl+Alt+Shift+J, or the tray menu. This does not bypass Windows secure desktop prompts.',
-      });
+      if (fullControlStartPending) return { ok: false, cancelled: true, pending: true, preferences: jessPreferences, fullControlActive };
+      fullControlStartPending = true;
+      let choice;
+      try {
+        choice = await dialog.showMessageBox(getDialogParent(), {
+          type: 'warning', buttons: ['Cancel', 'Allow everything'], defaultId: 0, cancelId: 0,
+          title: 'Allow Jess Full Control?',
+          message: 'Allow Jess to operate Windows and connected browser tools without per-action prompts?',
+          detail: 'Jess can type, click, launch apps, modify files and run commands available to your Windows account. Destructive actions may be configured to require a spoken confirmation. You can stop Jess at any time using “Jess, stop”, Ctrl+Alt+Shift+J, or the tray menu. This does not bypass Windows secure desktop prompts.',
+        });
+      } finally { fullControlStartPending = false; }
       if (choice.response !== 1) return { ok: false, cancelled: true, preferences: jessPreferences, fullControlActive };
       fullControlConsentGranted = true;
     }
