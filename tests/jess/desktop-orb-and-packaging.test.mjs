@@ -17,22 +17,22 @@ test('desktop orb is a compact draggable icon-only surface', () => {
   const orb = read('../../src/pages/CompanionPage.tsx');
   assert.match(main, /width: 96, height: 96/);
   assert.match(main, /APP_URL \+ '\/companion'/);
-  assert.match(main, /mainWindow\.on\('show', \(\) => \{ if \(companionWindow/);
+  assert.match(main, /mainWindow\.on\('show', \(\) => \{ createCompanionWindow\(\); positionCompanionBottomRightIfNeeded\(\); \}\)/);
   assert.match(orb, /JessOrbVisualizer/);
   assert.match(orb, /moveCompanionBy/);
   assert.match(orb, /is-transcript-visible/);
 });
 
-test('screen sharing uses Electron capture plumbing without a custom app modal', () => {
+test('screen sharing uses Electron capture plumbing and a thumbnail source picker', () => {
   const main = read('../../electron/main.cjs');
   const handlerStart = main.indexOf('setDisplayMediaRequestHandler');
   const handlerEnd = main.indexOf('const stopHotkeyRegistered', handlerStart);
   assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
   const handler = main.slice(handlerStart, handlerEnd);
   assert.match(handler, /desktopCapturer\.getSources/);
-  assert.match(handler, /useSystemPicker: true/);
-  assert.match(handler, /showMessageBox/);
-  assert.match(handler, /Share app:/);
+  assert.match(handler, /chooseDisplaySource\(unique\)/);
+  assert.match(handler, /screen-share-picker\.html/);
+  assert.match(handler, /thumbnailSize: \{ width: 320, height: 180 \}/);
   assert.match(handler, /callback\(selected \? \{ video: selected \} : \{\}\)/);
 });
 
