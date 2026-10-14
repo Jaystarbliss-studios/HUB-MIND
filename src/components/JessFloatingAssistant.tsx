@@ -163,8 +163,8 @@ function highRiskJessConfirmation(toolName: string, args: any): string | null {
     const destination = String(args?.destination || '').slice(0, 160);
     return (action === 'recycle' ? 'send file to the Recycle Bin' : action + ' file') + ': ' + target + (destination ? ' → ' + destination : '');
   }
-  if (name === 'run_windows_command_native' && /\b(format|shutdown|restart-computer|stop-computer|remove-item|remove\s|del\s|erase\s|diskpart|bcdedit|send-mailmessage)\b/i.test(String(args?.command || ''))) {
-    return 'run a high-impact Windows command: ' + String(args?.command || '').slice(0, 220);
+  if (name === 'control_windows_power' && ['shutdown','restart'].includes(action)) {
+    return 'schedule Windows ' + action + ' in 15 seconds; the action can be cancelled with shutdown /a before it begins';
   }
   const normalized = name.replace(/_/g, ' ');
   if (/(delete|remove|format|shutdown|restart|send email|send message|send information|send direct information|transfer|payment|purchase|publish|submit|charge)/i.test(normalized)) {
