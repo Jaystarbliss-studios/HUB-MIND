@@ -1,13 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { readJessExecutionEvents, type JessExecutionEvent } from '../services/jessExecutionRuntime';
-import { Brain, ShieldCheck, SlidersHorizontal, Save, Loader2, MonitorCog } from 'lucide-react';
+import { Brain, ShieldCheck, SlidersHorizontal, Loader2, MonitorCog } from 'lucide-react';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { JessMcpServersSettings } from '../components/JessMcpServersSettings';
 
 type JessPreferences = {
-  permissionMode: 'ask' | 'always-allow';
+  permissionMode: 'ask' | 'routine' | 'everything' | 'always-allow';
+  fullControlEnabled: boolean;
+  startInFullControl: boolean;
+  spokenConfirmationEnabled: boolean;
   memoryEnabled: boolean;
   contextEnabled: boolean;
   personalization: string;
@@ -15,7 +18,7 @@ type JessPreferences = {
   screenVerificationEnabled: boolean;
 };
 const DEFAULTS: JessPreferences = {
-  permissionMode: 'ask', memoryEnabled: true, contextEnabled: true,
+  permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, spokenConfirmationEnabled: true, memoryEnabled: true,
   personalization: '', webResearchEnabled: true, screenVerificationEnabled: true,
 };
 
@@ -26,15 +29,32 @@ export function JessSettings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [liveControl, setLiveControl] = useState<{ active: boolean; mode: string; fullControlEnabled: boolean; startedAt?: string | null }>({ active: false, mode: 'ask', fullControlEnabled: false });
+  const lastPersistedPrefs = useRef('');
   const [executionEvents, setExecutionEvents] = useState<JessExecutionEvent[]>([]);
 
   useEffect(() => {
     if (!profile?.id) { setLoading(false); return; }
     return onSnapshot(doc(db, 'users', profile.id, 'private', 'jessSettings'), snapshot => {
-      const loaded = { ...DEFAULTS, ...(snapshot.exists() ? snapshot.data() as Partial<JessPreferences> : {}) };
+      const raw = snapshot.exists() ? snapshot.data() as Partial<JessPreferences> : {};
+      const loaded: JessPreferences = {
+        ...DEFAULTS, ...raw,
+        permissionMode: raw.permissionMode === 'always-allow' ? 'routine' : (raw.permissionMode || DEFAULTS.permissionMode),
+      };
       setPrefs(loaded);
+      lastPersistedPrefs.current = JSON.stringify(loaded);
       try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(loaded)); } catch {}
-      void (window as any).hubMindDesktop?.setJessPreferences?.(loaded, profile.id).catch(() => {});
+      const desktop = (window as any).hubMindDesktop;
+      if (desktop?.isDesktopApp && typeof desktop.setJessPreferences === 'function') {
+        void desktop.setJessPreferences(loaded, profile.id).then((result: any) => {
+          if (result?.live) setLiveControl(result.live);
+          if (result?.cancelled) {
+            setPrefs(result.preferences || DEFAULTS);
+            lastPersistedPrefs.current = JSON.stringify(result.preferences || DEFAULTS);
+            setError('The desktop permission change was cancelled; the previous setting remains active.');
+          }
+        }).catch((e: any) => setError(e?.message || 'Could not sync desktop permission settings.'));
+      }
       setLoading(false);
     }, () => { setError('Could not load Jess settings. Check your connection and permissions.'); setLoading(false); });
   }, [profile?.id]);
@@ -53,20 +73,44 @@ export function JessSettings() {
   const update = <K extends keyof JessPreferences,>(key: K, value: JessPreferences[K]) => {
     setPrefs(current => ({ ...current, [key]: value }));
     setSaved(false);
+    setError('');
   };
-  const save = async () => {
-    if (!profile?.id) return;
-    setSaving(true); setError(''); setSaved(false);
-    try {
-      await setDoc(doc(db, 'users', profile.id, 'private', 'jessSettings'), {
-        ...prefs, updatedAt: new Date().toISOString(), updatedBy: profile.id,
-      }, { merge: true });
-      try { await (window as any).hubMindDesktop?.setJessPreferences?.(prefs, profile.id); } catch { /* Browser settings remain saved in the workspace. */ }
-      try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(prefs)); } catch {}
-      setSaved(true);
-    } catch (e: any) { setError(e?.message || 'Could not save Jess settings.'); }
-    finally { setSaving(false); }
-  };
+
+  useEffect(() => {
+    if (!profile?.id || loading) return;
+    const serialized = JSON.stringify(prefs);
+    if (serialized === lastPersistedPrefs.current) return;
+    const timer = window.setTimeout(async () => {
+      setSaving(true); setSaved(false); setError('');
+      try {
+        const desktop = (window as any).hubMindDesktop;
+        if (desktop?.isDesktopApp && typeof desktop.setJessPreferences === 'function') {
+          const result = await desktop.setJessPreferences(prefs, profile.id);
+          if (result?.live) setLiveControl(result.live);
+          if (result?.cancelled) {
+            const previous = result.preferences || DEFAULTS;
+            setPrefs(previous);
+            lastPersistedPrefs.current = JSON.stringify(previous);
+            setError('The desktop permission change was cancelled; the previous setting remains active.');
+            return;
+          }
+          if (result?.preferences) {
+            setPrefs(result.preferences);
+            lastPersistedPrefs.current = JSON.stringify(result.preferences);
+          } else lastPersistedPrefs.current = serialized;
+        }
+        const savedPrefs = prefs.permissionMode === 'always-allow' ? { ...prefs, permissionMode: 'routine' } : prefs;
+        await setDoc(doc(db, 'users', profile.id, 'private', 'jessSettings'), {
+          ...savedPrefs, updatedAt: new Date().toISOString(), updatedBy: profile.id,
+        }, { merge: true });
+        try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(savedPrefs)); } catch {}
+        lastPersistedPrefs.current = JSON.stringify(savedPrefs);
+        setSaved(true);
+      } catch (e: any) { setError(e?.message || 'Could not save Jess settings.'); }
+      finally { setSaving(false); }
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [prefs, profile?.id, loading]);
 
   if (loading) return <div className="p-8 text-slate-400 flex items-center gap-2"><Loader2 className="animate-spin" size={18}/> Loading Jess settings…</div>;
   return <div className="min-h-full bg-slate-950 text-slate-100 p-5 md:p-8">
@@ -79,8 +123,17 @@ export function JessSettings() {
       <div className="space-y-5">
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
           <div className="flex items-center gap-3 mb-4"><ShieldCheck className="text-teal-300" size={20}/><div><h2 className="font-semibold">Desktop permissions</h2><p className="text-xs text-slate-400 mt-1">Choose how often Jess asks before native actions.</p></div></div>
-          <label className="flex gap-3 rounded-xl border border-slate-800 p-4 cursor-pointer mb-3"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='ask'} onChange={() => update('permissionMode','ask')} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Always ask</strong><span className="block text-xs text-slate-400 mt-1">Confirm app launches and system commands each time.</span></span></label>
-          <label className="flex gap-3 rounded-xl border border-teal-400/25 bg-teal-400/5 p-4 cursor-pointer"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='always-allow'} onChange={() => update('permissionMode','always-allow')} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Always allow routine actions during Full Control</strong><span className="block text-xs text-slate-400 mt-1">Jess can launch approved apps and perform supported, non-destructive actions without repeated prompts. Destructive or elevated actions remain blocked or require explicit confirmation.</span></span></label>
+          <label className="flex items-center justify-between gap-4 py-3 border-b border-slate-800"><span><strong className="block text-sm">Full Control enabled</strong><span className="block text-xs text-slate-400 mt-1">Allow Jess to use the native Windows agent when a session is active.</span></span><input type="checkbox" checked={prefs.fullControlEnabled} onChange={e => update('fullControlEnabled', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
+          <p className="text-xs uppercase tracking-wider text-slate-500 mt-4 mb-2">Permission mode</p>
+          <label className="flex gap-3 rounded-xl border border-slate-800 p-4 cursor-pointer mb-3"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='ask'} onChange={() => update('permissionMode','ask')} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Ask</strong><span className="block text-xs text-slate-400 mt-1">Ask before each action that changes the desktop.</span></span></label>
+          <label className="flex gap-3 rounded-xl border border-slate-800 p-4 cursor-pointer mb-3"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='routine' || prefs.permissionMode==='always-allow'} onChange={() => update('permissionMode','routine')} className="mt-1 accent-teal-400"/><span><strong className="block text-sm">Allow routine</strong><span className="block text-xs text-slate-400 mt-1">Routine window, mouse, typing and app actions do not show repeated prompts. Sensitive actions remain restricted.</span></span></label>
+          <label className="flex gap-3 rounded-xl border border-amber-300/25 bg-amber-300/5 p-4 cursor-pointer"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='everything'} onChange={() => update('permissionMode','everything')} className="mt-1 accent-amber-300"/><span><strong className="block text-sm">Allow everything</strong><span className="block text-xs text-slate-400 mt-1">After a one-time native confirmation, supported desktop and MCP actions can run without repeated in-app prompts. Windows UAC secure desktop remains protected.</span></span></label>
+          <label className="flex items-center justify-between gap-4 py-3 border-b border-slate-800 mt-4"><span><strong className="block text-sm">Start in Full Control when Hub-Mind launches</strong><span className="block text-xs text-slate-400">Starts after the signed-in workspace loads, if Full Control is enabled.</span></span><input type="checkbox" checked={prefs.startInFullControl} onChange={e => update('startInFullControl', e.target.checked)} className="w-5 h-5 accent-teal-400" disabled={!prefs.fullControlEnabled}/></label>
+          <label className="flex items-center justify-between gap-4 py-3"><span><strong className="block text-sm">Ask out loud before high-risk actions</strong><span className="block text-xs text-slate-400">Keep this enabled to require spoken confirmation before destructive or external actions.</span></span><input type="checkbox" checked={prefs.spokenConfirmationEnabled} onChange={e => update('spokenConfirmationEnabled', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
+          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs text-slate-400" aria-live="polite">
+            <div className="flex items-center gap-2"><span className={liveControl.active ? 'inline-block h-2 w-2 rounded-full bg-emerald-400' : 'inline-block h-2 w-2 rounded-full bg-slate-600'}/><span>Live state: {liveControl.active ? 'Full Control active' : 'Full Control inactive'} · mode {liveControl.mode || prefs.permissionMode} · {liveControl.fullControlEnabled ? 'enabled' : 'disabled'}</span></div>
+            <p className="mt-1">{saving ? 'Saving changes…' : saved ? 'Changes saved automatically' : 'Changes save automatically'}</p>
+          </div>
         </section>
         <JessMcpServersSettings userId={profile?.id || ''} />
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
@@ -102,7 +155,7 @@ export function JessSettings() {
           <label className="block mt-4"><span className="text-sm font-medium">Personalization instructions</span><textarea value={prefs.personalization} onChange={e => update('personalization',e.target.value.slice(0,2000))} rows={4} maxLength={2000} placeholder="For example: be concise, explain unfamiliar terms, prefer keyboard shortcuts, and use my preferred writing tone." className="mt-2 w-full resize-y rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-100 placeholder:text-slate-600 focus:border-teal-400 focus:outline-none"/></label>
         </section>
         <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 flex gap-3"><MonitorCog className="text-slate-400 shrink-0" size={19}/><p className="text-xs leading-relaxed text-slate-400">Windows system access is available only in the signed-in desktop app during an active Full Control session. Browser and Chrome-app permissions are limited by the browser sandbox.</p></section>
-        <div className="flex items-center justify-end gap-3"><span aria-live="polite" className="text-xs text-emerald-300">{saved ? 'Settings saved' : ''}</span><button onClick={() => void save()} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-teal-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:opacity-60">{saving ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Save Jess settings</button></div>
+
       </div>
     </div>
   </div>;
