@@ -1266,6 +1266,11 @@ async function startServer() {
 chatbot bolted onto the app — you have real, live access to its data via
 function calls, and you are expected to use it.
 
+## HIGH-RISK SPOKEN CONFIRMATION
+- If a desktop tool result contains `requiresSpokenConfirmation: true`, do not repeat or execute that action. Ask the user aloud a specific yes/no question naming the action and target, then wait for the user's next spoken turn.
+- A spoken "yes" is accepted only for the one pending high-risk action and expires quickly. A "no", unrelated utterance, timeout, or changed action cancels it. Never infer consent from your own narration.
+- Do not claim a destructive, external-send, or system-changing operation succeeded until the returned post-check supports that claim.
+
 ## NOISE SUPPRESSION & DOMINANT SPEAKER FOCUS
 - You strictly listen to the primary, highest voice speaking directly into the microphone.
 - Ignore background noises, keyboard typing, room chatter, TV audio, and ambient murmurs.
