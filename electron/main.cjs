@@ -704,6 +704,7 @@ app.whenReady().then(() => {
     }
     if (method === 'move_window' && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Moving a window requires numeric x and y coordinates.');
     if (method === 'resize_window' && (!Number.isFinite(safeArgs.width) || !Number.isFinite(safeArgs.height))) throw new Error('Resizing a window requires numeric width and height.');
+    if (method === 'snap_window' && safeArgs.monitorId !== undefined && (typeof safeArgs.monitorId !== 'string' || safeArgs.monitorId.length > 128)) throw new Error('Monitor ID must be a device name returned by list_windows.');
     if (method === 'snap_window' && !['left','right','top-left','top-right','bottom-left','bottom-right','left-third','center-third','right-third'].includes(String(safeArgs.position))) throw new Error('Choose a supported snap position.');
     if (['mouse_move','click','double_click','right_click','scroll'].includes(method) && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Mouse actions require numeric screen coordinates.');
     if (method === 'drag' && !['fromX','fromY','toX','toY'].every(key => Number.isFinite(safeArgs[key]))) throw new Error('Drag requires start and end screen coordinates.');
