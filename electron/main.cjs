@@ -645,7 +645,7 @@ app.whenReady().then(() => {
     assertTrustedSender(event);
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
     if (!['get_time','system_info'].includes(method) && (!fullControlActive || !controlSessionSecret)) throw new Error('Native action blocked because Jess Full Control is not active.');
-    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path']);
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method, { userId, executionId: correlationId });
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
@@ -677,15 +677,15 @@ app.whenReady().then(() => {
     }
     if (method === 'move_window' && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Moving a window requires numeric x and y coordinates.');
     if (method === 'resize_window' && (!Number.isFinite(safeArgs.width) || !Number.isFinite(safeArgs.height))) throw new Error('Resizing a window requires numeric width and height.');
-    if (method === 'snap_window' && !['left','right','top-left','top-right','bottom-left','bottom-right'].includes(String(safeArgs.position))) throw new Error('Choose a supported snap position.');
+    if (method === 'snap_window' && !['left','right','top-left','top-right','bottom-left','bottom-right','left-third','center-third','right-third'].includes(String(safeArgs.position))) throw new Error('Choose a supported snap position.');
     if (['mouse_move','click','double_click','right_click','scroll'].includes(method) && (!Number.isFinite(safeArgs.x) || !Number.isFinite(safeArgs.y))) throw new Error('Mouse actions require numeric screen coordinates.');
     if (method === 'drag' && !['fromX','fromY','toX','toY'].every(key => Number.isFinite(safeArgs[key]))) throw new Error('Drag requires start and end screen coordinates.');
     if (method === 'type_text' && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 10000)) throw new Error('Text must be a string no longer than 10,000 characters.');
     if (method === 'press_keys' && (typeof safeArgs.keys !== 'string' || !safeArgs.keys.trim() || safeArgs.keys.length > 80)) throw new Error('Provide a key combination under 80 characters.');
     if (method === 'launch_app' && (typeof safeArgs.name !== 'string' || !safeArgs.name.trim() || safeArgs.name.length > 160)) throw new Error('Provide an application name under 160 characters.');
     if (method === 'open_path' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid local file path.');
-    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key']);
-    const routineActions = new Set(['list_windows','focus_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','open_path','media_key','screenshot','read_screen_text','find_ui_element']);
+    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key']);
+    const routineActions = new Set(['list_windows','focus_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','open_path','media_key','screenshot','read_screen_text','find_ui_element']);
     const allowEverything = fullControlActive && !!controlSessionSecret && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-everything';
     const allowRoutine = fullControlActive && !!controlSessionSecret && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-routine' && routineActions.has(method);
     const alwaysAllowed = allowEverything || allowRoutine;
