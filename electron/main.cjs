@@ -333,7 +333,7 @@ function showMain() {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
-  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+  createCompanionWindow(true);
 }
 
 async function showMainVerified(timeoutMs = 5000) {
@@ -365,7 +365,7 @@ async function showWorkspaceVerified() {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
-  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+  createCompanionWindow(true);
   return mainWindow.isVisible();
 }
 
@@ -1015,7 +1015,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
   ipcMain.handle('hubmind:show-workspace', async (event) => { assertTrustedSender(event); return await showWorkspaceVerified(); });
-  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); return true; });
+  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); return !!companionWindow && !companionWindow.isDestroyed() && companionWindow.isVisible(); });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionDismissed = true; companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:set-companion-transcript-visible', (event, _visible) => {
     assertTrustedSender(event);
