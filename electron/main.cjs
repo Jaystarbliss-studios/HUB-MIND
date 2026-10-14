@@ -592,6 +592,23 @@ app.whenReady().then(() => {
     const skipApproval = fullControlActive && jessPreferencesUserId === owner && controlSessionUserId === owner &&
       jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'everything' && allowEverythingConsentGranted;
     if (skipApproval) assertControlCapability(event, capability);
+    if (skipApproval && jessPreferences.spokenConfirmationEnabled) {
+      const riskLabel = String(resolved.entry.originalName || '') + ' ' + String(resolved.entry.description || '');
+      const highRiskMcp = /(delete|remove|format|shutdown|send|email|message|post|publish|transfer|payment|purchase|execute|command|write|modify|update|submit|install|deploy)/i.test(riskLabel);
+      if (highRiskMcp) {
+        const fingerprint = spokenActionFingerprint('mcp:' + resolved.entry.originalName, args && typeof args === 'object' ? args : {});
+        if (grantedSpokenConfirmation && grantedSpokenConfirmation.userId === owner && grantedSpokenConfirmation.fingerprint === fingerprint && grantedSpokenConfirmation.expiresAt >= Date.now()) {
+          grantedSpokenConfirmation = null;
+        } else {
+          if (pendingSpokenConfirmation && pendingSpokenConfirmation.expiresAt >= Date.now() && pendingSpokenConfirmation.fingerprint !== fingerprint) {
+            return { success: false, requiresSpokenConfirmation: true, error: 'Another high-risk action is waiting for a spoken yes or no.' };
+          }
+          pendingSpokenConfirmation = { fingerprint, method: 'mcp:' + resolved.entry.originalName, userId: owner, createdAt: Date.now(), expiresAt: Date.now() + 45000 };
+          auditNativeAction({ event: 'high-risk-spoken-confirmation-requested', userId: owner, method: pendingSpokenConfirmation.method, fingerprint });
+          return { success: false, requiresSpokenConfirmation: true, confirmationPrompt: 'Ask the user aloud whether to proceed with the external action ' + resolved.entry.originalName + '. Do not execute until the user answers yes.', method: pendingSpokenConfirmation.method };
+        }
+      }
+    }
     if (!skipApproval) {
       const details = JSON.stringify(args && typeof args === 'object' ? args : {}).slice(0, 1600);
       const choice = await dialog.showMessageBox(getDialogParent(), {
@@ -815,7 +832,7 @@ app.whenReady().then(() => {
     if (method === 'file_rename' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || typeof safeArgs.newName !== 'string' || !safeArgs.newName.trim() || safeArgs.newName.length > 240)) throw new Error('File rename requires a source path and a valid new file name.');
     if (method === 'file_search' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || typeof safeArgs.query !== 'string' || !safeArgs.query.trim() || safeArgs.query.length > 300)) throw new Error('File search requires a folder and a query.');
     if (method === 'clipboard_get' && !fullControlActive) throw new Error('Full Control is required to read the clipboard.');
-    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window']);
+    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window','file_write','file_copy','file_move','file_rename']);
     const highRiskActions = new Set(['close_window', 'run_command', 'open_path', 'file_delete']);
     const sameOwner = fullControlActive && jessPreferencesUserId === controlSessionUserId && controlSessionUserId === userId;
     let spokenApproved = false;
