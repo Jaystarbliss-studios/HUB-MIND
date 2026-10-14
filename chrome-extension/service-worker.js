@@ -73,8 +73,39 @@ async function dispatch(message) {
     }
     case 'chrome_scroll': {
       const tab = await tabById(a.tabId);
-      const [result] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: (delta) => { const before = window.scrollY; window.scrollBy({ top: delta, behavior: 'instant' }); return { before, after: window.scrollY, max: document.documentElement.scrollHeight - window.innerHeight, title: document.title }; }, args: [Number(a.delta) || 600] });
-      return { ok: true, verified: result?.result?.before !== result?.result?.after, evidence: { tabId: tab.id, ...result?.result } };
+      const delta = Number.isFinite(Number(a.delta)) ? Math.max(-10000, Math.min(10000, Number(a.delta))) : 600;
+      const axis = a.axis === 'x' ? 'x' : 'y';
+      const target = String(a.target || '').slice(0, 300);
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: ({ delta, axis, target }) => {
+          const visible = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden' && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth; };
+          const candidates = Array.from(document.querySelectorAll('body, main, aside, section, article, div, [role="main"], [role="dialog"], [data-scrollable]')).filter(el => {
+            if (!(el instanceof HTMLElement) || !visible(el)) return false;
+            const style = getComputedStyle(el);
+            const overflow = axis === 'x' ? style.overflowX : style.overflowY;
+            const extent = axis === 'x' ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight;
+            return extent > 8 && (overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay' || el === document.body || el === document.documentElement);
+          }).map(el => {
+            const label = [el.getAttribute('aria-label'), el.getAttribute('title'), el.id, typeof el.className === 'string' ? el.className : '', (el.innerText || '').slice(0, 120)].join(' ').toLowerCase();
+            const r = el.getBoundingClientRect();
+            const extent = axis === 'x' ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight;
+            return { el, label, extent, area: r.width * r.height, tag: el.tagName, id: el.id || '', className: typeof el.className === 'string' ? el.className.slice(0, 160) : '', before: axis === 'x' ? el.scrollLeft : el.scrollTop, max: extent };
+          });
+          const needle = target.toLowerCase().trim();
+          candidates.sort((a,b) => {
+            const am = needle && a.label.includes(needle) ? 1 : 0, bm = needle && b.label.includes(needle) ? 1 : 0;
+            return bm-am || b.area-a.area;
+          });
+          const chosen = candidates.find(c => !needle || c.label.includes(needle)) || (!needle ? candidates[0] : null);
+          if (!chosen) return { changed: false, error: needle ? 'No scrollable container matched that target. Omit target to scroll the largest visible container.' : 'No scrollable container was found.', candidates: candidates.slice(0, 8).map(c => ({ tag:c.tag,id:c.id,className:c.className,max:c.max })) };
+          if (axis === 'x') chosen.el.scrollBy({ left: delta, behavior: 'instant' }); else chosen.el.scrollBy({ top: delta, behavior: 'instant' });
+          const after = axis === 'x' ? chosen.el.scrollLeft : chosen.el.scrollTop;
+          return { changed: chosen.before !== after, before: chosen.before, after, max: chosen.max, axis, delta, target: target || null, container: { tag: chosen.tag, id: chosen.id, className: chosen.className }, title: document.title, url: location.href };
+        },
+        args: [{ delta, axis, target }],
+      });
+      return { ok: !!result?.result && !result.result.error, verified: result?.result?.changed === true, evidence: { tabId: tab.id, ...result?.result } };
     }
     case 'chrome_read_page': {
       const tab = await tabById(a.tabId);
