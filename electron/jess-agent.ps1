@@ -171,7 +171,23 @@ function Invoke-Action($q){
     default {throw 'Unsupported file action'}
    }
   }
- 'run_command' {$command=[string]$a.command;if($command.Length -gt 4000){throw 'Command limited to 4,000 characters'};$blocked='(?i)\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+/w)\b';if($command -match $blocked){throw 'Potentially destructive command blocked'};$out=& powershell.exe -NoLogo -NoProfile -NonInteractive -Command $command 2>&1|Out-String;return @{ok=($LASTEXITCODE -eq 0);verified=$false;evidence=@{output=$out.Substring(0,[Math]::Min(12000,$out.Length));exitCode=$LASTEXITCODE;note='Output captured; side effects not independently verified'}}}
+ 'run_command' {
+   $command=[string]$a.command
+   if($command.Length -gt 4000){throw 'Command limited to 4,000 characters'}
+   $blocked='(?i)\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+/w)\b'
+   if($command -match $blocked -or $command -match '\.(ps1|bat|cmd|vbs|js|hta)\b' -or $command -match '(?i)\b(invoke-expression|iex|start-process\s+.*-verb\s+runas)\b'){throw 'Potentially destructive or elevated command blocked'}
+   $timeoutMs=10000;if($null -ne $a.timeoutMs){$timeoutMs=[Math]::Max(1000,[Math]::Min(10000,[int]$a.timeoutMs))}
+   $encoded=[Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
+   $stamp=[Guid]::NewGuid().ToString('N');$outFile=Join-Path $env:TEMP ('jess-command-'+$stamp+'.out');$errFile=Join-Path $env:TEMP ('jess-command-'+$stamp+'.err');$proc=$null
+   try{
+    $proc=Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',$encoded) -PassThru -WindowStyle Hidden -RedirectStandardOutput $outFile -RedirectStandardError $errFile -ErrorAction Stop
+    $exited=$proc.WaitForExit($timeoutMs)
+    if(!$exited){try{& taskkill.exe /PID $proc.Id /T /F 2>$null|Out-Null}catch{};try{[void]$proc.WaitForExit(2000)}catch{};$out='';$err='';if(Test-Path -LiteralPath $outFile){$out=[System.IO.File]::ReadAllText($outFile)};if(Test-Path -LiteralPath $errFile){$err=[System.IO.File]::ReadAllText($errFile)};return @{ok=$false;verified=$false;evidence=@{output=$out.Substring(0,[Math]::Min(10000,$out.Length));stderr=$err.Substring(0,[Math]::Min(2000,$err.Length));exitCode=$null;timeout=true;timeoutMs=$timeoutMs;note='Command timed out and the process tree was terminated'}}}
+    $out='';$err='';if(Test-Path -LiteralPath $outFile){$out=[System.IO.File]::ReadAllText($outFile)};if(Test-Path -LiteralPath $errFile){$err=[System.IO.File]::ReadAllText($errFile)}
+    $exitCode=$proc.ExitCode
+    return @{ok=($exitCode -eq 0);verified=$false;evidence=@{output=$out.Substring(0,[Math]::Min(10000,$out.Length));stderr=$err.Substring(0,[Math]::Min(2000,$err.Length));exitCode=$exitCode;timeout=false;timeoutMs=$timeoutMs;note='Output captured; side effects are not independently verified'}}
+   }finally{if($proc){$proc.Dispose()};Remove-Item -LiteralPath $outFile,$errFile -Force -ErrorAction SilentlyContinue}
+  }
  default {throw ('Unknown method: '+$q.method)}
  }
 }
