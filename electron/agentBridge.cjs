@@ -4,6 +4,14 @@ const { app } = require('electron');
 const { randomUUID } = require('node:crypto');
 let child = null, nextId = 0, buffer = '';
 const pending = new Map();
+const MAX_RESPONSE_LINE_CHARS = 2 * 1024 * 1024;
+const MAX_STDERR_CHARS = 1200;
+function audit(event, details = {}) {
+ try {
+  const file = path.join(app.getPath('userData'), 'jess-agent-runtime.jsonl');
+  require('node:fs').appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), event, ...details }) + '\\n', { encoding: 'utf8', mode: 0o600 });
+ } catch (error) { console.warn('[Jess agent audit] Could not write runtime log:', error?.message || error); }
+}
 function ensureAgent() {
  if (child && child.exitCode === null) return child;
  const scriptPath = app.isPackaged
