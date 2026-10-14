@@ -270,6 +270,7 @@ export function JessFloatingAssistant() {
     message?: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [chromeScreenshotPreview, setChromeScreenshotPreview] = useState<{ dataUrl: string; title: string; url: string; capturedAt: string } | null>(null);
 
   const stopScreenSharing = useCallback(async (announce = false) => {
     const share = screenShareRef.current;
@@ -631,6 +632,16 @@ export function JessFloatingAssistant() {
               },
             };
           }
+        }
+
+        if (fc.name === 'chrome_capture_screenshot' && result?.result?.evidence?.dataUrl) {
+          const evidence = result.result.evidence;
+          setChromeScreenshotPreview({
+            dataUrl: String(evidence.dataUrl),
+            title: String(evidence.title || 'Chrome tab'),
+            url: String(evidence.url || ''),
+            capturedAt: String(evidence.capturedAt || new Date().toISOString()),
+          });
         }
 
         if (result.actionPayload?.type === 'screen_share') {
@@ -1337,6 +1348,17 @@ export function JessFloatingAssistant() {
             </div>
           </div>
         </div>
+      )}
+
+      {chromeScreenshotPreview && (
+        <section className="fixed bottom-5 right-5 z-[10010] w-[min(92vw,560px)] overflow-hidden rounded-2xl border border-teal-300/30 bg-slate-950/95 text-slate-100 shadow-2xl shadow-slate-950/70 backdrop-blur-xl" role="dialog" aria-label="Chrome tab screenshot preview">
+          <header className="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
+            <div className="min-w-0"><div className="text-xs font-semibold uppercase tracking-wider text-teal-200">Chrome tab preview</div><div className="mt-1 truncate text-sm font-semibold">{chromeScreenshotPreview.title}</div><div className="mt-1 truncate text-[10px] text-slate-500">{chromeScreenshotPreview.url}</div></div>
+            <button type="button" onClick={() => setChromeScreenshotPreview(null)} className="shrink-0 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-800" aria-label="Close screenshot preview">Close</button>
+          </header>
+          <img src={chromeScreenshotPreview.dataUrl} alt={`Compressed screenshot preview of ${chromeScreenshotPreview.title}`} className="block max-h-[320px] w-full bg-black object-contain" />
+          <p className="px-4 py-2 text-[10px] leading-relaxed text-slate-500">Preview captured {chromeScreenshotPreview.capturedAt}. Jess receives the page metadata, not visual pixels from this preview; use page text or OCR for content analysis.</p>
+        </section>
       )}
 
       {/* Delete Confirmation Modal (User has the final say) */}
