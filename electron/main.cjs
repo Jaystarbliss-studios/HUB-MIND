@@ -748,6 +748,7 @@ app.whenReady().then(() => {
     if (method === 'media_key' && !['volume_up','volume_down','volume_mute','brightness_up','brightness_down'].includes(String(safeArgs.action))) throw new Error('Unsupported volume or brightness action.');
     if (method === 'run_command') {
       const command = String(safeArgs.command || '');
+      if (safeArgs.timeoutMs !== undefined && (!Number.isFinite(safeArgs.timeoutMs) || safeArgs.timeoutMs < 1000 || safeArgs.timeoutMs > 10000)) throw new Error('Command timeout must be between 1,000 and 10,000 milliseconds.');
       if (command.length > 4000) throw new Error('Command exceeds the 4,000-character limit.');
       // This runner uses the current Windows user's token only. Refuse common
       // destructive aliases and script-based bypasses; high-risk operations
