@@ -543,18 +543,18 @@ app.whenReady().then(() => {
     const resolved = mcpBridge.resolveTool(owner, String(modelToolName || ''));
     if (!resolved) return { success: false, error: 'MCP tool is not available for this account or its server is disconnected.' };
     const details = JSON.stringify(args && typeof args === 'object' ? args : {}).slice(0, 1600);
-    const choice = await dialog.showMessageBox(getDialogParent(), {
-      type: 'warning',
-      buttons: ['Cancel tool call', 'Allow this call'],
-      defaultId: 0,
-      cancelId: 0,
-      title: 'Approve Jess MCP tool call?',
-      message: resolved.entry.serverName + ' wants to run ' + resolved.entry.originalName,
-      detail: 'Tool arguments:\n' + details + '\n\nExternal MCP tools are not trusted by default. Approve only if you recognize this server and intended action.',
-    });
-    if (choice.response !== 1) return { success: false, cancelled: true, error: 'The MCP tool call was cancelled by the user.' };
+    const allowMcpWithoutPrompt = fullControlActive && !!controlSessionSecret && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-everything';
+    if (!allowMcpWithoutPrompt) {
+      const choice = await dialog.showMessageBox(getDialogParent(), {
+        type: 'warning', buttons: ['Cancel tool call', 'Allow this call'], defaultId: 0, cancelId: 0,
+        title: 'Approve Jess MCP tool call?',
+        message: resolved.entry.serverName + ' wants to run ' + resolved.entry.originalName,
+        detail: 'Tool arguments:\n' + details + '\n\nExternal MCP tools are not trusted by default. Approve only if you recognize this server and intended action.',
+      });
+      if (choice.response !== 1) return { success: false, cancelled: true, error: 'The MCP tool call was cancelled by the user.' };
+    }
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
-    auditNativeAction({ event: 'mcp-tool-call-approved', serverId: resolved.entry.serverId, toolName: resolved.entry.originalName, executionId: correlationId, userId: owner });
+    auditNativeAction({ event: allowMcpWithoutPrompt ? 'mcp-tool-call-auto-allowed' : 'mcp-tool-call-approved', serverId: resolved.entry.serverId, toolName: resolved.entry.originalName, executionId: correlationId, userId: owner });
     try {
       const result = await mcpBridge.callTool(owner, String(modelToolName), args);
       if (result?.isError === true) {
