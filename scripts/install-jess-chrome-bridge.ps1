@@ -89,6 +89,7 @@ if ($ForceInstallExtension) {
 }
 
 Write-Output $(if ($MachineWide) { 'Jess Chrome native host registered machine-wide (elevated setup).' } else { 'Jess Chrome native host registered for the current Windows user.' })
+Write-Output "Setup script path: $PSCommandPath"
 Write-Output "1. Open chrome://extensions in Chrome."
 Write-Output '2. Enable Developer mode.'
 if (-not $ForceInstallExtension) { Write-Output "3. Select Load unpacked and choose: $extensionTarget" } else { Write-Output '3. Chrome will force-install the unlisted store extension once it is published and Chrome refreshes policy.' }
