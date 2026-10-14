@@ -78,6 +78,40 @@ function Find-Window($a){
  }
  return $null
 }
+function Get-FocusedUiState {
+ $focused=$null;$windowHandle=[JessWin32]::GetForegroundWindow().ToInt64();$name='';$automationId='';$value='';$controlType='';$bounds=$null
+ try{
+  $focused=[System.Windows.Automation.AutomationElement]::FocusedElement
+  if($focused){
+   $name=[string]$focused.Current.Name;$automationId=[string]$focused.Current.AutomationId;$controlType=[string]$focused.Current.ControlType.ProgrammaticName
+   $rect=$focused.Current.BoundingRectangle;$bounds=@{x=[int]$rect.X;y=[int]$rect.Y;width=[int]$rect.Width;height=[int]$rect.Height}
+   $pattern=$null
+   if($focused.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)){$value=[string]$pattern.Current.Value}
+   else{$pattern=$null;if($focused.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern,[ref]$pattern)){$value=[string]$pattern.DocumentRange.GetText(10000)}}
+  }
+ }catch{}
+ return @{windowHandle=$windowHandle;name=$name;automationId=$automationId;controlType=$controlType;value=$value;bounds=$bounds}
+}
+function Get-ForegroundUiSnapshot {
+ $h=[JessWin32]::GetForegroundWindow();if($h -eq [IntPtr]::Zero){return ''}
+ $lines=New-Object System.Collections.Generic.List[string]
+ try{
+  $root=[System.Windows.Automation.AutomationElement]::FromHandle($h)
+  $cond=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::IsControlElementProperty,$true)
+  $all=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,$cond)
+  for($i=0;$i -lt [Math]::Min($all.Count,600);$i++){
+   try{
+    $el=$all.Item($i);$name=[string]$el.Current.Name
+    if($name){$lines.Add($name)}
+    $pattern=$null
+    if($el.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)){$val=[string]$pattern.Current.Value;if($val){$lines.Add('VALUE:'+ $val.Substring(0,[Math]::Min(500,$val.Length)))}}
+    $pattern=$null
+    if($el.TryGetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern,[ref]$pattern)){$scroll=$pattern.Current;$lines.Add('SCROLL:'+ [string]$scroll.VerticalScrollPercent+':'+[string]$scroll.HorizontalScrollPercent)}
+   }catch{}
+  }
+ }catch{}
+ return ($lines -join [Environment]::NewLine).Substring(0,[Math]::Min(12000,($lines -join [Environment]::NewLine).Length))
+}
 function Resolve-UserFilePath($requested,$mustExist=$false){
  if($null -eq $requested -or [string]$requested -eq '' -or ([string]$requested).Length -gt 2048 -or ([string]$requested).Contains([char]0)){throw 'Provide a valid user-file path'}
  $full=[System.IO.Path]::GetFullPath([string]$requested)
@@ -140,8 +174,8 @@ if($q.method -eq 'move_to_monitor'){
  {$_ -in 'click','double_click','right_click'} {[void][JessWin32]::SetCursorPos([int]$a.x,[int]$a.y);$down=2;$up=4;if($q.method -eq 'right_click'){$down=8;$up=16};$count=1;if($q.method -eq 'double_click'){$count=2};1..$count|ForEach-Object{[JessWin32]::mouse_event($down,0,0,0,[UIntPtr]::Zero);[JessWin32]::mouse_event($up,0,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 70};return @{ok=$true;verified=$false;evidence=@{x=$a.x;y=$a.y;note='Input injected; UI effect not independently confirmed'}}}
  'scroll' {$delta=[int]$a.delta;if($delta -lt -12000 -or $delta -gt 12000){throw 'Scroll delta must be between -12000 and 12000'};[void][JessWin32]::SetCursorPos([int]$a.x,[int]$a.y);$horizontal=([string]$a.axis -eq 'horizontal');$bits=[JessWin32]::SendWheel($delta,$horizontal);Start-Sleep -Milliseconds 100;return @{ok=$true;verified=$false;evidence=@{x=$a.x;y=$a.y;delta=$delta;axis=$(if($horizontal){'horizontal'}else{'vertical'});unsignedWheelData=$bits}}}
  'drag' {[void][JessWin32]::SetCursorPos([int]$a.fromX,[int]$a.fromY);[JessWin32]::mouse_event(2,0,0,0,[UIntPtr]::Zero);$steps=12;for($i=1;$i -le $steps;$i++){$x=[int]($a.fromX+($a.toX-$a.fromX)*$i/$steps);$y=[int]($a.fromY+($a.toY-$a.fromY)*$i/$steps);[void][JessWin32]::SetCursorPos($x,$y);Start-Sleep -Milliseconds 12};[JessWin32]::mouse_event(4,0,0,0,[UIntPtr]::Zero);return @{ok=$true;verified=$false;evidence=@{from=@{x=$a.fromX;y=$a.fromY};to=@{x=$a.toX;y=$a.toY};note='Drag input sent; target effect not independently confirmed'}}}
- 'type_text' {$text=[string]$a.text;if($text.Length -gt 10000){throw 'Text limited to 10,000 characters'};$sent=0;foreach($ch in $text.ToCharArray()){$pair=@([JessWin32]::UnicodeInput([uint16][char]$ch,0),[JessWin32]::UnicodeInput([uint16][char]$ch,[JessWin32]::KEYUP));$sent+=[JessWin32]::SendInput(2,$pair,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]))};$expected=$text.Length*2;if($sent -lt $expected){throw ('Windows accepted '+$sent+' of '+$expected+' Unicode key events')};return @{ok=$true;verified=$false;evidence=@{characters=$text.Length;keyEvents=$sent;note='Unicode input accepted by Windows; focused field content still needs readback verification'}}}
- 'press_keys' {$holdMs=35;if($null -ne $a.holdMs){$holdMs=[int]$a.holdMs};if($holdMs -lt 0 -or $holdMs -gt 5000){throw 'Key hold duration must be between 0 and 5000 milliseconds'};Send-Key ([string]$a.keys) $holdMs;Start-Sleep -Milliseconds 80;return @{ok=$true;verified=$false;evidence=@{keys=$a.keys;holdMs=$holdMs;note='Key-down and key-up events accepted by Windows; target application effect still needs verification'}}}
+ 'type_text' {$text=[string]$a.text;if($text.Length -gt 10000){throw 'Text limited to 10,000 characters'};$before=Get-FocusedUiState;$sent=0;foreach($ch in $text.ToCharArray()){$pair=@([JessWin32]::UnicodeInput([uint16][char]$ch,0),[JessWin32]::UnicodeInput([uint16][char]$ch,[JessWin32]::KEYUP));$sent+=[JessWin32]::SendInput(2,$pair,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]))};$expected=$text.Length*2;if($sent -lt $expected){throw ('Windows accepted '+$sent+' of '+$expected+' Unicode key events')};Start-Sleep -Milliseconds 160;$after=Get-FocusedUiState;$sameControl=($before.windowHandle -eq $after.windowHandle -and (($before.automationId -and $before.automationId -eq $after.automationId) -or ($before.name -and $before.name -eq $after.name)));$verified=($sameControl -and $text.Length -gt 0 -and $after.value.Contains($text));return @{ok=$true;verified=$verified;evidence=@{characters=$text.Length;keyEvents=$sent;before=$before;after=$after;focusedControlMatched=$sameControl;readbackContainsText=$verified;note=$(if($verified){'Focused UI Automation value contains the exact typed text'}else{'Windows accepted Unicode input, but focused control readback did not prove the text landed'})}}}
+ 'press_keys' {$holdMs=35;if($null -ne $a.holdMs){$holdMs=[int]$a.holdMs};if($holdMs -lt 0 -or $holdMs -gt 5000){throw 'Key hold duration must be between 0 and 5000 milliseconds'};$before=Get-FocusedUiState;$beforeSnapshot=Get-ForegroundUiSnapshot;$beforeClipboard='';try{$beforeClipboard=[System.Windows.Forms.Clipboard]::GetText()}catch{};Send-Key ([string]$a.keys) $holdMs;Start-Sleep -Milliseconds 160;$after=Get-FocusedUiState;$afterSnapshot=Get-ForegroundUiSnapshot;$afterClipboard='';try{$afterClipboard=[System.Windows.Forms.Clipboard]::GetText()}catch{};$snapshotChanged=($beforeSnapshot -ne $afterSnapshot);$valueChanged=($before.value -ne $after.value);$clipboardChanged=($beforeClipboard -ne $afterClipboard);$keysText=([string]$a.keys).ToUpperInvariant();$verified=$snapshotChanged -or $valueChanged;if($keysText -match '(^|\\+)CTRL\\+C|CTRL\\+C(\\+|$)|CTRL\\+X' -and $clipboardChanged){$verified=$true};if($keysText -match 'CTRL\\+V' -and $afterClipboard -and $after.value.Contains($afterClipboard)){$verified=$true};return @{ok=$true;verified=$verified;evidence=@{keys=$a.keys;holdMs=$holdMs;before=$before;after=$after;snapshotChanged=$snapshotChanged;valueChanged=$valueChanged;clipboardChanged=$clipboardChanged;note=$(if($verified){'A focused control, visible UI Automation snapshot, or clipboard postcondition changed after the key event'}else{'Key events were accepted, but no independent postcondition change was detected'})}}}
  'file_list' {$p=Resolve-UserFilePath $a.path $true;if(!(Test-Path -LiteralPath $p -PathType Container)){throw 'file_list requires a folder path'};$items=@(Get-ChildItem -LiteralPath $p -ErrorAction Stop|Select-Object -First 200|ForEach-Object{@{name=$_.Name;path=$_.FullName;isDirectory=$_.PSIsContainer;size=$(if($_.PSIsContainer){$null}else{$_.Length});modifiedAt=$_.LastWriteTimeUtc.ToString('o')}});return @{ok=$true;verified=$true;evidence=@{path=$p;items=$items;truncated=($items.Count -ge 200)}}}
  'file_read' {$p=Resolve-UserFilePath $a.path $true;if(!(Test-Path -LiteralPath $p -PathType Leaf)){throw 'file_read requires a file path'};$info=Get-Item -LiteralPath $p;if($info.Length -gt 1000000){throw 'Text file read limited to 1 MB'};$text=[System.IO.File]::ReadAllText($p,[System.Text.Encoding]::UTF8);return @{ok=$true;verified=$true;evidence=@{path=$p;text=$text;bytes=$info.Length}}}
  'file_write' {$p=Resolve-UserFilePath $a.path $false;$parent=Split-Path -Parent $p;if(!(Test-Path -LiteralPath $parent -PathType Container)){throw 'The destination folder must already exist'};$text=[string]$a.text;if($text.Length -gt 1000000){throw 'Text file write limited to 1 MB'};if(Test-Path -LiteralPath $p){throw 'The destination already exists; refusing to overwrite'};[System.IO.File]::WriteAllText($p,$text,[System.Text.UTF8Encoding]::new($false));$readback=[System.IO.File]::ReadAllText($p,[System.Text.Encoding]::UTF8);$ok=($readback -ceq $text);return @{ok=$ok;verified=$ok;evidence=@{path=$p;characters=$text.Length;readbackMatches=$ok}}}
