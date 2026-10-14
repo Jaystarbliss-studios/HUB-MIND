@@ -29,7 +29,8 @@ This document is a live checklist for the work requested in the October 2026 des
 - [ ] Correct success contract and postcondition verification for input, click, and keyboard actions.
 - [ ] Keep the orb visible through minimize/restore, hide the in-app duplicate in desktop mode, and finish custom screen-share overlay/auto-primary behavior.
 - [ ] Chrome native host: authentication, installer registration, Settings setup/connection status, browser navigation/scroll/screenshots and non-managed-PC test.
-- [ ] Jess desktop version reporting and verified historical release/tag awareness.
+- [x] Jess prompt now receives the bundled package version and official workspace URL, and is instructed to verify older releases through official GitHub releases/tags rather than inventing them.
+- [ ] Confirm the installed executable version independently and verify historical release/tag retrieval works through the actual live internet tools.
 - [ ] Memory policy audit: always load relevant saved memories; remove capability-claim memories; build capabilities from the live tool registry.
 - [ ] Voice-only acceptance run on a real Windows desktop for every user-provided utterance.
 
