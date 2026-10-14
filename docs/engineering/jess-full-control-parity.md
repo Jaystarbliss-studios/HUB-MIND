@@ -18,12 +18,12 @@ This document is a live checklist for the work requested in the October 2026 des
 - [ ] Typecheck, unit tests, app build, Windows packaging, and native Windows smoke tests.
 - [ ] Prevent duplicate concurrent first-consent prompts and verify cancellation/retry behavior under slow Firestore snapshots.
 - [ ] Complete and test the spoken yes/no confirmation flow for delete, format, shutdown, and sending. The preference UI exists; the voice-confirmation protocol is not complete.
-- [ ] Remove stale “say Jess, full control” wording from every tool declaration and make the live session state the sole activation truth.
+- [x] Removed stale activation-phrase requirement from the Full Control tool declaration; the main-process live session remains authoritative.
 - [x] Sidecar scroll now reinterprets signed wheel deltas correctly and supports horizontal wheel input.
 - [x] Sidecar: C# SendInput keyboard helper, F1–F24/extended/media key support, bounded hold timing; real Notepad type/key verification still requires Windows acceptance.
 - [x] Clipboard text read/write/clear with readback and paste through Ctrl+V; [x] show desktop, minimize all, Start menu, switch window by handle/z-order.
-- [ ] Unified application resolver for Start Menu, AppUserModelID, App Paths, PATH and URI schemes; verify resulting window.
-- [x] Three-way left/center/right window snapping; [ ] multi-monitor metadata and DPI-aware coordinate mapping.
+- [x] Unified app resolution covers Start Menu/AppUserModelID, App Paths, PATH executables, and allowlisted URI schemes; [ ] verify launches on real Windows apps and edge cases.
+- [x] Three-way left/center/right snapping, per-window monitor metadata, optional monitor-targeted snapping, and per-monitor DPI awareness; [ ] verify mixed-DPI multi-monitor placement on real hardware.
 - [x] Bounded file list/read/write/copy/move/rename/search and Recycle Bin deletion, with no-overwrite copy/move and output-size limits; [ ] bounded command execution and robust command safety.
 - [x] Sidecar lifecycle/crash/action-timeout logging, bounded protocol lines, and automatic restart on the next request; [ ] diagnose maximize-triggered agent exit from real audit logs and verify restore handlers.
 - [ ] Evaluate .NET/FlaUI or Windows-MCP through McpBridge, with telemetry disabled and text snapshots available to Jess.
