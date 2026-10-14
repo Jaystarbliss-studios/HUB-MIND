@@ -1054,6 +1054,46 @@ async function startServer() {
           }, required: ["action"] }
         },
         {
+          name: "file_list",
+          description: "List files in the signed-in Windows user's Desktop, Documents, Downloads or OneDrive folders.",
+          parameters: { type: "OBJECT", properties: { path: { type: "STRING" } }, required: ["path"] }
+        },
+        {
+          name: "file_read",
+          description: "Read a text file up to 1 MB inside approved user folders.",
+          parameters: { type: "OBJECT", properties: { path: { type: "STRING" } }, required: ["path"] }
+        },
+        {
+          name: "file_write",
+          description: "Create a new text file up to 1 MB in approved user folders; never overwrite an existing file.",
+          parameters: { type: "OBJECT", properties: { path: { type: "STRING" }, text: { type: "STRING" } }, required: ["path", "text"] }
+        },
+        {
+          name: "file_copy",
+          description: "Copy a file inside approved user folders without overwriting an existing destination.",
+          parameters: { type: "OBJECT", properties: { path: { type: "STRING" }, destination: { type: "STRING" } }, required: ["path", "destination"] }
+        },
+        {
+          name: "file_move",
+          description: "Move a file inside approved user folders without overwriting an existing destination.",
+          parameters: { type: "OBJECT", properties: { path: { type: "STRING" }, destination: { type: "STRING" } }, required: ["path", "destination"] }
+        },
+        {
+          name: "file_rename",
+          description: "Rename a file inside its current approved user folder without overwriting.",
+          parameters: { type: "OBJECT", properties: { path: { type: "STRING" }, newName: { type: "STRING" } }, required: ["path", "newName"] }
+        },
+        {
+          name: "file_search",
+          description: "Search file names and optionally text contents in approved user folders.",
+          parameters: { type: "OBJECT", properties: { path: { type: "STRING" }, query: { type: "STRING" }, searchContent: { type: "BOOLEAN" } }, required: ["path", "query"] }
+        },
+        {
+          name: "file_delete",
+          description: "Move a file or folder in approved user folders to the Windows Recycle Bin.",
+          parameters: { type: "OBJECT", properties: { path: { type: "STRING" } }, required: ["path"] }
+        },
+        {
           name: "clipboard_get",
           description: "Read the current Windows clipboard text only when the user asks.",
           parameters: { type: "OBJECT", properties: {} }
