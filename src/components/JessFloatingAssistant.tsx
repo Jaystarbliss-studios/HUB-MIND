@@ -1351,7 +1351,7 @@ export function JessFloatingAssistant() {
       )}
 
       {chromeScreenshotPreview && (
-        <section className="fixed bottom-5 right-5 z-[10010] w-[min(92vw,560px)] overflow-hidden rounded-2xl border border-teal-300/30 bg-slate-950/95 text-slate-100 shadow-2xl shadow-slate-950/70 backdrop-blur-xl" role="dialog" aria-label="Chrome tab screenshot preview">
+        <section className="fixed bottom-5 right-5 z-[9990] w-[min(92vw,560px)] overflow-hidden rounded-2xl border border-teal-300/30 bg-slate-950/95 text-slate-100 shadow-2xl shadow-slate-950/70 backdrop-blur-xl" role="dialog" aria-label="Chrome tab screenshot preview">
           <header className="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
             <div className="min-w-0"><div className="text-xs font-semibold uppercase tracking-wider text-teal-200">Chrome tab preview</div><div className="mt-1 truncate text-sm font-semibold">{chromeScreenshotPreview.title}</div><div className="mt-1 truncate text-[10px] text-slate-500">{chromeScreenshotPreview.url}</div></div>
             <button type="button" onClick={() => setChromeScreenshotPreview(null)} className="shrink-0 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-800" aria-label="Close screenshot preview">Close</button>
