@@ -24,7 +24,7 @@ This document is a live checklist for the work requested in the October 2026 des
 - [ ] Clipboard get/set/paste and readback; show desktop, minimize all, Start menu, switch window by handle/z-order.
 - [ ] Unified application resolver for Start Menu, AppUserModelID, App Paths, PATH and URI schemes; verify resulting window.
 - [x] Three-way left/center/right window snapping; [ ] multi-monitor metadata and DPI-aware coordinate mapping.
-- [ ] Safe file list/read/write/copy/move/rename/search and Recycle Bin deletion; bounded command execution and robust command safety.
+- [x] Bounded file list/read/write/copy/move/rename/search and Recycle Bin deletion, with no-overwrite copy/move and output-size limits; [ ] bounded command execution and robust command safety.
 - [ ] Sidecar crash logging/restart/request timeouts; diagnose maximize-triggered agent exit from audit logs and restore handlers.
 - [ ] Evaluate .NET/FlaUI or Windows-MCP through McpBridge, with telemetry disabled and text snapshots available to Jess.
 - [ ] Correct success contract and postcondition verification for input, click, and keyboard actions.
