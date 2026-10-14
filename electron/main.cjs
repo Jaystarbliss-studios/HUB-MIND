@@ -11,6 +11,7 @@ const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
 let companionWindow;
 let transcriptOverlayWindow;
+let transcriptOverlayPreferredHeight = 112;
 let companionDismissed = false;
 let tray;
 let quitting = false;
@@ -194,7 +195,7 @@ function positionTranscriptOverlayWindow() {
   if (!transcriptOverlayWindow || transcriptOverlayWindow.isDestroyed()) return;
   const area = screen.getPrimaryDisplay().workArea;
   const width = Math.min(760, Math.max(420, area.width - 32));
-  const height = Math.min(124, Math.max(104, area.height - 32));
+  const height = Math.min(220, Math.max(72, Math.min(transcriptOverlayPreferredHeight, area.height - 32)));
   transcriptOverlayWindow.setBounds({
     x: Math.round(area.x + (area.width - width) / 2),
     y: Math.round(area.y + area.height - height - 22),
@@ -209,7 +210,7 @@ function createTranscriptOverlayWindow() {
     return transcriptOverlayWindow;
   }
   transcriptOverlayWindow = new BrowserWindow(secureWindowOptions({
-    width: 760, height: 124, minWidth: 420, minHeight: 104, maxWidth: 760, maxHeight: 124,
+    width: 760, height: 112, minWidth: 420, minHeight: 72, maxWidth: 760, maxHeight: 220,
     frame: false, transparent: true, resizable: false, movable: false, focusable: false,
     alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
     title: 'Jess Transcript', show: false, webPreferences: { backgroundThrottling: false },
@@ -840,6 +841,13 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:set-companion-transcript-visible', (event, _visible) => {
     assertTrustedSender(event);
     // Legacy compatibility only. The movable companion remains an icon-only window.
+    return true;
+  });
+  ipcMain.handle('hubmind:set-transcript-overlay-height', (event, height) => {
+    assertTrustedSender(event);
+    if (!Number.isFinite(height)) return false;
+    transcriptOverlayPreferredHeight = Math.max(72, Math.min(220, Math.round(height)));
+    positionTranscriptOverlayWindow();
     return true;
   });
   ipcMain.handle('hubmind:set-transcript-overlay-visible', (event, visible) => {
