@@ -97,7 +97,7 @@ function sanitizeMcpEnvironment(input) {
   const env = {};
   for (const [key, value] of Object.entries(input)) {
     if (!ALLOWED_MCP_ENV_KEYS.has(key)) throw new Error('MCP environment key is not allowlisted: ' + key + '. Secrets and arbitrary environment overrides are not supported.');
-    if (typeof value !== 'string' || value.length > 1000 || /[\\r\\n\\0]/.test(value)) throw new Error('MCP environment values must be short, single-line strings.');
+    if (typeof value !== 'string' || value.length > 1000 || /[\r\n\0]/.test(value)) throw new Error('MCP environment values must be short, single-line strings.');
     env[key] = value;
   }
   return env;
