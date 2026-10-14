@@ -62,13 +62,20 @@ jobs:
         run: dotnet publish native/JessOfflineWake/JessOfflineWake.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o native/JessOfflineWake/publish
       - name: Publish self-contained .NET Windows OCR helper
         run: dotnet publish native/JessWindowsOcr/JessWindowsOcr.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o native/JessWindowsOcr/publish
-      - name: Validate PowerShell agent syntax
+      - name: Validate PowerShell agent and Chrome installer syntax
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'electron/jess-agent.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          $paths = @('electron/jess-agent.ps1', 'scripts/install-jess-chrome-bridge.ps1')
+          foreach ($relativePath in $paths) {
+            $tokens = $null
+            $errors = $null
+            $fullPath = Join-Path $PWD $relativePath
+            [System.Management.Automation.Language.Parser]::ParseFile($fullPath, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error ("{0}:{1}: {2} near [{3}]" -f $_.Extent.StartLineNumber, $_.Extent.StartColumnNumber, $_.Message, $_.Extent.Text) }
+              exit 1
+            }
+          }
       - name: TypeScript validation
         run: npm run typecheck
       - name: Unit and contract tests
