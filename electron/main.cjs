@@ -781,7 +781,7 @@ app.whenReady().then(() => {
     if (method === 'launch_app' && (typeof safeArgs.name !== 'string' || !safeArgs.name.trim() || safeArgs.name.length > 160)) throw new Error('Provide an application name under 160 characters.');
     if (method === 'open_path' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid local file path.');
     const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window']);
-    const highRiskActions = new Set(['close_window', 'run_command', 'open_path']);
+    const highRiskActions = new Set(['close_window', 'run_command', 'open_path', 'file_delete']);
     const alwaysAllowed = fullControlActive &&
       jessPreferencesUserId === controlSessionUserId &&
       controlSessionUserId === userId &&
