@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Pipes;
 using System.Text;
+using System.Text.Json;
 
 const int MaxMessageBytes = 1024 * 1024;
 const string PipeName = "hubmind-jess-chrome-v1";
@@ -25,6 +26,27 @@ using var nativeIn = Console.OpenStandardInput();
 using var nativeOut = Console.OpenStandardOutput();
 using var pipeReader = new StreamReader(pipe, new UTF8Encoding(false), false, 4096, leaveOpen: true);
 using var pipeWriter = new StreamWriter(pipe, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
+string token;
+try
+{
+    var tokenPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Jaystarbliss", "Hub-Mind", "jess-chrome-bridge-token");
+    token = (await File.ReadAllTextAsync(tokenPath)).Trim();
+    if (token.Length != 64 || token.Any(ch => !Uri.IsHexDigit(ch))) throw new InvalidDataException("Chrome bridge token is invalid.");
+    await pipeWriter.WriteLineAsync(JsonSerializer.Serialize(new { type = "auth", token }));
+    var authLine = await pipeReader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(5));
+    using var auth = JsonDocument.Parse(authLine ?? "{}");
+    if (!auth.RootElement.TryGetProperty("type", out var authType) || authType.GetString() != "auth" ||
+        !auth.RootElement.TryGetProperty("ok", out var authOk) || authOk.ValueKind != JsonValueKind.True)
+    {
+        Environment.ExitCode = 3;
+        return;
+    }
+}
+catch
+{
+    Environment.ExitCode = 3;
+    return;
+}
 using var stop = new CancellationTokenSource();
 
 var fromChrome = PumpNativeMessagesToPipeAsync(nativeIn, pipeWriter, stop.Token);
