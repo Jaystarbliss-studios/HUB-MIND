@@ -52,6 +52,20 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Preflight PowerShell syntax
+        shell: pwsh
+        run: |
+          $paths = @('electron/jess-agent.ps1', 'scripts/install-jess-chrome-bridge.ps1')
+          foreach ($relativePath in $paths) {
+            $tokens = $null
+            $errors = $null
+            $fullPath = Join-Path $PWD $relativePath
+            [System.Management.Automation.Language.Parser]::ParseFile($fullPath, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error ("{0}:{1}: {2} near [{3}]" -f $_.Extent.StartLineNumber, $_.Extent.StartColumnNumber, $_.Message, $_.Extent.Text) }
+              exit 1
+            }
+          }
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Ensure Windows native build dependencies are installed
