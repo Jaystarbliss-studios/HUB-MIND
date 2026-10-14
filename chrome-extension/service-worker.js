@@ -73,8 +73,56 @@ async function dispatch(message) {
     }
     case 'chrome_scroll': {
       const tab = await tabById(a.tabId);
-      const [result] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: (delta) => { const before = window.scrollY; window.scrollBy({ top: delta, behavior: 'instant' }); return { before, after: window.scrollY, max: document.documentElement.scrollHeight - window.innerHeight, title: document.title }; }, args: [Number(a.delta) || 600] });
-      return { ok: true, verified: result?.result?.before !== result?.result?.after, evidence: { tabId: tab.id, ...result?.result } };
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: ({ delta, axis, selector, x, y }) => {
+          const property = axis === 'horizontal' ? 'scrollLeft' : 'scrollTop';
+          const extent = axis === 'horizontal' ? 'scrollWidth' : 'scrollHeight';
+          const client = axis === 'horizontal' ? 'clientWidth' : 'clientHeight';
+          let target = null;
+          if (selector) { try { target = document.querySelector(selector); } catch {} }
+          if (!target) {
+            let node = document.elementFromPoint(Number.isFinite(x) ? x : window.innerWidth / 2, Number.isFinite(y) ? y : window.innerHeight / 2);
+            while (node && node !== document.documentElement) {
+              const style = getComputedStyle(node);
+              if (node[extent] > node[client] + 4 && /(auto|scroll|overlay)/.test(axis === 'horizontal' ? style.overflowX : style.overflowY)) { target = node; break; }
+              node = node.parentElement;
+            }
+          }
+          if (!target) target = document.scrollingElement || document.documentElement;
+          const before = target[property];
+          target.scrollBy(axis === 'horizontal' ? { left: delta, behavior: 'instant' } : { top: delta, behavior: 'instant' });
+          const after = target[property];
+          return { before, after, max: Math.max(0, target[extent] - target[client]), axis, target: target === document.scrollingElement ? 'document' : { tag: target.tagName, id: target.id || '', className: String(target.className || '').slice(0, 200) }, title: document.title };
+        },
+        args: [{ delta: Number(a.delta) || 600, axis: a.axis === 'horizontal' ? 'horizontal' : 'vertical', selector: String(a.selector || '').slice(0, 500), x: Number(a.x), y: Number(a.y) }]
+      });
+      const before = result?.result?.before, after = result?.result?.after;
+      return { ok: true, verified: before !== after, evidence: { tabId: tab.id, ...result?.result } };
+    }
+    case 'chrome_back': {
+      const tab = await tabById(a.tabId);
+      const before = tab.url || '';
+      await chrome.tabs.goBack(tab.id);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const current = await chrome.tabs.get(tab.id);
+      return { ok: true, verified: !!current.url && current.url !== before, evidence: { tabId: tab.id, before, after: current.url || '', title: current.title || '' } };
+    }
+    case 'chrome_forward': {
+      const tab = await tabById(a.tabId);
+      const before = tab.url || '';
+      await chrome.tabs.goForward(tab.id);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const current = await chrome.tabs.get(tab.id);
+      return { ok: true, verified: !!current.url && current.url !== before, evidence: { tabId: tab.id, before, after: current.url || '', title: current.title || '' } };
+    }
+    case 'chrome_screenshot': {
+      const tab = await tabById(a.tabId);
+      await chrome.windows.update(tab.windowId, { focused: true });
+      await chrome.tabs.update(tab.id, { active: true });
+      const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 60 });
+      if (!dataUrl || dataUrl.length > 1500000) throw new Error('Screenshot was empty or exceeded the safe transfer limit.');
+      return { ok: true, verified: true, evidence: { tabId: tab.id, title: tab.title || '', url: tab.url || '', mimeType: 'image/jpeg', dataUrl, note: 'Screenshot captured. The current Live tool channel may treat image bytes as text; use the Hub-Mind screen preview when visual interpretation is required.' } };
     }
     case 'chrome_read_page': {
       const tab = await tabById(a.tabId);
