@@ -68,6 +68,16 @@ export function JessTranscriptOverlayPage() {
   }, [setVisible]);
 
   useEffect(() => {
+    if (!(window as any).hubMindDesktop?.isDesktopApp || !entry?.text) return;
+    const timer = window.setTimeout(() => {
+      const caption = document.querySelector('.jess-transcript-overlay-caption');
+      const height = caption ? Math.ceil(caption.getBoundingClientRect().height + 20) : 112;
+      void (window as any).hubMindDesktop?.setTranscriptOverlayHeight?.(height);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [entry?.id, entry?.text]);
+
+  useEffect(() => {
     if (!(window as any).hubMindDesktop?.isDesktopApp) return;
     loadTranscript(false);
     const onStorage = (event: StorageEvent) => {
