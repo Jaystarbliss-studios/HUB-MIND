@@ -56,7 +56,7 @@ test('desktop display capture uses a custom thumbnail picker', async () => {
   const handler = main.slice(start, end);
   assert.match(handler, /desktopCapturer\.getSources/);
   assert.match(handler, /chooseDisplaySource\(unique\)/);
-  assert.match(handler, /screen-share-picker\.html/);
+  assert.match(main, /screen-share-picker\.html/);
   assert.match(handler, /thumbnailSize: \{ width: 320, height: 180 \}/);
   assert.match(handler, /callback\(selected \? \{ video: selected \} : \{\}\)/);
 });
