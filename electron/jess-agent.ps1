@@ -132,7 +132,7 @@ function Invoke-Action($q){
    $appPath=$null
    foreach($root in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths','HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths')){
     foreach($candidate in @($name,$leaf)){
-     try{$key=Get-ItemProperty -LiteralPath (Join-Path $root $candidate) -ErrorAction Stop;if($key.'(default)' -and (Test-Path -LiteralPath $key.'(default)' -PathType Leaf)){$appPath=[string]$key.'(default)';break}}catch{}
+     try{$key=Get-ItemProperty -LiteralPath (Join-Path $root $candidate) -ErrorAction Stop;$raw=[string]$key.'(default)';if($raw -match '^\"([^\"]+)\"'){$raw=$matches[1]}else{$raw=$raw.Trim()};if($raw -and (Test-Path -LiteralPath $raw -PathType Leaf)){$appPath=$raw;break}}catch{}
     }
     if($appPath){break}
    }
