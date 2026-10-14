@@ -24,6 +24,7 @@ let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
 let offlineWakeConsentLoaded = false;
 let jessPreferences = { permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, spokenConfirmationEnabled: true, memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true };
+let fullControlConsentGranted = false;
 let allowEverythingConsentGranted = false;
 let controlSessionSenderId = null;
 let jessPreferencesUserId = null;
@@ -47,13 +48,14 @@ function persistJessPreferences(prefs, userId) {
   const file = path.join(app.getPath('userData'), 'jess-preferences.json');
   fs.writeFileSync(file, JSON.stringify({ userId, preferences: jessPreferences }, null, 2), { encoding: 'utf8', mode: 0o600 });
   const policyFile = path.join(app.getPath('userData'), 'jess-desktop-control-policy.json');
-  fs.writeFileSync(policyFile, JSON.stringify({ userId, fullControlEnabled: jessPreferences.fullControlEnabled, permissionMode: jessPreferences.permissionMode, startInFullControl: jessPreferences.startInFullControl, spokenConfirmationEnabled: jessPreferences.spokenConfirmationEnabled, allowEverythingConsentGranted }, null, 2), { encoding: 'utf8', mode: 0o600 });
+  fs.writeFileSync(policyFile, JSON.stringify({ userId, fullControlEnabled: jessPreferences.fullControlEnabled, permissionMode: jessPreferences.permissionMode, startInFullControl: jessPreferences.startInFullControl, spokenConfirmationEnabled: jessPreferences.spokenConfirmationEnabled, fullControlConsentGranted, allowEverythingConsentGranted }, null, 2), { encoding: 'utf8', mode: 0o600 });
   return { ok: true, preferences: jessPreferences, live: { active: fullControlActive, userId: controlSessionUserId, mode: jessPreferences.permissionMode, fullControlEnabled: jessPreferences.fullControlEnabled, startedAt: controlSessionStartedAt } };
 }
 function loadJessPreferences() {
   try {
     const policyFile = path.join(app.getPath('userData'), 'jess-desktop-control-policy.json');
     const policy = JSON.parse(fs.readFileSync(policyFile, 'utf8'));
+    fullControlConsentGranted = policy?.fullControlConsentGranted === true;
     allowEverythingConsentGranted = policy?.allowEverythingConsentGranted === true;
   } catch { allowEverythingConsentGranted = false; }
   try {
@@ -566,18 +568,30 @@ app.whenReady().then(() => {
     assertTrustedSender(event);
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
     if (fullControlActive && controlSessionUserId !== userId) throw new Error('Jess preferences cannot be changed for a different active user.');
-    const wantsEverything = prefs?.fullControlEnabled === true && prefs?.permissionMode === 'everything';
-    if (wantsEverything && !allowEverythingConsentGranted) {
+    const wantsFullControl = prefs?.fullControlEnabled === true;
+    const wantsEverything = wantsFullControl && prefs?.permissionMode === 'everything';
+    if (wantsFullControl && !fullControlConsentGranted) {
+      const everything = prefs?.permissionMode === 'everything';
+      const choice = await dialog.showMessageBox(getDialogParent(), {
+        type: 'warning', buttons: ['Cancel', everything ? 'Allow everything' : 'Enable Full Control'], defaultId: 0, cancelId: 0,
+        title: everything ? 'Enable Jess Allow Everything mode?' : 'Enable Jess Full Control?',
+        message: everything ? 'Allow Jess to operate Windows apps and connected MCP tools without repeated confirmation dialogs?' : 'Allow Jess to control Windows apps when a Full Control session is active?',
+        detail: 'Jess can control apps and windows as your current Windows user. Allow Everything disables repeated in-app approval prompts for supported actions, so use it only on a device and account you trust. It does not bypass Windows UAC secure desktop or other OS security boundaries. Keep Ctrl+Alt+Shift+J available to stop Jess immediately.',
+      });
+      if (choice.response !== 1) {
+        auditNativeAction({ event: 'full-control-consent-cancelled', userId });
+        return { ok: false, cancelled: true, preferences: jessPreferences, live: { active: fullControlActive, userId: controlSessionUserId, mode: jessPreferences.permissionMode, fullControlEnabled: jessPreferences.fullControlEnabled } };
+      }
+      fullControlConsentGranted = true;
+      if (everything) allowEverythingConsentGranted = true;
+    } else if (wantsEverything && !allowEverythingConsentGranted) {
       const choice = await dialog.showMessageBox(getDialogParent(), {
         type: 'warning', buttons: ['Cancel', 'Allow everything'], defaultId: 0, cancelId: 0,
         title: 'Enable Jess Allow Everything mode?',
         message: 'Allow Jess to operate Windows apps and connected MCP tools without repeated confirmation dialogs?',
-        detail: 'This is a powerful setting. Jess can type, click, launch apps, manipulate windows, and call connected MCP tools as your current Windows user. It does not bypass Windows UAC secure desktop or other OS security boundaries. Keep the emergency stop hotkey Ctrl+Alt+Shift+J available. You can switch back to Ask or Allow routine at any time.',
+        detail: 'This removes repeated in-app confirmations for supported actions. Jess still cannot automate the Windows UAC secure desktop. Keep Ctrl+Alt+Shift+J available to stop Jess immediately.',
       });
-      if (choice.response !== 1) {
-        auditNativeAction({ event: 'allow-everything-consent-cancelled', userId });
-        return { ok: false, cancelled: true, preferences: jessPreferences, live: { active: fullControlActive, userId: controlSessionUserId, mode: jessPreferences.permissionMode, fullControlEnabled: jessPreferences.fullControlEnabled } };
-      }
+      if (choice.response !== 1) return { ok: false, cancelled: true, preferences: jessPreferences, live: { active: fullControlActive, userId: controlSessionUserId, mode: jessPreferences.permissionMode, fullControlEnabled: jessPreferences.fullControlEnabled } };
       allowEverythingConsentGranted = true;
     }
     const saved = persistJessPreferences(prefs, userId);
@@ -601,28 +615,31 @@ app.whenReady().then(() => {
     }
     fullControlStartPending = true;
 
-    // Model instructions are not an authorization boundary. Always ask the person at
-    // the desktop before enabling system-wide keyboard, mouse, window and process control.
-    let choice;
-    try {
-      choice = await dialog.showMessageBox(getDialogParent(), {
-        type: 'warning',
-        buttons: ['Cancel', 'Enable Full Control'],
-        defaultId: 0,
-        cancelId: 0,
-        title: 'Enable Jess Full Control?',
-        message: 'Allow Jess to control Windows applications and windows?',
-        detail: 'While Full Control is active, Jess can move or resize windows, send keyboard and mouse input, open files and applications, and run approved non-elevated commands. Individual actions may still require approval based on your Jess settings. Stop at any time by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.',
-      });
-    } catch (error) {
-      fullControlStartPending = false;
-      throw error;
+    // A prior settings consent allows the session to start without another native prompt.
+    // The renderer cannot bypass this because the consent state is stored only in userData.
+    if (!(jessPreferencesUserId === userId && jessPreferences.fullControlEnabled && fullControlConsentGranted)) {
+      let choice;
+      try {
+        choice = await dialog.showMessageBox(getDialogParent(), {
+          type: 'warning',
+          buttons: ['Cancel', 'Enable Full Control'],
+          defaultId: 0,
+          cancelId: 0,
+          title: 'Enable Jess Full Control?',
+          message: 'Allow Jess to control Windows applications and windows?',
+          detail: 'While Full Control is active, Jess can move or resize windows, send keyboard and mouse input, open files and applications, and run commands permitted by your settings. Stop at any time by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.',
+        });
+      } catch (error) {
+        fullControlStartPending = false;
+        throw error;
+      }
+      if (choice.response !== 1) {
+        fullControlStartPending = false;
+        auditNativeAction({ event: 'full-control-start-cancelled', userId });
+        return { ok: false, active: false, cancelled: true, error: 'Full Control was not enabled because the user cancelled.' };
+      }
     }
     fullControlStartPending = false;
-    if (choice.response !== 1) {
-      auditNativeAction({ event: 'full-control-start-cancelled', userId });
-      return { ok: false, active: false, cancelled: true, error: 'Full Control was not enabled because the user cancelled.' };
-    }
 
     fullControlActive = true;
     controlSessionUserId = userId;
@@ -703,7 +720,7 @@ app.whenReady().then(() => {
     const alwaysAllowed = fullControlActive &&
       jessPreferencesUserId === controlSessionUserId &&
       controlSessionUserId === userId &&
-      jessPreferences.permissionMode === 'always-allow' &&
+      (jessPreferences.permissionMode === 'routine' || jessPreferences.permissionMode === 'always-allow' || (jessPreferences.permissionMode === 'everything' && allowEverythingConsentGranted)) &&
       !highRiskActions.has(method);
     if (mutatingActions.has(method) && !alwaysAllowed) {
       const details = method === 'run_command' ? String(safeArgs.command || '') :
