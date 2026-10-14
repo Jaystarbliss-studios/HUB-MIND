@@ -1027,8 +1027,11 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   screen.on('display-metrics-changed', positionTranscriptOverlayWindow);
   screen.on('display-added', positionTranscriptOverlayWindow);
   screen.on('display-removed', positionTranscriptOverlayWindow);
+  screen.on('display-metrics-changed', positionCompanionBottomRightIfNeeded);
+  screen.on('display-added', positionCompanionBottomRightIfNeeded);
+  screen.on('display-removed', positionCompanionBottomRightIfNeeded);
   app.on('activate', showMain);
 });
 
-app.on('before-quit', () => { stopFullControl('app-quit'); stopOfflineWake(); chromeBridge.stop(); try { void mcpBridge?.shutdown(); } catch {} globalShortcut.unregisterAll(); quitting = true; });
+app.on('before-quit', () => { finishDisplaySourceChoice(null); stopFullControl('app-quit'); stopOfflineWake(); chromeBridge.stop(); try { void mcpBridge?.shutdown(); } catch {} globalShortcut.unregisterAll(); quitting = true; });
 app.on('window-all-closed', () => { /* Keep tray and companion available until explicit Quit. */ });
