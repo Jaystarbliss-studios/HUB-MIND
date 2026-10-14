@@ -159,20 +159,42 @@ interface CurrentSpeechState {
 export function JessFloatingAssistant() {
   const { user, profile, updatePreferredName } = useAuth();
   const jessPreferencesRef = useRef({
-    permissionMode: 'ask' as 'ask' | 'always-allow',
+    permissionMode: 'ask' as 'ask' | 'routine' | 'everything' | 'always-allow',
+    fullControlEnabled: false,
+    startInFullControl: false,
+    spokenConfirmationEnabled: true,
     memoryEnabled: true,
     contextEnabled: true,
     personalization: '',
     webResearchEnabled: true,
     screenVerificationEnabled: true,
   });
+  const autoStartControlUserRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!profile?.id) return;
+    if (!profile?.id) { autoStartControlUserRef.current = null; return; }
     return onSnapshot(doc(db, 'users', profile.id, 'private', 'jessSettings'), snapshot => {
       const prefs = { ...jessPreferencesRef.current, ...(snapshot.exists() ? snapshot.data() : {}) };
+      if (prefs.permissionMode === 'always-allow') prefs.permissionMode = 'routine';
       jessPreferencesRef.current = prefs;
       try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(prefs)); } catch {}
-      void (window as any).hubMindDesktop?.setJessPreferences?.(prefs, profile.id).catch(() => {});
+      const desktop = (window as any).hubMindDesktop;
+      if (!desktop?.isDesktopApp || typeof desktop.setJessPreferences !== 'function') return;
+      void desktop.setJessPreferences(prefs, profile.id).then(async (saved: any) => {
+        if (saved?.cancelled || !prefs.fullControlEnabled || !prefs.startInFullControl) {
+          if (!prefs.fullControlEnabled || !prefs.startInFullControl) autoStartControlUserRef.current = null;
+          return;
+        }
+        if (autoStartControlUserRef.current === profile.id) return;
+        autoStartControlUserRef.current = profile.id;
+        const status = await desktop.nativeStatus();
+        if (!status?.active) {
+          const started = await desktop.startFullControl(profile.id);
+          if (!started?.active) autoStartControlUserRef.current = null;
+        }
+      }).catch((error: any) => {
+        autoStartControlUserRef.current = null;
+        console.warn('[Jess] Could not apply desktop control settings:', error?.message || error);
+      });
     }, error => console.warn('[Jess] Could not load user preferences:', error));
   }, [profile?.id]);
   const location = useLocation();
@@ -1097,6 +1119,9 @@ export function JessFloatingAssistant() {
       default: return <Lightbulb className="w-4 h-4 text-teal-400 shrink-0" />;
     }
   };
+
+  const isDesktopRuntime = (window as any).hubMindDesktop?.isDesktopApp === true;
+  if (isDesktopRuntime && location.pathname !== '/companion') return null;
 
   return (
     <>
