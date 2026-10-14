@@ -11,6 +11,8 @@ const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
 let companionWindow;
 let transcriptOverlayWindow;
+let screenShareChooserWindow;
+let pendingScreenShareRequest = null;
 let transcriptOverlayPreferredHeight = 112;
 let companionDismissed = false;
 let tray;
@@ -206,6 +208,64 @@ function positionTranscriptOverlayWindow() {
   }, false);
 }
 
+function assertScreenShareChooserSender(event) {
+  if (!screenShareChooserWindow || screenShareChooserWindow.isDestroyed() || event.sender !== screenShareChooserWindow.webContents || event.senderFrame !== event.sender.mainFrame) {
+    throw new Error('Screen-share chooser request did not originate from the isolated chooser window.');
+  }
+}
+function closeScreenShareChooser(result = {}) {
+  const pending = pendingScreenShareRequest;
+  pendingScreenShareRequest = null;
+  if (pending?.callback) {
+    try { pending.callback(result); } catch (error) { console.warn('[Jess screen share] Could not finish capture request:', error?.message || error); }
+  }
+  if (screenShareChooserWindow && !screenShareChooserWindow.isDestroyed()) screenShareChooserWindow.close();
+}
+async function openScreenShareChooser(sources, callback) {
+  if (pendingScreenShareRequest) closeScreenShareChooser({});
+  const sourceMap = new Map(sources.map(source => [source.id, source]));
+  pendingScreenShareRequest = { callback, sources: sourceMap };
+  if (screenShareChooserWindow && !screenShareChooserWindow.isDestroyed()) {
+    screenShareChooserWindow.destroy();
+    screenShareChooserWindow = null;
+  }
+  const area = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(1080, Math.max(720, area.width - 40));
+  const height = Math.min(820, Math.max(560, area.height - 40));
+  screenShareChooserWindow = new BrowserWindow(secureWindowOptions({
+    width, height, minWidth: 720, minHeight: 560, maxWidth: 1200, maxHeight: 900,
+    x: Math.round(area.x + (area.width - width) / 2), y: Math.round(area.y + (area.height - height) / 2),
+    title: 'Choose what to share · Jess', frame: false, resizable: true, movable: false,
+    focusable: true, alwaysOnTop: true, skipTaskbar: true, show: false,
+    backgroundColor: '#020617',
+    webPreferences: { preload: path.join(__dirname, 'screenSharePreload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, backgroundThrottling: false },
+  }));
+  screenShareChooserWindow.setAlwaysOnTop(true, 'screen-saver');
+  screenShareChooserWindow.on('closed', () => {
+    if (pendingScreenShareRequest) {
+      const pending = pendingScreenShareRequest;
+      pendingScreenShareRequest = null;
+      try { pending.callback({}); } catch {}
+    }
+    screenShareChooserWindow = null;
+  });
+  const chooserWindow = screenShareChooserWindow;
+  try {
+    await chooserWindow.loadFile(path.join(__dirname, '..', 'dist', 'screen-share-chooser.html'));
+    if (chooserWindow.isDestroyed() || !pendingScreenShareRequest) return;
+    const payload = sources.map(source => {
+      let thumbnailDataUrl = '';
+      try { if (source.thumbnail && !source.thumbnail.isEmpty()) thumbnailDataUrl = 'data:image/jpeg;base64,' + source.thumbnail.toJPEG(65).toString('base64'); } catch {}
+      return { id: source.id, name: String(source.name || 'Application window').slice(0, 160), displayId: source.display_id, isScreen: source.id.startsWith('screen:'), thumbnailDataUrl };
+    });
+    chooserWindow.webContents.send('hubmind:screen-share-sources', payload);
+    chooserWindow.show();
+    chooserWindow.focus();
+  } catch (error) {
+    console.warn('[Jess screen share] Could not load the local chooser:', error?.message || error);
+    closeScreenShareChooser({});
+  }
+}
 function createTranscriptOverlayWindow() {
   if (transcriptOverlayWindow && !transcriptOverlayWindow.isDestroyed()) {
     positionTranscriptOverlayWindow();
@@ -914,6 +974,21 @@ app.whenReady().then(() => {
     // Legacy compatibility only. The movable companion remains an icon-only window.
     return true;
   });
+  ipcMain.handle('hubmind:screen-share-choose', (event, sourceId) => {
+    assertScreenShareChooserSender(event);
+    const pending = pendingScreenShareRequest;
+    const source = pending?.sources?.get(String(sourceId));
+    if (!pending || !source) throw new Error('The selected screen or window is no longer available.');
+    pendingScreenShareRequest = null;
+    try { pending.callback({ video: source }); } catch (error) { console.warn('[Jess screen share] Capture callback failed:', error?.message || error); }
+    if (screenShareChooserWindow && !screenShareChooserWindow.isDestroyed()) screenShareChooserWindow.close();
+    return { ok: true };
+  });
+  ipcMain.handle('hubmind:screen-share-cancel', (event) => {
+    assertScreenShareChooserSender(event);
+    closeScreenShareChooser({});
+    return { ok: true, cancelled: true };
+  });
   ipcMain.handle('hubmind:set-transcript-overlay-height', (event, height) => {
     assertTrustedSender(event);
     if (!Number.isFinite(height)) return false;
@@ -1050,11 +1125,11 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
   });
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
-      // On Windows, provide an explicit native source chooser. Automatically
-      // selecting the full screen made it impossible to share a single app window.
+      // The local chooser is a separate always-on-top window and remains available
+      // even when Hub-Mind itself is minimized or unfocused.
       const sources = await desktopCapturer.getSources({
         types: ['screen', 'window'],
-        thumbnailSize: { width: 0, height: 0 },
+        thumbnailSize: { width: 320, height: 180 },
         fetchWindowIcons: true,
       });
       if (!sources.length) { callback({}); return; }
@@ -1077,27 +1152,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       ];
       const unique = [...new Map(ordered.map(source => [source.id, source])).values()].slice(0, 8);
       if (!unique.length) { callback({}); return; }
-      const labels = unique.map(source => {
-        const name = String(source.name || 'Application window').replace(/[\r\n]+/g, ' ').slice(0, 64);
-        return (source.id.startsWith('screen:') ? 'Share screen: ' : 'Share app: ') + name;
-      });
-      const cancelIndex = labels.length;
-      const options = {
-        type: 'question',
-        title: 'Choose what to share',
-        message: 'Choose a screen or application window to share.',
-        detail: 'Only the source you select will be shared. Cancel to keep your screen private.',
-        buttons: [...labels, 'Cancel'],
-        defaultId: cancelIndex,
-        cancelId: cancelIndex,
-        noLink: true,
-      };
-      const parent = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? mainWindow : undefined;
-      const choice = parent
-        ? await dialog.showMessageBox(parent, options)
-        : await dialog.showMessageBox(options);
-      const selected = unique[choice.response];
-      callback(selected ? { video: selected } : {});
+      await openScreenShareChooser(unique, callback);
     } catch (error) {
       console.warn('[Hub-Mind] Display source picker failed:', error);
       callback({});
