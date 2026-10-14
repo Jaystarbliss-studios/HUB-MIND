@@ -48,6 +48,14 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   setCompanionTranscriptVisible: (visible) => ipcRenderer.invoke('hubmind:set-companion-transcript-visible', visible === true),
   setTranscriptOverlayVisible: (visible) => ipcRenderer.invoke('hubmind:set-transcript-overlay-visible', visible === true),
   setTranscriptOverlayHeight: (height) => ipcRenderer.invoke('hubmind:set-transcript-overlay-height', height),
+  onScreenShareSources: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, sources) => callback(sources);
+    ipcRenderer.on('hubmind:screen-share-sources', listener);
+    return () => ipcRenderer.removeListener('hubmind:screen-share-sources', listener);
+  },
+  chooseScreenShareSource: (sourceId) => ipcRenderer.invoke('hubmind:screen-share-choose', sourceId),
+  cancelScreenShareChooser: () => ipcRenderer.invoke('hubmind:screen-share-cancel'),
   setCompanionInteractive: (interactive) => ipcRenderer.invoke('hubmind:set-companion-interactive', interactive === true),
   moveCompanionBy: (dx, dy) => ipcRenderer.invoke('hubmind:move-companion-by', dx, dy),
   openUserPath: (path) => ipcRenderer.invoke('hubmind:open-user-path', path, controlCapability),
