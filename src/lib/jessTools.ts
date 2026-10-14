@@ -193,7 +193,7 @@ const object = (properties: Record<string, any>, required?: string[]): JessToolD
 });
 
 export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
-  { name: 'jess_full_control', description: 'Start the Windows Full Control Session. Use only after the user explicitly says “Jess, full control”. Enables hands-free native input until stopped. The session is audited and can be stopped by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.', parameters: object({}) },
+  { name: 'jess_full_control', description: 'Start or resume the Windows Full Control Session when the user requests it and the saved settings allow it. If the main process already reports the session active, do not ask the user to repeat the activation phrase. The session is audited and can be stopped by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.', parameters: object({}) },
   { name: 'jess_stop', description: 'Immediately stop Jess native Windows control. Use when the user says “Jess, stop”.', parameters: object({}) },
   { name: 'show_hub_mind_workspace', description: 'Bring the Hub-Mind workspace window to the foreground while keeping the native Jess orb and transcript overlay visible above it. Use when the user asks to show/open/bring Hub-Mind back to the screen. This does not claim that a separate Windows app or website has been opened.', parameters: object({}) },
   { name: 'list_windows', description: 'List visible Windows desktop windows with titles, process names, bounds, state and foreground status. Requires Full Control Session.', parameters: object({}) },
