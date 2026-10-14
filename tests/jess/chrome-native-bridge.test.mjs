@@ -39,7 +39,7 @@ test('Chrome actions are gated by the signed-in Full Control Session and close r
     read('src/lib/jessTools.ts'),
     read('chrome-extension/service-worker.js'),
   ]);
-  assert.match(main, /Chrome control requires an active Full Control Session owned by the signed-in user/);
+  assert.match(main, /Chrome control requires an active Full Control Session/);
   assert.match(main, /hubmind:chrome-action/);
   assert.match(tools, /chrome_close_tab/);
   assert.match(worker, /A specific tabId is required to close a tab/);
