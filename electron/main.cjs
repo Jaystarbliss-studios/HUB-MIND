@@ -780,6 +780,12 @@ app.whenReady().then(() => {
     if (method === 'paste' && safeArgs.text !== undefined && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 50000)) throw new Error('Paste text must be a string no longer than 50,000 characters.');
     if (method === 'launch_app' && (typeof safeArgs.name !== 'string' || !safeArgs.name.trim() || safeArgs.name.length > 160)) throw new Error('Provide an application name under 160 characters.');
     if (method === 'open_path' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid local file path.');
+    if (['file_list','file_read','file_delete'].includes(method) && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid user-folder path.');
+    if (method === 'file_write' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048 || typeof safeArgs.text !== 'string' || safeArgs.text.length > 1000000)) throw new Error('File write requires a path and text under 1 MB.');
+    if (['file_copy','file_move'].includes(method) && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || typeof safeArgs.destination !== 'string' || !safeArgs.destination.trim() || safeArgs.path.length > 2048 || safeArgs.destination.length > 2048)) throw new Error('File copy/move requires valid source and destination paths.');
+    if (method === 'file_rename' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || typeof safeArgs.newName !== 'string' || !safeArgs.newName.trim() || safeArgs.newName.length > 240)) throw new Error('File rename requires a source path and a valid new file name.');
+    if (method === 'file_search' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || typeof safeArgs.query !== 'string' || !safeArgs.query.trim() || safeArgs.query.length > 300)) throw new Error('File search requires a folder and a query.');
+    if (method === 'clipboard_get' && !fullControlActive) throw new Error('Full Control is required to read the clipboard.');
     const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window']);
     const highRiskActions = new Set(['close_window', 'run_command', 'open_path', 'file_delete']);
     const alwaysAllowed = fullControlActive &&
@@ -801,7 +807,7 @@ app.whenReady().then(() => {
     }
     const started = Date.now();
     try {
-      let result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
+      let result = await nativeAgent.call(method, safeArgs, ['screenshot','file_search'].includes(method) ? 30000 : 15000);
       if (method === 'system_info') {
         result = {
           ...result,
