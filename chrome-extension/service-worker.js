@@ -90,7 +90,7 @@ async function dispatch(message) {
             const label = [el.getAttribute('aria-label'), el.getAttribute('title'), el.id, typeof el.className === 'string' ? el.className : '', (el.innerText || '').slice(0, 120)].join(' ').toLowerCase();
             const r = el.getBoundingClientRect();
             const extent = axis === 'x' ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight;
-            return { el, label, extent, area: r.width * r.height, tag: el.tagName, id: el.id || '', className: typeof el.className === 'string' ? el.className.slice(0, 160) : '', before: axis === 'x' ? el.scrollLeft : el.scrollTop, max: extent };
+            return { el, label, extent, area: r.width * r.height, tag: el.tagName, id: el.id || '', className: typeof el.className === 'string' ? el.className.slice(0, 160) : '', before: (el === document.documentElement || el === document.body) ? (axis === 'x' ? window.scrollX : window.scrollY) : (axis === 'x' ? el.scrollLeft : el.scrollTop), max: extent };
           });
           const needle = target.toLowerCase().trim();
           candidates.sort((a,b) => {
