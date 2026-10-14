@@ -20,16 +20,16 @@ This document is a live checklist for the work requested in the October 2026 des
 - [ ] Complete and test the spoken yes/no confirmation flow for delete, format, shutdown, and sending. The preference UI exists; the voice-confirmation protocol is not complete.
 - [ ] Remove stale “say Jess, full control” wording from every tool declaration and make the live session state the sole activation truth.
 - [x] Sidecar scroll now reinterprets signed wheel deltas correctly and supports horizontal wheel input.
-- [ ] Sidecar: C#-built INPUT events; full key map, hold timing; Notepad type/key verification.
+- [x] Sidecar: C# SendInput keyboard helper, F1–F24/extended/media key support, bounded hold timing; real Notepad type/key verification still requires Windows acceptance.
 - [ ] Clipboard get/set/paste and readback; show desktop, minimize all, Start menu, switch window by handle/z-order.
 - [ ] Unified application resolver for Start Menu, AppUserModelID, App Paths, PATH and URI schemes; verify resulting window.
-- [ ] Multi-monitor snapping/moving, thirds, z-order, monitor metadata, DPI-aware coordinate mapping.
+- [x] Three-way left/center/right window snapping; [ ] multi-monitor metadata and DPI-aware coordinate mapping.
 - [ ] Safe file list/read/write/copy/move/rename/search and Recycle Bin deletion; bounded command execution and robust command safety.
 - [ ] Sidecar crash logging/restart/request timeouts; diagnose maximize-triggered agent exit from audit logs and restore handlers.
 - [ ] Evaluate .NET/FlaUI or Windows-MCP through McpBridge, with telemetry disabled and text snapshots available to Jess.
 - [ ] Correct success contract and postcondition verification for input, click, and keyboard actions.
 - [ ] Keep the orb visible through minimize/restore, hide the in-app duplicate in desktop mode, and finish custom screen-share overlay/auto-primary behavior.
-- [ ] Chrome native host: authentication, installer registration, Settings setup/connection status, browser navigation/scroll/screenshots and non-managed-PC test.
+- [x] Chrome nested-container scrolling can target a labelled container and reports actual movement; [ ] native-host authentication, Settings setup/connection status, screenshots and non-managed-PC test.
 - [x] Jess prompt now receives the bundled package version and official workspace URL, and is instructed to verify older releases through official GitHub releases/tags rather than inventing them.
 - [ ] Confirm the installed executable version independently and verify historical release/tag retrieval works through the actual live internet tools.
 - [x] Memory service now filters narrowly matched assistant-capability claims from local and fetched memories and attempts to remove matching Firestore records; new matching claims are rejected as memories.
