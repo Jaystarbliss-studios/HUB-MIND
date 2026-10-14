@@ -108,7 +108,41 @@ function Invoke-Action($q){
  'screenshot' {Add-Type -AssemblyName System.Windows.Forms;$result=@();foreach($s in [System.Windows.Forms.Screen]::AllScreens){$b=$s.Bounds;$bmp=New-Object System.Drawing.Bitmap($b.Width,$b.Height);$g=[System.Drawing.Graphics]::FromImage($bmp);$g.CopyFromScreen($b.X,$b.Y,0,0,$bmp.Size);$ms=New-Object System.IO.MemoryStream;$bmp.Save($ms,[System.Drawing.Imaging.ImageFormat]::Jpeg);$result+=@{monitor=$s.DeviceName;bounds=@{x=$b.X;y=$b.Y;width=$b.Width;height=$b.Height};primary=$s.Primary;imageBase64=[Convert]::ToBase64String($ms.ToArray())};$g.Dispose();$bmp.Dispose();$ms.Dispose()};return @{ok=$true;verified=($result.Count -gt 0);evidence=@{monitors=$result}}}
  'get_time' {return @{ok=$true;verified=$true;evidence=@{localTime=(Get-Date).ToString('o');timeZone=[TimeZoneInfo]::Local.Id}}}
  'system_info' {return @{ok=$true;verified=$true;evidence=@{computer=$env:COMPUTERNAME;user=$env:USERNAME;os=[Environment]::OSVersion.VersionString;architecture=$env:PROCESSOR_ARCHITECTURE}}}
- 'launch_app' {$name=[string]$a.name;if($name -match '[\r\n;&|<>]'){throw 'Invalid application name'};$app=Get-StartApps|Where-Object{$_.Name -like ('*'+$name+'*') -or $_.AppID -like ('*'+$name+'*')}|Select-Object -First 1;if($app){Start-Process explorer.exe -ArgumentList ('shell:AppsFolder\'+$app.AppID);Start-Sleep -Milliseconds 500;$w=Get-Windows|Where-Object{$_.title -like ('*'+$name+'*')}|Select-Object -First 1;return @{ok=$true;verified=($null -ne $w);evidence=@{app=$app;window=$w}}};$cmd=Get-Command $name -ErrorAction SilentlyContinue;if($cmd){Start-Process -FilePath $cmd.Source;Start-Sleep -Milliseconds 500;$w=Get-Windows|Where-Object{$_.process -like ('*'+$name+'*')}|Select-Object -First 1;return @{ok=$true;verified=($null -ne $w);evidence=@{command=$cmd.Source;window=$w}}};throw ('Could not resolve installed app '+$name)}
+ 'launch_app' {
+   $name=[string]$a.name
+   if(!$name -or $name.Length -gt 160 -or $name -match '[\r\n;&|<>]'){throw 'Invalid application name or URI'}
+   if($name -match '^(https?|mailto|ms-settings|ms-windows-store|msteams|zoommtg|spotify):'){
+    Start-Process -FilePath $name -ErrorAction Stop;Start-Sleep -Milliseconds 600
+    return @{ok=$true;verified=$false;evidence=@{uri=$name;scheme=($name -split ':',2)[0];note='URI handler invoked; verify the opened app or page with list_windows or a screenshot'}}
+   }
+   $apps=@(Get-StartApps -ErrorAction SilentlyContinue)
+   $app=$apps|Where-Object{[string]::Equals($_.Name,$name,[StringComparison]::OrdinalIgnoreCase)-or[string]::Equals($_.AppID,$name,[StringComparison]::OrdinalIgnoreCase)}|Select-Object -First 1
+   if(!$app){
+    $matches=@($apps|Where-Object{$_.Name.IndexOf($name,[StringComparison]::OrdinalIgnoreCase)-ge 0-or$_.AppID.IndexOf($name,[StringComparison]::OrdinalIgnoreCase)-ge 0})
+    if($matches.Count -eq 1){$app=$matches[0]}elseif($matches.Count -gt 1){throw ('Application name is ambiguous. Use an exact Start Menu name or AppUserModelID. Candidates: '+(($matches|Select-Object -First 8|ForEach-Object{$_.Name+' ['+$_.AppID+']'}) -join '; '))}
+   }
+   if($app){
+    $before=@(Get-Windows|ForEach-Object{[string]$_.handle})
+    Start-Process -FilePath 'explorer.exe' -ArgumentList @('shell:AppsFolder\'+$app.AppID) -ErrorAction Stop
+    Start-Sleep -Milliseconds 1000
+    $w=Get-Windows|Where-Object{$_.title.IndexOf([string]$app.Name,[StringComparison]::OrdinalIgnoreCase)-ge 0}|Select-Object -First 1
+    return @{ok=$true;verified=($null -ne $w);evidence=@{resolver='StartMenu/AppUserModelID';app=$app;window=$w;beforeWindowCount=$before.Count}}
+   }
+   $leaf=$name;if(!$leaf.EndsWith('.exe',[StringComparison]::OrdinalIgnoreCase)){$leaf=$leaf+'.exe'}
+   $appPath=$null
+   foreach($root in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths','HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths')){
+    foreach($candidate in @($name,$leaf)){
+     try{$key=Get-ItemProperty -LiteralPath (Join-Path $root $candidate) -ErrorAction Stop;if($key.'(default)' -and (Test-Path -LiteralPath $key.'(default)' -PathType Leaf)){$appPath=[string]$key.'(default)';break}}catch{}
+    }
+    if($appPath){break}
+   }
+   if(!$appPath){$cmd=Get-Command -Name $name -CommandType Application -ErrorAction SilentlyContinue|Select-Object -First 1;if($cmd){$appPath=$cmd.Source}}
+   if(!$appPath){throw ('Could not resolve installed app, App Paths entry, PATH executable or supported URI scheme: '+$name)}
+   $proc=Start-Process -FilePath $appPath -PassThru -ErrorAction Stop
+   Start-Sleep -Milliseconds 900
+   $w=Get-Windows|Where-Object{$_.pid -eq $proc.Id -or $_.process -eq [System.IO.Path]::GetFileNameWithoutExtension($appPath)}|Select-Object -First 1
+   return @{ok=$true;verified=($null -ne $w);evidence=@{resolver=$(if($appPath){'App Paths/PATH'}else{'unknown'});path=$appPath;processId=$proc.Id;window=$w}}
+  }
  'open_path' {$target=[string]$a.path;if(!$target -or $target.Length -gt 2048 -or $target.Contains([char]0)){throw 'Invalid file path'};$resolved=[System.IO.Path]::GetFullPath($target);if(!(Test-Path -LiteralPath $resolved)){throw 'File or folder does not exist'};$leaf=[System.IO.Path]::GetFileName($resolved);$before=@(Get-Windows|ForEach-Object{[string]$_.handle});Start-Process -FilePath $resolved;Start-Sleep -Milliseconds 700;$after=Get-Windows;$new=$after|Where-Object{($before -notcontains [string]$_.handle) -or ($leaf -and $_.title -like ('*'+$leaf+'*'))}|Select-Object -First 1;if($new){[void][JessWin32]::ShowWindowAsync([IntPtr]$new.handle,9);[void][JessWin32]::SetForegroundWindow([IntPtr]$new.handle);Start-Sleep -Milliseconds 120};$verified=($null -ne $new -and [JessWin32]::GetForegroundWindow().ToInt64() -eq [int64]$new.handle);return @{ok=($null -ne $new);verified=$verified;evidence=@{path=$resolved;window=$new;note='Default Windows handler was invoked; visibility verification depends on a matching window'}}}
  'clipboard_action' {
    Add-Type -AssemblyName System.Windows.Forms
