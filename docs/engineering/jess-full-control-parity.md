@@ -25,11 +25,11 @@ This document is a live checklist for the work requested in the October 2026 des
 - [ ] Unified application resolver for Start Menu, AppUserModelID, App Paths, PATH and URI schemes; verify resulting window.
 - [x] Three-way left/center/right window snapping; [ ] multi-monitor metadata and DPI-aware coordinate mapping.
 - [x] Bounded file list/read/write/copy/move/rename/search and Recycle Bin deletion, with no-overwrite copy/move and output-size limits; [ ] bounded command execution and robust command safety.
-- [ ] Sidecar crash logging/restart/request timeouts; diagnose maximize-triggered agent exit from audit logs and restore handlers.
+- [x] Sidecar lifecycle/crash/action-timeout logging, bounded protocol lines, and automatic restart on the next request; [ ] diagnose maximize-triggered agent exit from real audit logs and verify restore handlers.
 - [ ] Evaluate .NET/FlaUI or Windows-MCP through McpBridge, with telemetry disabled and text snapshots available to Jess.
 - [ ] Correct success contract and postcondition verification for input, click, and keyboard actions.
-- [ ] Keep the orb visible through minimize/restore, hide the in-app duplicate in desktop mode, and finish custom screen-share overlay/auto-primary behavior.
-- [x] Chrome nested-container scrolling can target a labelled container and reports actual movement; [ ] native-host authentication, Settings setup/connection status, screenshots and non-managed-PC test.
+- [x] Keep the native orb visible over the workspace and other apps, while the in-app duplicate remains hidden in desktop mode; [x] auto-select the primary screen for user-triggered screen sharing only in explicitly enabled Allow everything mode; [ ] custom screen-share overlay with source thumbnails.
+- [x] Chrome nested-container scrolling can target a labelled container and reports actual movement; [x] Settings setup button and live native-host connection status; [ ] screenshots and non-managed-PC test; [ ] test the native pipe boundary against other local processes.
 - [x] Jess prompt now receives the bundled package version and official workspace URL, and is instructed to verify older releases through official GitHub releases/tags rather than inventing them.
 - [ ] Confirm the installed executable version independently and verify historical release/tag retrieval works through the actual live internet tools.
 - [x] Memory service now filters narrowly matched assistant-capability claims from local and fetched memories and attempts to remove matching Firestore records; new matching claims are rejected as memories.
