@@ -58,7 +58,7 @@ export class LiveAudioClient {
     userId?: string;
     userName?: string;
     userRole?: string;
-    permissionMode?: 'ask' | 'allow-routine' | 'allow-everything';
+    permissionMode?: 'ask' | 'allow-routine' | 'allow-everything' | 'always-allow';
     contextEnabled?: boolean;
     memoryEnabled?: boolean;
     personalization?: string;
@@ -307,7 +307,7 @@ export class LiveAudioClient {
     userId?: string;
     userName?: string;
     userRole?: string;
-    permissionMode?: 'ask' | 'allow-routine' | 'allow-everything';
+    permissionMode?: 'ask' | 'allow-routine' | 'allow-everything' | 'always-allow';
     contextEnabled?: boolean;
     memoryEnabled?: boolean;
     personalization?: string;
@@ -336,7 +336,7 @@ export class LiveAudioClient {
     userId?: string;
     userName?: string;
     userRole?: string;
-    permissionMode?: 'ask' | 'allow-routine' | 'allow-everything';
+    permissionMode?: 'ask' | 'allow-routine' | 'allow-everything' | 'always-allow';
     contextEnabled?: boolean;
     memoryEnabled?: boolean;
     personalization?: string;
