@@ -234,7 +234,7 @@ function showMain() {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
-  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+  // Keep the floating Jess orb visible independently of workspace minimize/restore state.
 }
 
 async function showMainVerified(timeoutMs = 5000) {
