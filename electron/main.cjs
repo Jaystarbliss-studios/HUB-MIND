@@ -77,6 +77,15 @@ const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com',
 const WINDOWS_APPS = Object.freeze({ calculator: 'calc.exe', notepad: 'notepad.exe', paint: 'mspaint.exe', explorer: 'explorer.exe', taskManager: 'taskmgr.exe', edge: 'msedge.exe', chrome: 'chrome.exe', word: 'winword.exe', excel: 'excel.exe', powerpoint: 'powerpnt.exe', teams: 'ms-teams.exe', vscode: 'code.exe' });
 const READ_ONLY_COMMANDS = Object.freeze({ ipconfig: ['ipconfig.exe', []], systemInfo: ['systeminfo.exe', []], runningProcesses: ['tasklist.exe', []] });
 const WINDOWS_SHORTCUTS = Object.freeze({ save: '^s', selectAll: '^a', copy: '^c', paste: '^v', undo: '^z', redo: '^y', find: '^f', closeWindow: '%{F4}', switchWindow: '%{TAB}', taskManager: '^+{ESC}', enter: '{ENTER}', escape: '{ESC}', tab: '{TAB}' });
+function ensureChromeBridgeToken() {
+  if (process.platform !== 'win32') return null;
+  const token = randomBytes(32).toString('hex');
+  const tokenDirectory = path.join(app.getPath('appData'), 'Jaystarbliss', 'Hub-Mind');
+  const tokenPath = path.join(tokenDirectory, 'jess-chrome-bridge-token');
+  fs.mkdirSync(tokenDirectory, { recursive: true });
+  fs.writeFileSync(tokenPath, token, { encoding: 'utf8', mode: 0o600 });
+  return token;
+}
 function recordAppVersion() {
   const current = app.getVersion();
   const file = path.join(app.getPath('userData'), 'jess-app-version-history.json');
@@ -548,7 +557,8 @@ app.whenReady().then(() => {
   app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
   recordAppVersion();
-  chromeBridge.start();
+  const chromeBridgeToken = ensureChromeBridgeToken();
+  chromeBridge.start(chromeBridgeToken);
   let canEncryptMcpConfig = false;
   try { canEncryptMcpConfig = safeStorage.isEncryptionAvailable(); } catch {}
   mcpBridge = new McpBridge({
@@ -813,6 +823,44 @@ app.whenReady().then(() => {
       mode: jessPreferences.permissionMode, fullControlEnabled: jessPreferences.fullControlEnabled,
       appName: app.getName(), appVersion: app.getVersion(), websiteUrl: APP_URL,
       previousVersions: appVersionHistory.filter(item => item.version !== app.getVersion()).map(item => ({ version: item.version, lastSeenAt: item.lastSeenAt })),
+    };
+  });
+  ipcMain.handle('hubmind:chrome-setup', async (event) => {
+    assertTrustedSender(event);
+    if (process.platform !== 'win32') return { ok: false, error: 'Chrome bridge setup is supported by the Windows desktop app.' };
+    const scriptPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'Install-JessChromeBridge.ps1')
+      : path.join(__dirname, '..', 'scripts', 'install-jess-chrome-bridge.ps1');
+    if (!fs.existsSync(scriptPath)) throw new Error('Chrome setup script is missing. Reinstall Hub-Mind with the native Chrome bridge package.');
+    const runScript = () => new Promise((resolve, reject) => {
+      execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
+        windowsHide: true, timeout: 30000, maxBuffer: 1024 * 1024, shell: false,
+      }, (error, stdout, stderr) => {
+        if (error) { reject(new Error(String(stderr || error.message || 'Chrome setup failed.').slice(0, 2000))); return; }
+        resolve(String(stdout || '').slice(0, 6000));
+      });
+    });
+    const installerOutput = await runScript();
+    const chromeCandidates = [
+      path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    ];
+    const chromeExe = chromeCandidates.find(candidate => candidate && fs.existsSync(candidate));
+    let chromeOpened = false;
+    if (chromeExe) {
+      try {
+        const child = spawn(chromeExe, ['chrome://extensions'], { detached: true, stdio: 'ignore', windowsHide: true, shell: false });
+        child.unref();
+        chromeOpened = true;
+      } catch {}
+    }
+    auditNativeAction({ event: 'chrome-bridge-setup', userId: jessPreferencesUserId, chromeOpened });
+    return {
+      ok: true, chromeOpened, connected: chromeBridge.status().available,
+      extensionPath: path.join(process.env.LOCALAPPDATA || '', 'Jaystarbliss', 'Hub-Mind', 'JessChromeBridge', 'chrome-extension'),
+      installerOutput,
+      nextStep: 'If the extension is not already installed, enable Developer mode in chrome://extensions, choose Load unpacked, and select the extensionPath shown here. A non-managed Chrome installation cannot be force-installed by enterprise policy; this setup registers the native host for your Windows user.',
     };
   });
   ipcMain.handle('hubmind:chrome-status', (event) => { assertTrustedSender(event); return chromeBridge.status(); });
