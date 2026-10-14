@@ -176,7 +176,7 @@ function highRiskJessConfirmation(toolName: string, args: any): string | null {
   return null;
 }
 function isSpokenYes(text: string): boolean {
-  return /^(?:yes|yes please|yes do it|confirm|confirm it|approve|do it|go ahead|proceed|affirmative|yeah|yep)[.!\\s]*$/i.test(String(text || '').trim());
+  return /^(?:yes|yes please|yes do it|confirm|confirm it|approve|do it|go ahead|proceed|affirmative|yeah|yep)[.!\s]*$/i.test(String(text || '').trim());
 }
 
 interface CurrentSpeechState {
