@@ -37,7 +37,7 @@ export function JessSettings() {
     if (!profile?.id) { setLoading(false); return; }
     return onSnapshot(doc(db, 'users', profile.id, 'private', 'jessSettings'), snapshot => {
       const loaded = { ...DEFAULTS, ...(snapshot.exists() ? snapshot.data() as Partial<JessPreferences> : {}) };
-      setPrefs(loaded);
+      setPrefs(current => JSON.stringify(current) === JSON.stringify(loaded) ? current : loaded);
       setHydrated(true);
       try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(loaded)); } catch {}
       void (async () => { try { const desktop = (window as any).hubMindDesktop; if (!desktop) return; const live = await desktop.setJessPreferences(loaded, profile.id); setDesktopState({ active: live?.fullControlActive === true, startedAt: live?.startedAt || null }); } catch { /* Browser workspace may run without the desktop shell. */ } })();
@@ -60,20 +60,6 @@ export function JessSettings() {
     setPrefs(current => ({ ...current, [key]: value }));
     setSaved(false);
   };
-  const save = async () => {
-    if (!profile?.id) return;
-    setSaving(true); setError(''); setSaved(false);
-    try {
-      await setDoc(doc(db, 'users', profile.id, 'private', 'jessSettings'), {
-        ...prefs, updatedAt: new Date().toISOString(), updatedBy: profile.id,
-      }, { merge: true });
-      try { await (window as any).hubMindDesktop?.setJessPreferences?.(prefs, profile.id); } catch { /* Browser settings remain saved in the workspace. */ }
-      try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(prefs)); } catch {}
-      setSaved(true);
-    } catch (e: any) { setError(e?.message || 'Could not save Jess settings.'); }
-    finally { setSaving(false); }
-  };
-
   useEffect(() => {
     if (!hydrated || !profile?.id) return;
     let cancelled = false;
