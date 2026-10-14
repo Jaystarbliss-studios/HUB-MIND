@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   hideCompanion: () => ipcRenderer.invoke('hubmind:hide-companion'),
   setCompanionTranscriptVisible: (visible) => ipcRenderer.invoke('hubmind:set-companion-transcript-visible', visible === true),
   setTranscriptOverlayVisible: (visible) => ipcRenderer.invoke('hubmind:set-transcript-overlay-visible', visible === true),
+  setTranscriptOverlayHeight: (height) => ipcRenderer.invoke('hubmind:set-transcript-overlay-height', height),
   setCompanionInteractive: (interactive) => ipcRenderer.invoke('hubmind:set-companion-interactive', interactive === true),
   moveCompanionBy: (dx, dy) => ipcRenderer.invoke('hubmind:move-companion-by', dx, dy),
   openUserPath: (path) => ipcRenderer.invoke('hubmind:open-user-path', path, controlCapability),
