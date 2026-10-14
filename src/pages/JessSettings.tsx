@@ -60,6 +60,30 @@ export function JessSettings() {
   }, [profile?.id]);
 
   useEffect(() => {
+    const desktop = (window as any).hubMindDesktop;
+    if (!profile?.id || !desktop?.isDesktopApp || typeof desktop.nativeStatus !== 'function') return;
+    let alive = true;
+    const refresh = async () => {
+      try {
+        const [status, saved] = await Promise.all([
+          desktop.nativeStatus(),
+          typeof desktop.getJessPreferences === 'function' ? desktop.getJessPreferences(profile.id) : Promise.resolve(null),
+        ]);
+        if (!alive) return;
+        setLiveControl({
+          active: status?.active === true,
+          mode: saved?.preferences?.permissionMode || status?.mode || prefs.permissionMode,
+          fullControlEnabled: saved?.preferences?.fullControlEnabled ?? status?.fullControlEnabled ?? false,
+          startedAt: status?.startedAt || null,
+        });
+      } catch {}
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 1000);
+    return () => { alive = false; window.clearInterval(interval); };
+  }, [profile?.id, prefs.permissionMode]);
+
+  useEffect(() => {
     const refresh = () => setExecutionEvents(
       profile?.id
         ? readJessExecutionEvents().filter(event => event.userId === profile.id).slice().reverse().slice(0, 8)
