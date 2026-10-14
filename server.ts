@@ -1116,7 +1116,7 @@ async function startServer() {
         {
           name: "run_windows_command_native",
           description: "Run a bounded, non-elevated PowerShell command as the current Windows user. Destructive commands are blocked. Requires Full Control.",
-          parameters: { type: "OBJECT", properties: { command: { type: "STRING" } }, required: ["command"] }
+          parameters: { type: "OBJECT", properties: { command: { type: "STRING" }, timeoutMs: { type: "NUMBER" } }, required: ["command"] }
         },
         {
           name: "manage_windows_files",
