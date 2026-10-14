@@ -737,7 +737,7 @@ app.whenReady().then(() => {
       assertControlCapability(event, capability);
       if (userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
     }
-    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path','clipboard_get','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window']);
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path','clipboard_get','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window','file_list','file_read','file_write','file_copy','file_move','file_rename','file_search','file_delete']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method, { userId, executionId: correlationId });
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
