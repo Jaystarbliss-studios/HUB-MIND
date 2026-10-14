@@ -17,7 +17,7 @@ This document is a live checklist for the work requested in the October 2026 des
 
 - [ ] Typecheck, unit tests, app build, Windows packaging, and native Windows smoke tests.
 - [ ] Prevent duplicate concurrent first-consent prompts and verify cancellation/retry behavior under slow Firestore snapshots.
-- [ ] Complete and test the spoken yes/no confirmation flow for delete, format, shutdown, and sending. The preference UI exists; the voice-confirmation protocol is not complete.
+- [x] Spoken yes/no confirmation gate for classified high-impact tools (file write/move/rename/recycle, high-impact commands, and named send/delete/format/shutdown/transfer/purchase tools) requires a fresh affirmative transcript for the exact same tool arguments; [ ] real microphone acceptance and tool-classification coverage on Windows.
 - [x] Removed stale activation-phrase requirement from the Full Control tool declaration; the main-process live session remains authoritative.
 - [x] Sidecar scroll now reinterprets signed wheel deltas correctly and supports horizontal wheel input.
 - [x] Sidecar: C# SendInput keyboard helper, F1–F24/extended/media key support, bounded hold timing; real Notepad type/key verification still requires Windows acceptance.
