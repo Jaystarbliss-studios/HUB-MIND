@@ -31,6 +31,9 @@ export function JessSettings() {
   const [error, setError] = useState('');
   const [liveControl, setLiveControl] = useState<{ active: boolean; mode: string; fullControlEnabled: boolean; startedAt?: string | null }>({ active: false, mode: 'ask', fullControlEnabled: false });
   const lastPersistedPrefs = useRef('');
+  const [chromeStatus, setChromeStatus] = useState<{ available: boolean; authenticated?: boolean; transport?: string }>({ available: false, authenticated: false });
+  const [chromeSetupBusy, setChromeSetupBusy] = useState(false);
+  const [chromeSetupMessage, setChromeSetupMessage] = useState('');
   const [executionEvents, setExecutionEvents] = useState<JessExecutionEvent[]>([]);
 
   useEffect(() => {
@@ -82,6 +85,38 @@ export function JessSettings() {
     const interval = window.setInterval(() => void refresh(), 1000);
     return () => { alive = false; window.clearInterval(interval); };
   }, [profile?.id, prefs.permissionMode]);
+
+  useEffect(() => {
+    const desktop = (window as any).hubMindDesktop;
+    if (!desktop?.isDesktopApp || typeof desktop.chromeStatus !== 'function') return;
+    let alive = true;
+    const refresh = async () => {
+      try {
+        const status = await desktop.chromeStatus();
+        if (alive) setChromeStatus({ available: status?.available === true, authenticated: status?.authenticated === true, transport: status?.transport });
+      } catch { if (alive) setChromeStatus({ available: false, authenticated: false }); }
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 2000);
+    return () => { alive = false; window.clearInterval(interval); };
+  }, []);
+
+  const setupChrome = async () => {
+    const desktop = (window as any).hubMindDesktop;
+    if (!desktop?.isDesktopApp || typeof desktop.setupChromeBridge !== 'function') {
+      setChromeSetupMessage('Chrome bridge setup is available in the installed Windows desktop app.');
+      return;
+    }
+    setChromeSetupBusy(true); setChromeSetupMessage('');
+    try {
+      const result = await desktop.setupChromeBridge();
+      if (!result?.ok) throw new Error(result?.error || 'Chrome bridge setup failed.');
+      setChromeSetupMessage([result.nextStep, result.extensionPath ? 'Extension folder: ' + result.extensionPath : '', result.installerOutput || ''].filter(Boolean).join('\n\n'));
+      const status = await desktop.chromeStatus();
+      setChromeStatus({ available: status?.available === true, authenticated: status?.authenticated === true, transport: status?.transport });
+    } catch (e: any) { setChromeSetupMessage(e?.message || 'Chrome bridge setup failed.'); }
+    finally { setChromeSetupBusy(false); }
+  };
 
   useEffect(() => {
     const refresh = () => setExecutionEvents(
@@ -158,6 +193,15 @@ export function JessSettings() {
             <div className="flex items-center gap-2"><span className={liveControl.active ? 'inline-block h-2 w-2 rounded-full bg-emerald-400' : 'inline-block h-2 w-2 rounded-full bg-slate-600'}/><span>Live state: {liveControl.active ? 'Full Control active' : 'Full Control inactive'} · mode {liveControl.mode || prefs.permissionMode} · {liveControl.fullControlEnabled ? 'enabled' : 'disabled'}</span></div>
             <p className="mt-1">{saving ? 'Saving changes…' : saved ? 'Changes saved automatically' : 'Changes save automatically'}</p>
           </div>
+        </section>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3"><MonitorCog className="mt-0.5 text-teal-300" size={20}/><div><h2 className="font-semibold">Chrome browser bridge</h2><p className="mt-1 text-xs text-slate-400">Connect Jess to real Chrome tabs through the native messaging host.</p></div></div>
+            <span className={chromeStatus.available && chromeStatus.authenticated ? 'shrink-0 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-300' : 'shrink-0 rounded-full border border-slate-700 bg-slate-800 px-3 py-1 text-xs text-slate-400'}>{chromeStatus.available && chromeStatus.authenticated ? 'Connected' : 'Not connected'}</span>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={() => void setupChrome()} disabled={chromeSetupBusy} className="inline-flex items-center gap-2 rounded-xl bg-teal-300 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-60">{chromeSetupBusy ? <Loader2 className="animate-spin" size={15}/> : <MonitorCog size={15}/>} {chromeSetupBusy ? 'Setting up Chrome…' : 'Set up Chrome'}</button><span className="text-xs text-slate-500">{chromeStatus.transport || 'Native messaging'}</span></div>
+          {chromeSetupMessage && <pre className="mt-4 whitespace-pre-wrap break-words rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs leading-relaxed text-slate-300">{chromeSetupMessage}</pre>}
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">On an unmanaged PC, Chrome cannot be force-installed through enterprise policy. If the extension is not already installed from the Web Store, load the unpacked extension once from the folder shown after setup. A Chrome Web Store unlisted release still requires publisher-console access.</p>
         </section>
         <JessMcpServersSettings userId={profile?.id || ''} />
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
