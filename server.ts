@@ -1047,11 +1047,26 @@ async function startServer() {
           name: "manage_windows",
           description: "Focus, close, minimize, maximize, restore, move, resize or snap a real Windows desktop window. Use an exact title or handle when possible; verify the resulting state.",
           parameters: { type: "OBJECT", properties: {
-            action: { type: "STRING", enum: ["focus_window", "close_window", "minimize_window", "maximize_window", "restore_window", "move_window", "resize_window", "snap_window"] },
+            action: { type: "STRING", enum: ["focus_window", "close_window", "minimize_window", "maximize_window", "restore_window", "move_window", "resize_window", "snap_window", "minimize_all", "show_desktop", "start_menu", "switch_window"] },
             title: { type: "STRING" }, handle: { type: "STRING" }, x: { type: "NUMBER" }, y: { type: "NUMBER" },
             width: { type: "NUMBER" }, height: { type: "NUMBER" },
             position: { type: "STRING", enum: ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right"] }
           }, required: ["action"] }
+        },
+        {
+          name: "clipboard_get",
+          description: "Read the current Windows clipboard text only when the user asks.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "clipboard_set",
+          description: "Set Windows clipboard text and verify the clipboard readback.",
+          parameters: { type: "OBJECT", properties: { text: { type: "STRING" } }, required: ["text"] }
+        },
+        {
+          name: "paste",
+          description: "Paste text into the currently focused Windows application; verify with a screen read after pasting.",
+          parameters: { type: "OBJECT", properties: { text: { type: "STRING" } } }
         },
         {
           name: "control_mouse",
