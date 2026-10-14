@@ -918,6 +918,13 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       if (!sources.length) { callback({}); return; }
       const primaryId = String(screen.getPrimaryDisplay().id);
       const primaryScreen = sources.find(source => source.display_id === primaryId && source.id.startsWith('screen:'));
+      // A user-triggered getDisplayMedia request can use the primary screen directly only
+      // after the user has explicitly enabled Allow everything. Other modes keep the chooser.
+      if (fullControlActive && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-everything' && primaryScreen) {
+        auditNativeAction({ event: 'display-share-auto-primary', sourceId: primaryScreen.id, reason: 'user-triggered-share-in-allow-everything-mode' });
+        callback({ video: primaryScreen });
+        return;
+      }
       // Put Hub-Mind's real top-level window near the front of the chooser so it
       // remains selectable even when many unrelated windows are open.
       const hubMindWindow = sources.find(source => source.id.startsWith('window:') && /hub-mind/i.test(String(source.name || '')));
