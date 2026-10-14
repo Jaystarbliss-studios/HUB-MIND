@@ -779,14 +779,9 @@ app.whenReady().then(() => {
     if (method === 'run_command') {
       const command = String(safeArgs.command || '');
       if (command.length > 4000) throw new Error('Command exceeds the 4,000-character limit.');
-      // This runner uses the current Windows user's token only. Refuse common
-      // destructive aliases and script-based bypasses; high-risk operations
-      // remain unavailable until a dedicated spoken-confirmation flow exists.
-      if (/\b(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)\b/i.test(command) ||
-          /\.(ps1|bat|cmd|vbs|js|hta)\b/i.test(command) ||
-          /\b(invoke-expression|iex|start-process\s+.*-verb\s+runas)\b/i.test(command)) {
-        throw new Error('This command is blocked because it can modify the system, launch a script, or bypass the command safety checks. Elevated commands are not silently executed.');
-      }
+      // All arbitrary commands are classified as high-risk and require native approval,
+      // or a one-time spoken yes/no when Allow Everything is enabled. Execution remains
+      // under the current Windows token; Windows UAC is never automated or bypassed.
     }
     if (['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','switch_window'].includes(method)) {
       if (safeArgs.handle !== undefined && safeArgs.handle !== null &&
@@ -857,7 +852,7 @@ app.whenReady().then(() => {
     }
     const started = Date.now();
     try {
-      let result = await nativeAgent.call(method, safeArgs, ['screenshot','file_search'].includes(method) ? 30000 : 15000);
+      let result = await nativeAgent.call(method, safeArgs, method === 'run_command' ? 35000 : ['screenshot','file_search'].includes(method) ? 30000 : 15000);
       if (method === 'system_info') {
         result = {
           ...result,
