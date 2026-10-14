@@ -784,6 +784,10 @@ export function JessFloatingAssistant() {
         }
         jessSpeechAccumulatorRef.current = '';
         jessTranscriptTurnIdRef.current = null;
+        const desktopControl = (window as any).hubMindDesktop;
+        if (desktopControl?.isDesktopApp && typeof desktopControl.confirmSpokenHighRisk === 'function' && profile?.id) {
+          void desktopControl.confirmSpokenHighRisk(text, profile.id).catch((error: any) => console.warn('[Jess] Spoken confirmation could not be applied:', error?.message || error));
+        }
         publishJessTranscript(`user-${Date.now()}-${Math.random().toString(36).slice(2)}`, 'user', text);
         setSpeechState({
           text,
