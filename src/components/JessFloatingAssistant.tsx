@@ -150,6 +150,35 @@ function wakeTone() {
 
 const MAX_JESS_TOOL_CALLS_PER_TURN = 12;
 
+function stableJessArgs(value: any): string {
+  if (Array.isArray(value)) return '[' + value.map(stableJessArgs).join(',') + ']';
+  if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + stableJessArgs(value[key])).join(',') + '}';
+  return JSON.stringify(value);
+}
+function highRiskJessConfirmation(toolName: string, args: any): string | null {
+  const name = String(toolName || '');
+  const action = String(args?.action || '').toLowerCase();
+  if (name === 'manage_windows_files' && ['recycle','write','move','rename'].includes(action)) {
+    const target = String(args?.path || '').slice(0, 220);
+    const destination = String(args?.destination || '').slice(0, 160);
+    return (action === 'recycle' ? 'send file to the Recycle Bin' : action + ' file') + ': ' + target + (destination ? ' → ' + destination : '');
+  }
+  if (name === 'run_windows_command_native' && /\b(format|shutdown|restart-computer|stop-computer|remove-item|remove\s|del\s|erase\s|diskpart|bcdedit|send-mailmessage)\b/i.test(String(args?.command || ''))) {
+    return 'run a high-impact Windows command: ' + String(args?.command || '').slice(0, 220);
+  }
+  const normalized = name.replace(/_/g, ' ');
+  if (/(delete|remove|format|shutdown|restart|send email|send message|send information|transfer|payment|purchase|publish|submit|charge)/i.test(normalized)) {
+    const details = ['recipient','to','email','subject','path','destination','file','document','amount','account','url','title']
+      .map(key => args?.[key] ? key + '=' + String(args[key]).slice(0, 100) : '')
+      .filter(Boolean).slice(0, 5).join(', ');
+    return 'use the ' + normalized.slice(0, 120) + ' tool' + (details ? ' (' + details + ')' : '');
+  }
+  return null;
+}
+function isSpokenYes(text: string): boolean {
+  return /^(?:yes|yes please|yes do it|confirm|confirm it|approve|do it|go ahead|proceed|affirmative|yeah|yep)[.!\\s]*$/i.test(String(text || '').trim());
+}
+
 interface CurrentSpeechState {
   text: string;
   speaker: 'user' | 'jess';
@@ -159,7 +188,8 @@ interface CurrentSpeechState {
 export function JessFloatingAssistant() {
   const { user, profile, updatePreferredName } = useAuth();
   const jessPreferencesRef = useRef({
-    permissionMode: 'ask' as 'ask' | 'always-allow',
+    permissionMode: 'ask' as 'ask' | 'allow-routine' | 'allow-everything' | 'always-allow',
+    confirmHighRiskOutLoud: true,
     memoryEnabled: true,
     contextEnabled: true,
     personalization: '',
@@ -183,6 +213,8 @@ export function JessFloatingAssistant() {
   }, [location.pathname]);
   const clientRef = useRef<LiveAudioClient | null>(null);
   const toolLoopRef = useRef<{ rounds: number; fingerprints: string[] }>({ rounds: 0, fingerprints: [] });
+  const pendingHighRiskConfirmationRef = useRef<{ fingerprint: string; summary: string; at: number } | null>(null);
+  const spokenHighRiskApprovalRef = useRef<{ fingerprint: string; at: number } | null>(null);
   const sessionLeaseRef = useRef<{ userId: string; sessionId: string; timer: number | null } | null>(null);
   const activationRequestSeenRef = useRef<string | null>(null);
   const [remoteJessOwner, setRemoteJessOwner] = useState<JessSessionOwner | null>(null);
@@ -547,39 +579,57 @@ export function JessFloatingAssistant() {
         }
         toolLoopRef.current.fingerprints.push(fingerprint);
         let result: any;
-        const webResearchTools = new Set(['search_web', 'desktop_open_website']);
-        if (jessPreferencesRef.current.webResearchEnabled === false && webResearchTools.has(fc.name)) {
-          result = { result: { success: false, error: 'Web research is disabled in Jess settings. Enable it in Workspace → Jess settings to use online search or website-opening tools.' } };
-        } else try {
-          const execution = await runJessToolExecution({
-            toolName: fc.name,
-            args: toolArgs || {},
-            userId: profile?.id,
-            turnId: jessTranscriptTurnIdRef.current || undefined,
-          }, executionId => executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context, executionId));
-          result = execution.value;
-          if (result?.result && typeof result.result === 'object') {
+        const riskSummary = highRiskJessConfirmation(fc.name, toolArgs || {});
+        const riskFingerprint = fc.name + ':' + stableJessArgs(toolArgs || {});
+        const spokenApproval = spokenHighRiskApprovalRef.current;
+        const hasSpokenApproval = !!riskSummary && !!spokenApproval
+          && spokenApproval.fingerprint === riskFingerprint
+          && Date.now() - spokenApproval.at <= 30000;
+        if (riskSummary && jessPreferencesRef.current.confirmHighRiskOutLoud !== false && !hasSpokenApproval) {
+          pendingHighRiskConfirmationRef.current = { fingerprint: riskFingerprint, summary: riskSummary, at: Date.now() };
+          spokenHighRiskApprovalRef.current = null;
+          result = { result: {
+            success: false,
+            confirmationRequired: true,
+            confirmationSummary: riskSummary,
+            message: "This action is paused. Say a clear 'yes' to proceed or 'no' to cancel. Only a fresh spoken yes for this exact action will authorize it.",
+          } };
+        } else {
+          if (hasSpokenApproval) {
+            spokenHighRiskApprovalRef.current = null;
+            pendingHighRiskConfirmationRef.current = null;
+          }
+          const webResearchTools = new Set(['search_web', 'desktop_open_website']);
+          if (jessPreferencesRef.current.webResearchEnabled === false && webResearchTools.has(fc.name)) {
+            result = { result: { success: false, error: 'Web research is disabled in Jess settings. Enable it in Workspace → Jess settings to use online search or website-opening tools.' } };
+          } else try {
+            const execution = await runJessToolExecution({
+              toolName: fc.name,
+              args: toolArgs || {},
+              userId: profile?.id,
+              turnId: jessTranscriptTurnIdRef.current || undefined,
+            }, executionId => executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context, executionId));
+            result = execution.value;
+            if (result?.result && typeof result.result === 'object') {
+              result = {
+                ...result,
+                result: {
+                  ...result.result,
+                  executionId: execution.executionId,
+                  executionStatus: execution.status,
+                  retrySafe: execution.retrySafe,
+                  durationMs: execution.durationMs,
+                },
+              };
+            }
+          } catch (error: any) {
             result = {
-              ...result,
               result: {
-                ...result.result,
-                executionId: execution.executionId,
-                executionStatus: execution.status,
-                retrySafe: execution.retrySafe,
-                durationMs: execution.durationMs,
+                success: false,
+                error: error?.message || 'The requested Hub-Mind action failed unexpectedly.',
               },
             };
           }
-        } catch (error: any) {
-          // A tool failure must become a tool response, not an unhandled promise.
-          // Returning the failure to Gemini lets Jess recover conversationally and
-          // keeps the Live session usable for the next command.
-          result = {
-            result: {
-              success: false,
-              error: error?.message || 'The requested Hub-Mind action failed unexpectedly.',
-            },
-          };
         }
 
         if (result.actionPayload?.type === 'screen_share') {
@@ -755,6 +805,19 @@ export function JessFloatingAssistant() {
       },
       onUserTranscript: (text) => {
         if (sessionEndingRef.current || !text) return;
+        const pendingRisk = pendingHighRiskConfirmationRef.current;
+        if (pendingRisk) {
+          const fresh = Date.now() - pendingRisk.at <= 45000;
+          if (fresh && isSpokenYes(text)) {
+            spokenHighRiskApprovalRef.current = { fingerprint: pendingRisk.fingerprint, at: Date.now() };
+          } else {
+            spokenHighRiskApprovalRef.current = null;
+          }
+          pendingHighRiskConfirmationRef.current = null;
+        } else {
+          // A spoken approval is single-use and expires on the next user utterance.
+          spokenHighRiskApprovalRef.current = null;
+        }
         if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
         const stopShareCommand = /\b(stop|end|turn off|finish|cancel)\s+(?:the\s+)?(?:screen\s*sharing|screen share|sharing my screen)\b/i.test(text);
         if (stopShareCommand && (screenShareRef.current.stream || screenShareRef.current.nativePlugin || screenShareRef.current.timer !== null)) {
