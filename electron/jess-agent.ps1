@@ -29,7 +29,23 @@ public static class JessWin32 {
  [DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);
  [DllImport("user32.dll")]public static extern void mouse_event(uint f,uint dx,uint dy,uint data,UIntPtr extra);
  [DllImport("user32.dll")]public static extern uint SendInput(uint n,INPUT[] i,int size);
- public const uint KEYUP=2,UNICODE=4;
+ public const uint KEYUP=2,UNICODE=4,EXTENDED=1;
+ public static bool SendVirtualKeys(ushort[] keys,int holdMs) {
+  if(keys==null||keys.Length==0) return false;
+  var inputs=new INPUT[keys.Length*2];
+  for(int i=0;i<keys.Length;i++){
+   uint flags=(keys[i]==33||keys[i]==34||keys[i]==35||keys[i]==36||keys[i]==37||keys[i]==38||keys[i]==39||keys[i]==40||keys[i]==45||keys[i]==46||keys[i]==91||keys[i]==92||keys[i]==144||keys[i]==145||keys[i]>=173&&keys[i]<=179)?EXTENDED:0;
+   inputs[i]=new INPUT();inputs[i].type=1;inputs[i].U.ki=new KEYBDINPUT{vk=keys[i],scan=0,flags=flags,time=0,extra=IntPtr.Zero};
+  }
+  System.Threading.Thread.Sleep(Math.Max(0,Math.Min(5000,holdMs)));
+  for(int i=0;i<keys.Length;i++){
+   ushort key=keys[keys.Length-1-i];
+   uint flags=KEYUP;
+   if(key==33||key==34||key==35||key==36||key==37||key==38||key==39||key==40||key==45||key==46||key==91||key==92||key==144||key==145||key>=173&&key<=179) flags|=EXTENDED;
+   inputs[keys.Length+i]=new INPUT();inputs[keys.Length+i].type=1;inputs[keys.Length+i].U.ki=new KEYBDINPUT{vk=key,scan=0,flags=flags,time=0,extra=IntPtr.Zero};
+  }
+  return SendInput((uint)inputs.Length,inputs,Marshal.SizeOf(typeof(INPUT)))==inputs.Length;
+ }
 }
 '@
 function Get-Windows {
@@ -60,10 +76,11 @@ function Find-Window($a){
  }
  return $null
 }
-function Send-Key($key){
- $map=@{ENTER=13;ESC=27;TAB=9;SPACE=32;BACKSPACE=8;DELETE=46;UP=38;DOWN=40;LEFT=37;RIGHT=39;HOME=36;END=35;CTRL=17;ALT=18;SHIFT=16;WIN=91;F1=112;F2=113;F3=114;F4=115;F5=116;F6=117;F7=118;F8=119;F9=120;F10=121;F11=122;F12=123}
- $list=New-Object System.Collections.Generic.List[JessWin32+INPUT];foreach($p in $key.ToUpperInvariant().Split('+')){$v=$map[$p];if(!$v -and $p.Length -eq 1){$v=[int][char]$p};if(!$v){throw ('Unsupported key '+$p)};$i=New-Object JessWin32+INPUT;$i.type=1;$i.U.ki.vk=[uint16]$v;$list.Add($i)}
- $keyDowns=$list.ToArray();for($n=$keyDowns.Length-1;$n -ge 0;$n--){$i=$keyDowns[$n];$i.U.ki.flags=[JessWin32]::KEYUP;$list.Add($i)};$arr=$list.ToArray();[void][JessWin32]::SendInput([uint32]$arr.Length,$arr,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]))
+function Send-Key($key, $holdMs = 45){
+  $map=@{ENTER=13;ESC=27;TAB=9;SPACE=32;BACKSPACE=8;DELETE=46;INSERT=45;HOME=36;END=35;PAGEUP=33;PAGEDOWN=34;UP=38;DOWN=40;LEFT=37;RIGHT=39;CTRL=17;ALT=18;SHIFT=16;WIN=91;F1=112;F2=113;F3=114;F4=115;F5=116;F6=117;F7=118;F8=119;F9=120;F10=121;F11=122;F12=123;F13=124;F14=125;F15=126;F16=127;F17=128;F18=129;F19=130;F20=131;F21=132;F22=133;F23=134;F24=135;VOLUME_MUTE=173;VOLUME_DOWN=174;VOLUME_UP=175;MEDIA_NEXT=176;MEDIA_PREVIOUS=177;MEDIA_STOP=178;MEDIA_PLAY_PAUSE=179}
+  $vks=New-Object System.Collections.Generic.List[uint16];foreach($p in $key.ToUpperInvariant().Split('+')){$v=$map[$p];if(!$v -and $p.Length -eq 1){$v=[int][char]$p};if(!$v){throw ('Unsupported key '+$p)};$vks.Add([uint16]$v)}
+  $ok=[JessWin32]::SendVirtualKeys($vks.ToArray(),[Math]::Max(0,[Math]::Min(5000,[int]$holdMs)))
+  if(-not $ok){throw 'Windows SendInput did not accept the complete key sequence.'}
 }
 function Invoke-Action($q){
  $a=$q.args
@@ -76,7 +93,7 @@ function Invoke-Action($q){
  'scroll' {$delta=[int]$a.delta;$wheelData=[BitConverter]::ToUInt32([BitConverter]::GetBytes($delta),0);[void][JessWin32]::SetCursorPos([int]$a.x,[int]$a.y);[JessWin32]::mouse_event(0x0800,0,0,$wheelData,[UIntPtr]::Zero);if($null -ne $a.horizontalDelta -and [int]$a.horizontalDelta -ne 0){$horizontal=[BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$a.horizontalDelta),0);[JessWin32]::mouse_event(0x1000,0,0,$horizontal,[UIntPtr]::Zero)};return @{ok=$true;verified=$false;evidence=@{x=$a.x;y=$a.y;delta=$delta;horizontalDelta=[int]$a.horizontalDelta}}}
  'drag' {[void][JessWin32]::SetCursorPos([int]$a.fromX,[int]$a.fromY);[JessWin32]::mouse_event(2,0,0,0,[UIntPtr]::Zero);$steps=12;for($i=1;$i -le $steps;$i++){$x=[int]($a.fromX+($a.toX-$a.fromX)*$i/$steps);$y=[int]($a.fromY+($a.toY-$a.fromY)*$i/$steps);[void][JessWin32]::SetCursorPos($x,$y);Start-Sleep -Milliseconds 12};[JessWin32]::mouse_event(4,0,0,0,[UIntPtr]::Zero);return @{ok=$true;verified=$false;evidence=@{from=@{x=$a.fromX;y=$a.fromY};to=@{x=$a.toX;y=$a.toY};note='Drag input sent; target effect not independently confirmed'}}}
  'type_text' {$text=[string]$a.text;if($text.Length -gt 10000){throw 'Text limited to 10,000 characters'};foreach($ch in $text.ToCharArray()){$i=New-Object JessWin32+INPUT;$i.type=1;$i.U.ki.scan=[uint16][char]$ch;$i.U.ki.flags=4;$up=$i;$up.U.ki.flags=6;$arr=@($i,$up);[void][JessWin32]::SendInput(2,$arr,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]))};return @{ok=$true;verified=$false;evidence=@{characters=$text.Length;note='Unicode input sent; field content not independently verified'}}}
- 'press_keys' {Send-Key ([string]$a.keys);return @{ok=$true;verified=$false;evidence=@{keys=$a.keys;note='Key events sent; effect not independently verified'}}}
+ 'press_keys' {$hold=45;if($null -ne $a.holdMs){$hold=[int]$a.holdMs};Send-Key ([string]$a.keys) $hold;return @{ok=$true;verified=$false;evidence=@{keys=$a.keys;holdMs=$hold;note='C# SendInput accepted the key down/up sequence; target effect requires a screen or UI readback'}}}
  'media_key' {$action=[string]$a.action;$map=@{volume_up=175;volume_down=174;volume_mute=173;brightness_up=111;brightness_down=112};if(!$map.ContainsKey($action)){throw 'Unsupported media or brightness key'};$vk=[uint16]$map[$action];$down=New-Object JessWin32+INPUT;$down.type=1;$down.U.ki.vk=$vk;$up=New-Object JessWin32+INPUT;$up.type=1;$up.U.ki.vk=$vk;$up.U.ki.flags=[JessWin32]::KEYUP;$arr=@($down,$up);[void][JessWin32]::SendInput(2,$arr,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]));return @{ok=$true;verified=$false;evidence=@{action=$action;virtualKey=$vk;note='Windows media/brightness key event sent. Some keyboards, display drivers or external monitors may not expose this control; read the actual system state to verify.'}}}
  'find_ui_element' {$name=[string]$a.name;if(!$name){throw 'Element name required'};$root=[System.Windows.Automation.AutomationElement]::RootElement;$cond=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::IsControlElementProperty,$true);$all=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,$cond);$matches=@();for($i=0;$i -lt [Math]::Min($all.Count,3000);$i++){try{$e=$all.Item($i);if($e.Current.Name -like ('*'+$name+'*')){$r=$e.Current.BoundingRectangle;$matches+=@{name=$e.Current.Name;automationId=$e.Current.AutomationId;controlType=$e.Current.ControlType.ProgrammaticName;bounds=@{x=$r.X;y=$r.Y;width=$r.Width;height=$r.Height}};if($matches.Count -ge 20){break}}}catch{}};return @{ok=$true;verified=($matches.Count -gt 0);evidence=@{query=$name;matches=$matches}}}
  'invoke_ui_element' {$name=[string]$a.name;if(!$name){throw 'Element name required'};$root=[System.Windows.Automation.AutomationElement]::RootElement;$cond=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::IsControlElementProperty,$true);$all=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,$cond);$target=$null;for($i=0;$i -lt [Math]::Min($all.Count,3000);$i++){try{$e=$all.Item($i);if($e.Current.Name -eq $name -or $e.Current.Name -like ('*'+$name+'*')){$target=$e;break}}catch{}};if(!$target){throw ('No accessible UI element found matching '+$name)};try{$pattern=$target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern);$pattern.Invoke();Start-Sleep -Milliseconds 150;return @{ok=$true;verified=$false;evidence=@{name=$target.Current.Name;automationId=$target.Current.AutomationId;note='InvokePattern called; resulting UI state needs a follow-up screenshot or screen read'}}}catch{throw ('Element does not support InvokePattern: '+$target.Current.Name)}}
