@@ -537,17 +537,21 @@ app.whenReady().then(() => {
     if (!mcpBridge) return { success: false, error: 'MCP runtime is not initialized.' };
     const resolved = mcpBridge.resolveTool(owner, String(modelToolName || ''));
     if (!resolved) return { success: false, error: 'MCP tool is not available for this account or its server is disconnected.' };
-    const details = JSON.stringify(args && typeof args === 'object' ? args : {}).slice(0, 1600);
-    const choice = await dialog.showMessageBox(getDialogParent(), {
-      type: 'warning',
-      buttons: ['Cancel tool call', 'Allow this call'],
-      defaultId: 0,
-      cancelId: 0,
-      title: 'Approve Jess MCP tool call?',
-      message: resolved.entry.serverName + ' wants to run ' + resolved.entry.originalName,
-      detail: 'Tool arguments:\n' + details + '\n\nExternal MCP tools are not trusted by default. Approve only if you recognize this server and intended action.',
-    });
-    if (choice.response !== 1) return { success: false, cancelled: true, error: 'The MCP tool call was cancelled by the user.' };
+    const skipApproval = fullControlActive && jessPreferencesUserId === owner && controlSessionUserId === owner &&
+      jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'everything' && allowEverythingConsentGranted;
+    if (!skipApproval) {
+      const details = JSON.stringify(args && typeof args === 'object' ? args : {}).slice(0, 1600);
+      const choice = await dialog.showMessageBox(getDialogParent(), {
+        type: 'warning',
+        buttons: ['Cancel tool call', 'Allow this call'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'Approve Jess MCP tool call?',
+        message: resolved.entry.serverName + ' wants to run ' + resolved.entry.originalName,
+        detail: 'Tool arguments:\\n' + details + '\\n\\nExternal MCP tools run with the permissions of their server process. Approve only if you trust this server and intended action.',
+      });
+      if (choice.response !== 1) return { success: false, cancelled: true, error: 'The MCP tool call was cancelled by the user.' };
+    }
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
     auditNativeAction({ event: 'mcp-tool-call-approved', serverId: resolved.entry.serverId, toolName: resolved.entry.originalName, executionId: correlationId, userId: owner });
     try {
@@ -676,7 +680,7 @@ app.whenReady().then(() => {
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
     if (typeof userId !== 'string' || !userId.trim() || userId.length > 256) throw new Error('A signed-in Hub-Mind user ID is required.');
     if (!['get_time','system_info'].includes(method) && userId !== controlSessionUserId) throw new Error('Native action blocked because the signed-in user does not own this Full Control Session.');
-    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path']);
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','find_ui_element','invoke_ui_element','launch_app','run_command','media_key','get_time','system_info','open_path','clipboard_get','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method, { userId, executionId: correlationId });
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
@@ -713,15 +717,18 @@ app.whenReady().then(() => {
     if (method === 'drag' && !['fromX','fromY','toX','toY'].every(key => Number.isFinite(safeArgs[key]))) throw new Error('Drag requires start and end screen coordinates.');
     if (method === 'type_text' && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 10000)) throw new Error('Text must be a string no longer than 10,000 characters.');
     if (method === 'press_keys' && (typeof safeArgs.keys !== 'string' || !safeArgs.keys.trim() || safeArgs.keys.length > 80)) throw new Error('Provide a key combination under 80 characters.');
+    if (method === 'press_keys' && safeArgs.holdMs !== undefined && (!Number.isFinite(safeArgs.holdMs) || safeArgs.holdMs < 0 || safeArgs.holdMs > 5000)) throw new Error('Key hold duration must be between 0 and 5000 milliseconds.');
+    if (method === 'scroll' && safeArgs.axis !== undefined && !['vertical', 'horizontal'].includes(String(safeArgs.axis))) throw new Error('Scroll axis must be vertical or horizontal.');
+    if (method === 'clipboard_set' && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 50000)) throw new Error('Clipboard text must be a string no longer than 50,000 characters.');
+    if (method === 'paste' && safeArgs.text !== undefined && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 50000)) throw new Error('Paste text must be a string no longer than 50,000 characters.');
     if (method === 'launch_app' && (typeof safeArgs.name !== 'string' || !safeArgs.name.trim() || safeArgs.name.length > 160)) throw new Error('Provide an application name under 160 characters.');
     if (method === 'open_path' && (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048)) throw new Error('Provide a valid local file path.');
-    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key']);
+    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','open_path','media_key','clipboard_set','paste','show_desktop','minimize_all','start_menu','switch_window']);
     const highRiskActions = new Set(['close_window', 'run_command', 'open_path']);
     const alwaysAllowed = fullControlActive &&
       jessPreferencesUserId === controlSessionUserId &&
       controlSessionUserId === userId &&
-      (jessPreferences.permissionMode === 'routine' || jessPreferences.permissionMode === 'always-allow' || (jessPreferences.permissionMode === 'everything' && allowEverythingConsentGranted)) &&
-      !highRiskActions.has(method);
+      (jessPreferences.permissionMode === 'routine' || jessPreferences.permissionMode === 'always-allow' || (jessPreferences.permissionMode === 'everything' && allowEverythingConsentGranted && !highRiskActions.has(method)));
     if (mutatingActions.has(method) && !alwaysAllowed) {
       const details = method === 'run_command' ? String(safeArgs.command || '') :
         method === 'type_text' ? String(safeArgs.text || '').slice(0, 1000) :
@@ -906,6 +913,11 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       if (!sources.length) { callback({}); return; }
       const primaryId = String(screen.getPrimaryDisplay().id);
       const primaryScreen = sources.find(source => source.display_id === primaryId && source.id.startsWith('screen:'));
+      if (fullControlActive && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'everything' && allowEverythingConsentGranted && primaryScreen) {
+        auditNativeAction({ event: 'screen-share-primary-auto-selected', userId: controlSessionUserId, sourceId: primaryScreen.id });
+        callback({ video: primaryScreen });
+        return;
+      }
       // Put Hub-Mind's real top-level window near the front of the chooser so it
       // remains selectable even when many unrelated windows are open.
       const hubMindWindow = sources.find(source => source.id.startsWith('window:') && /hub-mind/i.test(String(source.name || '')));
