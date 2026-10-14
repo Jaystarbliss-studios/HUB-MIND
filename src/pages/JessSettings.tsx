@@ -79,7 +79,7 @@ export function JessSettings() {
     setChromeSetupBusy(true); setChromeSetupMessage('');
     try {
       const result = await desktop.installChromeBridge();
-      if (result?.ok) setChromeSetupMessage('Native host registered. In Chrome, open chrome://extensions, enable Developer mode, and load the installed extension folder shown by the setup script.');
+      if (result?.ok) setChromeSetupMessage('Native host registered. ' + String(result.output || '') + ' In Chrome, open chrome://extensions, enable Developer mode, and load the extension folder printed above.');
       else if (result?.cancelled) setChromeSetupMessage('Chrome setup cancelled.');
       else setChromeSetupMessage(String(result?.error || 'Chrome setup failed.'));
       const status = await desktop.chromeStatus();
