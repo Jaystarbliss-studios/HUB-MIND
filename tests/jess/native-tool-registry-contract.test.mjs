@@ -354,3 +354,5 @@ test('MCP tools use explicit desktop consent, scoped tool discovery, and no shel
   assert.match(settings, /Add and connect/);
   assert.match(settingsPage, /JessMcpServersSettings userId=\{profile\?\.id \|\| ''\}/);
 });
+
+test('high-impact native and external tool calls pause for a fresh spoken yes',async()=>{const [assistant,live,settings]=await Promise.all([read('../../src/components/JessFloatingAssistant.tsx'),read('../../src/services/liveAudioClient.ts'),read('../../src/pages/JessSettings.tsx')]);assert.match(assistant,/highRiskJessConfirmation/);assert.match(assistant,/confirmationRequired: true/);assert.match(assistant,/pendingHighRiskConfirmationRef/);assert.match(assistant,/isSpokenYes\(text\)/);assert.match(assistant,/confirmHighRiskOutLoud !== false/);assert.match(live,/HIGH-IMPACT SPOKEN CONFIRMATION/);assert.match(settings,/Ask out loud before high-impact actions/);});
