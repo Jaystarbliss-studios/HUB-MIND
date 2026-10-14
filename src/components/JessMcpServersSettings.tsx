@@ -91,7 +91,7 @@ export function JessMcpServersSettings({ userId }: { userId: string }) {
         args: ['windows-mcp', 'serve'],
         env: {
           ANONYMIZED_TELEMETRY: 'false',
-          WINDOWS_MCP_EXCLUDE_TOOLS: 'PowerShell,Registry,Process,FileSystem',
+          WINDOWS_MCP_EXCLUDE_TOOLS: 'PowerShell,Registry,Process,FileSystem,Screenshot',
         },
       };
       await desktop.mcpSaveServer(config, userId);
