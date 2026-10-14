@@ -144,6 +144,16 @@ function Invoke-Action($q){
    return @{ok=$true;verified=($null -ne $w);evidence=@{resolver=$(if($appPath){'App Paths/PATH'}else{'unknown'});path=$appPath;processId=$proc.Id;window=$w}}
   }
  'open_path' {$target=[string]$a.path;if(!$target -or $target.Length -gt 2048 -or $target.Contains([char]0)){throw 'Invalid file path'};$resolved=[System.IO.Path]::GetFullPath($target);if(!(Test-Path -LiteralPath $resolved)){throw 'File or folder does not exist'};$leaf=[System.IO.Path]::GetFileName($resolved);$before=@(Get-Windows|ForEach-Object{[string]$_.handle});Start-Process -FilePath $resolved;Start-Sleep -Milliseconds 700;$after=Get-Windows;$new=$after|Where-Object{($before -notcontains [string]$_.handle) -or ($leaf -and $_.title -like ('*'+$leaf+'*'))}|Select-Object -First 1;if($new){[void][JessWin32]::ShowWindowAsync([IntPtr]$new.handle,9);[void][JessWin32]::SetForegroundWindow([IntPtr]$new.handle);Start-Sleep -Milliseconds 120};$verified=($null -ne $new -and [JessWin32]::GetForegroundWindow().ToInt64() -eq [int64]$new.handle);return @{ok=($null -ne $new);verified=$verified;evidence=@{path=$resolved;window=$new;note='Default Windows handler was invoked; visibility verification depends on a matching window'}}}
+ 'system_power_action' {
+   $action=[string]$a.action
+   switch($action){
+    'lock' {$proc=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\rundll32.exe') -ArgumentList 'user32.dll,LockWorkStation' -PassThru -ErrorAction Stop;Start-Sleep -Milliseconds 250;return @{ok=$true;verified=$false;evidence=@{action='lock';processId=$proc.Id;note='Windows lock request was launched; lock state must be verified on the device'}}}
+    'shutdown' {$proc=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\shutdown.exe') -ArgumentList '/s /t 15 /c "Jess confirmed shutdown; cancel with shutdown /a"' -PassThru -ErrorAction Stop;Start-Sleep -Milliseconds 250;return @{ok=$true;verified=$false;evidence=@{action='shutdown';scheduledDelaySeconds=15;cancelCommand='shutdown /a';processId=$proc.Id;note='Shutdown was scheduled for 15 seconds from now, not verified as completed'}}}
+    'restart' {$proc=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\shutdown.exe') -ArgumentList '/r /t 15 /c "Jess confirmed restart; cancel with shutdown /a"' -PassThru -ErrorAction Stop;Start-Sleep -Milliseconds 250;return @{ok=$true;verified=$false;evidence=@{action='restart';scheduledDelaySeconds=15;cancelCommand='shutdown /a';processId=$proc.Id;note='Restart was scheduled for 15 seconds from now, not verified as completed'}}}
+    'cancel_shutdown' {$proc=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\shutdown.exe') -ArgumentList '/a' -PassThru -ErrorAction Stop;Start-Sleep -Milliseconds 250;$exit=$proc.ExitCode;return @{ok=($exit -eq 0);verified=($exit -eq 0);evidence=@{action='cancel_shutdown';exitCode=$exit;note='Windows cancellation command returned; it may report failure if no shutdown/restart was pending'}}}
+    default {throw 'Unsupported Windows power action'}
+   }
+  }
  'clipboard_action' {
    Add-Type -AssemblyName System.Windows.Forms
    $action=[string]$a.action;$text=[string]$a.text
