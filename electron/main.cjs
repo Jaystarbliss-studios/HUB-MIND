@@ -11,6 +11,9 @@ const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
 let companionWindow;
 let transcriptOverlayWindow;
+let screenSharePickerWindow = null;
+let pendingDisplayMediaResolve = null;
+let pendingDisplayMediaSources = [];
 let companionDismissed = false;
 let tray;
 let quitting = false;
@@ -111,6 +114,72 @@ function guardNavigation(win) {
     if (!isTrustedAppUrl(url)) event.preventDefault();
   });
 }
+
+function finishDisplaySourceChoice(source = null) {
+  const resolve = pendingDisplayMediaResolve;
+  pendingDisplayMediaResolve = null;
+  pendingDisplayMediaSources = [];
+  const picker = screenSharePickerWindow;
+  screenSharePickerWindow = null;
+  if (resolve) resolve(source || null);
+  if (picker && !picker.isDestroyed()) {
+    try { picker.close(); } catch {}
+  }
+}
+function chooseDisplaySource(sources) {
+  if (pendingDisplayMediaResolve) finishDisplaySourceChoice(null);
+  pendingDisplayMediaSources = Array.isArray(sources) ? sources : [];
+  return new Promise(resolve => {
+    pendingDisplayMediaResolve = resolve;
+    const picker = new BrowserWindow({
+      width: 980, height: 720, minWidth: 660, minHeight: 520,
+      show: false, frame: false, resizable: true, movable: true,
+      alwaysOnTop: true, skipTaskbar: false, autoHideMenuBar: true,
+      backgroundColor: '#020617', title: 'Choose what to share · Hub-Mind',
+      webPreferences: {
+        contextIsolation: true, nodeIntegration: false, sandbox: true,
+        preload: path.join(__dirname, 'screen-share-preload.cjs'),
+      },
+    });
+    screenSharePickerWindow = picker;
+    picker.setAlwaysOnTop(true, 'screen-saver');
+    picker.once('ready-to-show', () => { if (!picker.isDestroyed()) picker.show(); });
+    picker.on('closed', () => {
+      if (screenSharePickerWindow === picker) screenSharePickerWindow = null;
+      if (pendingDisplayMediaResolve) finishDisplaySourceChoice(null);
+    });
+    picker.webContents.on('did-finish-load', () => {
+      if (picker.isDestroyed() || screenSharePickerWindow !== picker) return;
+      const sanitized = pendingDisplayMediaSources.map(source => {
+        let thumbnail = '';
+        try { thumbnail = source.thumbnail?.toDataURL?.() || ''; } catch {}
+        return {
+          id: String(source.id),
+          name: String(source.name || 'Application window').replace(/[\r\n]+/g, ' ').slice(0, 160),
+          kind: String(source.id || '').startsWith('screen:') ? 'screen' : 'window',
+          thumbnail,
+        };
+      });
+      picker.webContents.send('hubmind:screen-share-sources', sanitized);
+    });
+    picker.loadFile(path.join(__dirname, 'screen-share-picker.html')).catch(error => {
+      auditNativeAction({ event: 'screen-share-picker-load-failed', error: String(error?.message || error).slice(0, 500) });
+      finishDisplaySourceChoice(null);
+    });
+  });
+}
+ipcMain.on('hubmind:screen-share-select', (event, sourceId) => {
+  if (!screenSharePickerWindow || event.sender !== screenSharePickerWindow.webContents || typeof sourceId !== 'string') return;
+  const source = pendingDisplayMediaSources.find(item => item.id === sourceId);
+  if (!source) return;
+  auditNativeAction({ event: 'screen-share-source-selected', sourceId: source.id });
+  finishDisplaySourceChoice(source);
+});
+ipcMain.on('hubmind:screen-share-cancel', event => {
+  if (!screenSharePickerWindow || event.sender !== screenSharePickerWindow.webContents) return;
+  auditNativeAction({ event: 'screen-share-cancelled' });
+  finishDisplaySourceChoice(null);
+});
 
 function createMainWindow(initialPath = '/login') {
   mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, icon: path.join(__dirname, '..', 'dist', 'hub-mind logo.png'), backgroundColor: '#020617', title: 'Hub-Mind', autoHideMenuBar: true, show: false, webPreferences: { backgroundThrottling: false } }));
@@ -913,7 +982,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       // selecting the full screen made it impossible to share a single app window.
       const sources = await desktopCapturer.getSources({
         types: ['screen', 'window'],
-        thumbnailSize: { width: 0, height: 0 },
+        thumbnailSize: { width: 320, height: 180 },
         fetchWindowIcons: true,
       });
       if (!sources.length) { callback({}); return; }
@@ -938,27 +1007,8 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       ];
       const unique = [...new Map(ordered.map(source => [source.id, source])).values()].slice(0, 8);
       if (!unique.length) { callback({}); return; }
-      const labels = unique.map(source => {
-        const name = String(source.name || 'Application window').replace(/[\r\n]+/g, ' ').slice(0, 64);
-        return (source.id.startsWith('screen:') ? 'Share screen: ' : 'Share app: ') + name;
-      });
-      const cancelIndex = labels.length;
-      const options = {
-        type: 'question',
-        title: 'Choose what to share',
-        message: 'Choose a screen or application window to share.',
-        detail: 'Only the source you select will be shared. Cancel to keep your screen private.',
-        buttons: [...labels, 'Cancel'],
-        defaultId: cancelIndex,
-        cancelId: cancelIndex,
-        noLink: true,
-      };
-      const parent = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? mainWindow : undefined;
-      const choice = parent
-        ? await dialog.showMessageBox(parent, options)
-        : await dialog.showMessageBox(options);
-      const selected = unique[choice.response];
-      callback(selected ? { video: selected } : {});
+      const selected = await chooseDisplaySource(unique);
+
     } catch (error) {
       console.warn('[Hub-Mind] Display source picker failed:', error);
       callback({});
