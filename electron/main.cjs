@@ -820,6 +820,7 @@ app.whenReady().then(() => {
     const started = Date.now();
     try {
       let result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
+      if (method === 'system_info' && result?.evidence && typeof result.evidence === 'object') result.evidence.hubMindDesktopVersion = app.getVersion();
       if (method === 'read_screen_text' && !String(result?.evidence?.text || '').trim()) {
         try {
           const ocr = await readWindowsOcrFallback();
