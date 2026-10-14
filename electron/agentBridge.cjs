@@ -10,11 +10,11 @@ function ensureAgent() {
   ? path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'jess-agent.ps1')
   : path.join(__dirname, 'jess-agent.ps1');
  if (!require('node:fs').existsSync(scriptPath)) throw new Error('Jess native agent script is missing from this build: ' + scriptPath);
- child = spawn('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',scriptPath],{windowsHide:true,stdio:['pipe','pipe','pipe'],shell:false});
+ child = spawn('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-STA','-ExecutionPolicy','Bypass','-File',scriptPath],{windowsHide:true,stdio:['pipe','pipe','pipe'],shell:false});
  child.stdout.setEncoding('utf8');
  child.stdout.on('data',chunk=>{ buffer+=chunk; while(true){const at=buffer.indexOf('\n');if(at<0)break;const line=buffer.slice(0,at).trim();buffer=buffer.slice(at+1);if(!line)continue;try{const msg=JSON.parse(line),wait=pending.get(msg.id);if(wait){pending.delete(msg.id);clearTimeout(wait.timer);wait.resolve(msg.result);}}catch{}} });
  child.stderr.on('data',chunk=>console.warn('[Jess native agent]',String(chunk).slice(0,1000)));
- child.on('exit',(code,signal)=>{for(const [id,wait] of pending){clearTimeout(wait.timer);wait.reject(new Error('Jess native agent exited ('+(code??signal??'unknown')+')'));pending.delete(id);}child=null;buffer='';}); return child;
+ child.on('exit',(code,signal)=>{console.warn('[Jess native agent] sidecar exited; it will restart on the next request.',{code,signal,pending:pending.size});for(const [id,wait] of pending){clearTimeout(wait.timer);wait.reject(new Error('Jess native agent exited ('+(code??signal??'unknown')+')'));pending.delete(id);}child=null;buffer='';}); return child;
 }
 function call(method,args={},timeout=15000){if(process.platform!=='win32')return Promise.resolve({ok:false,verified:false,evidence:null,error:'Native Windows control is only available in the Windows desktop build.'});const proc=ensureAgent(),id=(++nextId)+'-'+randomUUID();return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{pending.delete(id);if(child && child.exitCode===null){try{child.kill();}catch{}child=null;buffer='';}reject(new Error('Native action timed out: '+method+'. The sidecar was stopped to prevent a hung command from blocking later actions.'));},timeout);pending.set(id,{resolve,reject,timer});proc.stdin.write(JSON.stringify({id,method,args})+'\n',error=>{if(error){const wait=pending.get(id);if(wait){pending.delete(id);clearTimeout(timer);reject(error);}}});});}
 function stop(){if(child){child.kill();child=null;}for(const [id,wait] of pending){clearTimeout(wait.timer);wait.reject(new Error('Jess native agent stopped'));pending.delete(id);}}
