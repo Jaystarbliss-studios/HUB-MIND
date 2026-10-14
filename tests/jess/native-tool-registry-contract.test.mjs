@@ -125,6 +125,7 @@ const nativeToolNames = [
   'chrome_click_element',
   'chrome_fill_field',
   'chrome_scroll',
+  'chrome_capture_screenshot',
 ];
 
 test('server Live tool registry exposes every native tool declared by Jess', async () => {
@@ -275,7 +276,7 @@ test('runtime filtering hides native tools outside the installed desktop app', (
     'list_windows',
     'chrome_open_tab',
   ]);
-  assert.equal(JESS_NATIVE_TOOL_NAMES.length, 34);
+  assert.equal(JESS_NATIVE_TOOL_NAMES.length, 35);
 });
 
 
