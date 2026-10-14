@@ -1045,12 +1045,12 @@ async function startServer() {
         },
         {
           name: "manage_windows",
-          description: "Focus, close, minimize, maximize, restore, move, resize or snap a real Windows desktop window. Use an exact title or handle when possible; verify the resulting state.",
+          description: "Manage Windows windows across monitors: focus, bring to front, send to back, close, minimize, maximize, restore, move, resize, snap to halves or thirds, move to another monitor, or click a normalized point inside a window. Use an exact title or handle and verify state.",
           parameters: { type: "OBJECT", properties: {
-            action: { type: "STRING", enum: ["focus_window", "close_window", "minimize_window", "maximize_window", "restore_window", "move_window", "resize_window", "snap_window", "minimize_all", "show_desktop", "start_menu", "switch_window"] },
+            action: { type: "STRING", enum: ["focus_window", "bring_to_front", "send_to_back", "click_window_point", "close_window", "minimize_window", "maximize_window", "restore_window", "move_window", "resize_window", "snap_window", "move_to_monitor", "minimize_all", "show_desktop", "start_menu", "switch_window"] },
             title: { type: "STRING" }, handle: { type: "STRING" }, x: { type: "NUMBER" }, y: { type: "NUMBER" },
             width: { type: "NUMBER" }, height: { type: "NUMBER" },
-            position: { type: "STRING", enum: ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right"] }
+            position: { type: "STRING", enum: ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right", "left-third", "center-third", "right-third", "top-third", "bottom-third", "top-left-third", "top-right-third", "bottom-left-third", "bottom-right-third"] }, monitor: { type: "NUMBER" }
           }, required: ["action"] }
         },
         {
