@@ -136,11 +136,12 @@ export async function getUserMemories(userId: string): Promise<UserMemory[]> {
   // Firestore's persistent web cache is queried immediately; a server refresh runs in
   // the background and updates the local user-scoped memory cache when available.
   if (auth.currentUser) {
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'memories');
+    const memoryOwnerUid = auth.currentUser.uid;
+    const colRef = collection(db, 'users', memoryOwnerUid, 'memories');
     const mergeAndCache = (firestoreMemories: UserMemory[]) => {
       const invalidRemote = firestoreMemories.filter(isCapabilityClaimMemory);
       for (const memory of invalidRemote) {
-        if (memory.id) void deleteDoc(doc(db, 'users', auth.currentUser!.uid, 'memories', memory.id)).catch(() => {});
+        if (memory.id) void deleteDoc(doc(db, 'users', memoryOwnerUid, 'memories', memory.id)).catch(() => {});
       }
       const safeRemote = firestoreMemories.filter(memory => !isCapabilityClaimMemory(memory));
       if (!safeRemote.length && !local.length) return;
