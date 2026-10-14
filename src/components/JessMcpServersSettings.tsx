@@ -142,13 +142,13 @@ export function JessMcpServersSettings({ userId }: { userId: string }) {
       <button type="button" onClick={() => void refresh()} disabled={loading || busy} className="rounded-lg border border-slate-700 p-2 text-slate-300 hover:bg-slate-800 disabled:opacity-50" aria-label="Refresh MCP servers"><RefreshCw size={16} className={loading ? 'animate-spin' : ''}/></button>
     </div>
     <div className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-100/80">
-      Only connect servers you trust. Hub-Mind asks before every MCP tool call and records approval/result events in the local audit log. Local servers run as your current Windows user without elevation. Only a small allowlist of non-secret environment variables is supported; arbitrary variables and API secrets are rejected.
+      Only connect servers you trust. By default, Hub-Mind asks before MCP tool calls and records approval/result events in the local audit log. Allow everything can suppress approvals only after explicit consent. Local servers run as your current Windows user without elevation. Only a small allowlist of non-secret environment variables is supported; arbitrary variables and API secrets are rejected.
     </div>
     {error && <div role="alert" className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
     {notice && <p role="status" className="mb-3 text-sm text-teal-200">{notice}</p>}
     <div className="mb-5 rounded-xl border border-teal-400/20 bg-teal-400/5 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0"><h3 className="text-sm font-semibold text-teal-100">Windows-MCP desktop automation</h3><p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">Optional UI Automation MCP server. The preset disables anonymous telemetry and excludes PowerShell, Registry, Process, and FileSystem tool groups. It needs <code>uvx</code> and a compatible Python runtime; Hub-Mind still asks before MCP tool calls.</p></div>
+        <div className="min-w-0"><h3 className="text-sm font-semibold text-teal-100">Windows-MCP desktop automation</h3><p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">Optional UI Automation MCP server. The preset disables anonymous telemetry and excludes PowerShell, Registry, Process, and FileSystem tool groups. It needs <code>uvx</code> and Python 3.14+; Hub-Mind still applies its MCP approval policy.</p></div>
         <button type="button" onClick={() => void addWindowsMcpPreset()} disabled={busy || loading} className="shrink-0 rounded-lg border border-teal-300/40 px-3 py-2 text-xs font-semibold text-teal-100 hover:bg-teal-300/10 disabled:opacity-50">{busy ? 'Configuring…' : 'Add Windows-MCP (telemetry off)'}</button>
       </div>
     </div>
