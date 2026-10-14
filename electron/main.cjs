@@ -28,6 +28,7 @@ let fullControlConsentGranted = false;
 let allowEverythingConsentGranted = false;
 let controlSessionSenderId = null;
 let controlSessionCapability = null;
+let appVersionHistory = [];
 let jessPreferencesUserId = null;
 let mcpBridge = null;
 function persistJessPreferences(prefs, userId) {
@@ -71,6 +72,23 @@ const googleAuthHosts = new Set(['accounts.google.com', 'oauth2.googleapis.com',
 const WINDOWS_APPS = Object.freeze({ calculator: 'calc.exe', notepad: 'notepad.exe', paint: 'mspaint.exe', explorer: 'explorer.exe', taskManager: 'taskmgr.exe', edge: 'msedge.exe', chrome: 'chrome.exe', word: 'winword.exe', excel: 'excel.exe', powerpoint: 'powerpnt.exe', teams: 'ms-teams.exe', vscode: 'code.exe' });
 const READ_ONLY_COMMANDS = Object.freeze({ ipconfig: ['ipconfig.exe', []], systemInfo: ['systeminfo.exe', []], runningProcesses: ['tasklist.exe', []] });
 const WINDOWS_SHORTCUTS = Object.freeze({ save: '^s', selectAll: '^a', copy: '^c', paste: '^v', undo: '^z', redo: '^y', find: '^f', closeWindow: '%{F4}', switchWindow: '%{TAB}', taskManager: '^+{ESC}', enter: '{ENTER}', escape: '{ESC}', tab: '{TAB}' });
+function recordAppVersion() {
+  const current = app.getVersion();
+  const file = path.join(app.getPath('userData'), 'jess-app-version-history.json');
+  let history = [];
+  try {
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (Array.isArray(saved)) history = saved.filter(item => item && typeof item.version === 'string').slice(-29);
+  } catch {}
+  const now = new Date().toISOString();
+  const existing = history.find(item => item.version === current);
+  if (existing) existing.lastSeenAt = now;
+  else history.push({ version: current, firstSeenAt: now, lastSeenAt: now });
+  appVersionHistory = history.slice(-30);
+  try { fs.writeFileSync(file, JSON.stringify(appVersionHistory, null, 2), { encoding: 'utf8', mode: 0o600 }); }
+  catch (error) { console.warn('[Hub-Mind] Could not persist desktop version history:', error?.message || error); }
+  return { currentVersion: current, previousVersions: appVersionHistory.filter(item => item.version !== current).map(item => ({ version: item.version, lastSeenAt: item.lastSeenAt })) };
+}
 function assertTrustedSender(event) {
   let origin = '';
   try { origin = new URL(event.senderFrame?.url || '').origin; } catch {}
@@ -125,9 +143,11 @@ function createMainWindow(initialPath = '/login') {
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow.hide(); createCompanionWindow(); positionCompanionBottomRightIfNeeded(); } });
   // The orb is intentionally hidden while the full workspace is visible.
-  mainWindow.on('show', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
-  mainWindow.on('restore', () => { if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); });
+  // The desktop orb is a separate always-on-top window and stays visible while the workspace is open.
   mainWindow.on('minimize', () => { createCompanionWindow(); positionCompanionBottomRight(); });
+  mainWindow.webContents.on('did-start-navigation', (_event, _url, _inPlace, isMainFrame) => {
+    if (isMainFrame && fullControlActive) stopFullControl('renderer-reload');
+  });
   mainWindow.on('closed', () => { mainWindow = null; });
   return mainWindow.loadURL(APP_URL + initialPath);
 }
@@ -151,7 +171,7 @@ function createCompanionWindow(force = false) {
   }
   const saved = readOrbPosition();
   companionWindow = new BrowserWindow(secureWindowOptions({
-    width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 420, maxHeight: 520,
+    width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 96, maxHeight: 96,
     icon: path.join(__dirname, '..', 'dist', 'hub-mind logo.png'),
     frame: false, transparent: true, resizable: false, movable: true, focusable: true,
     alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
@@ -454,6 +474,7 @@ app.whenReady().then(() => {
   if (!hasSingleInstanceLock) { app.quit(); return; }
   app.on('second-instance', () => showMain());
   if (process.platform === 'win32') app.setAppUserModelId('studios.jaystarbliss.hubmind');
+  recordAppVersion();
   chromeBridge.start();
   let canEncryptMcpConfig = false;
   try { canEncryptMcpConfig = safeStorage.isEncryptionAvailable(); } catch {}
@@ -673,7 +694,15 @@ app.whenReady().then(() => {
     return { ok: true, active: true, startedAt: controlSessionStartedAt, userId, capability: controlSessionCapability, stopHotkey: 'Ctrl+Alt+Shift+J' };
   });
   ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
-  ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
+  ipcMain.handle('hubmind:native-status', (event) => {
+    assertTrustedSender(event);
+    return {
+      active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId,
+      mode: jessPreferences.permissionMode, fullControlEnabled: jessPreferences.fullControlEnabled,
+      appName: app.getName(), appVersion: app.getVersion(), websiteUrl: APP_URL,
+      previousVersions: appVersionHistory.filter(item => item.version !== app.getVersion()).map(item => ({ version: item.version, lastSeenAt: item.lastSeenAt })),
+    };
+  });
   ipcMain.handle('hubmind:chrome-status', (event) => { assertTrustedSender(event); return chromeBridge.status(); });
   ipcMain.handle('hubmind:offline-wake-start', (event) => startOfflineWake(event));
   ipcMain.handle('hubmind:offline-wake-stop', (event) => { assertTrustedSender(event); return stopOfflineWake(); });
@@ -772,6 +801,18 @@ app.whenReady().then(() => {
     const started = Date.now();
     try {
       let result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
+      if (method === 'system_info') {
+        result = {
+          ...result,
+          evidence: {
+            ...(result?.evidence || {}),
+            hubMindDesktop: {
+              name: app.getName(), version: app.getVersion(), websiteUrl: APP_URL,
+              previousVersions: appVersionHistory.filter(item => item.version !== app.getVersion()).map(item => ({ version: item.version, lastSeenAt: item.lastSeenAt })),
+            },
+          },
+        };
+      }
       if (method === 'read_screen_text' && !String(result?.evidence?.text || '').trim()) {
         try {
           const ocr = await readWindowsOcrFallback();
@@ -982,7 +1023,7 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${te
       console.warn('[Hub-Mind] Display source picker failed:', error);
       callback({});
     }
-  }, { useSystemPicker: true });
+  }, { useSystemPicker: false });
   const stopHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+J', () => {
     if (fullControlActive) stopFullControl('global-hotkey');
   });
