@@ -1181,7 +1181,7 @@ async function startServer() {
         {
           name: "chrome_scroll",
           description: "Scroll a Chrome page by a bounded amount. Requires Full Control.",
-          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, delta: { type: "NUMBER" } }, required: ["delta"] }
+          parameters: { type: "OBJECT", properties: { tabId: { type: "NUMBER" }, delta: { type: "NUMBER" }, axis: { type: "STRING", enum: ["x", "y"] }, target: { type: "STRING" } }, required: ["delta"] }
         },
         {
           name: "end_session",
