@@ -74,7 +74,7 @@ export function JessSettings() {
         if (desktop?.setJessPreferences) {
           const live = await desktop.setJessPreferences(prefs, profile.id);
           if (!cancelled) setDesktopState({ active: live?.fullControlActive === true, startedAt: live?.startedAt || null, permissionMode: live?.preferences?.permissionMode || prefs.permissionMode });
-          if (live?.cancelled && !cancelled) setError('Full Control was not enabled because the native confirmation was cancelled.');
+          if (live?.cancelled && !cancelled) { setPrefs({ ...DEFAULTS, ...(live.preferences || {}) }); setError('Full Control was not enabled because the native confirmation was cancelled.'); }
         }
         try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(prefs)); } catch {}
         if (!cancelled) setSaved(true);
