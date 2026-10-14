@@ -21,7 +21,7 @@ This document is a live checklist for the work requested in the October 2026 des
 - [ ] Remove stale “say Jess, full control” wording from every tool declaration and make the live session state the sole activation truth.
 - [x] Sidecar scroll now reinterprets signed wheel deltas correctly and supports horizontal wheel input.
 - [x] Sidecar: C# SendInput keyboard helper, F1–F24/extended/media key support, bounded hold timing; real Notepad type/key verification still requires Windows acceptance.
-- [ ] Clipboard get/set/paste and readback; show desktop, minimize all, Start menu, switch window by handle/z-order.
+- [x] Clipboard text read/write/clear with readback and paste through Ctrl+V; [x] show desktop, minimize all, Start menu, switch window by handle/z-order.
 - [ ] Unified application resolver for Start Menu, AppUserModelID, App Paths, PATH and URI schemes; verify resulting window.
 - [x] Three-way left/center/right window snapping; [ ] multi-monitor metadata and DPI-aware coordinate mapping.
 - [x] Bounded file list/read/write/copy/move/rename/search and Recycle Bin deletion, with no-overwrite copy/move and output-size limits; [ ] bounded command execution and robust command safety.
