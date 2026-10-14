@@ -31,12 +31,11 @@ function sanitizeServerConfig(input, userId) {
       if (typeof v !== 'string' || v.length > 2000 || /[\0]/.test(v)) throw new Error('MCP arguments must be strings no longer than 2,000 characters.');
       return v;
     }) : [];
-    if (input.env && typeof input.env === 'object' && Object.keys(input.env).length > 0) {
-      throw new Error('Custom MCP environment variables are not enabled until encrypted secret storage is configured.');
-    }
+    const env = sanitizeMcpEnvironment(input.env);
+
     const cwd = cleanString(input.cwd, 1000);
     if (cwd && !path.isAbsolute(cwd)) throw new Error('The MCP working directory must be an absolute path.');
-    return { ...config, command, args, ...(cwd ? { cwd } : {}) };
+    return { ...config, command, args, ...(cwd ? { cwd } : {}), ...(Object.keys(env).length ? { env } : {}) };
   }
   let url;
   try { url = new URL(cleanString(input.url, 2000)); } catch { throw new Error('Enter a valid MCP Streamable HTTP URL.'); }
@@ -83,7 +82,28 @@ function toGeminiSchema(schema, depth = 0) {
   return out;
 }
 
-function getSafeChildEnvironment() {
+const ALLOWED_MCP_ENV_KEYS = new Set([
+  'ANONYMIZED_TELEMETRY',
+  'WINDOWS_MCP_EXCLUDE_TOOLS',
+  'WINDOWS_MCP_TOOLS',
+  'WINDOWS_MCP_SCREENSHOT_SCALE',
+  'WINDOWS_MCP_SCREENSHOT_BACKEND',
+  'WINDOWS_MCP_DISABLE_FLASH',
+]);
+
+function sanitizeMcpEnvironment(input) {
+  if (input === undefined || input === null) return {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('MCP environment settings must be an object.');
+  const env = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (!ALLOWED_MCP_ENV_KEYS.has(key)) throw new Error('MCP environment key is not allowlisted: ' + key + '. Secrets and arbitrary environment overrides are not supported.');
+    if (typeof value !== 'string' || value.length > 1000 || /[\\r\\n\\0]/.test(value)) throw new Error('MCP environment values must be short, single-line strings.');
+    env[key] = value;
+  }
+  return env;
+}
+
+function getSafeChildEnvironment(extra = {}) {
   const allowed = process.platform === 'win32'
     ? ['PATH', 'Path', 'SystemRoot', 'WINDIR', 'ComSpec', 'PATHEXT', 'TEMP', 'TMP', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432']
     : ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL'];
@@ -91,6 +111,7 @@ function getSafeChildEnvironment() {
   for (const key of allowed) {
     if (typeof process.env[key] === 'string') env[key] = process.env[key];
   }
+  Object.assign(env, sanitizeMcpEnvironment(extra));
   return env;
 }
 
@@ -232,7 +253,7 @@ class McpBridge {
     const config = state.config;
     const child = this.spawnImpl(config.command, config.args || [], {
       cwd: config.cwd || undefined,
-      env: getSafeChildEnvironment(),
+      env: getSafeChildEnvironment(config.env),
       shell: false,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
