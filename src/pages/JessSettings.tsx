@@ -32,6 +32,9 @@ export function JessSettings() {
   const [desktopState, setDesktopState] = useState<{ active?: boolean; startedAt?: string | null; permissionMode?: string } | null>(null);
   const [error, setError] = useState('');
   const [executionEvents, setExecutionEvents] = useState<JessExecutionEvent[]>([]);
+  const [chromeBridgeState, setChromeBridgeState] = useState<{ available?: boolean; transport?: string; pipe?: string } | null>(null);
+  const [chromeSetupBusy, setChromeSetupBusy] = useState(false);
+  const [chromeSetupMessage, setChromeSetupMessage] = useState('');
 
   useEffect(() => {
     if (!profile?.id) { setLoading(false); return; }
@@ -56,6 +59,34 @@ export function JessSettings() {
     window.addEventListener('hubmind:jess-execution-event', refresh);
     return () => window.removeEventListener('hubmind:jess-execution-event', refresh);
   }, [profile?.id]);
+
+  useEffect(() => {
+    const desktop = (window as any).hubMindDesktop;
+    if (!desktop?.chromeStatus) return;
+    let disposed = false;
+    const refresh = async () => {
+      try { const status = await desktop.chromeStatus(); if (!disposed) setChromeBridgeState(status); }
+      catch { if (!disposed) setChromeBridgeState({ available: false }); }
+    };
+    void refresh();
+    const timer = window.setInterval(() => { void refresh(); }, 4000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, []);
+
+  const setupChromeBridge = async () => {
+    const desktop = (window as any).hubMindDesktop;
+    if (!desktop?.installChromeBridge) { setChromeSetupMessage('Chrome setup is available in the installed Windows desktop app, not the browser workspace.'); return; }
+    setChromeSetupBusy(true); setChromeSetupMessage('');
+    try {
+      const result = await desktop.installChromeBridge();
+      if (result?.ok) setChromeSetupMessage('Native host registered. In Chrome, open chrome://extensions, enable Developer mode, and load the installed extension folder shown by the setup script.');
+      else if (result?.cancelled) setChromeSetupMessage('Chrome setup cancelled.');
+      else setChromeSetupMessage(String(result?.error || 'Chrome setup failed.'));
+      const status = await desktop.chromeStatus();
+      setChromeBridgeState(status);
+    } catch (e: any) { setChromeSetupMessage(e?.message || 'Chrome setup failed.'); }
+    finally { setChromeSetupBusy(false); }
+  };
 
   const update = <K extends keyof JessPreferences,>(key: K, value: JessPreferences[K]) => {
     setPrefs(current => ({ ...current, [key]: value }));
@@ -104,6 +135,19 @@ export function JessSettings() {
           <label className="flex items-center justify-between gap-4 py-3 border-t border-slate-800"><span><strong className="block text-sm">Start in Full Control when Hub-Mind launches</strong><span className="block text-xs text-slate-400">Uses your saved consent and current permission mode.</span></span><input type="checkbox" checked={prefs.startInFullControl} onChange={e => update('startInFullControl', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
           <label className="flex items-center justify-between gap-4 py-3"><span><strong className="block text-sm">Ask out loud before high-impact actions</strong><span className="block text-xs text-slate-400">For deleting, formatting, shutting down or sending. Requires a verified spoken yes/no flow; this switch does not itself create speech confirmation.</span></span><input type="checkbox" checked={prefs.confirmHighRiskOutLoud} onChange={e => update('confirmHighRiskOutLoud', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
           <div className="mt-3 rounded-lg bg-slate-950 p-3 text-xs text-slate-400" aria-live="polite">Desktop live state: <strong className={desktopState?.active ? 'text-emerald-300' : 'text-amber-200'}>{desktopState?.active ? 'Full Control active' : 'Not active / browser only'}</strong>{desktopState?.permissionMode ? ` · Main-process mode: ${desktopState.permissionMode}` : ''}{desktopState?.startedAt ? ` · Started ${new Date(desktopState.startedAt).toLocaleTimeString()}` : ''}</div>
+        </section>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
+          <div className="flex items-center gap-3 mb-4"><MonitorCog className="text-teal-300" size={20}/><div><h2 className="font-semibold">Chrome browser bridge</h2><p className="text-xs text-slate-400 mt-1">Connect Jess to real Chrome tabs through the installed desktop app.</p></div></div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm flex flex-wrap items-center justify-between gap-3">
+            <span className="text-slate-300">Native host status</span>
+            <span className={chromeBridgeState?.available ? 'text-emerald-300' : 'text-amber-200'}>{chromeBridgeState?.available ? 'Connected to Chrome' : chromeBridgeState ? 'Not connected' : 'Checking…'}</span>
+          </div>
+          <p className="text-xs text-slate-500 mt-3">Setup registers the local native-messaging host for your Windows account. It does not bypass Chrome extension consent or automatically force-install the extension.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button type="button" onClick={() => void setupChromeBridge()} disabled={chromeSetupBusy || !((window as any).hubMindDesktop?.isDesktopApp)} className="rounded-lg bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40">{chromeSetupBusy ? 'Setting up…' : 'Set up Chrome bridge'}</button>
+            <button type="button" onClick={() => { void (async () => { try { const status = await (window as any).hubMindDesktop?.chromeStatus?.(); setChromeBridgeState(status || { available: false }); } catch { setChromeBridgeState({ available: false }); } })(); }} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:opacity-40">Refresh status</button>
+          </div>
+          {chromeSetupMessage && <p className="mt-3 text-xs text-slate-300" role="status">{chromeSetupMessage}</p>}
         </section>
         <JessMcpServersSettings userId={profile?.id || ''} />
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
