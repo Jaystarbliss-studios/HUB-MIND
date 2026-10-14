@@ -10,7 +10,6 @@ export const JESS_NATIVE_TOOL_NAMES = [
   'show_hub_mind_workspace',
   'list_windows',
   'manage_windows',
-  'control_windows_desktop',
   'control_mouse',
   'drag_windows_mouse',
   'type_windows_text',
