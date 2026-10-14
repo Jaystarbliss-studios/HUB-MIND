@@ -80,7 +80,7 @@ async function dispatch(message) {
         target: { tabId: tab.id },
         func: ({ delta, axis, target }) => {
           const visible = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden' && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth; };
-          const candidates = Array.from(document.querySelectorAll('body, main, aside, section, article, div, [role="main"], [role="dialog"], [data-scrollable]')).filter(el => {
+          const candidates = Array.from(document.querySelectorAll('html, body, main, aside, section, article, div, [role="main"], [role="dialog"], [data-scrollable]')).filter(el => {
             if (!(el instanceof HTMLElement) || !visible(el)) return false;
             const style = getComputedStyle(el);
             const overflow = axis === 'x' ? style.overflowX : style.overflowY;
@@ -99,8 +99,9 @@ async function dispatch(message) {
           });
           const chosen = candidates.find(c => !needle || c.label.includes(needle)) || (!needle ? candidates[0] : null);
           if (!chosen) return { changed: false, error: needle ? 'No scrollable container matched that target. Omit target to scroll the largest visible container.' : 'No scrollable container was found.', candidates: candidates.slice(0, 8).map(c => ({ tag:c.tag,id:c.id,className:c.className,max:c.max })) };
-          if (axis === 'x') chosen.el.scrollBy({ left: delta, behavior: 'instant' }); else chosen.el.scrollBy({ top: delta, behavior: 'instant' });
-          const after = axis === 'x' ? chosen.el.scrollLeft : chosen.el.scrollTop;
+          if (chosen.el === document.documentElement || chosen.el === document.body) window.scrollBy({ left: axis === 'x' ? delta : 0, top: axis === 'y' ? delta : 0, behavior: 'instant' });
+          else if (axis === 'x') chosen.el.scrollBy({ left: delta, behavior: 'instant' }); else chosen.el.scrollBy({ top: delta, behavior: 'instant' });
+          const after = (chosen.el === document.documentElement || chosen.el === document.body) ? (axis === 'x' ? window.scrollX : window.scrollY) : (axis === 'x' ? chosen.el.scrollLeft : chosen.el.scrollTop);
           return { changed: chosen.before !== after, before: chosen.before, after, max: chosen.max, axis, delta, target: target || null, container: { tag: chosen.tag, id: chosen.id, className: chosen.className }, title: document.title, url: location.href };
         },
         args: [{ delta, axis, target }],
