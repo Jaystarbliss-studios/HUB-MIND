@@ -29,7 +29,7 @@ export function JessSettings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const [desktopState, setDesktopState] = useState<{ active?: boolean; startedAt?: string | null } | null>(null);
+  const [desktopState, setDesktopState] = useState<{ active?: boolean; startedAt?: string | null; permissionMode?: string } | null>(null);
   const [error, setError] = useState('');
   const [executionEvents, setExecutionEvents] = useState<JessExecutionEvent[]>([]);
 
@@ -41,7 +41,7 @@ export function JessSettings() {
       setPrefs(current => JSON.stringify(current) === JSON.stringify(loaded) ? current : loaded);
       setHydrated(true);
       try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(loaded)); } catch {}
-      void (async () => { try { const desktop = (window as any).hubMindDesktop; if (!desktop) return; const live = await desktop.setJessPreferences(loaded, profile.id); setDesktopState({ active: live?.fullControlActive === true, startedAt: live?.startedAt || null }); } catch { /* Browser workspace may run without the desktop shell. */ } })();
+      void (async () => { try { const desktop = (window as any).hubMindDesktop; if (!desktop) return; const live = await desktop.setJessPreferences(loaded, profile.id); setDesktopState({ active: live?.fullControlActive === true, startedAt: live?.startedAt || null, permissionMode: live?.preferences?.permissionMode || loaded.permissionMode }); } catch { /* Browser workspace may run without the desktop shell. */ } })();
       setLoading(false);
     }, () => { setError('Could not load Jess settings. Check your connection and permissions.'); setLoading(false); });
   }, [profile?.id]);
@@ -73,7 +73,7 @@ export function JessSettings() {
         const desktop = (window as any).hubMindDesktop;
         if (desktop?.setJessPreferences) {
           const live = await desktop.setJessPreferences(prefs, profile.id);
-          if (!cancelled) setDesktopState({ active: live?.fullControlActive === true, startedAt: live?.startedAt || null });
+          if (!cancelled) setDesktopState({ active: live?.fullControlActive === true, startedAt: live?.startedAt || null, permissionMode: live?.preferences?.permissionMode || prefs.permissionMode });
           if (live?.cancelled && !cancelled) setError('Full Control was not enabled because the native confirmation was cancelled.');
         }
         try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(prefs)); } catch {}
@@ -103,7 +103,7 @@ export function JessSettings() {
           <label className="flex gap-3 rounded-xl border border-rose-400/25 bg-rose-400/5 p-4 cursor-pointer mb-4"><input type="radio" name="permissionMode" checked={prefs.permissionMode==='allow-everything'} onChange={() => setPrefs(current => ({ ...current, permissionMode: 'allow-everything', fullControlEnabled: true }))} className="mt-1 accent-rose-400"/><span><strong className="block text-sm">Allow everything</strong><span className="block text-xs text-slate-400 mt-1">One native confirmation on first activation; then no per-action approval prompts while this mode remains enabled. Windows secure-desktop/UAC prompts cannot be automated.</span></span></label>
           <label className="flex items-center justify-between gap-4 py-3 border-t border-slate-800"><span><strong className="block text-sm">Start in Full Control when Hub-Mind launches</strong><span className="block text-xs text-slate-400">Uses your saved consent and current permission mode.</span></span><input type="checkbox" checked={prefs.startInFullControl} onChange={e => update('startInFullControl', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
           <label className="flex items-center justify-between gap-4 py-3"><span><strong className="block text-sm">Ask out loud before high-impact actions</strong><span className="block text-xs text-slate-400">For deleting, formatting, shutting down or sending. Requires a verified spoken yes/no flow; this switch does not itself create speech confirmation.</span></span><input type="checkbox" checked={prefs.confirmHighRiskOutLoud} onChange={e => update('confirmHighRiskOutLoud', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
-          <div className="mt-3 rounded-lg bg-slate-950 p-3 text-xs text-slate-400" aria-live="polite">Desktop live state: <strong className={desktopState?.active ? 'text-emerald-300' : 'text-amber-200'}>{desktopState?.active ? 'Full Control active' : 'Not active / browser only'}</strong>{desktopState?.startedAt ? ` · Started ${new Date(desktopState.startedAt).toLocaleTimeString()}` : ''}</div>
+          <div className="mt-3 rounded-lg bg-slate-950 p-3 text-xs text-slate-400" aria-live="polite">Desktop live state: <strong className={desktopState?.active ? 'text-emerald-300' : 'text-amber-200'}>{desktopState?.active ? 'Full Control active' : 'Not active / browser only'}</strong>{desktopState?.permissionMode ? ` · Main-process mode: ${desktopState.permissionMode}` : ''}{desktopState?.startedAt ? ` · Started ${new Date(desktopState.startedAt).toLocaleTimeString()}` : ''}</div>
         </section>
         <JessMcpServersSettings userId={profile?.id || ''} />
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
