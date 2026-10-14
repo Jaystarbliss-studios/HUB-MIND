@@ -2,6 +2,7 @@ $ErrorActionPreference='Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -23,6 +24,10 @@ public static class JessWin32 {
  [DllImport("user32.dll")]public static extern bool ShowWindowAsync(IntPtr h,int n);
  [DllImport("user32.dll")]public static extern bool PostMessage(IntPtr h,uint msg,IntPtr w,IntPtr l);
  [DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int he,bool repaint);
+ [DllImport("user32.dll",SetLastError=true)]public static extern bool SetWindowPos(IntPtr h,IntPtr insertAfter,int x,int y,int cx,int cy,uint flags);
+ [DllImport("user32.dll")]public static extern bool SetProcessDPIAware();
+ [DllImport("user32.dll")]public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+ public const uint SWP_NOSIZE=1,SWP_NOMOVE=2,SWP_NOACTIVATE=16,SWP_SHOWWINDOW=64;
  [DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);
  [DllImport("user32.dll")]public static extern bool IsZoomed(IntPtr h);
  [DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();
@@ -43,13 +48,15 @@ public static class JessWin32 {
  }
 }
 '@
+try{[void][JessWin32]::SetProcessDpiAwarenessContext([IntPtr](-4))}catch{try{[void][JessWin32]::SetProcessDPIAware()}catch{}}
 function Get-Windows {
  $items=New-Object System.Collections.Generic.List[object]
  $cb=[JessWin32+EnumWindowsProc]{param([IntPtr]$h,[IntPtr]$lp)
   if(-not [JessWin32]::IsWindowVisible($h)){return $true}
   $sb=New-Object System.Text.StringBuilder 1024;[void][JessWin32]::GetWindowText($h,$sb,$sb.Capacity);$title=$sb.ToString().Trim();if(!$title){return $true}
   $processId=[uint32]0;[void][JessWin32]::GetWindowThreadProcessId($h,[ref]$processId);$r=New-Object JessWin32+RECT;[void][JessWin32]::GetWindowRect($h,[ref]$r);$proc='';try{$proc=(Get-Process -Id $processId -ErrorAction Stop).ProcessName}catch{}
-  $items.Add([pscustomobject]@{handle=$h.ToInt64();title=$title;process=$proc;pid=$processId;bounds=@{x=$r.Left;y=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top};state=$(if([JessWin32]::IsIconic($h)){'minimized'}elseif([JessWin32]::IsZoomed($h)){'maximized'}else{'normal'});foreground=($h -eq [JessWin32]::GetForegroundWindow())});return $true
+  $monitor=$null;try{$scr=[System.Windows.Forms.Screen]::FromHandle($h);$all=[System.Windows.Forms.Screen]::AllScreens;$monitorIndex=[Array]::IndexOf($all,$scr)+1;$monitor=@{index=$monitorIndex;deviceName=$scr.DeviceName;primary=$scr.Primary;bounds=@{x=$scr.Bounds.X;y=$scr.Bounds.Y;width=$scr.Bounds.Width;height=$scr.Bounds.Height};workingArea=@{x=$scr.WorkingArea.X;y=$scr.WorkingArea.Y;width=$scr.WorkingArea.Width;height=$scr.WorkingArea.Height}}}catch{}
+  $items.Add([pscustomobject]@{handle=$h.ToInt64();title=$title;process=$proc;pid=$processId;bounds=@{x=$r.Left;y=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top};monitor=$monitor;state=$(if([JessWin32]::IsIconic($h)){'minimized'}elseif([JessWin32]::IsZoomed($h)){'maximized'}else{'normal'});foreground=($h -eq [JessWin32]::GetForegroundWindow())});return $true
  }
  [void][JessWin32]::EnumWindows($cb,[IntPtr]::Zero);return @($items)
 }
@@ -100,7 +107,32 @@ function Invoke-Action($q){
  switch($q.method){
  'list_windows' {return @{ok=$true;verified=$true;evidence=(Get-Windows)}}
  'focus_window' {$w=Find-Window $a;if(!$w){throw 'Window not found'};[void][JessWin32]::ShowWindowAsync([IntPtr]$w.handle,9);[void][JessWin32]::BringWindowToTop([IntPtr]$w.handle);[void][JessWin32]::SetForegroundWindow([IntPtr]$w.handle);Start-Sleep -Milliseconds 250;$ok=([JessWin32]::GetForegroundWindow().ToInt64() -eq [int64]$w.handle);return @{ok=$ok;verified=$ok;evidence=@{window=$w;foreground=([JessWin32]::GetForegroundWindow().ToInt64())}}}
- {$_ -in 'close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'} {$w=Find-Window $a;if(!$w){throw 'Window not found'};$h=[IntPtr]$w.handle;switch($q.method){'close_window'{[void][JessWin32]::PostMessage($h,0x0010,[IntPtr]::Zero,[IntPtr]::Zero);Start-Sleep -Milliseconds 300;$exists=[JessWin32]::IsWindow($h);return @{ok=(-not $exists);verified=(-not $exists);evidence=@{window=$w;windowHandleStillExists=$exists}}}'minimize_window'{[void][JessWin32]::ShowWindowAsync($h,6)}'maximize_window'{[void][JessWin32]::ShowWindowAsync($h,3)}'restore_window'{[void][JessWin32]::ShowWindowAsync($h,9)}default{$r=$w.bounds;$x=[int]$r.x;$y=[int]$r.y;$ww=[int]$r.width;$hh=[int]$r.height;if($q.method -eq 'move_window'){$x=[int]$a.x;$y=[int]$a.y};if($q.method -eq 'resize_window'){$ww=[Math]::Max(200,[int]$a.width);$hh=[Math]::Max(150,[int]$a.height)};if($q.method -eq 'snap_window'){Add-Type -AssemblyName System.Windows.Forms;$area=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea;switch([string]$a.position){'left'{$x=$area.X;$y=$area.Y;$ww=[int]($area.Width/2);$hh=$area.Height}'right'{$x=$area.X+[int]($area.Width/2);$y=$area.Y;$ww=[int]($area.Width/2);$hh=$area.Height}'top-right'{$x=$area.X+[int]($area.Width/2);$y=$area.Y;$ww=[int]($area.Width/2);$hh=[int]($area.Height/2)}'top-left'{$x=$area.X;$y=$area.Y;$ww=[int]($area.Width/2);$hh=[int]($area.Height/2)}'bottom-right'{$x=$area.X+[int]($area.Width/2);$y=$area.Y+[int]($area.Height/2);$ww=[int]($area.Width/2);$hh=[int]($area.Height/2)}'bottom-left'{$x=$area.X;$y=$area.Y+[int]($area.Height/2);$ww=[int]($area.Width/2);$hh=[int]($area.Height/2)}default{throw 'Unsupported snap position'}}};[void][JessWin32]::ShowWindowAsync($h,9);if(-not [JessWin32]::MoveWindow($h,$x,$y,$ww,$hh,$true)){throw 'MoveWindow failed'}}};Start-Sleep -Milliseconds 180;$after=Find-Window @{handle=$w.handle};$verified=$false;if($after){switch($q.method){'minimize_window'{$verified=$after.state -eq 'minimized'}'maximize_window'{$verified=$after.state -eq 'maximized'}'restore_window'{$verified=$after.state -ne 'minimized'}'move_window'{$verified=([Math]::Abs([int]$after.bounds.x-[int]$a.x) -le 4 -and [Math]::Abs([int]$after.bounds.y-[int]$a.y) -le 4)}'resize_window'{$verified=([Math]::Abs([int]$after.bounds.width-[int]$a.width) -le 12 -and [Math]::Abs([int]$after.bounds.height-[int]$a.height) -le 12)}'snap_window'{$verified=([Math]::Abs([int]$after.bounds.width-[int]$ww) -le 12 -and [Math]::Abs([int]$after.bounds.height-[int]$hh) -le 12)}}};return @{ok=$verified;verified=$verified;evidence=@{before=$w;after=$after;expected=@{x=$x;y=$y;width=$ww;height=$hh}}}}
+ {$_ -in 'close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','move_to_monitor'} {$w=Find-Window $a;if(!$w){throw 'Window not found'};$h=[IntPtr]$w.handle;switch($q.method){'close_window'{[void][JessWin32]::PostMessage($h,0x0010,[IntPtr]::Zero,[IntPtr]::Zero);Start-Sleep -Milliseconds 300;$exists=[JessWin32]::IsWindow($h);return @{ok=(-not $exists);verified=(-not $exists);evidence=@{window=$w;windowHandleStillExists=$exists}}}'minimize_window'{[void][JessWin32]::ShowWindowAsync($h,6)}'maximize_window'{[void][JessWin32]::ShowWindowAsync($h,3)}'restore_window'{[void][JessWin32]::ShowWindowAsync($h,9)}default{$r=$w.bounds;$x=[int]$r.x;$y=[int]$r.y;$ww=[int]$r.width;$hh=[int]$r.height;if($q.method -eq 'move_window'){$x=[int]$a.x;$y=[int]$a.y};if($q.method -eq 'resize_window'){$ww=[Math]::Max(200,[int]$a.width);$hh=[Math]::Max(150,[int]$a.height)};if($q.method -eq 'snap_window'){
+ $screens=[System.Windows.Forms.Screen]::AllScreens
+ if($null -ne $a.monitor){$monitorIndex=[int]$a.monitor;if($monitorIndex -lt 1 -or $monitorIndex -gt $screens.Length){throw 'Monitor index must identify a connected display starting at 1'};$targetScreen=$screens[$monitorIndex-1]}else{$targetScreen=[System.Windows.Forms.Screen]::FromHandle($h)}
+ $area=$targetScreen.WorkingArea;$halfW=[int][Math]::Floor($area.Width/2);$halfH=[int][Math]::Floor($area.Height/2);$thirdW=[int][Math]::Floor($area.Width/3);$thirdH=[int][Math]::Floor($area.Height/3)
+ switch([string]$a.position){
+ 'left'{$x=$area.X;$y=$area.Y;$ww=$halfW;$hh=$area.Height}
+ 'right'{$x=$area.X+$halfW;$y=$area.Y;$ww=$area.Width-$halfW;$hh=$area.Height}
+ 'top-right'{$x=$area.X+$halfW;$y=$area.Y;$ww=$area.Width-$halfW;$hh=$halfH}
+ 'top-left'{$x=$area.X;$y=$area.Y;$ww=$halfW;$hh=$halfH}
+ 'bottom-right'{$x=$area.X+$halfW;$y=$area.Y+$halfH;$ww=$area.Width-$halfW;$hh=$area.Height-$halfH}
+ 'bottom-left'{$x=$area.X;$y=$area.Y+$halfH;$ww=$halfW;$hh=$area.Height-$halfH}
+ 'left-third'{$x=$area.X;$y=$area.Y;$ww=$thirdW;$hh=$area.Height}
+ 'center-third'{$x=$area.X+$thirdW;$y=$area.Y;$ww=$thirdW;$hh=$area.Height}
+ 'right-third'{$x=$area.X+2*$thirdW;$y=$area.Y;$ww=$area.Width-2*$thirdW;$hh=$area.Height}
+ 'top-third'{$x=$area.X;$y=$area.Y;$ww=$area.Width;$hh=$thirdH}
+ 'bottom-third'{$x=$area.X;$y=$area.Y+2*$thirdH;$ww=$area.Width;$hh=$area.Height-2*$thirdH}
+ 'top-left-third'{$x=$area.X;$y=$area.Y;$ww=$thirdW;$hh=$thirdH}
+ 'top-right-third'{$x=$area.X+2*$thirdW;$y=$area.Y;$ww=$area.Width-2*$thirdW;$hh=$thirdH}
+ 'bottom-left-third'{$x=$area.X;$y=$area.Y+2*$thirdH;$ww=$thirdW;$hh=$area.Height-2*$thirdH}
+ 'bottom-right-third'{$x=$area.X+2*$thirdW;$y=$area.Y+2*$thirdH;$ww=$area.Width-2*$thirdW;$hh=$area.Height-2*$thirdH}
+ default{throw 'Unsupported snap position'}
+ }
+}
+if($q.method -eq 'move_to_monitor'){
+ $screens=[System.Windows.Forms.Screen]::AllScreens;$monitorIndex=[int]$a.monitor;if($monitorIndex -lt 1 -or $monitorIndex -gt $screens.Length){throw 'Monitor index must identify a connected display starting at 1'};$area=$screens[$monitorIndex-1].WorkingArea;$x=$area.X+[int][Math]::Max(0,[Math]::Min($area.Width-$ww,$x-$w.bounds.x));$y=$area.Y+[int][Math]::Max(0,[Math]::Min($area.Height-$hh,$y-$w.bounds.y))
+}[void][JessWin32]::ShowWindowAsync($h,9);if(-not [JessWin32]::MoveWindow($h,$x,$y,$ww,$hh,$true)){throw 'MoveWindow failed'}}};Start-Sleep -Milliseconds 180;$after=Find-Window @{handle=$w.handle};$verified=$false;if($after){switch($q.method){'minimize_window'{$verified=$after.state -eq 'minimized'}'maximize_window'{$verified=$after.state -eq 'maximized'}'restore_window'{$verified=$after.state -ne 'minimized'}'move_window'{$verified=([Math]::Abs([int]$after.bounds.x-[int]$a.x) -le 4 -and [Math]::Abs([int]$after.bounds.y-[int]$a.y) -le 4)}'resize_window'{$verified=([Math]::Abs([int]$after.bounds.width-[int]$a.width) -le 12 -and [Math]::Abs([int]$after.bounds.height-[int]$a.height) -le 12)}'snap_window'{$verified=([Math]::Abs([int]$after.bounds.width-[int]$ww) -le 12 -and [Math]::Abs([int]$after.bounds.height-[int]$hh) -le 12)}}};return @{ok=$verified;verified=$verified;evidence=@{before=$w;after=$after;expected=@{x=$x;y=$y;width=$ww;height=$hh}}}}
  'mouse_move' {[void][JessWin32]::SetCursorPos([int]$a.x,[int]$a.y);return @{ok=$true;verified=$true;evidence=@{x=$a.x;y=$a.y;note='Cursor position requested'}}}
  {$_ -in 'click','double_click','right_click'} {[void][JessWin32]::SetCursorPos([int]$a.x,[int]$a.y);$down=2;$up=4;if($q.method -eq 'right_click'){$down=8;$up=16};$count=1;if($q.method -eq 'double_click'){$count=2};1..$count|ForEach-Object{[JessWin32]::mouse_event($down,0,0,0,[UIntPtr]::Zero);[JessWin32]::mouse_event($up,0,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 70};return @{ok=$true;verified=$false;evidence=@{x=$a.x;y=$a.y;note='Input injected; UI effect not independently confirmed'}}}
  'scroll' {$delta=[int]$a.delta;if($delta -lt -12000 -or $delta -gt 12000){throw 'Scroll delta must be between -12000 and 12000'};[void][JessWin32]::SetCursorPos([int]$a.x,[int]$a.y);$horizontal=([string]$a.axis -eq 'horizontal');$bits=[JessWin32]::SendWheel($delta,$horizontal);Start-Sleep -Milliseconds 100;return @{ok=$true;verified=$false;evidence=@{x=$a.x;y=$a.y;delta=$delta;axis=$(if($horizontal){'horizontal'}else{'vertical'});unsignedWheelData=$bits}}}
