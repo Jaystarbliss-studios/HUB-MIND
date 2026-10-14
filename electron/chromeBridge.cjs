@@ -42,7 +42,7 @@ function start(token) {
           }
           authenticated = true;
           clearTimeout(authTimer);
-          socket.write(JSON.stringify({ type: 'auth', ok: true }) + '\\n');
+          socket.write(JSON.stringify({ type: 'auth', ok: true }) + '\n');
           continue;
         }
         const waiter = pending.get(String(response.id || ''));
