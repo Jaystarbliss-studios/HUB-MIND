@@ -338,7 +338,7 @@ test('MCP tools use explicit desktop consent, scoped tool discovery, and no shel
     read('../../src/pages/JessSettings.tsx'),
   ]);
   assert.match(bridge, /shell: false/);
-  assert.match(bridge, /Custom MCP environment variables are not enabled until encrypted secret storage is configured/);
+  assert.match(bridge, /ALLOWED_MCP_ENV_KEYS/);assert.match(bridge, /ANONYMIZED_TELEMETRY/);assert.match(bridge, /Secrets and arbitrary environment overrides are not supported/);
   assert.match(bridge, /Only HTTPS is allowed|MCP HTTP servers must use HTTPS/);
   assert.match(main, /ipcMain\.handle\('hubmind:mcp-tool-call'/);
   assert.match(main, /Approve Jess MCP tool call/);
