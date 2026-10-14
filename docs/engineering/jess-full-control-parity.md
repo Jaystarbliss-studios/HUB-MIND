@@ -19,7 +19,8 @@ This document is a live checklist for the work requested in the October 2026 des
 - [ ] Prevent duplicate concurrent first-consent prompts and verify cancellation/retry behavior under slow Firestore snapshots.
 - [ ] Complete and test the spoken yes/no confirmation flow for delete, format, shutdown, and sending. The preference UI exists; the voice-confirmation protocol is not complete.
 - [ ] Remove stale “say Jess, full control” wording from every tool declaration and make the live session state the sole activation truth.
-- [ ] Sidecar: signed scroll deltas/horizontal scroll; C#-built INPUT events; full key map, hold timing; Notepad type/key verification.
+- [x] Sidecar scroll now reinterprets signed wheel deltas correctly and supports horizontal wheel input.
+- [ ] Sidecar: C#-built INPUT events; full key map, hold timing; Notepad type/key verification.
 - [ ] Clipboard get/set/paste and readback; show desktop, minimize all, Start menu, switch window by handle/z-order.
 - [ ] Unified application resolver for Start Menu, AppUserModelID, App Paths, PATH and URI schemes; verify resulting window.
 - [ ] Multi-monitor snapping/moving, thirds, z-order, monitor metadata, DPI-aware coordinate mapping.
