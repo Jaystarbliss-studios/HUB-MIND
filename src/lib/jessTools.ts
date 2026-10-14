@@ -193,15 +193,15 @@ const object = (properties: Record<string, any>, required?: string[]): JessToolD
 });
 
 export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
-  { name: 'jess_full_control', description: 'Start the Windows Full Control Session. Use only after the user explicitly says “Jess, full control”. Enables hands-free native input until stopped. The session is audited and can be stopped by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.', parameters: object({}) },
+  { name: 'jess_full_control', description: 'Start or resume the Windows Full Control Session when the user requests it and the saved settings allow it. If the main process already reports the session active, do not ask the user to repeat the activation phrase. The session is audited and can be stopped by saying “Jess, stop” or pressing Ctrl+Alt+Shift+J.', parameters: object({}) },
   { name: 'jess_stop', description: 'Immediately stop Jess native Windows control. Use when the user says “Jess, stop”.', parameters: object({}) },
   { name: 'show_hub_mind_workspace', description: 'Bring the Hub-Mind workspace window to the foreground while keeping the native Jess orb and transcript overlay visible above it. Use when the user asks to show/open/bring Hub-Mind back to the screen. This does not claim that a separate Windows app or website has been opened.', parameters: object({}) },
   { name: 'list_windows', description: 'List visible Windows desktop windows with titles, process names, bounds, state and foreground status. Requires Full Control Session.', parameters: object({}) },
-  { name: 'manage_windows', description: 'Manage real Windows desktop windows (not just Hub-Mind panels): focus/bring to foreground, close, minimize, maximize, restore, move, resize or snap. If the target is ambiguous, call list_windows first and use its exact title/handle. Move/resize need coordinates/dimensions; snap position is left, right, top-left, top-right, bottom-left or bottom-right. After acting, use list_windows or read_windows_screen to verify the postcondition. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'] }, title: { type: 'string' }, handle: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, position: { type: 'string', enum: ['left','right','top-left','top-right','bottom-left','bottom-right'] } }, ['action']) },
+  { name: 'manage_windows', description: 'Manage real Windows desktop windows (not just Hub-Mind panels): focus/bring to foreground, close, minimize, maximize, restore, move, resize or snap. If the target is ambiguous, call list_windows first and use its exact title/handle. Move/resize need coordinates/dimensions; snap supports halves, corners, thirds, and an optional monitorId from list_windows. After acting, use list_windows or read_windows_screen to verify the postcondition. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window'] }, title: { type: 'string' }, handle: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, monitorId: { type: 'string' }, position: { type: 'string', enum: ['left','right','top-left','top-right','bottom-left','bottom-right','left-third','center-third','right-third'] } }, ['action']) },
   { name: 'control_mouse', description: 'Move the Windows cursor, click, double-click, right-click or scroll at physical screen coordinates. Input delivery is not proof the target action succeeded. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['mouse_move','click','double_click','right_click','scroll'] }, x: { type: 'number' }, y: { type: 'number' }, delta: { type: 'number' } }, ['action','x','y']) },
   { name: 'drag_windows_mouse', description: 'Drag from one physical screen coordinate to another. Requires Full Control Session; the app-level result is not automatically verified.', parameters: object({ fromX: { type: 'number' }, fromY: { type: 'number' }, toX: { type: 'number' }, toY: { type: 'number' } }, ['fromX','fromY','toX','toY']) },
   { name: 'type_windows_text', description: 'Type text into the currently focused Windows app. Requires Full Control Session. Never type into password or payment fields.', parameters: object({ text: { type: 'string' } }, ['text']) },
-  { name: 'press_windows_keys', description: 'Send a key or key combination to the active Windows app, e.g. CTRL+S, ALT+TAB, ENTER, ESC, WIN+R. Requires Full Control Session.', parameters: object({ keys: { type: 'string' } }, ['keys']) },
+  { name: 'press_windows_keys', description: 'Send a key or key combination to the active Windows app, e.g. CTRL+S, ALT+TAB, ENTER, ESC, WIN+R. Requires Full Control Session.', parameters: object({ keys: { type: 'string' }, holdMs: { type: 'number' } }, ['keys']) },
   { name: 'control_system_volume', description: 'Send a Windows volume up, down, or mute key event. The actual audio state must be checked separately; some audio drivers may not expose a readable state. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['volume_up','volume_down','volume_mute'] } }, ['action']) },
   { name: 'control_screen_brightness', description: 'Send a Windows brightness up or down key event. Hardware and display-driver support varies; do not claim the brightness changed without independent verification. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['brightness_up','brightness_down'] } }, ['action']) },
   { name: 'take_windows_screenshot', description: 'Capture fresh screenshots of connected monitors, including monitor names, physical bounds and scale context. Use after visible UI actions to verify the actual postcondition when screen sharing is active. Requires Full Control Session.', parameters: object({}) },
@@ -210,7 +210,10 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'read_windows_screen', description: 'Read current accessible text from Windows UI Automation, with a local Windows OCR fallback when UI Automation exposes no text. Use after visible UI actions to verify the actual postcondition when screen sharing is active. OCR requires an installed Windows OCR language; secure desktop, protected content and protected controls remain unavailable. Requires Full Control Session.', parameters: object({}) },
   { name: 'open_local_windows_path', description: 'Open an existing local file or folder using its default Windows application. Requires Full Control Session. Does not execute a file as a command.', parameters: object({ path: { type: 'string' } }, ['path']) },
   { name: 'launch_windows_application', description: 'Launch an installed Windows desktop application by its visible Start Menu name or executable name (not limited to the built-in app list), bring its real desktop window into view, and verify whether a matching window appeared. Use autonomously during an active Full Control Session when the user has requested it. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
-  { name: 'run_windows_command_native', description: 'Run a bounded PowerShell command as the current Windows user and return captured output. Non-elevated. Destructive commands are blocked and results are not considered verified merely because output was returned. Requires Full Control Session.', parameters: object({ command: { type: 'string' } }, ['command']) },
+  { name: 'run_windows_command_native', description: 'Run a bounded PowerShell command as the current Windows user and return captured output. Non-elevated. Destructive commands are blocked and results are not considered verified merely because output was returned. Requires Full Control Session.', parameters: object({ command: { type: 'string' }, timeoutMs: { type: 'number' } }, ['command']) },
+  { name: 'manage_windows_files', description: 'Manage local files using explicit bounded operations: list, read, write, copy, move, rename, search, or send to Recycle Bin. Reading/searching is routine; writes and moves/deletion are mutations and require the configured permission mode. Never claim content was saved or deleted unless the result confirms it. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['list','read','write','copy','move','rename','search','recycle'] }, path: { type: 'string' }, destination: { type: 'string' }, content: { type: 'string' }, pattern: { type: 'string' }, offset: { type: 'number' }, limit: { type: 'number' } }, ['action','path']) },
+  { name: 'manage_windows_clipboard', description: 'Read, set, clear or paste the current Windows clipboard. Clipboard reads return only the current text content and are bounded; paste uses Ctrl+V in the focused app. Mutating operations follow the configured permission mode. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['read','write','clear','paste'] }, text: { type: 'string' } }, ['action']) },
+  { name: 'control_windows_power', description: 'Lock the Windows workstation, schedule shutdown or restart in 15 seconds, or cancel a pending shutdown/restart. Shutdown/restart require a fresh spoken yes/no confirmation; cancellation is always available. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['lock','shutdown','restart','cancel_shutdown'] } }, ['action']) },
   { name: 'get_windows_time', description: 'Read local Windows time and time zone.', parameters: object({}) },
   { name: 'get_windows_system_info', description: 'Read basic Windows computer and OS information.', parameters: object({}) },
   { name: 'chrome_list_tabs', description: 'List open Chrome tabs with IDs, titles, URLs and loading status. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({}) },
@@ -223,7 +226,8 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'chrome_find_element', description: 'Find an element in the current Chrome page by visible text or CSS selector. Supply at least one. Returns element bounds and metadata; it does not click. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, selector: { type: 'string' }, text: { type: 'string' } }) },
   { name: 'chrome_click_element', description: 'Click a matching page button/link/element by visible text or CSS selector. Supply at least one. The click is not considered complete until a follow-up page read verifies the intended outcome. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, selector: { type: 'string' }, text: { type: 'string' } }) },
   { name: 'chrome_fill_field', description: 'Fill a specific input, textarea or select identified by a CSS selector. Requires Full Control Session. Never use on password or payment fields.', parameters: object({ tabId: { type: 'number' }, selector: { type: 'string' }, value: { type: 'string' } }, ['selector','value']) },
-  { name: 'chrome_scroll', description: 'Scroll a Chrome page by a number of pixels. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, delta: { type: 'number' } }, ['delta']) },
+  { name: 'chrome_scroll', description: 'Scroll a Chrome page by a number of pixels. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' }, delta: { type: 'number' }, axis: { type: 'string', enum: ['x','y'] }, target: { type: 'string' } }, ['delta']) },
+  { name: 'chrome_capture_screenshot', description: 'Capture a compressed thumbnail preview of the active visible Chrome tab. The preview is displayed to the user in the desktop assistant; use page text or screen OCR for actual content analysis. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }) },
   { name: 'get_user_profile', description: 'Get the signed-in Hub-Mind user profile, role, name, preferred name, email, and preferences.', parameters: object({}) },
   { name: 'get_current_user_profile', description: 'Get the currently signed-in user identity, name, preferred name, email, role, and preferences.', parameters: object({}) },
   { name: 'get_current_context', description: 'Get the current Hub-Mind route and active workspace context.', parameters: object({}) },
@@ -625,6 +629,9 @@ export async function executeJessTool(
       case 'open_local_windows_path':
       case 'launch_windows_application':
       case 'run_windows_command_native':
+      case 'manage_windows_files':
+      case 'manage_windows_clipboard':
+      case 'control_windows_power':
       case 'type_windows_text':
       case 'press_windows_keys':
       case 'control_system_volume':
@@ -635,13 +642,13 @@ export async function executeJessTool(
         const desktop = (window as any).hubMindDesktop;
         if (!desktop?.isDesktopApp || typeof desktop.nativeAction !== 'function') return { result: { success: false, error: 'Native Windows control is only available in the installed desktop app.' } };
         const status = await desktop.nativeStatus();
-        if (!status?.active && !['get_windows_time','get_windows_system_info'].includes(name)) return { result: { success: false, error: 'Full Control Session is off. Say “Jess, full control” first, or use the tray Stop Jess control.' } };
+        if (!status?.active && !['get_windows_time','get_windows_system_info'].includes(name)) return { result: { success: false, error: 'Full Control Session is off. Enable it in Jess settings or use the supported Full Control activation control.' } };
         let method: string = name, payload: any = args || {};
-        if (name === 'manage_windows') { method = String(args?.action || ''); payload = { title: args?.title, handle: args?.handle, x: args?.x, y: args?.y, width: args?.width, height: args?.height, position: args?.position }; }
+        if (name === 'manage_windows') { method = String(args?.action || ''); payload = { title: args?.title, handle: args?.handle, x: args?.x, y: args?.y, width: args?.width, height: args?.height, position: args?.position, monitorId: args?.monitorId }; }
         if (name === 'control_mouse') { method = String(args?.action || ''); payload = { x: args?.x, y: args?.y, delta: args?.delta ?? -120 }; }
         if (name === 'drag_windows_mouse') { method = 'drag'; payload = { fromX: args?.fromX, fromY: args?.fromY, toX: args?.toX, toY: args?.toY }; }
         if (name === 'type_windows_text') { method = 'type_text'; payload = { text: String(args?.text || '') }; }
-        if (name === 'press_windows_keys') { method = 'press_keys'; payload = { keys: String(args?.keys || '') }; }
+        if (name === 'press_windows_keys') { method = 'press_keys'; payload = { keys: String(args?.keys || ''), holdMs: args?.holdMs }; }
         if (name === 'control_system_volume' || name === 'control_screen_brightness') { method = 'media_key'; payload = { action: String(args?.action || '') }; }
         if (name === 'take_windows_screenshot') { method = 'screenshot'; payload = {}; }
         if (name === 'read_windows_screen') { method = 'read_screen_text'; payload = {}; }
@@ -649,7 +656,10 @@ export async function executeJessTool(
         if (name === 'invoke_windows_ui_element') { method = 'invoke_ui_element'; payload = { name: String(args?.name || '') }; }
         if (name === 'launch_windows_application') { method = 'launch_app'; payload = { name: String(args?.name || '') }; }
         if (name === 'open_local_windows_path') { method = 'open_path'; payload = { path: String(args?.path || '') }; }
-        if (name === 'run_windows_command_native') { method = 'run_command'; payload = { command: String(args?.command || '') }; }
+        if (name === 'run_windows_command_native') { method = 'run_command'; payload = { command: String(args?.command || ''), timeoutMs: args?.timeoutMs }; }
+        if (name === 'manage_windows_files') { method = 'file_action'; payload = { action: String(args?.action || ''), path: String(args?.path || ''), destination: String(args?.destination || ''), content: String(args?.content || ''), pattern: String(args?.pattern || ''), offset: args?.offset, limit: args?.limit }; }
+        if (name === 'manage_windows_clipboard') { method = 'clipboard_action'; payload = { action: String(args?.action || ''), text: String(args?.text || '') }; }
+        if (name === 'control_windows_power') { method = 'system_power_action'; payload = { action: String(args?.action || '') }; }
         if (name === 'get_windows_time') { method = 'get_time'; payload = {}; }
         if (name === 'get_windows_system_info') { method = 'system_info'; payload = {}; }
         const result = await desktop.nativeAction(method, payload, user.id, executionId);
@@ -663,6 +673,7 @@ export async function executeJessTool(
       case 'chrome_navigate_tab':
       case 'chrome_reload_tab':
       case 'chrome_scroll':
+      case 'chrome_capture_screenshot':
       case 'chrome_read_page':
       case 'chrome_find_element':
       case 'chrome_click_element':

@@ -109,6 +109,9 @@ const nativeToolNames = [
   'open_local_windows_path',
   'launch_windows_application',
   'run_windows_command_native',
+  'manage_windows_files',
+  'manage_windows_clipboard',
+  'control_windows_power',
   'get_windows_time',
   'get_windows_system_info',
   'chrome_list_tabs',
@@ -122,6 +125,7 @@ const nativeToolNames = [
   'chrome_click_element',
   'chrome_fill_field',
   'chrome_scroll',
+  'chrome_capture_screenshot',
 ];
 
 test('server Live tool registry exposes every native tool declared by Jess', async () => {
@@ -191,7 +195,7 @@ test('native tool results can travel from the desktop executor back to the Live 
 });
 
 
-test('Full Control requires a desktop confirmation and remains Windows-only', async () => {
+test('Full Control uses saved main-process consent and a main-process session secret', async () => {
   const main = await read('../../electron/main.cjs');
   const start = main.indexOf("ipcMain.handle('hubmind:full-control-start'");
   const end = main.indexOf("ipcMain.handle('hubmind:full-control-stop'", start);
@@ -199,17 +203,14 @@ test('Full Control requires a desktop confirmation and remains Windows-only', as
   assert.notEqual(end, -1, 'main process must register Full Control stop');
   const handler = main.slice(start, end);
   assert.match(handler, /process\.platform !== 'win32'/);
-  assert.match(handler, /dialog\.showMessageBox/);
-  assert.match(handler, /buttons: \['Cancel', 'Enable Full Control'\]/);
-  assert.match(handler, /if \(choice\.response !== 1\)/);
-  assert.ok(handler.indexOf('if (choice.response !== 1)') < handler.indexOf('fullControlActive = true'),
-    'Full Control must not be enabled before the user confirms');
-  assert.match(handler, /full-control-start-cancelled/);
-  assert.match(handler, /if \(fullControlStartPending\)/);
-  assert.match(handler, /fullControlStartPending = false/);
-  assert.ok(handler.indexOf('fullControlStartPending = true') < handler.indexOf('dialog.showMessageBox'),
-    'only one Full Control consent prompt may be pending');
-  assert.match(main, /userId !== controlSessionUserId\) throw new Error\('Native action blocked because the signed-in user does not own this Full Control Session\.'/);
+  assert.match(handler, /jessPreferences\.fullControlEnabled/);
+  assert.match(handler, /permissionMode === 'allow-everything'/);
+  assert.match(main, /buttons: \['Cancel', 'Allow everything'\]/);
+  assert.match(main, /fullControlConsentGranted/);
+  assert.match(main, /controlSessionSecret = randomUUID\(\)/);
+  assert.match(main, /assertTrustedSender\(event\)/);
+  assert.match(main, /Control\+Alt\+Shift\+J/);
+  assert.match(main, /jess-native-audit\.jsonl/);
 });
 
 
@@ -275,7 +276,7 @@ test('runtime filtering hides native tools outside the installed desktop app', (
     'list_windows',
     'chrome_open_tab',
   ]);
-  assert.equal(JESS_NATIVE_TOOL_NAMES.length, 31);
+  assert.equal(JESS_NATIVE_TOOL_NAMES.length, 35);
 });
 
 
@@ -320,8 +321,10 @@ test('Jess account preferences are enforced by the assistant and tool executor',
   assert.match(liveClient, /context\?\.personalization/);
   assert.match(liveClient, /context\?\.contextEnabled === false/);
   assert.match(liveClient, /context\?\.screenVerificationEnabled === false/);
-  assert.match(main, /jessPreferences\.permissionMode === 'always-allow'/);
-  assert.match(main, /highRiskActions\.has\(method\)/);
+  assert.match(main, /jessPreferences\.permissionMode === 'allow-routine'/);
+  assert.match(main, /jessPreferences\.permissionMode === 'allow-everything'/);
+  assert.match(settings, /window\.setTimeout/);
+  assert.match(settings, /Main-process mode/);
 });
 
 
@@ -336,7 +339,7 @@ test('MCP tools use explicit desktop consent, scoped tool discovery, and no shel
     read('../../src/pages/JessSettings.tsx'),
   ]);
   assert.match(bridge, /shell: false/);
-  assert.match(bridge, /Custom MCP environment variables are not enabled until encrypted secret storage is configured/);
+  assert.match(bridge, /ALLOWED_MCP_ENV_KEYS/);assert.match(bridge, /ANONYMIZED_TELEMETRY/);assert.match(bridge, /Secrets and arbitrary environment overrides are not supported/);
   assert.match(bridge, /Only HTTPS is allowed|MCP HTTP servers must use HTTPS/);
   assert.match(main, /ipcMain\.handle\('hubmind:mcp-tool-call'/);
   assert.match(main, /Approve Jess MCP tool call/);
@@ -353,3 +356,7 @@ test('MCP tools use explicit desktop consent, scoped tool discovery, and no shel
   assert.match(settings, /Add and connect/);
   assert.match(settingsPage, /JessMcpServersSettings userId=\{profile\?\.id \|\| ''\}/);
 });
+
+test('high-impact native and external tool calls pause for a fresh spoken yes',async()=>{const [assistant,live,settings]=await Promise.all([read('../../src/components/JessFloatingAssistant.tsx'),read('../../src/services/liveAudioClient.ts'),read('../../src/pages/JessSettings.tsx')]);assert.match(assistant,/highRiskJessConfirmation/);assert.match(assistant,/confirmationRequired: true/);assert.match(assistant,/pendingHighRiskConfirmationRef/);assert.match(assistant,/isSpokenYes\(text\)/);assert.match(assistant,/confirmHighRiskOutLoud !== false/);assert.match(live,/HIGH-IMPACT SPOKEN CONFIRMATION/);assert.match(settings,/Ask out loud before high-impact actions/);});
+
+test('Jess refreshes and validates stored memories during the live session and queries installed app version',async()=>{const [live,main]=await Promise.all([read('../../src/services/liveAudioClient.ts'),read('../../electron/main.cjs')]);assert.match(live,/MEMORY VALIDATION: When memory is enabled, refresh relevant stored memories with get_user_memories at the start of each user turn/);assert.match(main,/hubMindDesktopVersion = app\.getVersion\(\)/);});

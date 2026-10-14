@@ -150,6 +150,35 @@ function wakeTone() {
 
 const MAX_JESS_TOOL_CALLS_PER_TURN = 12;
 
+function stableJessArgs(value: any): string {
+  if (Array.isArray(value)) return '[' + value.map(stableJessArgs).join(',') + ']';
+  if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + stableJessArgs(value[key])).join(',') + '}';
+  return JSON.stringify(value) ?? 'null';
+}
+function highRiskJessConfirmation(toolName: string, args: any): string | null {
+  const name = String(toolName || '');
+  const action = String(args?.action || '').toLowerCase();
+  if (name === 'manage_windows_files' && ['recycle','write','move','rename'].includes(action)) {
+    const target = String(args?.path || '').slice(0, 220);
+    const destination = String(args?.destination || '').slice(0, 160);
+    return (action === 'recycle' ? 'send file to the Recycle Bin' : action + ' file') + ': ' + target + (destination ? ' → ' + destination : '');
+  }
+  if (name === 'control_windows_power' && ['shutdown','restart'].includes(action)) {
+    return 'schedule Windows ' + action + ' in 15 seconds; the action can be cancelled with shutdown /a before it begins';
+  }
+  const normalized = name.replace(/_/g, ' ');
+  if (/(delete|remove|format|shutdown|restart|send email|send message|send information|send direct information|transfer|payment|purchase|publish|submit|charge)/i.test(normalized)) {
+    const details = ['recipient','to','email','subject','path','destination','file','document','amount','account','url','title']
+      .map(key => args?.[key] ? key + '=' + String(args[key]).slice(0, 100) : '')
+      .filter(Boolean).slice(0, 5).join(', ');
+    return 'use the ' + normalized.slice(0, 120) + ' tool' + (details ? ' (' + details + ')' : '');
+  }
+  return null;
+}
+function isSpokenYes(text: string): boolean {
+  return /^(?:yes(?:,? please)?|yes do it|confirm(?: it)?|approve|do it|go ahead(?: please)?|proceed|affirmative|yeah|yep)[,.!\s]*$/i.test(String(text || '').trim());
+}
+
 interface CurrentSpeechState {
   text: string;
   speaker: 'user' | 'jess';
@@ -159,7 +188,8 @@ interface CurrentSpeechState {
 export function JessFloatingAssistant() {
   const { user, profile, updatePreferredName } = useAuth();
   const jessPreferencesRef = useRef({
-    permissionMode: 'ask' as 'ask' | 'always-allow',
+    permissionMode: 'ask' as 'ask' | 'allow-routine' | 'allow-everything' | 'always-allow',
+    confirmHighRiskOutLoud: true,
     memoryEnabled: true,
     contextEnabled: true,
     personalization: '',
@@ -183,6 +213,8 @@ export function JessFloatingAssistant() {
   }, [location.pathname]);
   const clientRef = useRef<LiveAudioClient | null>(null);
   const toolLoopRef = useRef<{ rounds: number; fingerprints: string[] }>({ rounds: 0, fingerprints: [] });
+  const pendingHighRiskConfirmationRef = useRef<{ fingerprint: string; summary: string; at: number } | null>(null);
+  const spokenHighRiskApprovalRef = useRef<{ fingerprint: string; at: number } | null>(null);
   const sessionLeaseRef = useRef<{ userId: string; sessionId: string; timer: number | null } | null>(null);
   const activationRequestSeenRef = useRef<string | null>(null);
   const [remoteJessOwner, setRemoteJessOwner] = useState<JessSessionOwner | null>(null);
@@ -238,6 +270,7 @@ export function JessFloatingAssistant() {
     message?: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [chromeScreenshotPreview, setChromeScreenshotPreview] = useState<{ dataUrl: string; title: string; url: string; capturedAt: string } | null>(null);
 
   const stopScreenSharing = useCallback(async (announce = false) => {
     const share = screenShareRef.current;
@@ -547,39 +580,68 @@ export function JessFloatingAssistant() {
         }
         toolLoopRef.current.fingerprints.push(fingerprint);
         let result: any;
-        const webResearchTools = new Set(['search_web', 'desktop_open_website']);
-        if (jessPreferencesRef.current.webResearchEnabled === false && webResearchTools.has(fc.name)) {
-          result = { result: { success: false, error: 'Web research is disabled in Jess settings. Enable it in Workspace → Jess settings to use online search or website-opening tools.' } };
-        } else try {
-          const execution = await runJessToolExecution({
-            toolName: fc.name,
-            args: toolArgs || {},
-            userId: profile?.id,
-            turnId: jessTranscriptTurnIdRef.current || undefined,
-          }, executionId => executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context, executionId));
-          result = execution.value;
-          if (result?.result && typeof result.result === 'object') {
+        const riskSummary = highRiskJessConfirmation(fc.name, toolArgs || {});
+        const riskFingerprint = fc.name + ':' + stableJessArgs(toolArgs || {});
+        const spokenApproval = spokenHighRiskApprovalRef.current;
+        const hasSpokenApproval = !!riskSummary && !!spokenApproval
+          && spokenApproval.fingerprint === riskFingerprint
+          && Date.now() - spokenApproval.at <= 30000;
+        if (riskSummary && jessPreferencesRef.current.confirmHighRiskOutLoud !== false && !hasSpokenApproval) {
+          pendingHighRiskConfirmationRef.current = { fingerprint: riskFingerprint, summary: riskSummary, at: Date.now() };
+          spokenHighRiskApprovalRef.current = null;
+          result = { result: {
+            success: false,
+            confirmationRequired: true,
+            confirmationSummary: riskSummary,
+            message: "This action is paused. Say a clear 'yes' to proceed or 'no' to cancel. Only a fresh spoken yes for this exact action will authorize it.",
+          } };
+        } else {
+          if (hasSpokenApproval) {
+            spokenHighRiskApprovalRef.current = null;
+            pendingHighRiskConfirmationRef.current = null;
+          }
+          const webResearchTools = new Set(['search_web', 'desktop_open_website']);
+          if (jessPreferencesRef.current.webResearchEnabled === false && webResearchTools.has(fc.name)) {
+            result = { result: { success: false, error: 'Web research is disabled in Jess settings. Enable it in Workspace → Jess settings to use online search or website-opening tools.' } };
+          } else try {
+            const execution = await runJessToolExecution({
+              toolName: fc.name,
+              args: toolArgs || {},
+              userId: profile?.id,
+              turnId: jessTranscriptTurnIdRef.current || undefined,
+            }, executionId => executeJessTool(fc.name, toolArgs || {}, profile, name => void updatePreferredName(name), context, executionId));
+            result = execution.value;
+            if (result?.result && typeof result.result === 'object') {
+              result = {
+                ...result,
+                result: {
+                  ...result.result,
+                  executionId: execution.executionId,
+                  executionStatus: execution.status,
+                  retrySafe: execution.retrySafe,
+                  durationMs: execution.durationMs,
+                },
+              };
+            }
+          } catch (error: any) {
+            // A tool failure must become a tool response, not an unhandled promise.
             result = {
-              ...result,
               result: {
-                ...result.result,
-                executionId: execution.executionId,
-                executionStatus: execution.status,
-                retrySafe: execution.retrySafe,
-                durationMs: execution.durationMs,
+                success: false,
+                error: error?.message || 'The requested Hub-Mind action failed unexpectedly.',
               },
             };
           }
-        } catch (error: any) {
-          // A tool failure must become a tool response, not an unhandled promise.
-          // Returning the failure to Gemini lets Jess recover conversationally and
-          // keeps the Live session usable for the next command.
-          result = {
-            result: {
-              success: false,
-              error: error?.message || 'The requested Hub-Mind action failed unexpectedly.',
-            },
-          };
+        }
+
+        if (fc.name === 'chrome_capture_screenshot' && result?.result?.evidence?.dataUrl) {
+          const evidence = result.result.evidence;
+          setChromeScreenshotPreview({
+            dataUrl: String(evidence.dataUrl),
+            title: String(evidence.title || 'Chrome tab'),
+            url: String(evidence.url || ''),
+            capturedAt: String(evidence.capturedAt || new Date().toISOString()),
+          });
         }
 
         if (result.actionPayload?.type === 'screen_share') {
@@ -755,6 +817,19 @@ export function JessFloatingAssistant() {
       },
       onUserTranscript: (text) => {
         if (sessionEndingRef.current || !text) return;
+        const pendingRisk = pendingHighRiskConfirmationRef.current;
+        if (pendingRisk) {
+          const fresh = Date.now() - pendingRisk.at <= 45000;
+          if (fresh && isSpokenYes(text)) {
+            spokenHighRiskApprovalRef.current = { fingerprint: pendingRisk.fingerprint, at: Date.now() };
+          } else {
+            spokenHighRiskApprovalRef.current = null;
+          }
+          pendingHighRiskConfirmationRef.current = null;
+        } else {
+          // A spoken approval is single-use and expires on the next user utterance.
+          spokenHighRiskApprovalRef.current = null;
+        }
         if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
         const stopShareCommand = /\b(stop|end|turn off|finish|cancel)\s+(?:the\s+)?(?:screen\s*sharing|screen share|sharing my screen)\b/i.test(text);
         if (stopShareCommand && (screenShareRef.current.stream || screenShareRef.current.nativePlugin || screenShareRef.current.timer !== null)) {
@@ -1273,6 +1348,17 @@ export function JessFloatingAssistant() {
             </div>
           </div>
         </div>
+      )}
+
+      {chromeScreenshotPreview && (
+        <section className="fixed bottom-5 right-5 z-[9990] w-[min(92vw,560px)] overflow-hidden rounded-2xl border border-teal-300/30 bg-slate-950/95 text-slate-100 shadow-2xl shadow-slate-950/70 backdrop-blur-xl" role="dialog" aria-label="Chrome tab screenshot preview">
+          <header className="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
+            <div className="min-w-0"><div className="text-xs font-semibold uppercase tracking-wider text-teal-200">Chrome tab preview</div><div className="mt-1 truncate text-sm font-semibold">{chromeScreenshotPreview.title}</div><div className="mt-1 truncate text-[10px] text-slate-500">{chromeScreenshotPreview.url}</div></div>
+            <button type="button" onClick={() => setChromeScreenshotPreview(null)} className="shrink-0 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-800" aria-label="Close screenshot preview">Close</button>
+          </header>
+          <img src={chromeScreenshotPreview.dataUrl} alt={`Compressed screenshot preview of ${chromeScreenshotPreview.title}`} className="block max-h-[320px] w-full bg-black object-contain" />
+          <p className="px-4 py-2 text-[10px] leading-relaxed text-slate-500">Preview captured {chromeScreenshotPreview.capturedAt}. Jess receives the page metadata, not visual pixels from this preview; use page text or OCR for content analysis.</p>
+        </section>
       )}
 
       {/* Delete Confirmation Modal (User has the final say) */}
