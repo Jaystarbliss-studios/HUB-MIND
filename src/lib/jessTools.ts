@@ -213,6 +213,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'run_windows_command_native', description: 'Run a bounded PowerShell command as the current Windows user and return captured output. Non-elevated. Destructive commands are blocked and results are not considered verified merely because output was returned. Requires Full Control Session.', parameters: object({ command: { type: 'string' }, timeoutMs: { type: 'number' } }, ['command']) },
   { name: 'manage_windows_files', description: 'Manage local files using explicit bounded operations: list, read, write, copy, move, rename, search, or send to Recycle Bin. Reading/searching is routine; writes and moves/deletion are mutations and require the configured permission mode. Never claim content was saved or deleted unless the result confirms it. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['list','read','write','copy','move','rename','search','recycle'] }, path: { type: 'string' }, destination: { type: 'string' }, content: { type: 'string' }, pattern: { type: 'string' } }, ['action','path']) },
   { name: 'manage_windows_clipboard', description: 'Read, set, clear or paste the current Windows clipboard. Clipboard reads return only the current text content and are bounded; paste uses Ctrl+V in the focused app. Mutating operations follow the configured permission mode. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['read','write','clear','paste'] }, text: { type: 'string' } }, ['action']) },
+  { name: 'control_windows_power', description: 'Lock the Windows workstation, schedule shutdown in 15 seconds, or schedule restart in 15 seconds. Shutdown/restart require a fresh spoken yes/no confirmation; a scheduled shutdown/restart can be cancelled with shutdown /a before it begins. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['lock','shutdown','restart'] } }, ['action']) },
   { name: 'get_windows_time', description: 'Read local Windows time and time zone.', parameters: object({}) },
   { name: 'get_windows_system_info', description: 'Read basic Windows computer and OS information.', parameters: object({}) },
   { name: 'chrome_list_tabs', description: 'List open Chrome tabs with IDs, titles, URLs and loading status. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({}) },
@@ -629,6 +630,7 @@ export async function executeJessTool(
       case 'run_windows_command_native':
       case 'manage_windows_files':
       case 'manage_windows_clipboard':
+      case 'control_windows_power':
       case 'type_windows_text':
       case 'press_windows_keys':
       case 'control_system_volume':
@@ -656,6 +658,7 @@ export async function executeJessTool(
         if (name === 'run_windows_command_native') { method = 'run_command'; payload = { command: String(args?.command || ''), timeoutMs: args?.timeoutMs }; }
         if (name === 'manage_windows_files') { method = 'file_action'; payload = { action: String(args?.action || ''), path: String(args?.path || ''), destination: String(args?.destination || ''), content: String(args?.content || ''), pattern: String(args?.pattern || '') }; }
         if (name === 'manage_windows_clipboard') { method = 'clipboard_action'; payload = { action: String(args?.action || ''), text: String(args?.text || '') }; }
+        if (name === 'control_windows_power') { method = 'system_power_action'; payload = { action: String(args?.action || '') }; }
         if (name === 'get_windows_time') { method = 'get_time'; payload = {}; }
         if (name === 'get_windows_system_info') { method = 'system_info'; payload = {}; }
         const result = await desktop.nativeAction(method, payload, user.id, executionId);
