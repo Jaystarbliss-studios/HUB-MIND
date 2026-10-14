@@ -29,7 +29,7 @@ This document is a live checklist for the work requested in the October 2026 des
 - [ ] Evaluate .NET/FlaUI or Windows-MCP through McpBridge, with telemetry disabled and text snapshots available to Jess.
 - [ ] Correct success contract and postcondition verification for input, click, and keyboard actions.
 - [x] Keep the native orb visible over the workspace and other apps, while the in-app duplicate remains hidden in desktop mode; [x] show a thumbnail picker for screens/windows and auto-select the primary screen for user-triggered sharing only in explicitly enabled Allow everything mode.
-- [x] Chrome nested-container scrolling can target a labelled container and reports actual movement; [x] Settings setup button and live native-host connection status; [ ] screenshots and non-managed-PC test; [ ] test the native pipe boundary against other local processes.
+- [x] Chrome nested-container scrolling can target a labelled container and reports actual movement; [x] Settings setup button and live native-host connection status; [x] per-user token handshake on the named pipe; [ ] screenshots and non-managed-PC acceptance test.
 - [x] Jess prompt now receives the bundled package version and official workspace URL, and is instructed to verify older releases through official GitHub releases/tags rather than inventing them.
 - [x] The native system-info response includes the running Electron app version; the live prompt instructs Jess to query it instead of guessing. [ ] verify historical release/tag retrieval works through actual live internet tools.
 - [x] Memory service now filters narrowly matched assistant-capability claims from local and fetched memories and attempts to remove matching Firestore records; new matching claims are rejected as memories.
