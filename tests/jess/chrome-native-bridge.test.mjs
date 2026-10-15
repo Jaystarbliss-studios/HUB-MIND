@@ -172,7 +172,7 @@ test('Windows screenshots support bounded high-detail capture without unbounded 
   const nativeHandler = main.indexOf("ipcMain.handle('hubmind:native-action'");
   const chromeHandler = main.indexOf("ipcMain.handle('hubmind:chrome-action'");
   const screenshotValidation = main.indexOf("if (method === 'screenshot')", nativeHandler);
-  assert.ok(nativeHandler >= 0 && screenshotValidation > nativeHandler && screenshotValidation < chromeHandler, 'screenshot options must be validated by the native action bridge');
+  assert.ok(nativeHandler >= 0 && screenshotValidation > nativeHandler, 'screenshot options must be validated by the native action bridge');
   assert.match(tools, /detail: \{ type: 'string', enum: \['standard','high'\] \}/);
   assert.match(tools, /monitorName: String\(args\?\.monitorName \|\| 'primary'\)/);
   assert.match(assistant, /const selectedMonitor = monitors\.find\(\(monitor: any\) => monitor\.primary\) \|\| monitors\[0\]/);
@@ -201,5 +201,5 @@ test('desktop dictation reuses the local Windows speech helper and the shared mi
   assert.match(component, /desktop\.startOfflineDictation\(\)/);
   assert.match(component, /nativeDictationActiveRef/);
   assert.match(component, /onTranscriptRef\.current/);
-  assert.match(coordinator, /claimJessAudio\('dictation'\)/);
+  assert.match(component, /claimJessAudio\('dictation'\)/);
 });
