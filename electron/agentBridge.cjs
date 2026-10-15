@@ -53,7 +53,7 @@ function ensureAgent() {
   if (child && child.exitCode === null) return child;
   const scriptPath = resolveScriptPath();
   lastScriptPath = scriptPath;
-  if (!fs.existsSync(scriptPath)) throw new Error('Jess native agent script is missing from this build: ' + scriptPath);
+  if (!fs.existsSync(scriptPath)) { lastError = 'Jess native agent script is missing from this build: ' + scriptPath; throw new Error(lastError); }
 
   const spawned = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
     windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], shell: false,
@@ -70,7 +70,8 @@ function ensureAgent() {
   spawned.stdout.on('data', chunk => {
     buffer += chunk;
     if (buffer.length > MAX_RESPONSE_LINE_CHARS && !buffer.includes('\n')) {
-      audit('sidecar-protocol-overflow', { pid: spawned.pid, bufferedChars: buffer.length });
+      lastError = 'Native helper response exceeded the 16 MB protocol limit.';
+      audit('sidecar-protocol-overflow', { pid: spawned.pid, bufferedChars: buffer.length, error: lastError });
       try { spawned.kill(); } catch {}
       return;
     }
@@ -81,7 +82,8 @@ function ensureAgent() {
       buffer = buffer.slice(at + 1);
       if (!line) continue;
       if (line.length > MAX_RESPONSE_LINE_CHARS) {
-        audit('sidecar-oversized-line', { pid: spawned.pid, chars: line.length });
+        lastError = 'Native helper returned a response line above the 16 MB protocol limit.';
+        audit('sidecar-oversized-line', { pid: spawned.pid, chars: line.length, error: lastError });
         continue;
       }
       try {
@@ -94,7 +96,8 @@ function ensureAgent() {
           wait.resolve(message.result);
         }
       } catch (error) {
-        audit('sidecar-invalid-json', { pid: spawned.pid, error: String(error?.message || error).slice(0, 300) });
+        lastError = safeDiagnostic('Native helper returned invalid JSON: ' + String(error?.message || error));
+        audit('sidecar-invalid-json', { pid: spawned.pid, error: lastError });
       }
     }
   });
@@ -115,6 +118,7 @@ function ensureAgent() {
     lastExitCode = code;
     lastExitSignal = signal;
     if (code !== 0 || signal) lastError = lastError || safeDiagnostic('Native helper exited (' + (code ?? signal ?? 'unknown') + ').');
+    else if (pending.size > 0) lastError = safeDiagnostic('Native helper exited while requests were pending.');
     audit('sidecar-exited', { pid: spawned.pid, code, signal, pending: pending.size });
     for (const [id, wait] of pending) {
       clearTimeout(wait.timer);
@@ -129,13 +133,20 @@ function ensureAgent() {
 
 function call(method, args = {}, timeout = 15000) {
   if (process.platform !== 'win32') return Promise.resolve({ ok: false, verified: false, evidence: null, error: 'Native Windows control is only available in the Windows desktop build.' });
-  const proc = ensureAgent();
+  let proc;
+  try { proc = ensureAgent(); }
+  catch (error) {
+    lastError = safeDiagnostic(error?.message || error);
+    audit('sidecar-start-failed', { method, error: lastError });
+    return Promise.reject(new Error(lastError));
+  }
   const id = (++nextId) + '-' + randomUUID();
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       pending.delete(id);
-      audit('action-timeout', { method, durationMs: Date.now() - started, timeoutMs: timeout });
+      lastError = safeDiagnostic('Native action timed out: ' + method + '.');
+      audit('action-timeout', { method, durationMs: Date.now() - started, timeoutMs: timeout, error: lastError });
       if (child === proc && proc.exitCode === null) {
         try { proc.kill(); } catch {}
         child = null;
@@ -151,8 +162,9 @@ function call(method, args = {}, timeout = 15000) {
       if (!wait) return;
       pending.delete(id);
       clearTimeout(timer);
-      audit('action-write-failed', { method, error: String(error?.message || error).slice(0, 500) });
-      reject(error);
+      lastError = safeDiagnostic('Could not write request to native helper: ' + String(error?.message || error));
+      audit('action-write-failed', { method, error: lastError });
+      reject(new Error(lastError));
     });
   });
 }
