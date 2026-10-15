@@ -16,11 +16,12 @@ function publish() {
 }
 
 export function claimJessAudio(owner: JessAudioOwner): boolean {
-  if (activeOwner && activeOwner !== owner) return false;
-  if (activeOwner !== owner) {
-    activeOwner = owner;
-    publish();
-  }
+  // Every claim represents a new capture session, not a re-entrant permission.
+  // Reject even same-owner claims so two mounted dictation controls or two live
+  // clients cannot both believe they own the microphone.
+  if (activeOwner !== null) return false;
+  activeOwner = owner;
+  publish();
   return true;
 }
 
