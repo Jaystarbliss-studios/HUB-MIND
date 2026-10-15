@@ -51,6 +51,14 @@ Make Jess the single user-facing voice-control system for Hub-Mind: reliable dic
 - Preserve a visible transcript, current mode, microphone state and cancellable action progress.
 - Keep Windows secure desktop/UAC boundaries intact.
 
+### Local speech runtime now implemented
+
+- The packaged `JessOfflineWake.exe` now has two explicit modes: the existing consent-gated wake-word listener and user-triggered local dictation through Windows `System.Speech`.
+- Desktop dictation uses the same native speech process and Electron IPC rather than opening a second browser recognizer. The shared renderer microphone coordinator still arbitrates live conversation versus dictation; the wake listener is stopped before either begins.
+- Browser-based speech recognition remains the fallback for the web workspace when the native desktop API is unavailable.
+- This is the lightweight Windows-native offline path, not a bundled Wheelhouse Parakeet model. Model-based local STT remains a separate benchmarked option; do not bundle a second recognizer until accuracy, memory use, model licensing and CPU latency have been measured on the target PC.
+- Offline dictation requires a compatible Windows speech recognition language/engine. A missing engine or microphone failure is surfaced as an actionable error rather than silently falling back to cloud recognition.
+
 ### Phase D — Wheelhouse-inspired local speech
 
 - Audit Wheelhouse source, dependency licenses, model licenses, CPU/RAM use and packaging.
