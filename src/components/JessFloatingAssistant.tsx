@@ -306,6 +306,8 @@ export function JessFloatingAssistant() {
       await share.video.play();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
+      let consecutiveFrameFailures = 0;
+      let frameFailureNotified = false;
       const sendFrame = () => {
         if (!share.video || !ctx || share.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
         const sourceWidth = share.video.videoWidth || 1280;
@@ -316,7 +318,17 @@ export function JessFloatingAssistant() {
         canvas.width = Math.max(1, Math.round(sourceWidth * scale));
         canvas.height = Math.max(1, Math.round(sourceHeight * scale));
         ctx.drawImage(share.video, 0, 0, canvas.width, canvas.height);
-        clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.84));
+        const delivered = clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.84)) === true;
+        if (delivered) {
+          consecutiveFrameFailures = 0;
+          frameFailureNotified = false;
+        } else {
+          consecutiveFrameFailures += 1;
+          if (consecutiveFrameFailures >= 3 && !frameFailureNotified) {
+            frameFailureNotified = true;
+            setSpeechState({ text: 'Screen capture is active, but Jess is not receiving screen frames. Reconnect the live voice session before requesting visual analysis.', speaker: 'jess', visible: true });
+          }
+        }
       };
       sendFrame();
       share.timer = window.setInterval(sendFrame, 1000);
