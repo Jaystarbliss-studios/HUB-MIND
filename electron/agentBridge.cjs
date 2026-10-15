@@ -10,7 +10,8 @@ const pending = new Map();
 
 function safeDiagnostic(value) {
   return String(value ?? '')
-    .replace(/(token|password|secret|authorization)\s*[:=]\s*[^\s,;]+/ig, '$1=[redacted]')
+    .replace(/(["']?(?:token|password|secret|authorization)["']?\s*[:=]\s*["']?)[^"'\s,;}{]+["']?/ig, '$1[redacted]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/ig, 'Bearer [redacted]')
     .slice(0, 500);
 }
 
