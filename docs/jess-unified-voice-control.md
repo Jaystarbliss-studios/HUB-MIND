@@ -86,4 +86,30 @@ Make Jess the single user-facing voice-control system for Hub-Mind: reliable dic
 
 ## Current status
 
-The first implementation slice adds retry/recovery for transient Chrome named-pipe server failures, diagnostic stderr messages from the native host, and a read-only `chrome_bridge_status` Jess tool that can distinguish listener, connection and authentication states without requiring Full Control. This is not yet proof of end-to-end operation: the bridge must still be exercised on a real Windows machine with the installed app and Chrome extension.
+Implemented in the current integration branch:
+
+- Chrome named-pipe listener recovery with bounded backoff and safe native-host handshake diagnostics.
+- Read-only Chrome bridge status reporting for listening, connection, authentication, pending requests, handshake/disconnect timestamps and last error.
+- Native desktop sidecar health reporting for resolved script path, script existence, process state, PID, pending calls, start/exit timestamps, exit code/signal and sanitized last error.
+- Electron's native status IPC now returns Full Control state plus native-helper and Chrome-bridge diagnostics.
+- A renderer microphone ownership coordinator prevents Jess live conversation and explicit browser dictation from capturing concurrently.
+- The desktop offline wake listener is paused before live conversation/dictation begins and resumed after the owning session ends.
+- Contract tests cover bridge diagnostics, recovery hooks, and microphone handoff.
+
+Not yet verified or fully implemented:
+
+- These source-level changes are not proof that the installed native helper works on the target Windows machine. The release still needs a real request/response round-trip through Electron, PowerShell, the Chrome named host, and the extension.
+- The Wheelhouse speech engine has not been bundled. Its project documents local Parakeet speech recognition, but engine/model licensing, download size, memory/CPU use, startup latency, recognition accuracy, and offline behavior must be measured before choosing a runtime.
+- Voice Access-style command/dictation parity is partial. Named/numbered Windows UI controls exist, but text correction, literal dictation, and command-vs-dictation handling need end-to-end interaction tests.
+- Chrome Web Store publishing, clean-machine installation, and real voice-only acceptance remain release gates.
+
+## Release gates
+
+- [ ] Chrome native host connects and authenticates reliably after fresh install and app restart.
+- [ ] Native desktop helper receives and returns a correlated request through the current bridge.
+- [ ] Exactly one Jess microphone consumer is active at a time, including offline wake.
+- [ ] Dictation does not accidentally execute commands.
+- [ ] Local speech works without network access when configured for offline mode.
+- [ ] UI Automation is preferred over raw coordinates and ambiguous controls are disambiguated.
+- [ ] High-risk actions require explicit confirmation and stop/cancel works.
+- [ ] All automated checks pass and Windows manual acceptance is recorded.
