@@ -693,7 +693,7 @@ export async function executeJessTool(
             : probe?.ok === true
               ? 'The native helper completed a real, read-only system-info request through Electron IPC and the sidecar protocol. The bridge is responding. This does not yet prove mouse, keyboard, UI Automation or screenshot actions work.'
               : probe?.error
-                ? 'The helper did not complete the read-only round-trip. Inspect the probe error and jess-agent-runtime.jsonl before retrying desktop actions.'
+                ? 'The native helper did not complete the read-only round-trip. Inspect the probe error and jess-agent-runtime.jsonl before retrying desktop actions.'
                 : helper.lastError
                   ? 'The native helper has reported an error. Inspect the latest error and runtime audit before retrying actions.'
                   : 'The helper is present, but the read-only round-trip did not return a successful result.';
