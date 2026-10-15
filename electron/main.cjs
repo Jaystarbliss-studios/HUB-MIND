@@ -435,7 +435,7 @@ async function readWindowsOcrFallback() {
     ? path.join(process.resourcesPath, 'JessWindowsOcr.exe')
     : path.join(__dirname, '..', 'native', 'JessWindowsOcr', 'publish', 'JessWindowsOcr.exe');
   if (!fs.existsSync(exePath)) return { ok: false, error: 'Windows OCR helper is not installed.' };
-  const capture = await nativeAgent.call('screenshot', {}, 30000);
+  const capture = await nativeAgent.call('screenshot', { monitorName: 'primary', detail: 'high' }, 30000);
   const monitors = Array.isArray(capture?.evidence?.monitors) ? capture.evidence.monitors : [];
   const monitor = monitors.find(item => item?.primary && typeof item.imageBase64 === 'string') || monitors.find(item => typeof item?.imageBase64 === 'string');
   if (!monitor) return { ok: false, error: 'No screenshot image was returned for OCR.' };
