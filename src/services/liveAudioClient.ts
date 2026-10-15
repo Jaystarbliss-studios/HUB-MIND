@@ -360,7 +360,10 @@ export class LiveAudioClient {
       this.ownsAudioSession = true;
       const desktop = (window as any).hubMindDesktop;
       if (desktop?.isDesktopApp && typeof desktop.stopOfflineWake === 'function') {
-        try { await desktop.stopOfflineWake(); } catch (error) { console.warn('[Jess] Could not pause offline wake listener:', error); }
+        const wakeStop = await desktop.stopOfflineWake();
+        if (wakeStop?.error || wakeStop?.stopped === false) {
+          throw new Error('Jess could not pause the offline wake listener, so live microphone capture was not started. ' + String(wakeStop?.error || 'Stop the wake listener and try again.'));
+        }
       }
       const firstName = context?.userName || 'there';
       const bgTasksSummary = jessBackgroundTasks.getQueueSummaryForPrompt(context?.userId || '');
