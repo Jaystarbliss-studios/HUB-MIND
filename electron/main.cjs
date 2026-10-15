@@ -25,6 +25,7 @@ let controlSessionSecret = null;
 let fullControlConsentGranted = false;
 let controlAuditPath = null;
 let offlineWakeProcess = null;
+let offlineWakeMode = null;
 let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
 let offlineWakeConsentLoaded = false;
@@ -343,16 +344,22 @@ async function showWorkspaceVerified() {
 function stopOfflineWake() {
   const child = offlineWakeProcess;
   offlineWakeProcess = null;
+  offlineWakeMode = null;
   if (child && !child.killed) {
     try { child.kill(); } catch {}
   }
   return { stopped: true };
 }
 
-async function startOfflineWake(event) {
+async function startOfflineRecognizer(event, mode = 'wake') {
   assertTrustedSender(event);
-  if (process.platform !== 'win32') return { started: false, error: 'Offline Windows wake detection is available only in the Windows desktop app.' };
-  if (offlineWakeProcess && !offlineWakeProcess.killed && offlineWakeProcess.exitCode === null) return { started: true, alreadyRunning: true, source: 'Windows offline recognizer' };
+  if (!['wake', 'dictation'].includes(mode)) return { started: false, error: 'Unsupported local speech mode.' };
+  if (process.platform !== 'win32') return { started: false, error: 'Offline Windows speech recognition is available only in the Windows desktop app.' };
+  if (offlineWakeProcess && !offlineWakeProcess.killed && offlineWakeProcess.exitCode === null) {
+    if (offlineWakeMode === mode) return { started: true, alreadyRunning: true, source: 'Windows System.Speech local recognizer', mode };
+    stopOfflineWake();
+  }
+  if (mode === 'wake') {
   if (!offlineWakeConsentLoaded) {
     offlineWakeConsentLoaded = true;
     try {
@@ -378,15 +385,17 @@ async function startOfflineWake(event) {
     } catch (error) { console.warn('[Hub-Mind] Could not persist offline wake consent:', error); }
   }
   if (!offlineWakeConsentGranted) return { started: false, cancelled: true, error: 'Offline wake-word listening was not enabled.' };
+  }
   const exePath = app.isPackaged
     ? path.join(process.resourcesPath, 'JessOfflineWake.exe')
     : path.join(__dirname, '..', 'native', 'JessOfflineWake', 'publish', 'JessOfflineWake.exe');
   if (!fs.existsSync(exePath)) return { started: false, error: 'The offline wake helper is not installed. Rebuild the Windows desktop package with the native helpers.' };
-  const child = spawn(exePath, [], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], shell: false });
+  const child = spawn(exePath, mode === 'dictation' ? ['--mode', 'dictation'] : [], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], shell: false });
   offlineWakeProcess = child;
+  offlineWakeMode = mode;
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
-  child.stderr.on('data', chunk => console.warn('[Jess offline wake]', String(chunk).slice(0, 800)));
+  child.stderr.on('data', chunk => console.warn('[Jess local speech ' + mode + ']', String(chunk).slice(0, 800)));
   let buffer = '';
   let resolved = false;
   let readyTimer;
@@ -412,10 +421,17 @@ async function startOfflineWake(event) {
       if (!line) continue;
       let message;
       try { message = JSON.parse(line); } catch { continue; }
-      if (message.type === 'ready') settle({ started: true, source: message.source || 'Windows offline recognizer' });
-      if (message.type === 'wake') {
+      if (message.type === 'ready') settle({ started: true, source: message.source || 'Windows System.Speech local recognizer', mode });
+      if (message.type === 'wake' && mode === 'wake') {
         stopOfflineWake();
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('hubmind:offline-wake', { prompt: String(message.prompt || '').slice(0, 2000), source: message.source || 'Windows offline recognizer' });
+      }
+      if (message.type === 'dictation' && mode === 'dictation' && mainWindow && !mainWindow.isDestroyed()) {
+        const transcript = String(message.transcript || '').trim().slice(0, 2000);
+        if (transcript) mainWindow.webContents.send('hubmind:offline-dictation', { transcript, confidence: Number.isFinite(message.confidence) ? Math.max(0, Math.min(1, message.confidence)) : null, source: message.source || 'Windows System.Speech local dictation' });
+      }
+      if (message.type === 'error' && mode === 'dictation' && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('hubmind:offline-dictation', { error: String(message.error || 'Local dictation failed.').slice(0, 500), source: 'Windows System.Speech local dictation' });
       }
     }
   });
@@ -424,11 +440,18 @@ async function startOfflineWake(event) {
     settle({ started: false, error: String(error?.message || 'Could not start offline wake helper.').slice(0, 500) });
   });
   child.once('exit', code => {
-    if (offlineWakeProcess === child) offlineWakeProcess = null;
-    if (!resolved) settle({ started: false, error: 'Offline wake helper exited before becoming ready (code ' + String(code) + ').' });
+    const wasCurrent = offlineWakeProcess === child;
+    if (wasCurrent) { offlineWakeProcess = null; offlineWakeMode = null; }
+    if (!resolved) settle({ started: false, error: 'Windows local speech helper exited before becoming ready (code ' + String(code) + '). Check microphone access and installed speech language support.' });
+    else if (mode === 'dictation' && wasCurrent && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('hubmind:offline-dictation', { error: 'Local dictation stopped unexpectedly (exit code ' + String(code) + '). Check the Windows speech recognition language and microphone, then try again.' });
+    }
   });
   return await ready;
 }
+
+async function startOfflineWake(event) { return startOfflineRecognizer(event, 'wake'); }
+async function startOfflineDictation(event) { return startOfflineRecognizer(event, 'dictation'); }
 
 async function readWindowsOcrFallback() {
   const exePath = app.isPackaged
@@ -717,6 +740,7 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('hubmind:offline-wake-start', (event) => startOfflineWake(event));
+  ipcMain.handle('hubmind:offline-dictation-start', (event) => startOfflineDictation(event));
   ipcMain.handle('hubmind:offline-wake-stop', (event) => { assertTrustedSender(event); return stopOfflineWake(); });
   ipcMain.handle('hubmind:chrome-action', async (event, method, args, userId, executionId) => {
     assertTrustedSender(event);
