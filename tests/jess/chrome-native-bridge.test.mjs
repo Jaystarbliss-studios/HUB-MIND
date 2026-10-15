@@ -156,11 +156,12 @@ test('native helper status resolves the packaged or development script path befo
 });
 
 test('Windows screenshots support bounded high-detail capture without unbounded native bridge payloads', async () => {
-  const [agent, bridge, main, tools] = await Promise.all([
+  const [agent, bridge, main, tools, assistant] = await Promise.all([
     read('electron/jess-agent.ps1'),
     read('electron/agentBridge.cjs'),
     read('electron/main.cjs'),
     read('src/lib/jessTools.ts'),
+    read('src/components/JessFloatingAssistant.tsx'),
   ]);
   assert.match(agent, /requestedMonitor = \[string\]\$a\.monitorName/);
   assert.match(agent, /High-detail capture must target one monitor/);
@@ -174,6 +175,9 @@ test('Windows screenshots support bounded high-detail capture without unbounded 
   assert.ok(nativeHandler >= 0 && screenshotValidation > nativeHandler && screenshotValidation < chromeHandler, 'screenshot options must be validated by the native action bridge');
   assert.match(tools, /detail: \{ type: 'string', enum: \['standard','high'\] \}/);
   assert.match(tools, /monitorName: String\(args\?\.monitorName \|\| 'primary'\)/);
+  assert.match(assistant, /const selectedMonitor = monitors\.find\(\(monitor: any\) => monitor\.primary\) \|\| monitors\[0\]/);
+  assert.match(assistant, /imageDeliveredToJess: monitor === selectedMonitor && delivered/);
+  assert.match(assistant, /selected monitor screenshot was sent to Jess as an image frame/);
 });
 
 test('desktop dictation reuses the local Windows speech helper and the shared microphone owner', async () => {
