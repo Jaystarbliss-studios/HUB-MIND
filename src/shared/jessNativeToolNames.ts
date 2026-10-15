@@ -18,6 +18,7 @@ export const JESS_NATIVE_TOOL_NAMES = [
   'control_screen_brightness',
   'take_windows_screenshot',
   'find_windows_ui_element',
+  'list_windows_ui_elements',
   'invoke_windows_ui_element',
   'read_windows_screen',
   'open_local_windows_path',
