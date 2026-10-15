@@ -168,6 +168,8 @@ test('Windows screenshots support bounded high-detail capture without unbounded 
   assert.match(agent, /maxDimension = if \(\$detail -eq 'high'\) \{ 3200 \} else \{ 1920 \}/);
   assert.match(agent, /EncoderParameter\(\[System\.Drawing\.Imaging\.Encoder\]::Quality/);
   assert.match(agent, /exceeded the 8 MB image limit/);
+  assert.match(agent, /exceeded the 2 MB per-monitor image limit/);
+  assert.match(agent, /All-monitor capture is limited to four monitors/);
   assert.match(bridge, /MAX_RESPONSE_LINE_CHARS = 16 \* 1024 \* 1024/);
   const nativeHandler = main.indexOf("ipcMain.handle('hubmind:native-action'");
   const chromeHandler = main.indexOf("ipcMain.handle('hubmind:chrome-action'");
