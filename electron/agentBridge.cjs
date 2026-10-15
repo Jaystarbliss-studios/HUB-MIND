@@ -14,7 +14,14 @@ function safeDiagnostic(value) {
     .slice(0, 500);
 }
 
+function resolveScriptPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'jess-agent.ps1')
+    : path.join(__dirname, 'jess-agent.ps1');
+}
+
 function status() {
+  const scriptPath = lastScriptPath || resolveScriptPath();
   return {
     available: process.platform === 'win32',
     running: !!child && child.exitCode === null && !child.killed,
@@ -26,8 +33,8 @@ function status() {
     lastExitCode,
     lastExitSignal,
     lastStderr,
-    scriptExists: !!lastScriptPath && fs.existsSync(lastScriptPath),
-    scriptPath: lastScriptPath,
+    scriptExists: fs.existsSync(scriptPath),
+    scriptPath,
   };
 }
 const MAX_RESPONSE_LINE_CHARS = 2 * 1024 * 1024;
@@ -44,9 +51,7 @@ function audit(event, details = {}) {
 
 function ensureAgent() {
   if (child && child.exitCode === null) return child;
-  const scriptPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'jess-agent.ps1')
-    : path.join(__dirname, 'jess-agent.ps1');
+  const scriptPath = resolveScriptPath();
   lastScriptPath = scriptPath;
   if (!fs.existsSync(scriptPath)) throw new Error('Jess native agent script is missing from this build: ' + scriptPath);
 
