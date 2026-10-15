@@ -5,7 +5,31 @@ const { app } = require('electron');
 const { randomUUID } = require('node:crypto');
 
 let child = null, nextId = 0, buffer = '';
+let lastStartedAt = null, lastExitedAt = null, lastError = null, lastExitCode = null, lastExitSignal = null, lastStderr = null, lastScriptPath = null;
 const pending = new Map();
+
+function safeDiagnostic(value) {
+  return String(value ?? '')
+    .replace(/(token|password|secret|authorization)\s*[:=]\s*[^\s,;]+/ig, '$1=[redacted]')
+    .slice(0, 500);
+}
+
+function status() {
+  return {
+    available: process.platform === 'win32',
+    running: !!child && child.exitCode === null && !child.killed,
+    pid: child?.pid ?? null,
+    pendingRequests: pending.size,
+    lastStartedAt,
+    lastExitedAt,
+    lastError,
+    lastExitCode,
+    lastExitSignal,
+    lastStderr,
+    scriptExists: !!lastScriptPath && fs.existsSync(lastScriptPath),
+    scriptPath: lastScriptPath,
+  };
+}
 const MAX_RESPONSE_LINE_CHARS = 2 * 1024 * 1024;
 const MAX_STDERR_CHARS = 1200;
 
@@ -23,12 +47,18 @@ function ensureAgent() {
   const scriptPath = app.isPackaged
     ? path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'jess-agent.ps1')
     : path.join(__dirname, 'jess-agent.ps1');
+  lastScriptPath = scriptPath;
   if (!fs.existsSync(scriptPath)) throw new Error('Jess native agent script is missing from this build: ' + scriptPath);
 
   const spawned = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
     windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], shell: false,
   });
   child = spawned;
+  lastStartedAt = new Date().toISOString();
+  lastError = null;
+  lastExitCode = null;
+  lastExitSignal = null;
+  lastStderr = null;
   spawned.stdout.setEncoding('utf8');
   audit('sidecar-started', { pid: spawned.pid, scriptPath });
 
@@ -65,12 +95,21 @@ function ensureAgent() {
   });
 
   spawned.stderr.on('data', chunk => {
-    const message = String(chunk).slice(0, MAX_STDERR_CHARS);
+    const message = safeDiagnostic(String(chunk).slice(0, MAX_STDERR_CHARS));
+    lastStderr = message.slice(-500);
+    lastError = lastStderr;
     console.warn('[Jess native agent]', message);
     audit('sidecar-stderr', { pid: spawned.pid, message });
   });
-  spawned.on('error', error => audit('sidecar-process-error', { pid: spawned.pid, error: String(error?.message || error).slice(0, 500) }));
+  spawned.on('error', error => {
+    lastError = safeDiagnostic(error?.message || error);
+    audit('sidecar-process-error', { pid: spawned.pid, error: lastError });
+  });
   spawned.on('exit', (code, signal) => {
+    lastExitedAt = new Date().toISOString();
+    lastExitCode = code;
+    lastExitSignal = signal;
+    if (code !== 0 || signal) lastError = lastError || safeDiagnostic('Native helper exited (' + (code ?? signal ?? 'unknown') + ').');
     audit('sidecar-exited', { pid: spawned.pid, code, signal, pending: pending.size });
     for (const [id, wait] of pending) {
       clearTimeout(wait.timer);
@@ -127,4 +166,4 @@ function stop() {
 }
 
 app.on('before-quit', stop);
-module.exports = { call, stop };
+module.exports = { call, stop, status };
