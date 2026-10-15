@@ -37,7 +37,7 @@ function status() {
     scriptPath,
   };
 }
-const MAX_RESPONSE_LINE_CHARS = 2 * 1024 * 1024;
+const MAX_RESPONSE_LINE_CHARS = 16 * 1024 * 1024;
 const MAX_STDERR_CHARS = 1200;
 
 function audit(event, details = {}) {
