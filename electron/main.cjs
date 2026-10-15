@@ -727,6 +727,17 @@ app.whenReady().then(() => {
     const allowed = new Set(['chrome_list_tabs','chrome_open_tab','chrome_close_tab','chrome_activate_tab','chrome_navigate_tab','chrome_reload_tab','chrome_scroll','chrome_capture_screenshot','chrome_read_page','chrome_find_element','chrome_click_element','chrome_fill_field']);
     if (typeof method !== 'string' || !allowed.has(method)) return { ok: false, verified: false, error: 'Unsupported Chrome action.' };
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+    if (method === 'screenshot') {
+      if (safeArgs.detail !== undefined && !['standard', 'high'].includes(String(safeArgs.detail))) {
+        throw new Error('Screenshot detail must be standard or high.');
+      }
+      if (safeArgs.monitorName !== undefined && (typeof safeArgs.monitorName !== 'string' || safeArgs.monitorName.length > 128 || /[\r\n\0]/.test(safeArgs.monitorName))) {
+        throw new Error('Screenshot monitorName must be a valid monitor label under 128 characters.');
+      }
+      if (safeArgs.detail === 'high' && safeArgs.monitorName === 'all') {
+        throw new Error('High-detail screenshots must target one monitor to keep the native bridge response bounded.');
+      }
+    }
     if (safeArgs.tabId !== undefined && (!Number.isInteger(Number(safeArgs.tabId)) || Number(safeArgs.tabId) < 1)) return { ok: false, verified: false, error: 'Invalid Chrome tab ID.' };
     if (['chrome_open_tab','chrome_navigate_tab'].includes(method) && (typeof safeArgs.url !== 'string' || safeArgs.url.length > 2048)) return { ok: false, verified: false, error: 'A valid HTTP or HTTPS URL is required.' };
     if (method === 'chrome_fill_field' && (typeof safeArgs.selector !== 'string' || !safeArgs.selector.trim() || safeArgs.selector.length > 500 || typeof safeArgs.value !== 'string' || safeArgs.value.length > 10000)) return { ok: false, verified: false, error: 'A field selector and value under 10,000 characters are required.' };
