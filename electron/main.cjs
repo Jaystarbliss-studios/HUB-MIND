@@ -436,8 +436,8 @@ async function startOfflineRecognizer(event, mode = 'wake') {
     }
   });
   child.once('error', error => {
-    if (offlineWakeProcess === child) offlineWakeProcess = null;
-    settle({ started: false, error: String(error?.message || 'Could not start offline wake helper.').slice(0, 500) });
+    if (offlineWakeProcess === child) { offlineWakeProcess = null; offlineWakeMode = null; }
+    settle({ started: false, error: String(error?.message || 'Could not start Windows local speech helper.').slice(0, 500) });
   });
   child.once('exit', code => {
     const wasCurrent = offlineWakeProcess === child;
