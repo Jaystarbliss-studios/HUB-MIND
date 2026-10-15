@@ -90,3 +90,21 @@ test('screen reading has a bounded local Windows OCR fallback and removes tempor
   assert.match(project, /net8\.0-windows10\.0\.26100\.0/);
   assert.match(builder, /JessWindowsOcr\.exe/);
 });
+
+
+test('native desktop bridge exposes actionable helper health without leaking credentials', async () => {
+  const [agent, main] = await Promise.all([
+    read('electron/agentBridge.cjs'),
+    read('electron/main.cjs'),
+  ]);
+  assert.match(agent, /function status\(\)/);
+  assert.match(agent, /pendingRequests/);
+  assert.match(agent, /lastStartedAt/);
+  assert.match(agent, /lastExitedAt/);
+  assert.match(agent, /lastError/);
+  assert.match(agent, /scriptExists/);
+  assert.match(agent, /safeDiagnostic/);
+  assert.match(agent, /\[redacted\]/);
+  assert.match(agent, /module\.exports = \{ call, stop, status \}/);
+  assert.match(main, /helper: nativeAgent\.status\(\), chrome: chromeBridge\.status\(\)/);
+});
