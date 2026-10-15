@@ -217,6 +217,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'control_windows_power', description: 'Lock the Windows workstation, schedule shutdown or restart in 15 seconds, or cancel a pending shutdown/restart. Shutdown/restart require a fresh spoken yes/no confirmation; cancellation is always available. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['lock','shutdown','restart','cancel_shutdown'] } }, ['action']) },
   { name: 'get_windows_time', description: 'Read local Windows time and time zone.', parameters: object({}) },
   { name: 'get_windows_system_info', description: 'Read basic Windows computer and OS information.', parameters: object({}) },
+  { name: 'native_bridge_status', description: 'Diagnose the Windows native desktop helper without requiring Full Control. Reports whether the PowerShell sidecar is available/running, whether its script exists, the last startup/exit error, and pending requests. Use when Windows clicks, typing, screenshots, or other native actions are not bridging; this is read-only.', parameters: object({}) },
   { name: 'chrome_bridge_status', description: 'Diagnose the installed Jess Chrome bridge without requiring Full Control. Reports whether the desktop pipe listener, native host connection and authentication handshake are healthy, plus the last bridge error. Use when Chrome control is not connecting; this is read-only.', parameters: object({}) },
   { name: 'chrome_list_tabs', description: 'List open Chrome tabs with IDs, titles, URLs and loading status. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({}) },
   { name: 'chrome_open_tab', description: 'Open an HTTP or HTTPS website in a new Chrome tab. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({ url: { type: 'string' }, active: { type: 'boolean' } }, ['url']) },
@@ -669,6 +670,26 @@ export async function executeJessTool(
         const result = await desktop.nativeAction(method, payload, user.id, executionId);
         const actionStatus = result?.ok !== true ? 'failed' : result?.verified === true ? 'done_verified' : 'sent_unverified';
         return { result: { ...result, status: actionStatus, success: actionStatus !== 'failed', verified: result?.verified === true, evidence: result?.evidence ?? null, ...(actionStatus === 'sent_unverified' ? { note: 'Input was sent, but the resulting UI state was not independently verified. Do not repeat non-idempotent actions automatically.' } : {}) } };
+      }
+      case 'native_bridge_status': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.nativeStatus !== 'function') {
+          return { result: { success: false, verified: true, error: 'Native Windows bridge diagnostics are available only in the installed desktop app.' } };
+        }
+        const status = await desktop.nativeStatus();
+        const helper = status?.helper || status?.nativeBridge || {};
+        const diagnosis = !helper.available
+          ? 'This is not the Windows desktop runtime. Native desktop control cannot run here.'
+          : !helper.scriptExists
+            ? 'The native helper script is missing from the expected install path. Repair or reinstall the Windows desktop package.'
+            : !helper.running && helper.lastError
+              ? 'The native helper is not running and reports an error. Inspect the error and jess-agent-runtime.jsonl, then retry after fixing the reported cause.'
+              : !helper.running
+                ? 'The helper script exists but the sidecar has not started yet. Run a harmless native action or the system-info check to start it, then check status again.'
+                : helper.lastError
+                  ? 'The helper process is running but has reported an error. Inspect the latest error and runtime audit before retrying actions.'
+                  : 'The native helper process is running. Verify end-to-end communication with a harmless system-info action before relying on desktop control.';
+        return { result: { success: true, verified: true, status: helper, fullControlActive: status?.active === true, diagnosis } };
       }
       case 'chrome_bridge_status': {
         const desktop = (window as any).hubMindDesktop;
