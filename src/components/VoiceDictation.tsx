@@ -48,8 +48,8 @@ export function VoiceDictation({
 
       recognition.onerror = (event: any) => {
         console.warn('Speech recognition error:', event.error);
-        releaseJessAudio('dictation');
         if (event.error !== 'no-speech') {
+          releaseJessAudio('dictation');
           setIsListening(false);
         }
       };
