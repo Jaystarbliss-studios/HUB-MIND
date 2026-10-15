@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff } from 'lucide-react';
-import { claimJessAudio, releaseJessAudio } from '../services/jessVoiceSessionCoordinator';
+import { claimJessAudio, releaseJessAudio, type JessAudioLease } from '../services/jessVoiceSessionCoordinator';
 import { normalizeJessDictationTranscript } from '../services/jessDictationText';
 
 interface VoiceDictationProps {
@@ -21,6 +21,18 @@ export function VoiceDictation({
   const recognitionRef = useRef<any>(null);
   const nativeDictationRef = useRef(false);
   const nativeDictationActiveRef = useRef(false);
+  const audioLeaseRef = useRef<JessAudioLease | null>(null);
+  const claimDictationAudio = () => {
+    const lease = claimDictationAudio();
+    if (!lease) return false;
+    audioLeaseRef.current = lease;
+    return true;
+  };
+  const releaseDictationAudio = () => {
+    const lease = audioLeaseRef.current;
+    audioLeaseRef.current = null;
+    releaseJessAudio(lease);
+  };
   const onTranscriptRef = useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
 
@@ -43,7 +55,7 @@ export function VoiceDictation({
       const removeListener = desktop.onOfflineDictation((payload: { transcript?: string; error?: string }) => {
         if (payload?.error) {
           nativeDictationActiveRef.current = false;
-          releaseJessAudio('dictation');
+          releaseDictationAudio();
           setIsListening(false);
           setIsSessionBusy(false);
           console.warn('[Jess] Local dictation failed:', payload.error);
@@ -60,7 +72,7 @@ export function VoiceDictation({
           void Promise.resolve(desktop.stopOfflineWake?.()).catch(() => undefined);
         }
         nativeDictationRef.current = false;
-        releaseJessAudio('dictation');
+        releaseDictationAudio();
       };
     }
 
@@ -90,13 +102,13 @@ export function VoiceDictation({
       recognition.onerror = (event: any) => {
         console.warn('Speech recognition error:', event.error);
         if (event.error !== 'no-speech') {
-          releaseJessAudio('dictation');
+          releaseDictationAudio();
           setIsListening(false);
         }
       };
 
       recognition.onend = () => {
-        releaseJessAudio('dictation');
+        releaseDictationAudio();
         setIsListening(false);
         resumeDesktopWake();
       };
@@ -113,7 +125,7 @@ export function VoiceDictation({
         try { recognitionRef.current.stop(); } catch {}
         recognitionRef.current = null;
       }
-      releaseJessAudio('dictation');
+      releaseDictationAudio();
     };
   }, []);
 
@@ -124,14 +136,14 @@ export function VoiceDictation({
         try { await desktop.stopOfflineWake(); }
         catch (error) { console.warn('[Jess] Could not stop local dictation:', error); }
         nativeDictationActiveRef.current = false;
-        releaseJessAudio('dictation');
+        releaseDictationAudio();
         setIsListening(false);
         setIsSessionBusy(false);
         resumeDesktopWake();
         return;
       }
 
-      if (!claimJessAudio('dictation')) {
+      if (!claimDictationAudio()) {
         setIsSessionBusy(true);
         return;
       }
@@ -144,7 +156,7 @@ export function VoiceDictation({
         setIsListening(true);
       } catch (error) {
         nativeDictationActiveRef.current = false;
-        releaseJessAudio('dictation');
+        releaseDictationAudio();
         setIsListening(false);
         console.warn('[Jess] Local dictation start failed:', error);
         resumeDesktopWake();
@@ -155,11 +167,11 @@ export function VoiceDictation({
     if (!recognitionRef.current) return;
     if (isListening) {
       try { recognitionRef.current.stop(); } catch {}
-      releaseJessAudio('dictation');
+      releaseDictationAudio();
       setIsListening(false);
       setIsSessionBusy(false);
     } else {
-      if (!claimJessAudio('dictation')) {
+      if (!claimDictationAudio()) {
         setIsSessionBusy(true);
         return;
       }
@@ -172,7 +184,7 @@ export function VoiceDictation({
         recognitionRef.current.start();
         setIsListening(true);
       } catch (error) {
-        releaseJessAudio('dictation');
+        releaseDictationAudio();
         console.warn('Speech start error:', error);
         setIsListening(false);
         resumeDesktopWake();
