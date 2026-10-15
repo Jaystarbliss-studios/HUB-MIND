@@ -123,3 +123,24 @@ test('native desktop bridge exposes actionable diagnostics and performs a harmle
   assert.match(tools, /desktop\.nativeAction\('system_info', \{\}, user\.id, executionId\)/);
   assert.match(tools, /native helper did not complete the read-only round-trip/i);
 });
+
+
+test('Jess uses one renderer microphone owner across live audio, dictation, and desktop wake lifecycle', async () => {
+  const [coordinator, live, dictation] = await Promise.all([
+    read('src/services/jessVoiceSessionCoordinator.ts'),
+    read('src/services/liveAudioClient.ts'),
+    read('src/components/VoiceDictation.tsx'),
+  ]);
+  assert.match(coordinator, /export type JessAudioOwner = 'live-conversation' \| 'dictation'/);
+  assert.match(coordinator, /export function claimJessAudio/);
+  assert.match(coordinator, /if \(activeOwner && activeOwner !== owner\) return false/);
+  assert.match(coordinator, /export function releaseJessAudio/);
+  assert.match(live, /claimJessAudio\('live-conversation'\)/);
+  assert.match(live, /releaseJessAudio\('live-conversation'\)/);
+  assert.match(live, /stopOfflineWake\(\)/);
+  assert.match(live, /startOfflineWake\(\)/);
+  assert.match(live, /disconnect\(false, false, false\)/);
+  assert.match(dictation, /claimJessAudio\('dictation'\)/);
+  assert.match(dictation, /releaseJessAudio\('dictation'\)/);
+  assert.match(dictation, /Jess microphone is busy/);
+});
