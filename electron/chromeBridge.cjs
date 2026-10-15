@@ -12,6 +12,9 @@ let client = null;
 let buffer = '';
 let authenticated = false;
 let authTimer = null;
+let lastHandshakeAt = null;
+let lastDisconnectAt = null;
+let lastError = null;
 const pending = new Map();
 function readBridgeToken() {
   const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
@@ -33,7 +36,7 @@ function start() {
     authenticated = false;
     buffer = '';
     if (authTimer) clearTimeout(authTimer);
-    authTimer = setTimeout(() => { if (client === socket && !authenticated) socket.destroy(); }, 5000);
+    authTimer = setTimeout(() => { if (client === socket && !authenticated) { lastError = 'Chrome native host handshake timed out before authentication.'; socket.destroy(); } }, 5000);
     socket.setEncoding('utf8');
     socket.on('data', chunk => {
       buffer += chunk;
@@ -46,8 +49,10 @@ function start() {
         let response;
         try { response = JSON.parse(line); } catch { socket.destroy(); return; }
         if (!authenticated) {
-          if (response?.type !== 'hello' || !tokenMatches(response.token)) { console.warn('[Jess Chrome bridge] Rejected unauthenticated named-pipe client.'); socket.destroy(); return; }
+          if (response?.type !== 'hello' || !tokenMatches(response.token)) { lastError = 'Rejected unauthenticated Chrome native-messaging client.'; console.warn('[Jess Chrome bridge] Rejected unauthenticated named-pipe client.'); socket.destroy(); return; }
           authenticated = true;
+          lastHandshakeAt = new Date().toISOString();
+          lastError = null;
           if (authTimer) clearTimeout(authTimer);
           authTimer = null;
           socket.write(JSON.stringify({ type: 'hello-ack' }) + '\n');
@@ -62,7 +67,7 @@ function start() {
     });
     socket.on('error', () => {});
     socket.on('close', () => {
-      if (client === socket) { client = null; authenticated = false; }
+      if (client === socket) { client = null; authenticated = false; lastDisconnectAt = new Date().toISOString(); if (!lastError) lastError = 'Chrome native-messaging connection closed.'; }
       if (authTimer) { clearTimeout(authTimer); authTimer = null; }
       for (const [id, waiter] of pending) {
         clearTimeout(waiter.timer);
@@ -71,12 +76,24 @@ function start() {
       }
     });
   });
-  server.on('error', error => console.error('[Jess Chrome bridge]', error.message));
+  server.on('error', error => { lastError = String(error?.message || error).slice(0, 500); console.error('[Jess Chrome bridge]', lastError); });
   server.listen(PIPE_NAME);
 }
 
 function status() {
-  return { available: !!client && !client.destroyed && authenticated, authenticated, transport: 'Authenticated Chrome Native Messaging', pipe: PIPE_NAME };
+  const connected = !!client && !client.destroyed;
+  return {
+    available: connected && authenticated,
+    serverListening: !!server?.listening,
+    connected,
+    authenticated,
+    pendingRequests: pending.size,
+    lastHandshakeAt,
+    lastDisconnectAt,
+    lastError,
+    transport: 'Authenticated Chrome Native Messaging',
+    pipe: PIPE_NAME,
+  };
 }
 
 function request(method, args = {}, timeoutMs = 12000) {
