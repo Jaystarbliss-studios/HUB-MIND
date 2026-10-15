@@ -3,7 +3,7 @@ import { auth } from '../firebaseConfig';
 import { JESS_TOOLS_DECLARATIONS } from '../lib/jessTools';
 import { JESS_NATIVE_TOOL_NAME_SET } from '../shared/jessNativeToolNames';
 import { jessBackgroundTasks } from './jessBackgroundTasks';
-import { claimJessAudio, releaseJessAudio } from './jessVoiceSessionCoordinator';
+import { claimJessAudio, releaseJessAudio, type JessAudioLease } from './jessVoiceSessionCoordinator';
 import { getUserMemories, formatMemoriesForPrompt } from './memoryService';
 import { getCurrentUserMoodGuidance } from './sentimentService';
 import hubMindPackage from '../../package.json';
@@ -52,6 +52,7 @@ export class LiveAudioClient {
   private levelIntervalId: number | null = null;
   private connected = false;
   private ownsAudioSession = false;
+  private audioSessionLease: JessAudioLease | null = null;
   private connectPromise: Promise<void> | null = null;
   private connectionGeneration = 0;
   private lastConnectContext: {
@@ -351,9 +352,11 @@ export class LiveAudioClient {
     try {
       await this.disconnect(false, false, false);
       if (generation !== this.connectionGeneration) return;
-      if (!claimJessAudio('live-conversation')) {
-        throw new Error('Jess microphone is already in use by dictation. Stop dictation before starting a live conversation.');
+      const audioLease = claimJessAudio('live-conversation');
+      if (!audioLease) {
+        throw new Error('Jess microphone is already in use by another voice session. Stop the active session before starting a live conversation.');
       }
+      this.audioSessionLease = audioLease;
       this.ownsAudioSession = true;
       const desktop = (window as any).hubMindDesktop;
       if (desktop?.isDesktopApp && typeof desktop.stopOfflineWake === 'function') {
@@ -1006,7 +1009,8 @@ export class LiveAudioClient {
     this.connected = false;
     if (this.ownsAudioSession) {
       this.ownsAudioSession = false;
-      releaseJessAudio('live-conversation');
+      releaseJessAudio(this.audioSessionLease);
+      this.audioSessionLease = null;
       if (resumeWake) {
         const desktop = (window as any).hubMindDesktop;
         if (desktop?.isDesktopApp && typeof desktop.startOfflineWake === 'function') {
