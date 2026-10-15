@@ -154,3 +154,21 @@ test('native helper status resolves the packaged or development script path befo
   assert.ok(bridge.includes('app.asar.unpacked'));
   assert.ok(bridge.includes("'electron', 'jess-agent.ps1'"));
 });
+
+test('Windows screenshots support bounded high-detail capture without unbounded native bridge payloads', async () => {
+  const [agent, bridge, main, tools] = await Promise.all([
+    read('electron/jess-agent.ps1'),
+    read('electron/agentBridge.cjs'),
+    read('electron/main.cjs'),
+    read('src/lib/jessTools.ts'),
+  ]);
+  assert.match(agent, /requestedMonitor = \[string\]\$a\.monitorName/);
+  assert.match(agent, /High-detail capture must target one monitor/);
+  assert.match(agent, /maxDimension = if \(\$detail -eq 'high'\) \{ 3200 \} else \{ 1920 \}/);
+  assert.match(agent, /EncoderParameter\(\[System\.Drawing\.Imaging\.Encoder\]::Quality/);
+  assert.match(agent, /exceeded the 8 MB image limit/);
+  assert.match(bridge, /MAX_RESPONSE_LINE_CHARS = 16 \* 1024 \* 1024/);
+  assert.match(main, /safeArgs\.detail === 'high' && safeArgs\.monitorName === 'all'/);
+  assert.match(tools, /detail: \{ type: 'string', enum: \['standard','high'\] \}/);
+  assert.match(tools, /monitorName: String\(args\?\.monitorName \|\| 'primary'\)/);
+});
