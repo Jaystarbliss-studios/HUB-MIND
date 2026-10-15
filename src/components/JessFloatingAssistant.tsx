@@ -768,10 +768,10 @@ export function JessFloatingAssistant() {
 
         if (fc.name === 'take_windows_screenshot' && Array.isArray(result.result?.evidence?.monitors)) {
           const monitors = result.result.evidence.monitors;
-          const primary = monitors.find((monitor: any) => monitor.primary) || monitors[0];
+          const selectedMonitor = monitors.find((monitor: any) => monitor.primary) || monitors[0];
           let delivered = false;
-          if (primary?.imageBase64) {
-            delivered = !!clientRef.current?.sendScreenFrame('data:image/jpeg;base64,' + primary.imageBase64);
+          if (selectedMonitor?.imageBase64) {
+            delivered = !!clientRef.current?.sendScreenFrame('data:image/jpeg;base64,' + selectedMonitor.imageBase64);
           }
           result.result.evidence = {
             ...result.result.evidence,
@@ -779,10 +779,13 @@ export function JessFloatingAssistant() {
               monitor: monitor.monitor,
               bounds: monitor.bounds,
               primary: monitor.primary,
-              imageDeliveredToJess: !!monitor.primary && delivered,
+              width: monitor.width,
+              height: monitor.height,
+              detail: monitor.detail,
+              imageDeliveredToJess: monitor === selectedMonitor && delivered,
             })),
             note: delivered
-              ? 'The primary monitor screenshot was sent to Jess as an image frame. Map image coordinates to physical screen coordinates by adding the primary monitor bounds offset; other monitors are listed but were not sent as images.'
+              ? 'The selected monitor screenshot was sent to Jess as an image frame. Map image-local coordinates to physical desktop coordinates by adding this monitor’s reported bounds offset. Other listed monitors were not sent as image frames.'
               : 'Screenshot metadata was captured, but the image frame could not be delivered to the live session.',
           };
           result.result.verified = delivered && result.result.verified === true;
