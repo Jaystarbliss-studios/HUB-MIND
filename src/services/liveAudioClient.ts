@@ -3,6 +3,7 @@ import { auth } from '../firebaseConfig';
 import { JESS_TOOLS_DECLARATIONS } from '../lib/jessTools';
 import { JESS_NATIVE_TOOL_NAME_SET } from '../shared/jessNativeToolNames';
 import { jessBackgroundTasks } from './jessBackgroundTasks';
+import { claimJessAudio, releaseJessAudio } from './jessVoiceSessionCoordinator';
 import { getUserMemories, formatMemoriesForPrompt } from './memoryService';
 import { getCurrentUserMoodGuidance } from './sentimentService';
 import hubMindPackage from '../../package.json';
@@ -50,6 +51,7 @@ export class LiveAudioClient {
   private pushToTalkMode = false;
   private levelIntervalId: number | null = null;
   private connected = false;
+  private ownsAudioSession = false;
   private connectPromise: Promise<void> | null = null;
   private connectionGeneration = 0;
   private lastConnectContext: {
@@ -349,6 +351,10 @@ export class LiveAudioClient {
     try {
       await this.disconnect(false, false);
       if (generation !== this.connectionGeneration) return;
+      if (!claimJessAudio('live-conversation')) {
+        throw new Error('Jess microphone is already in use by dictation. Stop dictation before starting a live conversation.');
+      }
+      this.ownsAudioSession = true;
       const firstName = context?.userName || 'there';
       const bgTasksSummary = jessBackgroundTasks.getQueueSummaryForPrompt(context?.userId || '');
 
@@ -994,6 +1000,10 @@ export class LiveAudioClient {
     }
 
     this.connected = false;
+    if (this.ownsAudioSession) {
+      this.ownsAudioSession = false;
+      releaseJessAudio('live-conversation');
+    }
 
     if (notify) {
       this.callbacks.onStatusChange('disconnected');
