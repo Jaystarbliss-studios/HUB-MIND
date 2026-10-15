@@ -11,6 +11,7 @@ test('Chrome native host and desktop bridge use the same bounded named-pipe prot
     read('native/JessChromeNativeHost/JessChromeNativeHost.csproj'),
   ]);
   assert.match(bridge, /hubmind-jess-chrome-v1/);
+  assert.ok(bridge.includes("socket.write(JSON.stringify({ type: 'hello-ack' }) + '\\n');"), 'the native-host handshake acknowledgement must end with a real newline');
   assert.match(host, /hubmind-jess-chrome-v1/);
   assert.match(host, /AllowedOrigin/);
   assert.match(host, /baifedjcpcnkjjoikbafnkiombiaooai/);
