@@ -688,7 +688,7 @@ app.whenReady().then(() => {
     } finally { fullControlStartPending = false; }
   });
   ipcMain.handle('hubmind:full-control-stop', (event) => { assertTrustedSender(event); return stopFullControl('voice-or-ui-stop'); });
-  ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId }; });
+  ipcMain.handle('hubmind:native-status', (event) => { assertTrustedSender(event); return { active: fullControlActive, startedAt: controlSessionStartedAt, userId: controlSessionUserId, helper: nativeAgent.status(), chrome: chromeBridge.status() }; });
   ipcMain.handle('hubmind:chrome-status', (event) => { assertTrustedSender(event); return chromeBridge.status(); });
   ipcMain.handle('hubmind:install-chrome-bridge', async (event) => {
     assertTrustedSender(event);
