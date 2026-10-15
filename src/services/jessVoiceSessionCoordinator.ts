@@ -1,42 +1,47 @@
 /**
  * Single-owner coordinator for Jess microphone consumers in the renderer.
- * This coordinates capture ownership only; Electron remains the authority for
- * native actions and wake-listener process lifecycle.
+ * Each acquisition returns a lease so stale async cleanup cannot release a
+ * newer session's microphone. Electron remains the authority for native actions.
  */
 export type JessAudioOwner = 'live-conversation' | 'dictation';
+export interface JessAudioLease {
+  readonly owner: JessAudioOwner;
+  readonly token: symbol;
+}
 
 type Listener = (owner: JessAudioOwner | null) => void;
-let activeOwner: JessAudioOwner | null = null;
+let activeLease: JessAudioLease | null = null;
 const listeners = new Set<Listener>();
 
 function publish() {
   for (const listener of listeners) {
-    try { listener(activeOwner); } catch (error) { console.warn('[Jess audio session] Listener failed:', error); }
+    try { listener(activeLease?.owner ?? null); }
+    catch (error) { console.warn('[Jess audio session] Listener failed:', error); }
   }
 }
 
-export function claimJessAudio(owner: JessAudioOwner): boolean {
-  // Every claim represents a new capture session, not a re-entrant permission.
-  // Reject even same-owner claims so two mounted dictation controls or two live
-  // clients cannot both believe they own the microphone.
-  if (activeOwner !== null) return false;
-  activeOwner = owner;
+export function claimJessAudio(owner: JessAudioOwner): JessAudioLease | null {
+  // Every claim is a distinct capture session. Even the same owner cannot claim
+  // twice; callers must release their exact lease before starting another session.
+  if (activeLease !== null) return null;
+  const lease: JessAudioLease = { owner, token: Symbol(owner) };
+  activeLease = lease;
   publish();
-  return true;
+  return lease;
 }
 
-export function releaseJessAudio(owner: JessAudioOwner): void {
-  if (activeOwner !== owner) return;
-  activeOwner = null;
+export function releaseJessAudio(lease: JessAudioLease | null | undefined): void {
+  if (!lease || activeLease?.token !== lease.token) return;
+  activeLease = null;
   publish();
 }
 
 export function getJessAudioOwner(): JessAudioOwner | null {
-  return activeOwner;
+  return activeLease?.owner ?? null;
 }
 
 export function subscribeJessAudioOwner(listener: Listener): () => void {
   listeners.add(listener);
-  listener(activeOwner);
+  listener(activeLease?.owner ?? null);
   return () => listeners.delete(listener);
 }
