@@ -351,14 +351,14 @@ export class LiveAudioClient {
     try {
       await this.disconnect(false, false, false);
       if (generation !== this.connectionGeneration) return;
-      const desktop = (window as any).hubMindDesktop;
-      if (desktop?.isDesktopApp && typeof desktop.stopOfflineWake === 'function') {
-        try { await desktop.stopOfflineWake(); } catch (error) { console.warn('[Jess] Could not pause offline wake listener:', error); }
-      }
       if (!claimJessAudio('live-conversation')) {
         throw new Error('Jess microphone is already in use by dictation. Stop dictation before starting a live conversation.');
       }
       this.ownsAudioSession = true;
+      const desktop = (window as any).hubMindDesktop;
+      if (desktop?.isDesktopApp && typeof desktop.stopOfflineWake === 'function') {
+        try { await desktop.stopOfflineWake(); } catch (error) { console.warn('[Jess] Could not pause offline wake listener:', error); }
+      }
       const firstName = context?.userName || 'there';
       const bgTasksSummary = jessBackgroundTasks.getQueueSummaryForPrompt(context?.userId || '');
 
