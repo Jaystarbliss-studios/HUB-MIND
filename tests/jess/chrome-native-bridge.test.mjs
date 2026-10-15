@@ -205,3 +205,15 @@ test('desktop dictation reuses the local Windows speech helper and the shared mi
   assert.match(component, /onTranscriptRef\.current/);
   assert.match(component, /claimJessAudio\('dictation'\)/);
 });
+
+test('live screen sharing sends bounded HD frames and reports repeated delivery failures', async () => {
+  const assistant = await read('src/components/JessFloatingAssistant.tsx');
+  assert.match(assistant, /frameRate: \{ ideal: 1, max: 2 \}/);
+  assert.match(assistant, /1920 \/ sourceWidth/);
+  assert.match(assistant, /1920 \/ sourceHeight/);
+  assert.match(assistant, /toDataURL\('image\/jpeg', 0\.84\)/);
+  assert.match(assistant, /setInterval\(sendFrame, 1000\)/);
+  assert.match(assistant, /consecutiveFrameFailures >= 3/);
+  assert.match(assistant, /Jess is not receiving screen frames/);
+  assert.match(assistant, /HD snapshots about once per second/);
+});
