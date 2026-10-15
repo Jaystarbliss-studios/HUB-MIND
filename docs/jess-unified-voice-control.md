@@ -112,6 +112,8 @@ Implemented in the current integration branch:
 - A renderer microphone ownership coordinator prevents Jess live conversation and explicit browser dictation from capturing concurrently.
 - The desktop offline wake listener is paused before live conversation/dictation begins and resumed after the owning session ends.
 - Contract tests cover bridge diagnostics, recovery hooks, and microphone handoff.
+- Dictation converts explicit spoken punctuation and line-break phrases into text in both Windows-local and browser fallback modes; an explicit `literal dictation` / `type literally` prefix bypasses substitutions.
+- Microphone ownership now uses per-session leases. Duplicate claims are rejected even from the same mode, and stale cleanup cannot release a newer session's microphone.
 
 Not yet verified or fully implemented:
 
