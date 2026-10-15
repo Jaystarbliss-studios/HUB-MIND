@@ -53,6 +53,8 @@ test('Chrome actions are gated by the signed-in Full Control Session and close r
   assert.match(main, /Chrome control requires an active Full Control Session/);
   assert.match(main, /hubmind:chrome-action/);
   assert.match(tools, /chrome_close_tab/);
+  assert.match(tools, /name: 'chrome_bridge_status'/);
+  assert.match(tools, /desktop\.chromeStatus\(\)/);
   assert.match(worker, /A specific tabId is required to close a tab/);
   assert.match(worker, /chrome\.tabs\.query\(\{\}\)/);
   assert.match(worker, /password, payment, card, security-code or one-time-code fields/);
