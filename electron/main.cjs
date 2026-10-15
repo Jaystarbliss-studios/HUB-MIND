@@ -398,6 +398,7 @@ async function startOfflineRecognizer(event, mode = 'wake') {
   child.stderr.on('data', chunk => console.warn('[Jess local speech ' + mode + ']', String(chunk).slice(0, 800)));
   let buffer = '';
   let resolved = false;
+  let reportedDictationError = false;
   let readyTimer;
   const settle = value => {
     if (resolved) return;
@@ -431,6 +432,7 @@ async function startOfflineRecognizer(event, mode = 'wake') {
         if (transcript) mainWindow.webContents.send('hubmind:offline-dictation', { transcript, confidence: Number.isFinite(message.confidence) ? Math.max(0, Math.min(1, message.confidence)) : null, source: message.source || 'Windows System.Speech local dictation' });
       }
       if (message.type === 'error' && mode === 'dictation' && mainWindow && !mainWindow.isDestroyed()) {
+        reportedDictationError = true;
         mainWindow.webContents.send('hubmind:offline-dictation', { error: String(message.error || 'Local dictation failed.').slice(0, 500), source: 'Windows System.Speech local dictation' });
       }
     }
@@ -443,7 +445,7 @@ async function startOfflineRecognizer(event, mode = 'wake') {
     const wasCurrent = offlineWakeProcess === child;
     if (wasCurrent) { offlineWakeProcess = null; offlineWakeMode = null; }
     if (!resolved) settle({ started: false, error: 'Windows local speech helper exited before becoming ready (code ' + String(code) + '). Check microphone access and installed speech language support.' });
-    else if (mode === 'dictation' && wasCurrent && mainWindow && !mainWindow.isDestroyed()) {
+    else if (mode === 'dictation' && wasCurrent && !reportedDictationError && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('hubmind:offline-dictation', { error: 'Local dictation stopped unexpectedly (exit code ' + String(code) + '). Check the Windows speech recognition language and microphone, then try again.' });
     }
   });
