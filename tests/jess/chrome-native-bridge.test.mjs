@@ -143,6 +143,8 @@ test('Jess uses one renderer microphone owner across live audio, dictation, and 
   assert.match(dictation, /claimJessAudio\('dictation'\)/);
   assert.match(dictation, /releaseJessAudio\('dictation'\)/);
   assert.match(dictation, /Jess microphone is busy/);
+  assert.match(dictation, /await desktop\.stopOfflineWake\(\)/);
+  assert.match(dictation, /resumeDesktopWake\(\)/);
 });
 
 test('native helper status resolves the packaged or development script path before first launch', async () => {
