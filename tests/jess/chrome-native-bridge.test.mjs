@@ -144,3 +144,10 @@ test('Jess uses one renderer microphone owner across live audio, dictation, and 
   assert.match(dictation, /releaseJessAudio\('dictation'\)/);
   assert.match(dictation, /Jess microphone is busy/);
 });
+
+test('native helper status resolves the packaged or development script path before first launch', async () => {
+  const bridge = await read('electron/agentBridge.cjs');
+  assert.match(bridge, /function resolveScriptPath\(\)/);
+  assert.match(bridge, /const scriptPath = lastScriptPath \|\| resolveScriptPath\(\)/);
+  assert.match(bridge, /app\.isPackaged[\s\S]*app\.asar\.unpacked[\\/]electron[\\/]jess-agent\.ps1/);
+});
