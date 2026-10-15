@@ -19,6 +19,13 @@ export function VoiceDictation({
   const [isSessionBusy, setIsSessionBusy] = useState(false);
   const recognitionRef = useRef<any>(null);
 
+  const resumeDesktopWake = () => {
+    const desktop = (window as any).hubMindDesktop;
+    if (desktop?.isDesktopApp && typeof desktop.startOfflineWake === 'function') {
+      void Promise.resolve(desktop.startOfflineWake()).catch((error) => console.warn('[Jess] Could not resume offline wake listener:', error));
+    }
+  };
+
   useEffect(() => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -57,6 +64,7 @@ export function VoiceDictation({
       recognition.onend = () => {
         releaseJessAudio('dictation');
         setIsListening(false);
+        resumeDesktopWake();
       };
 
       recognitionRef.current = recognition;
@@ -73,7 +81,7 @@ export function VoiceDictation({
     };
   }, [onTranscript]);
 
-  const toggleListening = () => {
+  const toggleListening = async () => {
     if (!recognitionRef.current) return;
 
     if (isListening) {
@@ -88,12 +96,17 @@ export function VoiceDictation({
       }
       setIsSessionBusy(false);
       try {
+        const desktop = (window as any).hubMindDesktop;
+        if (desktop?.isDesktopApp && typeof desktop.stopOfflineWake === 'function') {
+          await desktop.stopOfflineWake();
+        }
         recognitionRef.current.start();
         setIsListening(true);
       } catch (err) {
         releaseJessAudio('dictation');
         console.warn('Speech start error:', err);
         setIsListening(false);
+        resumeDesktopWake();
       }
     }
   };
