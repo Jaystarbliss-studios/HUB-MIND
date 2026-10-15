@@ -105,7 +105,73 @@ function Invoke-Action($q){
   'list_ui_elements' {$foreground=[JessWin32]::GetForegroundWindow();if($foreground -eq [IntPtr]::Zero){throw 'No foreground window is available'};$root=[System.Windows.Automation.AutomationElement]::FromHandle($foreground);$windowTitle=[string]$root.Current.Name;$cond=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::IsControlElementProperty,$true);$all=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,$cond);$items=@();for($i=0;$i -lt [Math]::Min($all.Count,3000);$i++){try{$e=$all.Item($i);$c=$e.Current;if(!$c.IsOffscreen -and $c.IsEnabled -and $c.Name){$r=$c.BoundingRectangle;if($r.Width -gt 0 -and $r.Height -gt 0){$items+=@{index=($items.Count+1);name=$c.Name;automationId=$c.AutomationId;controlType=$c.ControlType.ProgrammaticName;bounds=@{x=$r.X;y=$r.Y;width=$r.Width;height=$r.Height};isEnabled=$c.IsEnabled};if($items.Count -ge 50){break}}}}catch{}};return @{ok=($items.Count -gt 0);verified=($items.Count -gt 0);evidence=@{windowTitle=$windowTitle;elements=$items;count=$items.Count;source='Windows UI Automation';note='Indices are temporary. Pass the expectedName when invoking a numbered element.'}}}
   'invoke_ui_element' {$name=[string]$a.name;$index=0;if($null -ne $a.index){$index=[int]$a.index;if($index -lt 1 -or $index -gt 50){throw 'Element index must be between 1 and 50'}};$expectedName=[string]$a.expectedName;if($index -gt 0 -and !$expectedName){throw 'A numbered UI element must include expectedName to prevent stale-target activation'};$foreground=[JessWin32]::GetForegroundWindow();if($foreground -eq [IntPtr]::Zero){throw 'No foreground window is available'};$root=[System.Windows.Automation.AutomationElement]::FromHandle($foreground);$cond=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::IsControlElementProperty,$true);$all=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,$cond);$target=$null;if($index -gt 0){$visible=@();for($i=0;$i -lt [Math]::Min($all.Count,3000);$i++){try{$e=$all.Item($i);$c=$e.Current;if(!$c.IsOffscreen -and $c.IsEnabled -and $c.Name){$r=$c.BoundingRectangle;if($r.Width -gt 0 -and $r.Height -gt 0){$visible+=@{element=$e;name=$c.Name};if($visible.Count -ge 50){break}}}}catch{}};if($index -gt $visible.Count){throw 'Numbered UI target is no longer available; list UI elements again'};$target=$visible[$index-1].element;if($target.Current.Name -cne $expectedName){throw 'Numbered UI target changed; list UI elements again before invoking'}}else{if(!$name){throw 'Element name or a numbered index with expectedName is required'};for($i=0;$i -lt [Math]::Min($all.Count,3000);$i++){try{$e=$all.Item($i);if(!$e.Current.IsOffscreen -and $e.Current.IsEnabled -and ($e.Current.Name -ceq $name -or $e.Current.Name -like ('*'+$name+'*'))){$target=$e;break}}catch{}}};if(!$target){throw ('No accessible UI element found matching '+$name)};try{$pattern=$target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern);$pattern.Invoke();Start-Sleep -Milliseconds 150;return @{ok=$true;verified=$false;evidence=@{name=$target.Current.Name;automationId=$target.Current.AutomationId;index=$(if($index -gt 0){$index}else{$null});action='InvokePattern';note='InvokePattern called; verify resulting UI state with a follow-up screen read'}}}catch{try{$pattern=$target.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern);$pattern.Select();Start-Sleep -Milliseconds 150;return @{ok=$true;verified=$false;evidence=@{name=$target.Current.Name;automationId=$target.Current.AutomationId;index=$(if($index -gt 0){$index}else{$null});action='SelectionItemPattern';note='Selection requested; verify resulting UI state'}}}catch{try{$pattern=$target.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern);$pattern.Toggle();Start-Sleep -Milliseconds 150;return @{ok=$true;verified=$false;evidence=@{name=$target.Current.Name;automationId=$target.Current.AutomationId;index=$(if($index -gt 0){$index}else{$null});action='TogglePattern';note='Toggle requested; verify resulting UI state'}}}catch{throw ('Element does not support Invoke, SelectionItem or Toggle patterns: '+$target.Current.Name)}}}}
  'read_screen_text' {$root=[System.Windows.Automation.AutomationElement]::RootElement;$cond=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::IsControlElementProperty,$true);$all=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,$cond);$lines=New-Object System.Collections.Generic.List[string];for($i=0;$i -lt [Math]::Min($all.Count,2500);$i++){try{$name=$all.Item($i).Current.Name;if($name){$lines.Add($name)}}catch{}};$text=$lines -join [Environment]::NewLine;return @{ok=$true;verified=($text.Length -gt 0);evidence=@{text=$text.Substring(0,[Math]::Min(20000,$text.Length));source='Windows UI Automation';elements=$lines.Count}}}
- 'screenshot' {Add-Type -AssemblyName System.Windows.Forms;$result=@();foreach($s in [System.Windows.Forms.Screen]::AllScreens){$b=$s.Bounds;$bmp=New-Object System.Drawing.Bitmap($b.Width,$b.Height);$g=[System.Drawing.Graphics]::FromImage($bmp);$g.CopyFromScreen($b.X,$b.Y,0,0,$bmp.Size);$ms=New-Object System.IO.MemoryStream;$bmp.Save($ms,[System.Drawing.Imaging.ImageFormat]::Jpeg);$result+=@{monitor=$s.DeviceName;bounds=@{x=$b.X;y=$b.Y;width=$b.Width;height=$b.Height};primary=$s.Primary;imageBase64=[Convert]::ToBase64String($ms.ToArray())};$g.Dispose();$bmp.Dispose();$ms.Dispose()};return @{ok=$true;verified=($result.Count -gt 0);evidence=@{monitors=$result}}}
+ 'screenshot' {
+  Add-Type -AssemblyName System.Windows.Forms
+  $requestedMonitor = [string]$a.monitorName
+  if (!$requestedMonitor) { $requestedMonitor = 'primary' }
+  $detail = [string]$a.detail
+  if (!$detail) { $detail = 'standard' }
+  if ($detail -notin @('standard','high')) { throw 'Screenshot detail must be standard or high.' }
+  $screens = @([System.Windows.Forms.Screen]::AllScreens)
+  if ($requestedMonitor -eq 'all') {
+    if ($detail -eq 'high') { throw 'High-detail capture must target one monitor by name to keep the native bridge response bounded.' }
+    $selectedScreens = $screens
+  } elseif ($requestedMonitor -eq 'primary') {
+    $selectedScreens = @($screens | Where-Object { $_.Primary } | Select-Object -First 1)
+  } else {
+    $selectedScreens = @($screens | Where-Object { [string]::Equals($_.DeviceName,$requestedMonitor,[StringComparison]::OrdinalIgnoreCase) })
+    if ($selectedScreens.Count -ne 1) { throw ('Monitor "' + $requestedMonitor + '" was not found. Use list_windows to inspect monitor names or request the primary monitor.') }
+  }
+  if ($selectedScreens.Count -eq 0) { throw 'No display monitor is available for screenshot capture.' }
+  $quality = if ($detail -eq 'high') { 92 } else { 82 }
+  $maxDimension = if ($detail -eq 'high') { 3200 } else { 1920 }
+  $result = @()
+  $jpegCodec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' } | Select-Object -First 1
+  if (!$jpegCodec) { throw 'The Windows JPEG encoder is unavailable.' }
+  foreach ($s in $selectedScreens) {
+    $bounds = $s.Bounds
+    $sourceBitmap = $null; $outputBitmap = $null; $graphics = $null; $memory = $null; $encoderParams = $null; $encoderParam = $null
+    try {
+      $sourceBitmap = New-Object System.Drawing.Bitmap($bounds.Width,$bounds.Height)
+      $captureGraphics = [System.Drawing.Graphics]::FromImage($sourceBitmap)
+      try { $captureGraphics.CopyFromScreen($bounds.X,$bounds.Y,0,0,$sourceBitmap.Size) } finally { $captureGraphics.Dispose() }
+      $scale = [Math]::Min(1.0, [double]$maxDimension / [Math]::Max($bounds.Width,$bounds.Height))
+      $imageWidth = [Math]::Max(1,[int][Math]::Round($bounds.Width * $scale))
+      $imageHeight = [Math]::Max(1,[int][Math]::Round($bounds.Height * $scale))
+      $outputBitmap = New-Object System.Drawing.Bitmap($imageWidth,$imageHeight)
+      $graphics = [System.Drawing.Graphics]::FromImage($outputBitmap)
+      $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+      $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+      $graphics.DrawImage($sourceBitmap,0,0,$imageWidth,$imageHeight)
+      $memory = New-Object System.IO.MemoryStream
+      $encoderParams = New-Object System.Drawing.Imaging.EncoderParameters(1)
+      $encoderParam = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality,[long]$quality)
+      $encoderParams.Param[0] = $encoderParam
+      $outputBitmap.Save($memory,$jpegCodec,$encoderParams)
+      if ($memory.Length -gt 8MB) { throw 'Screenshot exceeded the 8 MB image limit. Retry with standard detail or a single monitor.' }
+      $result += @{
+        monitor=$s.DeviceName
+        bounds=@{x=$bounds.X;y=$bounds.Y;width=$bounds.Width;height=$bounds.Height}
+        primary=$s.Primary
+        detail=$detail
+        jpegQuality=$quality
+        width=$imageWidth
+        height=$imageHeight
+        originalWidth=$bounds.Width
+        originalHeight=$bounds.Height
+        imageBase64=[Convert]::ToBase64String($memory.ToArray())
+      }
+    } finally {
+      if ($encoderParam) { $encoderParam.Dispose() }
+      if ($encoderParams) { $encoderParams.Dispose() }
+      if ($memory) { $memory.Dispose() }
+      if ($graphics) { $graphics.Dispose() }
+      if ($outputBitmap) { $outputBitmap.Dispose() }
+      if ($sourceBitmap) { $sourceBitmap.Dispose() }
+    }
+  }
+  return @{ok=$true;verified=($result.Count -gt 0);evidence=@{monitors=$result;detail=$detail;captureMode='bounded-high-fidelity';note='High detail captures one named monitor at up to 3200 pixels on its longest edge. Standard captures are capped at 1920 pixels and may include all monitors.'}}
+}
  'get_time' {return @{ok=$true;verified=$true;evidence=@{localTime=(Get-Date).ToString('o');timeZone=[TimeZoneInfo]::Local.Id}}}
  'system_info' {return @{ok=$true;verified=$true;evidence=@{computer=$env:COMPUTERNAME;user=$env:USERNAME;os=[Environment]::OSVersion.VersionString;architecture=$env:PROCESSOR_ARCHITECTURE}}}
  'launch_app' {
