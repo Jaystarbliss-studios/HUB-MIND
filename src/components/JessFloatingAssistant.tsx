@@ -973,7 +973,7 @@ export function JessFloatingAssistant() {
     if (command.kind === 'stop') {
       try {
         await desktop.stopFullControl?.();
-        announce('Jess Full Control is stopped.');
+        announce('Full Control is stopped.');
       } catch {
         announce('I could not stop Full Control.');
       }
