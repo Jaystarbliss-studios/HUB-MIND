@@ -133,15 +133,15 @@ test('Jess uses one renderer microphone owner across live audio, dictation, and 
   ]);
   assert.match(coordinator, /export type JessAudioOwner = 'live-conversation' \| 'dictation'/);
   assert.match(coordinator, /export function claimJessAudio/);
-  assert.match(coordinator, /if \(activeOwner && activeOwner !== owner\) return false/);
+  assert.match(coordinator, /if \(activeLease !== null\) return null/);
   assert.match(coordinator, /export function releaseJessAudio/);
   assert.match(live, /claimJessAudio\('live-conversation'\)/);
-  assert.match(live, /releaseJessAudio\('live-conversation'\)/);
+  assert.match(live, /releaseJessAudio\(this\.audioSessionLease\)/);
   assert.match(live, /stopOfflineWake\(\)/);
   assert.match(live, /startOfflineWake\(\)/);
   assert.match(live, /disconnect\(false, false, false\)/);
   assert.match(dictation, /claimJessAudio\('dictation'\)/);
-  assert.match(dictation, /releaseJessAudio\('dictation'\)/);
+  assert.match(dictation, /releaseJessAudio\(lease\)/);
   assert.match(dictation, /Jess microphone is busy/);
   assert.match(dictation, /await desktop\.stopOfflineWake\(\)/);
   assert.match(dictation, /resumeDesktopWake\(\)/);
