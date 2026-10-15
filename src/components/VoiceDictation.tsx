@@ -23,7 +23,7 @@ export function VoiceDictation({
   const nativeDictationActiveRef = useRef(false);
   const audioLeaseRef = useRef<JessAudioLease | null>(null);
   const claimDictationAudio = () => {
-    const lease = claimDictationAudio();
+    const lease = claimJessAudio('dictation');
     if (!lease) return false;
     audioLeaseRef.current = lease;
     return true;
