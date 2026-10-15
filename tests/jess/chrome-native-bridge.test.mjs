@@ -151,5 +151,6 @@ test('native helper status resolves the packaged or development script path befo
   const bridge = await read('electron/agentBridge.cjs');
   assert.match(bridge, /function resolveScriptPath\(\)/);
   assert.match(bridge, /const scriptPath = lastScriptPath \|\| resolveScriptPath\(\)/);
-  assert.match(bridge, /app\.asar\.unpacked/);\n  assert.match(bridge, /'electron', 'jess-agent\.ps1'/);
+  assert.match(bridge, /app\.asar\.unpacked/);
+  assert.match(bridge, /'electron', 'jess-agent\.ps1'/);
 });
