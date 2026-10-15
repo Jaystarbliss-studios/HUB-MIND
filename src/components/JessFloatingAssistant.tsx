@@ -16,6 +16,7 @@ import { scanCurrentPageContext, ContextActionSuggestion } from '../services/con
 import { startJessWorkspaceCache } from '../services/jessWorkspaceCache';
 import { hydrateGoogleCalendarConnection, isGoogleCalendarConnected, refreshGoogleCalendarEvents } from '../lib/googleCalendar';
 import { JessPcWakeListener, isJessPcWakeSupported, isJessInstalledApp } from '../services/jessWakeListener';
+import { parseJessOfflineCommand } from '../services/jessOfflineCommands';
 import { 
   Activity, 
   Lightbulb, 
@@ -948,6 +949,63 @@ export function JessFloatingAssistant() {
     }, error => console.warn('[Jess] Desktop activation request listener failed:', error));
   }, [profile?.id, start]);
 
+  const handleOfflineWakeCommand = useCallback(async (rawPrompt: string): Promise<boolean> => {
+    const command = parseJessOfflineCommand(rawPrompt);
+    if (!command) return false;
+    const desktop = (window as any).hubMindDesktop;
+    if (!desktop?.isDesktopApp) return false;
+
+    const announce = (message: string) => {
+      setSpeechState({ text: message, speaker: 'jess', visible: true });
+      try {
+        if (typeof window.speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined') {
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(new SpeechSynthesisUtterance(message));
+        }
+      } catch { /* The visual status remains available if local speech synthesis is unavailable. */ }
+    };
+    const resumeWake = () => {
+      void Promise.resolve(desktop.startOfflineWake?.()).then((result: { started?: boolean; error?: string } | undefined) => {
+        if (!result?.started) console.warn('[Jess] Offline wake listener did not resume after a local command:', result?.error || 'not available');
+      }).catch((error: unknown) => console.warn('[Jess] Could not resume offline wake listening:', error));
+    };
+
+    if (command.kind === 'stop') {
+      try {
+        await desktop.stopFullControl?.();
+        announce('Jess Full Control is stopped.');
+      } catch {
+        announce('I could not stop Full Control.');
+      }
+      resumeWake();
+      return true;
+    }
+
+    let status: any;
+    let preferences: any;
+    try {
+      [status, preferences] = await Promise.all([desktop.nativeStatus(), desktop.getJessPreferences()]);
+    } catch {
+      return false;
+    }
+    const permissionMode = preferences?.preferences?.permissionMode;
+    // The deterministic offline path must not bypass the user's per-action Ask mode.
+    // In Ask mode, let the regular Jess tool flow handle the request and its approval.
+    if (!status?.active || !['allow-routine', 'allow-everything'].includes(permissionMode)) return false;
+
+    try {
+      const executionId = `jess-exec-offline-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const result = await desktop.nativeAction(command.method, command.args, profile?.id || 'local-session', executionId);
+      if (result?.ok && result?.verified) announce(`Done. I verified ${command.label}.`);
+      else if (result?.ok) announce(`I sent the command to ${command.label}, but I could not independently verify the result.`);
+      else announce(`I could not complete ${command.label}: ${String(result?.error || 'the native helper reported a failure').slice(0, 180)}`);
+    } catch (error: any) {
+      announce(`I could not complete ${command.label}: ${String(error?.message || error || 'native action failed').slice(0, 180)}`);
+    }
+    resumeWake();
+    return true;
+  }, [profile?.id]);
+
   // Passive wake is strictly app-only. Normal browser tabs must never leave a
   // background microphone listener running. Native shells can provide a native
   // wake plugin; installed desktop PWAs use browser recognition as a fallback.
@@ -983,7 +1041,14 @@ export function JessFloatingAssistant() {
       const removeWakeListener = desktopWake.onOfflineWake((event: { prompt?: string }) => {
         if (disposed) return;
         wakeTone();
-        void start(String(event?.prompt || '').trim() || undefined);
+        const prompt = String(event?.prompt || '').trim();
+        void (async () => {
+          const handledOffline = await handleOfflineWakeCommand(prompt);
+          if (!handledOffline && !disposed) void start(prompt || undefined);
+        })().catch(error => {
+          console.warn('[Jess] Offline command routing failed; handing the request to the normal voice session:', error);
+          if (!disposed) void start(prompt || undefined);
+        });
       });
       void desktopWake.startOfflineWake().then((result: { started?: boolean; cancelled?: boolean; error?: string }) => {
         if (!disposed && !result?.started && !result?.cancelled) console.warn('[Jess] Offline wake listener unavailable:', result?.error || 'No local recognizer is available.');
@@ -1005,7 +1070,7 @@ export function JessFloatingAssistant() {
     });
     wakeListener.start();
     return () => { disposed = true; wakeListener.stop(); };
-  }, [profile?.id, connection, start, remoteJessOwner?.sessionId, remoteJessOwner?.leaseUntil]);
+  }, [profile?.id, connection, start, handleOfflineWakeCommand, remoteJessOwner?.sessionId, remoteJessOwner?.leaseUntil]);
 
   const handleConfirmDeletion = async () => {
     if (!pendingDelete) return;
