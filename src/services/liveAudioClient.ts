@@ -349,8 +349,12 @@ export class LiveAudioClient {
     this.callbacks.onStatusChange('connecting');
     this.callbacks.onJessStateChange('thinking');
     try {
-      await this.disconnect(false, false);
+      await this.disconnect(false, false, false);
       if (generation !== this.connectionGeneration) return;
+      const desktop = (window as any).hubMindDesktop;
+      if (desktop?.isDesktopApp && typeof desktop.stopOfflineWake === 'function') {
+        try { await desktop.stopOfflineWake(); } catch (error) { console.warn('[Jess] Could not pause offline wake listener:', error); }
+      }
       if (!claimJessAudio('live-conversation')) {
         throw new Error('Jess microphone is already in use by dictation. Stop dictation before starting a live conversation.');
       }
@@ -940,7 +944,7 @@ export class LiveAudioClient {
     this.isPushToTalkActive = active;
   }
 
-  public async disconnect(notify = true, invalidate = true) {
+  public async disconnect(notify = true, invalidate = true, resumeWake = true) {
     if (invalidate) {
       this.connectionGeneration += 1;
       this.sessionResumptionHandle = null;
@@ -1003,6 +1007,12 @@ export class LiveAudioClient {
     if (this.ownsAudioSession) {
       this.ownsAudioSession = false;
       releaseJessAudio('live-conversation');
+      if (resumeWake) {
+        const desktop = (window as any).hubMindDesktop;
+        if (desktop?.isDesktopApp && typeof desktop.startOfflineWake === 'function') {
+          void Promise.resolve(desktop.startOfflineWake()).catch(error => console.warn('[Jess] Could not resume offline wake listener:', error));
+        }
+      }
     }
 
     if (notify) {
