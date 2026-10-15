@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Loader2 } from 'lucide-react';
+import { claimJessAudio, releaseJessAudio } from '../services/jessVoiceSessionCoordinator';
 
 interface VoiceDictationProps {
   onTranscript: (transcript: string) => void;
@@ -15,6 +16,7 @@ export function VoiceDictation({
 }: VoiceDictationProps) {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
+  const [isSessionBusy, setIsSessionBusy] = useState(false);
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -46,12 +48,14 @@ export function VoiceDictation({
 
       recognition.onerror = (event: any) => {
         console.warn('Speech recognition error:', event.error);
+        releaseJessAudio('dictation');
         if (event.error !== 'no-speech') {
           setIsListening(false);
         }
       };
 
       recognition.onend = () => {
+        releaseJessAudio('dictation');
         setIsListening(false);
       };
 
@@ -63,10 +67,9 @@ export function VoiceDictation({
 
     return () => {
       if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
+        try { recognitionRef.current.stop(); } catch {}
       }
+      releaseJessAudio('dictation');
     };
   }, [onTranscript]);
 
@@ -74,15 +77,21 @@ export function VoiceDictation({
     if (!recognitionRef.current) return;
 
     if (isListening) {
-      try {
-        recognitionRef.current.stop();
-      } catch {}
+      try { recognitionRef.current.stop(); } catch {}
+      releaseJessAudio('dictation');
       setIsListening(false);
+      setIsSessionBusy(false);
     } else {
+      if (!claimJessAudio('dictation')) {
+        setIsSessionBusy(true);
+        return;
+      }
+      setIsSessionBusy(false);
       try {
         recognitionRef.current.start();
         setIsListening(true);
       } catch (err) {
+        releaseJessAudio('dictation');
         console.warn('Speech start error:', err);
         setIsListening(false);
       }
@@ -114,7 +123,7 @@ export function VoiceDictation({
           ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/25 animate-pulse'
           : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700'
       } ${sizeClasses} ${className}`}
-      title={isListening ? 'Stop Voice Recording' : 'Start Voice Dictation'}
+      title={isListening ? 'Stop Voice Recording' : isSessionBusy ? 'Jess microphone is busy. Stop the active voice session first.' : 'Start Voice Dictation'}
     >
       {isListening ? (
         <>
@@ -124,7 +133,7 @@ export function VoiceDictation({
       ) : (
         <>
           <Mic className={`${iconSizes} text-teal-400`} />
-          <span>Dictate</span>
+          <span>{isSessionBusy ? 'Mic busy' : 'Dictate'}</span>
         </>
       )}
     </button>
