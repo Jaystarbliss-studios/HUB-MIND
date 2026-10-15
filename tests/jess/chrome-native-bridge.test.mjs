@@ -108,3 +108,18 @@ test('native desktop bridge exposes actionable helper health without leaking cre
   assert.match(agent, /module\.exports = \{ call, stop, status \}/);
   assert.match(main, /helper: nativeAgent\.status\(\), chrome: chromeBridge\.status\(\)/);
 });
+
+test('native desktop bridge exposes actionable diagnostics and performs a harmless end-to-end probe', async () => {
+  const [bridge, main, tools] = await Promise.all([
+    read('electron/agentBridge.cjs'),
+    read('electron/main.cjs'),
+    read('src/lib/jessTools.ts'),
+  ]);
+  assert.match(bridge, /function status\(\)/);
+  assert.match(bridge, /lastError/);
+  assert.match(bridge, /scriptExists/);
+  assert.match(main, /helper: nativeAgent\.status\(\)/);
+  assert.match(tools, /name: 'native_bridge_status'/);
+  assert.match(tools, /desktop\.nativeAction\('system_info', \{\}, user\.id, executionId\)/);
+  assert.match(tools, /native helper did not complete the read-only round-trip/i);
+});
