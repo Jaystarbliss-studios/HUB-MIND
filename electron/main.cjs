@@ -389,7 +389,7 @@ async function startOfflineRecognizer(event, mode = 'wake') {
   const exePath = app.isPackaged
     ? path.join(process.resourcesPath, 'JessOfflineWake.exe')
     : path.join(__dirname, '..', 'native', 'JessOfflineWake', 'publish', 'JessOfflineWake.exe');
-  if (!fs.existsSync(exePath)) return { started: false, error: 'The offline wake helper is not installed. Rebuild the Windows desktop package with the native helpers.' };
+  if (!fs.existsSync(exePath)) return { started: false, error: 'The Windows local speech helper is not installed. Rebuild the desktop package with the native helpers.' };
   const child = spawn(exePath, mode === 'dictation' ? ['--mode', 'dictation'] : [], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], shell: false });
   offlineWakeProcess = child;
   offlineWakeMode = mode;
