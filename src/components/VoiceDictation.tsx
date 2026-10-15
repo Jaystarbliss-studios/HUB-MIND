@@ -197,21 +197,21 @@ export function VoiceDictation({
     <button
       type="button"
       onClick={toggleListening}
-      className={\`inline-flex items-center font-medium rounded-lg transition-all cursor-pointer \${
+      className={`inline-flex items-center font-medium rounded-lg transition-all cursor-pointer ${
         isListening
           ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/25 animate-pulse'
           : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700'
-      } \${sizeClasses} \${className}\`}
+      } ${sizeClasses} ${className}`}
       title={isListening ? 'Stop Voice Recording' : isSessionBusy ? 'Jess microphone is busy. Stop the active voice session first.' : nativeDictationRef.current ? 'Start offline Windows dictation' : 'Start Voice Dictation'}
     >
       {isListening ? (
         <>
-          <MicOff className={\`\${iconSizes} animate-bounce text-white\`} />
+          <MicOff className={`${iconSizes} animate-bounce text-white`} />
           <span>Recording... (Click to stop)</span>
         </>
       ) : (
         <>
-          <Mic className={\`\${iconSizes} text-teal-400\`} />
+          <Mic className={`${iconSizes} text-teal-400`} />
           <span>{isSessionBusy ? 'Mic busy' : nativeDictationRef.current ? 'Offline Dictate' : 'Dictate'}</span>
         </>
       )}
