@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff } from 'lucide-react';
 import { claimJessAudio, releaseJessAudio } from '../services/jessVoiceSessionCoordinator';
+import { normalizeJessDictationTranscript } from '../services/jessDictationText';
 
 interface VoiceDictationProps {
   onTranscript: (transcript: string) => void;
@@ -50,7 +51,7 @@ export function VoiceDictation({
           return;
         }
         const transcript = typeof payload?.transcript === 'string' ? payload.transcript.trim() : '';
-        if (transcript) onTranscriptRef.current(transcript);
+        if (transcript) onTranscriptRef.current(normalizeJessDictationTranscript(transcript));
       });
       return () => {
         try { removeListener?.(); } catch {}
@@ -83,7 +84,7 @@ export function VoiceDictation({
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
         }
-        if (finalTranscript.trim()) onTranscriptRef.current(finalTranscript.trim());
+        if (finalTranscript.trim()) onTranscriptRef.current(normalizeJessDictationTranscript(finalTranscript));
       };
 
       recognition.onerror = (event: any) => {
