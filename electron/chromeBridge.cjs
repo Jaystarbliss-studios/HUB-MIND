@@ -50,7 +50,7 @@ function start() {
           authenticated = true;
           if (authTimer) clearTimeout(authTimer);
           authTimer = null;
-          socket.write(JSON.stringify({ type: 'hello-ack' }) + '\\n');
+          socket.write(JSON.stringify({ type: 'hello-ack' }) + '\n');
           continue;
         }
         const waiter = pending.get(String(response.id || ''));
