@@ -115,6 +115,7 @@ function Invoke-Action($q){
   $screens = @([System.Windows.Forms.Screen]::AllScreens)
   if ($requestedMonitor -eq 'all') {
     if ($detail -eq 'high') { throw 'High-detail capture must target one monitor by name to keep the native bridge response bounded.' }
+    if ($screens.Count -gt 4) { throw 'All-monitor capture is limited to four monitors; request one monitor by name for additional displays.' }
     $selectedScreens = $screens
   } elseif ($requestedMonitor -eq 'primary') {
     $selectedScreens = @($screens | Where-Object { $_.Primary } | Select-Object -First 1)
@@ -148,7 +149,8 @@ function Invoke-Action($q){
       $encoderParam = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality,[long]$quality)
       $encoderParams.Param[0] = $encoderParam
       $outputBitmap.Save($memory,$jpegCodec,$encoderParams)
-      if ($memory.Length -gt 8MB) { throw 'Screenshot exceeded the 8 MB image limit. Retry with standard detail or a single monitor.' }
+      if ($detail -eq 'high' -and $memory.Length -gt 8MB) { throw 'Screenshot exceeded the 8 MB image limit. Retry with standard detail or a lower-resolution display.' }
+      if ($detail -eq 'standard' -and $memory.Length -gt 2MB) { throw 'Standard screenshot exceeded the 2 MB per-monitor image limit. Request high detail for one monitor or use OCR/UI Automation.' }
       $result += @{
         monitor=$s.DeviceName
         bounds=@{x=$bounds.X;y=$bounds.Y;width=$bounds.Width;height=$bounds.Height}
