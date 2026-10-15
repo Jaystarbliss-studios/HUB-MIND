@@ -16,12 +16,18 @@ test('Chrome native host and desktop bridge use the same bounded named-pipe prot
   assert.match(bridge, /pendingRequests/);
   assert.match(bridge, /lastHandshakeAt/);
   assert.match(bridge, /lastDisconnectAt/);
+  assert.match(bridge, /function scheduleServerRestart\(\)/);
+  assert.match(bridge, /serverRestartAttempt/);
+  assert.match(bridge, /instance\.on\('error'/);
   assert.match(host, /hubmind-jess-chrome-v1/);
   assert.match(host, /AllowedOrigin/);
   assert.match(host, /baifedjcpcnkjjoikbafnkiombiaooai/);
   assert.match(host, /ReadUInt32LittleEndian/);
   assert.match(host, /WriteUInt32LittleEndian/);
   assert.match(host, /MaxMessageBytes = 1024 \* 1024/);
+  assert.match(host, /Could not connect to the Hub-Mind named pipe/);
+  assert.match(host, /Could not read the per-user Jess bridge token/);
+  assert.match(host, /native-messaging bridge stopped/);
   assert.match(project, /net8\.0/);
 });
 
