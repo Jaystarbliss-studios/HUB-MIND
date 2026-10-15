@@ -678,18 +678,26 @@ export async function executeJessTool(
         }
         const status = await desktop.nativeStatus();
         const helper = status?.helper || status?.nativeBridge || {};
+        let probe: any = null;
+        if (helper.available && helper.scriptExists) {
+          try {
+            probe = await desktop.nativeAction('system_info', {}, user.id, executionId);
+          } catch (error: any) {
+            probe = { ok: false, verified: false, error: String(error?.message || 'Native helper probe failed.').slice(0, 500) };
+          }
+        }
         const diagnosis = !helper.available
           ? 'This is not the Windows desktop runtime. Native desktop control cannot run here.'
           : !helper.scriptExists
             ? 'The native helper script is missing from the expected install path. Repair or reinstall the Windows desktop package.'
-            : !helper.running && helper.lastError
-              ? 'The native helper is not running and reports an error. Inspect the error and jess-agent-runtime.jsonl, then retry after fixing the reported cause.'
-              : !helper.running
-                ? 'The helper script exists but the sidecar has not started yet. Run a harmless native action or the system-info check to start it, then check status again.'
+            : probe?.ok === true
+              ? 'The native helper completed a real, read-only system-info request through Electron IPC and the sidecar protocol. The bridge is responding. This does not yet prove mouse, keyboard, UI Automation or screenshot actions work.'
+              : probe?.error
+                ? 'The helper did not complete the read-only round-trip. Inspect the probe error and jess-agent-runtime.jsonl before retrying desktop actions.'
                 : helper.lastError
-                  ? 'The helper process is running but has reported an error. Inspect the latest error and runtime audit before retrying actions.'
-                  : 'The native helper process is running. Verify end-to-end communication with a harmless system-info action before relying on desktop control.';
-        return { result: { success: true, verified: true, status: helper, fullControlActive: status?.active === true, diagnosis } };
+                  ? 'The native helper has reported an error. Inspect the latest error and runtime audit before retrying actions.'
+                  : 'The helper is present, but the read-only round-trip did not return a successful result.';
+        return { result: { success: true, verified: probe?.ok === true, status: helper, probe: probe ? { ok: probe.ok === true, verified: probe.verified === true, error: probe.error || null, evidence: probe.evidence || null } : null, fullControlActive: status?.active === true, diagnosis } };
       }
       case 'chrome_bridge_status': {
         const desktop = (window as any).hubMindDesktop;
