@@ -138,6 +138,7 @@ test('Jess uses one renderer microphone owner across live audio, dictation, and 
   assert.match(live, /claimJessAudio\('live-conversation'\)/);
   assert.match(live, /releaseJessAudio\(this\.audioSessionLease\)/);
   assert.match(live, /stopOfflineWake\(\)/);
+  assert.match(live, /if \(wakeStop\?\.error \|\| wakeStop\?\.stopped === false\)/);
   assert.match(live, /startOfflineWake\(\)/);
   assert.match(live, /disconnect\(false, false, false\)/);
   assert.match(dictation, /claimJessAudio\('dictation'\)/);
