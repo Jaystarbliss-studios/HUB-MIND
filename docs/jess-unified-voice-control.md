@@ -130,3 +130,41 @@ Not yet verified or fully implemented:
 - [ ] UI Automation is preferred over raw coordinates and ambiguous controls are disambiguated.
 - [ ] High-risk actions require explicit confirmation and stop/cancel works.
 - [ ] All automated checks pass and Windows manual acceptance is recorded.
+
+
+## Native bridge failure semantics and fallback
+
+The native bridge is a capability boundary, not a promise that every runtime can control Windows. The web workspace may use only browser-exposed capabilities; Windows desktop actions require the installed Electron app and its packaged native helper. When that bridge is unavailable, Jess must say so and offer a safe browser-only alternative where one exists. It must not imply that a desktop action was attempted or completed.
+
+### Required error distinctions
+
+Report the earliest actionable failure, with a safe next step, and preserve the structured error in the execution trace:
+
+- **Unsupported runtime:** the current session is running in the browser, not the Windows desktop app. Explain that native Windows actions require the installed desktop app.
+- **Helper missing:** the expected PowerShell/.NET helper or script is absent from the development or packaged path. Report the resolved path and recommend repair/reinstallation; do not silently switch to a different executable.
+- **Helper startup failure:** process spawn failed or the helper exited before readiness. Include the sanitized error and exit code/signal when available.
+- **Transport/protocol failure:** request write failed, response JSON was invalid/oversized, request timed out, or a correlation ID had no matching response. Mark the action failed or outcome unknown; never convert this into success.
+- **Chrome bridge unavailable:** distinguish listener, socket, authentication/handshake, extension/host installation, pending request timeout, and disconnected states. Do not collapse them into a single “Chrome connected” flag.
+- **Action rejected:** permission, Full Control, stale target, unsupported control pattern, or safety policy rejected the request. Explain the required permission or safer next step without bypassing the gate.
+- **Verification failed/unknown:** the helper accepted or sent an action but returned no evidence that the intended result occurred. Say “sent but not verified” or “outcome unknown”; do not retry non-idempotent actions automatically.
+
+### Why native-agent errors matter
+
+Native-agent errors are essential operational feedback. They identify the failing layer (process, transport, protocol, authorization, or target application), allow the UI to offer a useful recovery step, and prevent a tool call from being mistaken for a completed task. Preserve request/action correlation IDs, timing, timeout classification, process exit details, and sanitized diagnostic text in logs. Never log bridge tokens, credentials, or sensitive clipboard/screen contents as diagnostic metadata.
+
+### Command execution and safety boundary
+
+The bounded PowerShell diagnostic/automation tool is not an unrestricted shell. Do not advertise arbitrary command execution or unrestricted administrator access. Continue to enforce the existing allowlists, Full Control session, per-action confirmation for consequential operations, cancellation, audit events, and current-user privilege boundary. Destructive/elevated operations remain blocked unless a separately reviewed and explicitly authorized capability is added. A timeout or lost response must not trigger a blind replay of an action that could have changed system state.
+
+### Screen capture expectations
+
+Keep thumbnail/source-picker previews distinct from the screenshot actually delivered to Jess. The UI should report whether capture was requested, captured, delivered as an image frame, and received/processed where observable. Use bounded high-detail single-monitor capture for closer inspection and standard multi-monitor capture for overview; enforce payload limits before IPC delivery. If image delivery repeatedly fails, surface that visual analysis is unavailable rather than continuing as though Jess can see the screen.
+
+### Release checklist additions
+
+- [ ] Browser-only sessions clearly explain that native Windows controls are unavailable.
+- [ ] Missing helper, startup failure, timeout, protocol error, permission rejection, and unverified outcome have distinct user-facing messages.
+- [ ] Native and Chrome bridge diagnostics never expose tokens or credentials.
+- [ ] No action is reported successful solely because it was queued or sent.
+- [ ] Screenshot capture and frame delivery failures are visible to the user.
+- [ ] Destructive/elevated PowerShell remains blocked by default and no silent elevation is introduced.
