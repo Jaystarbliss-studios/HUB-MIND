@@ -217,6 +217,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'control_windows_power', description: 'Lock the Windows workstation, schedule shutdown or restart in 15 seconds, or cancel a pending shutdown/restart. Shutdown/restart require a fresh spoken yes/no confirmation; cancellation is always available. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['lock','shutdown','restart','cancel_shutdown'] } }, ['action']) },
   { name: 'get_windows_time', description: 'Read local Windows time and time zone.', parameters: object({}) },
   { name: 'get_windows_system_info', description: 'Read basic Windows computer and OS information.', parameters: object({}) },
+  { name: 'chrome_bridge_status', description: 'Diagnose the installed Jess Chrome bridge without requiring Full Control. Reports whether the desktop pipe listener, native host connection and authentication handshake are healthy, plus the last bridge error. Use when Chrome control is not connecting; this is read-only.', parameters: object({}) },
   { name: 'chrome_list_tabs', description: 'List open Chrome tabs with IDs, titles, URLs and loading status. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({}) },
   { name: 'chrome_open_tab', description: 'Open an HTTP or HTTPS website in a new Chrome tab. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({ url: { type: 'string' }, active: { type: 'boolean' } }, ['url']) },
   { name: 'chrome_close_tab', description: 'Close a specific Chrome tab by its tab ID. Requires an explicit tabId; it never closes an unspecified active tab. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }, ['tabId']) },
@@ -668,6 +669,21 @@ export async function executeJessTool(
         const result = await desktop.nativeAction(method, payload, user.id, executionId);
         const actionStatus = result?.ok !== true ? 'failed' : result?.verified === true ? 'done_verified' : 'sent_unverified';
         return { result: { ...result, status: actionStatus, success: actionStatus !== 'failed', verified: result?.verified === true, evidence: result?.evidence ?? null, ...(actionStatus === 'sent_unverified' ? { note: 'Input was sent, but the resulting UI state was not independently verified. Do not repeat non-idempotent actions automatically.' } : {}) } };
+      }
+      case 'chrome_bridge_status': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.chromeStatus !== 'function') {
+          return { result: { success: false, verified: true, error: 'Chrome bridge diagnostics are available only in the installed Windows desktop app.' } };
+        }
+        const status = await desktop.chromeStatus();
+        const diagnosis = !status?.serverListening
+          ? 'The desktop named-pipe listener is not running. Restart Hub-Mind; if this persists, repair or reinstall the desktop app.'
+          : !status?.connected
+            ? 'The listener is running, but Chrome has not connected. Confirm the Jess extension is enabled in chrome://extensions and that the native host is registered.'
+            : !status?.authenticated
+              ? 'Chrome reached the pipe, but the native-host handshake is not authenticated. Repair the Chrome bridge installation and restart Chrome.'
+              : 'The Chrome native bridge is connected and authenticated.';
+        return { result: { success: true, verified: true, status, diagnosis } };
       }
       case 'chrome_list_tabs':
       case 'chrome_open_tab':
