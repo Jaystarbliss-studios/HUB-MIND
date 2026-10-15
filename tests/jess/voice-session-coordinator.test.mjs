@@ -8,31 +8,32 @@ import {
 } from '../../src/services/jessVoiceSessionCoordinator.ts';
 
 test('microphone ownership is exclusive, including re-entrant claims by the same owner', () => {
-  releaseJessAudio('live-conversation');
-  releaseJessAudio('dictation');
+  releaseJessAudio(null);
 
-  assert.equal(claimJessAudio('live-conversation'), true);
+  const liveLease = claimJessAudio('live-conversation');
+  assert.ok(liveLease);
   assert.equal(getJessAudioOwner(), 'live-conversation');
-  assert.equal(claimJessAudio('live-conversation'), false);
-  assert.equal(claimJessAudio('dictation'), false);
+  assert.equal(claimJessAudio('live-conversation'), null);
+  assert.equal(claimJessAudio('dictation'), null);
 
-  // A non-owner cannot release another session's microphone.
-  releaseJessAudio('dictation');
+  // A stale/incorrect lease cannot release the active session's microphone.
+  releaseJessAudio({ owner: 'dictation', token: Symbol('stale') });
   assert.equal(getJessAudioOwner(), 'live-conversation');
 
-  releaseJessAudio('live-conversation');
+  releaseJessAudio(liveLease);
   assert.equal(getJessAudioOwner(), null);
-  assert.equal(claimJessAudio('dictation'), true);
-  releaseJessAudio('dictation');
+  const dictationLease = claimJessAudio('dictation');
+  assert.ok(dictationLease);
+  releaseJessAudio(dictationLease);
 });
 
 test('microphone ownership listeners observe handoff and can unsubscribe', () => {
-  releaseJessAudio('live-conversation');
-  releaseJessAudio('dictation');
+  releaseJessAudio(null);
   const observed = [];
   const unsubscribe = subscribeJessAudioOwner(owner => observed.push(owner));
-  assert.equal(claimJessAudio('dictation'), true);
-  releaseJessAudio('dictation');
+  const lease = claimJessAudio('dictation');
+  assert.ok(lease);
+  releaseJessAudio(lease);
   unsubscribe();
   assert.deepEqual(observed, [null, 'dictation', null]);
 });
