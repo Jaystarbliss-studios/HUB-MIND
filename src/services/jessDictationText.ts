@@ -33,6 +33,8 @@ export function normalizeJessDictationTranscript(input: string): string {
 
   // Remove whitespace before punctuation, but preserve intentional newlines.
   text = text.replace(/[ \t]+([,.;:!?])/g, '$1');
+  text = text.replace(/"\s+/g, '"').replace(/\s+"/g, '"');
+  text = text.replace(/\(\s+/g, '(').replace(/\s+\)/g, ')');
   text = text.replace(/([,.;:!?])(?=\S)/g, '$1 ');
   text = text.replace(/[ \t]*\n[ \t]*/g, '\n');
   text = text.replace(/\n{3,}/g, '\n\n');
