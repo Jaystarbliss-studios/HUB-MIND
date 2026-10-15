@@ -168,7 +168,34 @@ test('Windows screenshots support bounded high-detail capture without unbounded 
   assert.match(agent, /EncoderParameter\(\[System\.Drawing\.Imaging\.Encoder\]::Quality/);
   assert.match(agent, /exceeded the 8 MB image limit/);
   assert.match(bridge, /MAX_RESPONSE_LINE_CHARS = 16 \* 1024 \* 1024/);
-  assert.match(main, /safeArgs\.detail === 'high' && safeArgs\.monitorName === 'all'/);
+  const nativeHandler = main.indexOf("ipcMain.handle('hubmind:native-action'");
+  const chromeHandler = main.indexOf("ipcMain.handle('hubmind:chrome-action'");
+  const screenshotValidation = main.indexOf("if (method === 'screenshot')", nativeHandler);
+  assert.ok(nativeHandler >= 0 && screenshotValidation > nativeHandler && screenshotValidation < chromeHandler, 'screenshot options must be validated by the native action bridge');
   assert.match(tools, /detail: \{ type: 'string', enum: \['standard','high'\] \}/);
   assert.match(tools, /monitorName: String\(args\?\.monitorName \|\| 'primary'\)/);
+});
+
+test('desktop dictation reuses the local Windows speech helper and the shared microphone owner', async () => {
+  const [wake, main, preload, component, coordinator] = await Promise.all([
+    read('native/JessOfflineWake/Program.cs'),
+    read('electron/main.cjs'),
+    read('electron/preload.cjs'),
+    read('src/components/VoiceDictation.tsx'),
+    read('src/services/jessVoiceSessionCoordinator.ts'),
+  ]);
+  assert.match(wake, /args\[i\] == "--mode"/);
+  assert.match(wake, /mode == "dictation"/);
+  assert.match(wake, /type = "dictation"/);
+  assert.match(wake, /Windows System\.Speech local dictation/);
+  assert.match(main, /ipcMain\.handle\('hubmind:offline-dictation-start'/);
+  assert.match(main, /startOfflineRecognizer\(event, 'dictation'\)/);
+  assert.match(main, /offlineWakeMode === mode/);
+  assert.match(main, /hubmind:offline-dictation/);
+  assert.match(preload, /startOfflineDictation/);
+  assert.match(preload, /onOfflineDictation/);
+  assert.match(component, /desktop\.startOfflineDictation\(\)/);
+  assert.match(component, /nativeDictationActiveRef/);
+  assert.match(component, /onTranscriptRef\.current/);
+  assert.match(coordinator, /claimJessAudio\('dictation'\)/);
 });
