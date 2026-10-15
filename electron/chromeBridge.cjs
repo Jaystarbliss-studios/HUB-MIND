@@ -15,6 +15,9 @@ let authTimer = null;
 let lastHandshakeAt = null;
 let lastDisconnectAt = null;
 let lastError = null;
+let serverRestartTimer = null;
+let serverRestartAttempt = 0;
+let shuttingDown = false;
 const pending = new Map();
 function readBridgeToken() {
   const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
@@ -28,9 +31,24 @@ function tokenMatches(received) {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
+function scheduleServerRestart() {
+  if (process.platform !== 'win32' || shuttingDown || serverRestartTimer) return;
+  const delayMs = Math.min(30000, 500 * (2 ** Math.min(serverRestartAttempt, 6)));
+  serverRestartAttempt += 1;
+  serverRestartTimer = setTimeout(() => {
+    serverRestartTimer = null;
+    if (!server?.listening) {
+      server = null;
+      start();
+    }
+  }, delayMs);
+  serverRestartTimer.unref?.();
+}
+
 function start() {
-  if (process.platform !== 'win32' || server) return;
-  server = net.createServer(socket => {
+  if (process.platform !== 'win32' || server?.listening || shuttingDown) return;
+  if (server) return;
+  const instance = net.createServer(socket => {
     if (client && !client.destroyed) { socket.destroy(); return; }
     client = socket;
     authenticated = false;
@@ -76,8 +94,29 @@ function start() {
       }
     });
   });
-  server.on('error', error => { lastError = String(error?.message || error).slice(0, 500); console.error('[Jess Chrome bridge]', lastError); });
-  server.listen(PIPE_NAME);
+  instance.on('listening', () => {
+    if (server !== instance) return;
+    serverRestartAttempt = 0;
+    lastError = null;
+  });
+  instance.on('error', error => {
+    lastError = String(error?.message || error).slice(0, 500);
+    console.error('[Jess Chrome bridge]', lastError);
+    if (server === instance) server = null;
+    try { instance.close(); } catch {}
+    scheduleServerRestart();
+  });
+  instance.on('close', () => {
+    if (server === instance) server = null;
+    if (!shuttingDown) scheduleServerRestart();
+  });
+  server = instance;
+  try { instance.listen(PIPE_NAME); }
+  catch (error) {
+    lastError = String(error?.message || error).slice(0, 500);
+    server = null;
+    scheduleServerRestart();
+  }
 }
 
 function status() {
@@ -133,8 +172,11 @@ function cancelPending(reason = 'Full Control Session stopped.') {
 }
 
 function stop() {
+  shuttingDown = true;
+  if (serverRestartTimer) { clearTimeout(serverRestartTimer); serverRestartTimer = null; }
   cancelPending('Chrome bridge stopped.');
-  try { server?.close(); } catch {}
+  const current = server;
   server = null;
+  try { current?.close(); } catch {}
 }
 module.exports = { start, stop, status, request, cancelPending };
