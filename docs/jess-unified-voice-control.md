@@ -73,6 +73,15 @@ Make Jess the single user-facing voice-control system for Hub-Mind: reliable dic
 - Run unit/contract/security tests, TypeScript checks, production build, native helper builds and Windows installer packaging.
 - Perform real Windows acceptance tests before publishing a release.
 
+## Screen capture and visual verification
+
+- The native Windows screenshot tool defaults to the primary monitor in standard detail (longest edge capped at 1920 pixels, JPEG quality 82).
+- For closer visual inspection, call the same tool with `detail: "high"` and an exact `monitorName` from the desktop's monitor/window diagnostics. High detail captures one monitor up to 3200 pixels on the longest edge at JPEG quality 92.
+- Use `monitorName: "all"` only with standard detail. High-detail multi-monitor captures are rejected deliberately to bound memory and IPC payloads.
+- Native image responses are capped at 8 MB per monitor and the sidecar JSON line limit is 16 MB. Oversized captures fail with an actionable message rather than overflowing the pipe.
+- Screen sharing's source-picker thumbnails remain previews; they are not the high-resolution stream. High-detail native capture is the separate path for screenshot inspection. Windows UI Automation remains the first choice for exact controls and accessible text.
+- Windows OCR fallback requests a high-detail primary-monitor capture when accessible UI text is unavailable, and still deletes its temporary image after OCR.
+
 ## Release gates
 
 - [ ] Chrome native host connects and authenticates reliably after fresh install and app restart.
