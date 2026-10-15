@@ -1094,9 +1094,14 @@ async function startServer() {
           parameters: { type: "OBJECT", properties: { name: { type: "STRING" } }, required: ["name"] }
         },
         {
+          name: "list_windows_ui_elements",
+          description: "List up to 50 visible, enabled accessible controls in the foreground Windows window with temporary indices. For numbered activation, pass the returned index and exact expectedName to invoke_windows_ui_element. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
           name: "invoke_windows_ui_element",
-          description: "Invoke a matching accessible Windows UI element by visible name. Verify the result with a screen read or screenshot. Requires Full Control.",
-          parameters: { type: "OBJECT", properties: { name: { type: "STRING" } }, required: ["name"] }
+          description: "Activate an accessible Windows UI element by visible name, or by temporary index from list_windows_ui_elements. Numbered activation requires the exact expectedName from the listing to prevent stale-target actions. Verify the result with a screen read. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { name: { type: "STRING" }, index: { type: "NUMBER" }, expectedName: { type: "STRING" } } }
         },
         {
           name: "read_windows_screen",

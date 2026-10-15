@@ -86,7 +86,7 @@ if (!appSource.includes('Keep the actual')) failures.push('App.tsx: persistent a
 const transcriptOverlay = readFileSync(resolve(root, 'src/pages/JessTranscriptOverlayPage.tsx'), 'utf8');
 if (!transcriptOverlay.includes('hubmind.jess.desktopTranscript.v1') || !transcriptOverlay.includes('setTranscriptOverlayVisible')) failures.push('JessTranscriptOverlayPage.tsx: desktop transcript bridge is incomplete');
 const sharedNativeNames = readFileSync(resolve(root, 'src/shared/jessNativeToolNames.ts'), 'utf8');
-for (const tool of ['list_windows','manage_windows','take_windows_screenshot','chrome_list_tabs','chrome_scroll']) {
+for (const tool of ['list_windows','manage_windows','take_windows_screenshot','list_windows_ui_elements','chrome_list_tabs','chrome_scroll']) {
   if (!sharedNativeNames.includes(`'${tool}'`)) failures.push(`jessNativeToolNames.ts: native tool ${tool} is missing`);
 const executionRuntime = readFileSync(resolve(root, 'src/services/jessExecutionRuntime.ts'), 'utf8');
 for (const contract of ['runJessToolExecution','executionId','retrySafe','argumentKeys','hubmind:jess-execution-event']) {

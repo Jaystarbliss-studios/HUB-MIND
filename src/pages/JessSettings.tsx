@@ -32,7 +32,7 @@ export function JessSettings() {
   const [desktopState, setDesktopState] = useState<{ active?: boolean; startedAt?: string | null; permissionMode?: string } | null>(null);
   const [error, setError] = useState('');
   const [executionEvents, setExecutionEvents] = useState<JessExecutionEvent[]>([]);
-  const [chromeBridgeState, setChromeBridgeState] = useState<{ available?: boolean; transport?: string; pipe?: string } | null>(null);
+  const [chromeBridgeState, setChromeBridgeState] = useState<{ available?: boolean; serverListening?: boolean; connected?: boolean; authenticated?: boolean; pendingRequests?: number; lastHandshakeAt?: string | null; lastDisconnectAt?: string | null; lastError?: string | null; transport?: string; pipe?: string } | null>(null);
   const [chromeSetupBusy, setChromeSetupBusy] = useState(false);
   const [chromeSetupMessage, setChromeSetupMessage] = useState('');
 
@@ -138,9 +138,15 @@ export function JessSettings() {
         </section>
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
           <div className="flex items-center gap-3 mb-4"><MonitorCog className="text-teal-300" size={20}/><div><h2 className="font-semibold">Chrome browser bridge</h2><p className="text-xs text-slate-400 mt-1">Connect Jess to real Chrome tabs through the installed desktop app.</p></div></div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm flex flex-wrap items-center justify-between gap-3">
-            <span className="text-slate-300">Native host status</span>
-            <span className={chromeBridgeState?.available ? 'text-emerald-300' : 'text-amber-200'}>{chromeBridgeState?.available ? 'Connected to Chrome' : chromeBridgeState ? 'Not connected' : 'Checking…'}</span>
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm space-y-2" aria-live="polite">
+            <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-slate-300">Desktop named-pipe listener</span><span className={chromeBridgeState?.serverListening ? 'text-emerald-300' : 'text-amber-200'}>{chromeBridgeState?.serverListening ? 'Listening' : chromeBridgeState ? 'Not listening' : 'Checking…'}</span></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-slate-300">Native host connection</span><span className={chromeBridgeState?.connected ? 'text-emerald-300' : 'text-amber-200'}>{chromeBridgeState?.connected ? 'Connected' : chromeBridgeState ? 'Disconnected' : 'Checking…'}</span></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-slate-300">Token authentication</span><span className={chromeBridgeState?.authenticated ? 'text-emerald-300' : 'text-amber-200'}>{chromeBridgeState?.authenticated ? 'Authenticated' : chromeBridgeState ? 'Not authenticated' : 'Checking…'}</span></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-slate-300">Pending Chrome actions</span><span className="text-slate-200">{chromeBridgeState ? String(chromeBridgeState.pendingRequests ?? 0) : '—'}</span></div>
+            {chromeBridgeState?.lastHandshakeAt && <p className="text-xs text-slate-500">Last authenticated handshake: {new Date(chromeBridgeState.lastHandshakeAt).toLocaleString()}</p>}
+            {chromeBridgeState?.lastDisconnectAt && <p className="text-xs text-slate-500">Last disconnect: {new Date(chromeBridgeState.lastDisconnectAt).toLocaleString()}</p>}
+            {chromeBridgeState?.lastError && <p className="text-xs text-amber-200 break-words">Bridge diagnostic: {chromeBridgeState.lastError}</p>}
+            {chromeBridgeState?.available && <p className="text-xs text-emerald-300">Jess can send Chrome actions through the authenticated bridge.</p>}
           </div>
           <p className="text-xs text-slate-500 mt-3">Setup registers the local native-messaging host for your Windows account. It does not bypass Chrome extension consent or automatically force-install the extension.</p>
           <div className="mt-4 flex flex-wrap gap-3">
