@@ -86,4 +86,4 @@ Make Jess the single user-facing voice-control system for Hub-Mind: reliable dic
 
 ## Current status
 
-The first implementation slice adds retry/recovery for transient Chrome named-pipe server failures and diagnostic stderr messages from the native host. This is not yet proof of end-to-end operation: the bridge must still be exercised on a real Windows machine with the installed app and Chrome extension.
+The first implementation slice adds retry/recovery for transient Chrome named-pipe server failures, diagnostic stderr messages from the native host, and a read-only `chrome_bridge_status` Jess tool that can distinguish listener, connection and authentication states without requiring Full Control. This is not yet proof of end-to-end operation: the bridge must still be exercised on a real Windows machine with the installed app and Chrome extension.
