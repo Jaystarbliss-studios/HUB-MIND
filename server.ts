@@ -372,7 +372,8 @@ async function startServer() {
       const geminiApiKey = process.env.GEMINI_API_KEY;
 
       // Prefer Groq / Ollama as requested
-      const hasScreenImage = Array.isArray(messages) && messages.some((message: any) => Array.isArray(message.parts) && message.parts.some((part: any) => part?.inlineData?.data));\n      if ((groqApiKey || ollamaUrl) && !hasScreenImage) {
+      const hasScreenImage = Array.isArray(messages) && messages.some((message: any) => Array.isArray(message.parts) && message.parts.some((part: any) => part?.inlineData?.data));
+      if ((groqApiKey || ollamaUrl) && !hasScreenImage) {
         try {
           const openai = new OpenAI({
             apiKey: groqApiKey || "ollama",
