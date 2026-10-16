@@ -116,9 +116,9 @@ function Invoke-Action($q){
     for($i=0;$i -lt [Math]::Min($all.Count,3000);$i++){
       try{$e=$all.Item($i);$c=$e.Current;if(!$c.IsOffscreen -and $c.IsEnabled -and $c.Name){$r=$c.BoundingRectangle;if($r.Width -gt 0 -and $r.Height -gt 0){$item=@{name=$c.Name;automationId=$c.AutomationId;controlType=$c.ControlType.ProgrammaticName;bounds=@{x=$r.X;y=$r.Y;width=$r.Width;height=$r.Height};isEnabled=$c.IsEnabled};if([string]::Equals($c.Name,$name,[StringComparison]::OrdinalIgnoreCase)){$exact+=@($item)}elseif($c.Name.IndexOf($name,[StringComparison]::OrdinalIgnoreCase)-ge 0){$partial+=@($item)}}}}catch{}
     }
-    $matches=if($exact.Count -gt 0){$exact}else{$partial}
-    if($matches.Count -eq 0){return @{ok=$false;verified=$false;error=('No visible accessible UI element matched "'+$name+'"');evidence=@{windowTitle=$root.Current.Name;query=$name;source='Microsoft UI Automation'}}}
-    return @{ok=$true;verified=$true;evidence=@{windowTitle=$root.Current.Name;query=$name;matches=@($matches|Select-Object -First 25);count=$matches.Count;source='Microsoft UI Automation';note='If multiple controls match, use a unique visible name or the numbered list before activating a control.'}}
+    $resolvedMatches=if($exact.Count -gt 0){$exact}else{$partial}
+    if($resolvedMatches.Count -eq 0){return @{ok=$false;verified=$false;error=('No visible accessible UI element matched "'+$name+'"');evidence=@{windowTitle=$root.Current.Name;query=$name;source='Microsoft UI Automation'}}}
+    return @{ok=$true;verified=$true;evidence=@{windowTitle=$root.Current.Name;query=$name;matches=@($resolvedMatches|Select-Object -First 25);count=$resolvedMatches.Count;source='Microsoft UI Automation';note='If multiple controls match, use a unique visible name or the numbered list before activating a control.'}}
   }
   'set_ui_value' {
     $name=[string]$a.name;$value=[string]$a.value
@@ -133,10 +133,10 @@ function Invoke-Action($q){
     for($i=0;$i -lt [Math]::Min($all.Count,3000);$i++){
       try{$e=$all.Item($i);$c=$e.Current;if(!$c.IsOffscreen -and $c.IsEnabled -and $c.Name){if([string]::Equals($c.Name,$name,[StringComparison]::OrdinalIgnoreCase)){$exact+=@($e)}elseif($c.Name.IndexOf($name,[StringComparison]::OrdinalIgnoreCase)-ge 0){$partial+=@($e)}}}catch{}
     }
-    $matches=if($exact.Count -gt 0){$exact}else{$partial}
-    if($matches.Count -eq 0){throw ('No visible accessible UI element matched "'+$name+'"')}
-    if($matches.Count -ne 1){throw ('UI element name is ambiguous ('+$matches.Count+' matches). Use a more specific name or the numbered UI list.')}
-    $target=$matches[0]
+    $resolvedMatches=if($exact.Count -gt 0){$exact}else{$partial}
+    if($resolvedMatches.Count -eq 0){throw ('No visible accessible UI element matched "'+$name+'"')}
+    if($resolvedMatches.Count -ne 1){throw ('UI element name is ambiguous ('+$resolvedMatches.Count+' matches). Use a more specific name or the numbered UI list.')}
+    $target=$resolvedMatches[0]
     $pattern=$target.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
     if($pattern.Current.IsReadOnly){throw ('The UI element is read-only: '+$target.Current.Name)}
     $pattern.SetValue($value)
@@ -228,8 +228,8 @@ function Invoke-Action($q){
    $apps=@(Get-StartApps -ErrorAction SilentlyContinue)
    $app=$apps|Where-Object{[string]::Equals($_.Name,$name,[StringComparison]::OrdinalIgnoreCase)-or[string]::Equals($_.AppID,$name,[StringComparison]::OrdinalIgnoreCase)}|Select-Object -First 1
    if(!$app){
-    $matches=@($apps|Where-Object{$_.Name.IndexOf($name,[StringComparison]::OrdinalIgnoreCase)-ge 0-or$_.AppID.IndexOf($name,[StringComparison]::OrdinalIgnoreCase)-ge 0})
-    if($matches.Count -eq 1){$app=$matches[0]}elseif($matches.Count -gt 1){throw ('Application name is ambiguous. Use an exact Start Menu name or AppUserModelID. Candidates: '+(($matches|Select-Object -First 8|ForEach-Object{$_.Name+' ['+$_.AppID+']'}) -join '; '))}
+    $resolvedMatches=@($apps|Where-Object{$_.Name.IndexOf($name,[StringComparison]::OrdinalIgnoreCase)-ge 0-or$_.AppID.IndexOf($name,[StringComparison]::OrdinalIgnoreCase)-ge 0})
+    if($resolvedMatches.Count -eq 1){$app=$resolvedMatches[0]}elseif($resolvedMatches.Count -gt 1){throw ('Application name is ambiguous. Use an exact Start Menu name or AppUserModelID. Candidates: '+(($resolvedMatches|Select-Object -First 8|ForEach-Object{$_.Name+' ['+$_.AppID+']'}) -join '; '))}
    }
    if($app){
     $before=@(Get-Windows|ForEach-Object{[string]$_.handle})
@@ -242,7 +242,7 @@ function Invoke-Action($q){
    $appPath=$null
    foreach($root in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths','HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths')){
     foreach($candidate in @($name,$leaf)){
-     try{$key=Get-ItemProperty -LiteralPath (Join-Path $root $candidate) -ErrorAction Stop;$raw=[string]$key.'(default)';if($raw -match '^\"([^\"]+)\"'){$raw=$matches[1]}else{$raw=$raw.Trim()};if($raw -and (Test-Path -LiteralPath $raw -PathType Leaf)){$appPath=$raw;break}}catch{}
+     try{$key=Get-ItemProperty -LiteralPath (Join-Path $root $candidate) -ErrorAction Stop;$raw=[string]$key.'(default)';if($raw -match '^\"([^\"]+)\"'){$raw=$resolvedMatches[1]}else{$raw=$raw.Trim()};if($raw -and (Test-Path -LiteralPath $raw -PathType Leaf)){$appPath=$raw;break}}catch{}
     }
     if($appPath){break}
    }
