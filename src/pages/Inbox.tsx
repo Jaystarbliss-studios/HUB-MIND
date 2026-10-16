@@ -10,8 +10,10 @@ import { Loader2, Archive, CheckSquare, Users, Calendar, Book, X, Share2, Send }
 import { safeParseISO, safeFormat } from "../lib/dateUtils";
 import { format, parseISO } from 'date-fns';
 import { ShareResourceModal } from '../components/ShareResourceModal';
+import { InboxCommunication } from '../components/InboxCommunication';
+import { MessageSquare, Inbox as InboxIcon } from 'lucide-react';
 
-export function Inbox() {
+function CapturedInbox() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -375,6 +377,27 @@ export function Inbox() {
           resourceTitle={sharingItem.text.slice(0, 60) || 'Quick Note'}
         />
       )}
+    </div>
+  );
+}
+
+
+export function Inbox() {
+  const [section, setSection] = useState<'messages' | 'captures'>('messages');
+  return (
+    <div className="mx-auto w-full max-w-7xl space-y-5 px-3 py-4 pb-20 sm:px-5 md:px-8 md:py-8">
+      <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[.2em] text-accent">Hub-Mind communications</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Inbox</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Messages, notifications, drafts and captured items—together in one place.</p>
+        </div>
+        <div className="flex w-full gap-2 rounded-xl border border-slate-800 bg-slate-950/50 p-1 sm:w-auto">
+          <button type="button" onClick={() => setSection('messages')} className={`inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition sm:flex-none ${section === 'messages' ? 'bg-accent/10 text-accent' : 'text-slate-400 hover:text-white'}`}><MessageSquare size={14}/> Messages</button>
+          <button type="button" onClick={() => setSection('captures')} className={`inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition sm:flex-none ${section === 'captures' ? 'bg-accent/10 text-accent' : 'text-slate-400 hover:text-white'}`}><InboxIcon size={14}/> Captured items</button>
+        </div>
+      </header>
+      {section === 'messages' ? <InboxCommunication /> : <CapturedInbox />}
     </div>
   );
 }

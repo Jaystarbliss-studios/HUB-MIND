@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { ArrowRight, ArrowUpRight, Check, Download, FileText, FolderKanban, LockKeyhole, Menu, MessageCircle, Sparkles, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Bell, Check, Download, FileText, FolderKanban, LockKeyhole, Menu, MessageCircle, Sparkles, X } from 'lucide-react';
 
 const FEATURES = [
   { icon: FolderKanban, title: 'Your work, in one place', text: 'Projects, tasks, documents, meetings and follow-ups in one calm workspace.' },
   { icon: MessageCircle, title: 'Meet Jess', text: 'A thoughtful AI assistant designed to help you research, plan, write and keep moving.' },
-  { icon: LockKeyhole, title: 'Invite-only by design', text: 'Your workspace stays private. Existing members sign in; new members need a valid invitation.' },
+  { icon: Bell, title: 'A more useful inbox', text: 'Keep messages, notifications, drafts and important captures organised together.' },
+  { icon: LockKeyhole, title: 'Private by design', text: 'Your workspace stays invitation-based, with access controls and clear ownership.' },
 ];
 
 export function PublicHome() {
@@ -19,6 +20,19 @@ export function PublicHome() {
   const [release, setRelease] = useState<{ url: string; name: string; version: string; extensionUrl?: string } | null>(null);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
+
+  useEffect(() => {
+    const root = document.querySelector('.hm-public');
+    if (!root) return;
+    root.classList.add('hm-motion-ready');
+    const nodes = Array.from(root.querySelectorAll<HTMLElement>('.hm-reveal'));
+    if (!('IntersectionObserver' in window)) { nodes.forEach(node => node.classList.add('is-visible')); return; }
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add('is-visible'); observer.unobserve(entry.target); } });
+    }, { threshold: 0.12, rootMargin: '0px 0px -35px 0px' });
+    nodes.forEach(node => observer.observe(node));
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -126,17 +140,19 @@ export function PublicHome() {
           <div className="hm-scroll-cue"><span/> A calmer way to work</div>
         </section>
 
-        <section id="features" className="hm-features section-shell">
+        <section className="hm-signal-strip hm-reveal" aria-label="Hub-Mind principles"><div><span>01</span><strong>One connected workspace</strong><small>Projects, tasks, knowledge and follow-through</small></div><div><span>02</span><strong>One thought partner</strong><small>Jess for writing, research and planning</small></div><div><span>03</span><strong>Your work stays yours</strong><small>Invitation-based access and role-aware controls</small></div></section>
+
+        <section id="features" className="hm-features section-shell hm-reveal">
           <div className="hm-section-heading"><div className="hm-eyebrow">THE WORKSPACE</div><h2>Less scattered.<br/><span>More in sync.</span></h2><p>Everything you need to organise your work, without another noisy place to manage.</p></div>
-          <div className="hm-feature-grid">{FEATURES.map((feature, i) => <article className="hm-feature" key={feature.title}><div className={'hm-feature-icon tone-' + i}><feature.icon size={20}/></div><span className="hm-feature-index">0{i+1}</span><h3>{feature.title}</h3><p>{feature.text}</p></article>)}</div>
+          <div className="hm-feature-grid">{FEATURES.map((feature, i) => <article className="hm-feature hm-reveal" key={feature.title}><div className={'hm-feature-icon tone-' + i}><feature.icon size={20}/></div><span className="hm-feature-index">0{i+1}</span><h3>{feature.title}</h3><p>{feature.text}</p></article>)}</div>
         </section>
 
-        <section id="jess" className="hm-jess-section">
+        <section id="jess" className="hm-jess-section hm-reveal">
           <div className="hm-jess-visual"><div className="hm-jess-ring ring-a"/><div className="hm-jess-ring ring-b"/><div className="hm-jess-core"><div className="hm-jess-core-inner"><Sparkles size={32}/></div></div><div className="hm-jess-caption">YOUR THOUGHT PARTNER</div></div>
           <div className="hm-jess-copy"><div className="hm-eyebrow">MEET JESS</div><h2>A little help.<br/><span>Right when you need it.</span></h2><p>Jess is Hub-Mind's AI assistant, designed to help you think things through, find information, draft and refine ideas, and turn conversations into clear next steps — while keeping you in control.</p><ul><li><Check size={16}/> Research with source-aware answers</li><li><Check size={16}/> Help with writing, planning and follow-through</li><li><Check size={16}/> Voice interaction and a floating assistant</li></ul><button className="hm-text-link" onClick={openWorkspace}>Meet Jess in your workspace <ArrowRight size={16}/></button><p className="hm-credit">Jess was designed and programmed by Jaystarbliss, founder of Jaystarbliss Studios. Her underlying AI model is provided by Google.</p></div>
         </section>
 
-        <section id="desktop" className="hm-desktop-section">
+        <section id="desktop" className="hm-desktop-section hm-reveal">
           <div className="hm-desktop-copy"><div className="hm-eyebrow">TAKE IT WITH YOU</div><h2>Your workspace.<br/><span>At home on Windows.</span></h2><p>{release ? 'The Hub-Mind Windows desktop installer is available now, with a dedicated window and a persistent Jess companion.' : 'A dedicated Windows desktop experience is being prepared. The installer will appear here as soon as a release is published and verified.'}</p>
           <div className="hm-desktop-points"><span><Check size={15}/> Dedicated desktop window</span><span><Check size={15}/> Floating Jess companion</span><span><Check size={15}/> Controlled system integrations</span></div>
           {release ? <a className="hm-button hm-button-primary hm-button-large" href={release.url}><Download size={17}/> Download for Windows <span className="hm-version">{release.version}</span></a> : <button className="hm-button hm-button-disabled hm-button-large" disabled title="A verified Windows installer has not been published yet"><Download size={17}/> Windows app coming soon</button>}
@@ -146,7 +162,7 @@ export function PublicHome() {
           <div className="hm-desktop-art"><div className="hm-monitor"><div className="hm-monitor-top"><span/><span/><span/><small>HUB-MIND / WORKSPACE</small></div><div className="hm-monitor-content"><div className="hm-monitor-sidebar"><i/><i/><i/><i/></div><div className="hm-monitor-main"><div className="hm-monitor-kicker">YOUR WORKSPACE</div><div className="hm-monitor-title">Make today count.</div><div className="hm-monitor-bars"><i/><i/><i/></div><div className="hm-monitor-bottom"><span/><span/><span/></div></div></div></div><div className="hm-monitor-stand"/><div className="hm-monitor-base"/><div className="hm-desktop-orb"><Sparkles size={20}/></div></div>
         </section>
 
-        <section id="getting-started" className="hm-desktop-section hm-getting-started">
+        <section id="getting-started" className="hm-desktop-section hm-getting-started hm-reveal">
           <div className="hm-desktop-copy">
             <div className="hm-eyebrow">GETTING STARTED</div>
             <h2>Set up Hub-Mind.<br/><span>Make it yours.</span></h2>

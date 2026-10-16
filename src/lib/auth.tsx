@@ -79,14 +79,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
 
         stopProfile = onSnapshot(profileRef, (snap) => {
-          if (!disposed && snap.exists()) {
-            setProfile({
-              ...snap.data(),
-              id: firebaseUser.uid,
-              email: firebaseUser.email || snap.data().email,
-              photoUrl: firebaseUser.photoURL || snap.data().photoUrl,
-            } as User);
+          if (disposed) return;
+          if (!snap.exists()) {
+            setProfile(null);
+            setAuthorizationError('Your Hub-Mind profile was removed. Please contact an administrator if you believe this is a mistake.');
+            setLoading(false);
+            void signOut(auth).catch(() => {});
+            return;
           }
+          setProfile({
+            ...snap.data(),
+            id: firebaseUser.uid,
+            email: firebaseUser.email || snap.data().email,
+            photoUrl: firebaseUser.photoURL || snap.data().photoUrl,
+          } as User);
         }, (err) => {
           console.warn('[AuthProvider] onSnapshot profile error:', err);
         });

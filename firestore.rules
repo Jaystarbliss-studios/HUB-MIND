@@ -50,7 +50,41 @@ service cloud.firestore {
     }
     match /connections/{id} { allow get: if member() && (admin() || resource.data.requesterId == request.auth.uid || resource.data.recipientId == request.auth.uid); allow list: if admin() || member(); allow create: if member() && (admin() || request.resource.data.requesterId == request.auth.uid || request.resource.data.recipientId == request.auth.uid); allow update, delete: if member() && (admin() || resource.data.requesterId == request.auth.uid || resource.data.recipientId == request.auth.uid); }
     match /shares/{id} { allow get: if member() && (admin() || resource.data.ownerId == request.auth.uid || resource.data.recipientUserId == request.auth.uid); allow list: if admin() || member(); allow create: if admin() || (member() && request.resource.data.ownerId == request.auth.uid); allow update, delete: if admin() || (member() && resource.data.ownerId == request.auth.uid); }
-    match /notifications/{id} { allow get, list: if admin() || (member() && resource.data.userId == request.auth.uid); allow create: if admin() || (member() && request.resource.data.userId == request.auth.uid); allow update, delete: if admin() || (member() && resource.data.userId == request.auth.uid); }
+    match /notifications/{id} {
+      allow get, list: if admin() || (member() && resource.data.userId == request.auth.uid);
+      allow create: if admin()
+        || (member() && request.resource.data.userId == request.auth.uid)
+        || (member()
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.messageId is string
+          && exists(/databases/$(database)/documents/messages/$(request.resource.data.messageId))
+          && get(/databases/$(database)/documents/messages/$(request.resource.data.messageId)).data.senderId == request.auth.uid
+          && get(/databases/$(database)/documents/messages/$(request.resource.data.messageId)).data.recipientId == request.resource.data.userId);
+      allow update, delete: if admin() || (member() && resource.data.userId == request.auth.uid);
+    }
+    match /messages/{messageId} {
+      allow get, list: if member() && (admin() || resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid);
+      allow create: if member()
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.recipientId is string
+        && request.resource.data.recipientId != request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() <= 12000;
+      allow update: if member()
+        && resource.data.recipientId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt','read','updatedAt']);
+      allow delete: if admin() || (member() && resource.data.senderId == request.auth.uid);
+    }
+    match /messageDrafts/{draftId} {
+      allow get, list: if member() && resource.data.userId == request.auth.uid;
+      allow create: if member() && request.resource.data.userId == request.auth.uid;
+      allow update: if member() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow delete: if admin() || (member() && resource.data.userId == request.auth.uid);
+    }
+    match /systemSettings/{settingId} {
+      allow get, list: if admin() || (member() && settingId == 'jessPublic');
+      allow create, update, delete: if admin();
+    }
     match /activityLogs/{id} { allow get, list: if admin() || member(); allow create: if member(); allow update, delete: if admin(); }
     match /tasks/{id} { allow get: if member() && readable(); allow list: if admin() || visibleList() || (member() && resource.data.assignedTo == request.auth.uid); allow create: if member() && (newOwner() || createdByMe()); allow update, delete: if member() && writable(); }
     match /documents/{id} { allow get: if member() && readable(); allow list: if admin() || visibleList(); allow create: if member() && (newOwner() || createdByMe()); allow update, delete: if member() && writable(); }

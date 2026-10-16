@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { firebaseAdminRequest, firestoreDocumentUrl, decodeFirestoreFields } from '../../src/server/firebaseAdminRest.ts';
 
 const JESS_CORE_IDENTITY = `IDENTITY AND ATTRIBUTION (always preserve this accurately):
 - Jess is the AI assistant experience designed and programmed by Jaystarbliss, founder of Jaystarbliss Studios.
@@ -120,7 +121,16 @@ export default async (req: Request) => {
     const clientSystem = typeof body.systemInstruction === 'string'
       ? body.systemInstruction
       : body.systemInstruction?.parts?.[0]?.text || '';
-    const system = [JESS_CORE_IDENTITY, clientSystem].filter(Boolean).join('\n\n');
+    let adminInstructions = '';
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+      try {
+        const settingsDoc: any = await firebaseAdminRequest(firestoreDocumentUrl('systemSettings/jess'));
+        adminInstructions = String(decodeFirestoreFields(settingsDoc?.fields || {}).adminInstructions || '').trim();
+      } catch (settingsError: any) {
+        if (settingsError?.status !== 404) console.warn('[Jess] Administrator guidance could not be loaded:', settingsError?.message || settingsError);
+      }
+    }
+    const system = [JESS_CORE_IDENTITY, clientSystem, adminInstructions ? 'Workspace administrator guidance (follow unless it conflicts with safety or platform rules):\n' + adminInstructions : ''].filter(Boolean).join('\n\n');
 
     let lastError: any = null;
     const attemptedModels: string[] = [];

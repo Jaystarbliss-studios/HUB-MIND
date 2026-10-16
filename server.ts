@@ -14,6 +14,7 @@ import fs from "fs";
 import { createServer as createViteServer, createLogger } from "vite";
 import OpenAI from "openai";
 import { WebSocketServer } from "ws";
+import { firebaseAdminRequest, firestoreDocumentUrl, firebaseAuthAdminUrl, decodeFirestoreFields, encodeFirestoreFields } from "./src/server/firebaseAdminRest.ts";
 
 const customLogger = createLogger();
 const origLoggerError = customLogger.error.bind(customLogger);
@@ -72,6 +73,101 @@ async function startServer() {
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
+
+  const bootstrapAdminEmails = new Set(['johnrufai242@gmail.com', 'rufaijohnny@gmail.com']);
+  const verifyAdminRequest = async (req: any) => {
+    const authHeader = String(req.headers.authorization || '');
+    const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!idToken || idToken.length > 10000) { const e: any = new Error('Sign in again to manage users.'); e.status = 401; throw e; }
+    const apiKey = process.env.FIREBASE_WEB_API_KEY || process.env.VITE_FIREBASE_WEB_API_KEY || process.env.FIREBASE_API_KEY;
+    if (!apiKey) { const e: any = new Error('Firebase token verification is not configured on this server.'); e.status = 503; throw e; }
+    const response = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + encodeURIComponent(apiKey), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }), signal: AbortSignal.timeout(10000),
+    });
+    const data: any = await response.json().catch(() => ({}));
+    const identity = data?.users?.[0];
+    if (!response.ok || !identity?.localId || identity.disabled) { const e: any = new Error('Your sign-in session is invalid or expired.'); e.status = 401; throw e; }
+    const email = String(identity.email || '').trim().toLowerCase();
+    let profile: any = null;
+    try { const doc = await firebaseAdminRequest(firestoreDocumentUrl('users/' + encodeURIComponent(identity.localId))); profile = decodeFirestoreFields(doc?.fields || {}); }
+    catch (error: any) { if (error?.status !== 404) throw error; }
+    if (!((profile?.role === 'admin' && profile?.status === 'active') || bootstrapAdminEmails.has(email))) {
+      const e: any = new Error('Administrator permission is required for this action.'); e.status = 403; throw e;
+    }
+    return { uid: identity.localId, email, profile };
+  };
+  const listAdminUserProfiles = async () => {
+    const data: any = await firebaseAdminRequest(firestoreDocumentUrl('users?pageSize=1000'));
+    return (data?.documents || []).map((entry: any) => ({ id: String(entry.name || '').split('/').pop() || '', ...decodeFirestoreFields(entry.fields || {}) }));
+  };
+  const logAdminUserAction = async (actorId: string, action: string, targetId: string, details: string) => {
+    try {
+      await firebaseAdminRequest(firestoreDocumentUrl('activityLogs'), { method: 'POST', body: JSON.stringify({ fields: encodeFirestoreFields({
+        userId: actorId, actorId, action, entityType: 'user', entityId: targetId, details, createdAt: new Date().toISOString(),
+      }) }) });
+    } catch (error: any) { console.warn('[Admin] Could not write user-management audit log:', error?.message || error); }
+  };
+
+  app.patch('/api/admin/users/:uid', async (req, res) => {
+    try {
+      const actor = await verifyAdminRequest(req);
+      const uid = String(req.params.uid || '');
+      if (!/^[A-Za-z0-9_-]{10,128}$/.test(uid)) return res.status(400).json({ error: 'Invalid user ID.' });
+      const patch: Record<string, any> = {};
+      if (req.body?.role !== undefined) {
+        if (!['admin', 'staff'].includes(req.body.role)) return res.status(400).json({ error: 'Role must be admin or staff.' });
+        patch.role = req.body.role;
+      }
+      if (req.body?.status !== undefined) {
+        if (!['active', 'suspended', 'inactive'].includes(req.body.status)) return res.status(400).json({ error: 'Status must be active, suspended, or inactive.' });
+        patch.status = req.body.status;
+      }
+      if (!Object.keys(patch).length) return res.status(400).json({ error: 'Provide a role or status to update.' });
+      if (uid === actor.uid && (patch.role && patch.role !== 'admin' || patch.status && patch.status !== 'active')) return res.status(400).json({ error: 'You cannot remove your own administrator access.' });
+      const targetResponse: any = await firebaseAdminRequest(firestoreDocumentUrl('users/' + encodeURIComponent(uid)));
+      const target = decodeFirestoreFields(targetResponse?.fields || {});
+      if (bootstrapAdminEmails.has(String(target.email || '').toLowerCase())) return res.status(403).json({ error: 'The bootstrap administrator account is protected from role changes.' });
+      if ((patch.role && patch.role !== 'admin' || patch.status && patch.status !== 'active') && target.role === 'admin' && target.status === 'active') {
+        const admins = (await listAdminUserProfiles()).filter((user: any) => user.role === 'admin' && user.status === 'active');
+        if (admins.length <= 1) return res.status(409).json({ error: 'Keep at least one active administrator in Hub-Mind.' });
+      }
+      const params = new URLSearchParams();
+      Object.keys(patch).forEach(key => params.append('updateMask.fieldPaths', key));
+      await firebaseAdminRequest(firestoreDocumentUrl('users/' + encodeURIComponent(uid)) + '?' + params.toString(), { method: 'PATCH', body: JSON.stringify({ fields: encodeFirestoreFields(patch) }) });
+      await logAdminUserAction(actor.uid, 'updated access for', uid, JSON.stringify(patch));
+      return res.json({ success: true, uid, ...patch });
+    } catch (error: any) {
+      const status = Number(error?.status) || 500;
+      if (status >= 500) console.error('[Admin] User update failed:', error?.message || error);
+      return res.status(status).json({ error: status === 500 ? 'Could not update this user. Check server administrative credentials and logs.' : (error?.message || 'User update failed.') });
+    }
+  });
+
+  app.delete('/api/admin/users/:uid', async (req, res) => {
+    try {
+      const actor = await verifyAdminRequest(req);
+      const uid = String(req.params.uid || '');
+      if (!/^[A-Za-z0-9_-]{10,128}$/.test(uid)) return res.status(400).json({ error: 'Invalid user ID.' });
+      if (uid === actor.uid) return res.status(400).json({ error: 'You cannot delete your own signed-in administrator account.' });
+      const targetResponse: any = await firebaseAdminRequest(firestoreDocumentUrl('users/' + encodeURIComponent(uid)));
+      const target = decodeFirestoreFields(targetResponse?.fields || {});
+      if (bootstrapAdminEmails.has(String(target.email || '').toLowerCase())) return res.status(403).json({ error: 'The bootstrap administrator account is protected from deletion.' });
+      if (target.role === 'admin' && target.status === 'active') {
+        const admins = (await listAdminUserProfiles()).filter((user: any) => user.role === 'admin' && user.status === 'active');
+        if (admins.length <= 1) return res.status(409).json({ error: 'You cannot delete the last active administrator.' });
+      }
+      await firebaseAdminRequest(firebaseAuthAdminUrl('update'), { method: 'POST', body: JSON.stringify({ localId: uid, disableUser: true }) });
+      await firebaseAdminRequest(firestoreDocumentUrl('users/' + encodeURIComponent(uid)), { method: 'DELETE' });
+      await firebaseAdminRequest(firebaseAuthAdminUrl('delete'), { method: 'POST', body: JSON.stringify({ localId: uid }) });
+      await logAdminUserAction(actor.uid, 'deleted account for', uid, 'Firebase Authentication account and users profile deleted; authored workspace records retained.');
+      return res.json({ success: true, uid, message: 'Sign-in account and user profile deleted. Existing workspace records were retained.' });
+    } catch (error: any) {
+      const status = Number(error?.status) || 500;
+      if (status >= 500) console.error('[Admin] User deletion failed:', error?.message || error);
+      return res.status(status).json({ error: status === 500 ? 'Could not delete this account. Check server administrative credentials and logs; the account may have been disabled if deletion failed part-way through.' : (error?.message || 'User deletion failed.') });
+    }
+  });
+
 
   const liveTokenRateLimits = new Map<string, { count: number; resetAt: number }>();
   app.post(["/api/live-token", "/live-token"], async (req, res) => {
@@ -237,7 +333,21 @@ async function startServer() {
 
   app.post("/api/chat", async (req, res) => {
     try {
-      const { messages, tools, systemInstruction } = req.body;
+      const { messages, tools } = req.body;
+      let systemInstruction = req.body.systemInstruction;
+      if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+        try {
+          const configDoc: any = await firebaseAdminRequest(firestoreDocumentUrl('systemSettings/jess'));
+          const adminConfig = decodeFirestoreFields(configDoc?.fields || {});
+          const extraInstructions = String(adminConfig.adminInstructions || '').trim();
+          if (extraInstructions) {
+            const existingText = typeof systemInstruction === 'string' ? systemInstruction : (systemInstruction?.parts?.[0]?.text || '');
+            systemInstruction = { parts: [{ text: existingText + '\n\nWorkspace administrator guidance (follow unless it conflicts with safety or platform rules):\n' + extraInstructions }] };
+          }
+        } catch (configError: any) {
+          if (configError?.status !== 404) console.warn('[Jess] Administrator guidance could not be loaded:', configError?.message || configError);
+        }
+      }
       
       const mapTypes = (params, toUpper) => {
         if (!params) return params;
@@ -262,7 +372,8 @@ async function startServer() {
       const geminiApiKey = process.env.GEMINI_API_KEY;
 
       // Prefer Groq / Ollama as requested
-      if (groqApiKey || ollamaUrl) {
+      const hasScreenImage = Array.isArray(messages) && messages.some((message: any) => Array.isArray(message.parts) && message.parts.some((part: any) => part?.inlineData?.data));
+      if ((groqApiKey || ollamaUrl) && !hasScreenImage) {
         try {
           const openai = new OpenAI({
             apiKey: groqApiKey || "ollama",

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, Users, Calendar, Folder, Bell, LogOut, Settings, Inbox, Plus, X, Brain, Book, Briefcase, Search, Clock3 } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Users, Calendar, Folder, Bell, LogOut, Settings, Inbox, Plus, X, Brain, Book, Briefcase, Search, Clock3, ShieldCheck } from 'lucide-react';
 import { auth, db } from '../firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { collection, addDoc, query, where, onSnapshot, getDocs, updateDoc, doc } from 'firebase/firestore';
@@ -35,6 +35,7 @@ const navItems = [
 export function Layout() {
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const visibleNavItems = profile?.role === 'admin' ? [...navItems, { to: '/workspace/admin', label: 'Admin Centre', icon: ShieldCheck }] : navItems;
   const [showCapture, setShowCapture] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -193,7 +194,7 @@ export function Layout() {
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden print:h-auto print:overflow-visible print:bg-white" style={{ backgroundColor: "#020617", color: "#f1f5f9", colorScheme: "dark" }}>
       {/* Desktop Fluid Hover Expansion Sidebar */}
       <DesktopSidebar
-        navItems={navItems}
+        navItems={visibleNavItems}
         profile={profile}
         unprocessedCount={unprocessedCount}
         onLogout={handleLogout}
@@ -327,7 +328,7 @@ export function Layout() {
 
         {/* Mobile Bottom Nav */}
         <nav className="md:hidden fixed bottom-0 w-full border-t border-slate-800 bg-slate-950/95 backdrop-blur flex items-center justify-around overflow-x-auto snap-x hide-scrollbar px-1 py-1.5 pb-safe z-30 print:hidden shadow-lg">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

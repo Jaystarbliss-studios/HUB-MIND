@@ -9,6 +9,7 @@ import { executeJessTool } from '../lib/jessTools';
 import { runJessToolExecution } from '../services/jessExecutionRuntime';
 import { resolveJessContext } from '../lib/jessContext';
 import { JessOrbVisualizer } from './JessOrbVisualizer';
+import { JessChatPanel, JessChatLauncher } from './JessChatPanel';
 import { jessBackgroundTasks, JessBackgroundTask } from '../services/jessBackgroundTasks';
 import { autoExtractMemory } from '../services/memoryService';
 import { trackAndPersistSentiment } from '../services/sentimentService';
@@ -253,6 +254,7 @@ export function JessFloatingAssistant() {
     visible: false,
   });
   const [recentMemorySaved, setRecentMemorySaved] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Context-aware Page/Document Scanner Menu
   const [showContextMenu, setShowContextMenu] = useState(false);
@@ -1439,6 +1441,8 @@ export function JessFloatingAssistant() {
           </div>
         </div>
       )}
+      <JessChatLauncher onClick={() => setChatOpen(open => !open)} />
+      {chatOpen && <JessChatPanel onClose={() => setChatOpen(false)} />}
     </>
   );
 }
