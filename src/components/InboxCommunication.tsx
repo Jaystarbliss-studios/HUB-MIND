@@ -45,17 +45,19 @@ export function InboxCommunication() {
 
   useEffect(() => {
     if (!profile?.id) return;
+    return onSnapshot(query(collection(db, 'notifications'), where('userId', '==', profile.id)), snapshot => {
+      const list = snapshot.docs.map(item => ({ id: item.id, ...(item.data() as any) } as InboxNotification));
+      list.sort((a,b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      setNotifications(list);
+    }, err => console.warn('[Inbox] Notification badge could not update:', err?.message || err));
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
     setLoading(true);
     const collectionName = tab === 'notifications' ? 'notifications' : tab === 'drafts' ? 'messageDrafts' : 'messages';
     const field = tab === 'received' ? 'recipientId' : tab === 'sent' ? 'senderId' : 'userId';
-    if (tab === 'notifications') {
-      const stop = onSnapshot(query(collection(db, collectionName), where('userId', '==', profile.id)), snapshot => {
-        const list = snapshot.docs.map(item => ({ id: item.id, ...(item.data() as any) } as InboxNotification));
-        list.sort((a,b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-        setNotifications(list); setLoading(false);
-      }, err => { console.error('[Inbox] Notifications unavailable:', err); setError('Could not load notifications. Check your connection and access.'); setLoading(false); });
-      return () => stop();
-    }
+    if (tab === 'notifications') { setLoading(false); return; }
     if (tab === 'drafts') {
       const stop = onSnapshot(query(collection(db, collectionName), where('userId', '==', profile.id)), snapshot => {
         const list = snapshot.docs.map(item => ({ id: item.id, ...(item.data() as any) } as MessageDraft));
@@ -139,7 +141,7 @@ export function InboxCommunication() {
     if (item.messageId) {
       try {
         const snapshot = await getDoc(doc(db, 'messages', item.messageId));
-        if (snapshot.exists()) setSelectedMessage({ id: snapshot.id, ...(snapshot.data() as any) } as WorkspaceMessage);
+        if (snapshot.exists()) { const message = { id: snapshot.id, ...(snapshot.data() as any) } as WorkspaceMessage; setSelectedMessage(message); if (!message.read) await updateDoc(doc(db, 'messages', message.id), { read: true, readAt: new Date().toISOString(), updatedAt: new Date().toISOString() }).catch(() => {}); }
       } catch (err) { console.warn('[Inbox] Linked message could not be opened:', err); }
     }
   };
@@ -176,10 +178,10 @@ export function InboxCommunication() {
 
       {selectedMessage && <div className="hm-inbox-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSelectedMessage(null); }}>
         <section className="hm-inbox-modal hm-inbox-message-detail" role="dialog" aria-modal="true" aria-labelledby="hm-message-title">
-          <header><div><span className="hm-inbox-modal-kicker">{tab === 'received' ? 'RECEIVED MESSAGE' : 'SENT MESSAGE'}</span><h3 id="hm-message-title">{selectedMessage.subject || 'No subject'}</h3></div><button type="button" onClick={() => setSelectedMessage(null)} aria-label="Close message"><X size={18}/></button></header>
-          <div className="hm-inbox-message-meta"><span>{tab === 'received' ? 'From' : 'To'} <strong>{tab === 'received' ? selectedMessage.senderName || selectedMessage.senderId : selectedMessage.recipientName || selectedMessage.recipientId}</strong></span><time>{selectedMessage.createdAt ? new Date(selectedMessage.createdAt).toLocaleString() : ''}</time></div>
+          <header><div><span className="hm-inbox-modal-kicker">{tab === 'received' || tab === 'notifications' ? 'RECEIVED MESSAGE' : 'SENT MESSAGE'}</span><h3 id="hm-message-title">{selectedMessage.subject || 'No subject'}</h3></div><button type="button" onClick={() => setSelectedMessage(null)} aria-label="Close message"><X size={18}/></button></header>
+          <div className="hm-inbox-message-meta"><span>{tab === 'received' || tab === 'notifications' ? 'From' : 'To'} <strong>{tab === 'received' || tab === 'notifications' ? selectedMessage.senderName || selectedMessage.senderId : selectedMessage.recipientName || selectedMessage.recipientId}</strong></span><time>{selectedMessage.createdAt ? new Date(selectedMessage.createdAt).toLocaleString() : ''}</time></div>
           <p className="hm-inbox-message-body">{selectedMessage.text}</p>
-          <footer><button type="button" className="hm-inbox-secondary" onClick={() => setSelectedMessage(null)}>Close</button>{tab === 'received' && <button type="button" className="hm-inbox-compose" onClick={() => { setSubject('Re: ' + (selectedMessage.subject || '')); setRecipientId(selectedMessage.senderId); setText(''); setSelectedMessage(null); setDraftId(null); setComposeOpen(true); }}><MessageSquare size={14}/> Reply</button>}</footer>
+          <footer><button type="button" className="hm-inbox-secondary" onClick={() => setSelectedMessage(null)}>Close</button>{(tab === 'received' || tab === 'notifications') && <button type="button" className="hm-inbox-compose" onClick={() => { setSubject('Re: ' + (selectedMessage.subject || '')); setRecipientId(selectedMessage.senderId); setText(''); setSelectedMessage(null); setDraftId(null); setComposeOpen(true); }}><MessageSquare size={14}/> Reply</button>}</footer>
         </section>
       </div>}
     </section>
