@@ -199,6 +199,8 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'list_windows', description: 'List visible Windows desktop windows with titles, process names, bounds, state and foreground status. Requires Full Control Session.', parameters: object({}) },
   { name: 'manage_windows', description: 'Manage real Windows desktop windows (not just Hub-Mind panels): focus/bring to foreground, close, minimize, maximize, restore, move, resize or snap. If the target is ambiguous, call list_windows first and use its exact title/handle. Move/resize need coordinates/dimensions; snap supports halves, corners, thirds, and an optional monitorId from list_windows. After acting, use list_windows or read_windows_screen to verify the postcondition. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window'] }, title: { type: 'string' }, handle: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, monitorId: { type: 'string' }, position: { type: 'string', enum: ['left','right','top-left','top-right','bottom-left','bottom-right','left-third','center-third','right-third'] } }, ['action']) },
   { name: 'control_mouse', description: 'Move the Windows cursor, click, double-click, right-click or scroll at physical screen coordinates. Input delivery is not proof the target action succeeded. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['mouse_move','click','double_click','right_click','scroll'] }, x: { type: 'number' }, y: { type: 'number' }, delta: { type: 'number' } }, ['action','x','y']) },
+  { name: 'start_windows_auto_scroll', description: 'Start continuous real mouse-wheel scrolling across the focused Windows desktop app or browser, at the current cursor position. Direction is up or down; speed is 1–15 wheel steps per second. Stop with stop_windows_auto_scroll or “Jess, stop”. Requires Full Control Session.', parameters: object({ direction: { type: 'string', enum: ['up','down'] }, speed: { type: 'number', description: 'Wheel steps per second, 1–15; default 4' } }) },
+  { name: 'stop_windows_auto_scroll', description: 'Stop Jess continuous system-wide mouse-wheel scrolling immediately. Requires the Windows desktop app.', parameters: object({}) },
   { name: 'drag_windows_mouse', description: 'Drag from one physical screen coordinate to another. Requires Full Control Session; the app-level result is not automatically verified.', parameters: object({ fromX: { type: 'number' }, fromY: { type: 'number' }, toX: { type: 'number' }, toY: { type: 'number' } }, ['fromX','fromY','toX','toY']) },
   { name: 'type_windows_text', description: 'Type text into the currently focused Windows app. Requires Full Control Session. Never type into password or payment fields.', parameters: object({ text: { type: 'string' } }, ['text']) },
   { name: 'press_windows_keys', description: 'Send a key or key combination to the active Windows app, e.g. CTRL+S, ALT+TAB, ENTER, ESC, WIN+R. Requires Full Control Session.', parameters: object({ keys: { type: 'string' }, holdMs: { type: 'number' } }, ['keys']) },
@@ -615,6 +617,20 @@ export async function executeJessTool(
         if (!desktop?.isDesktopApp || typeof desktop.showMain !== 'function') return { result: { success: false, error: 'Bringing the Hub-Mind workspace to the foreground is available only in the installed Windows desktop app.' } };
         const shown = await desktop.showMain();
         return { result: { success: shown === true, verified: shown === true, message: shown === true ? 'Hub-Mind workspace foreground request completed.' : 'Hub-Mind workspace foreground could not be confirmed.' } };
+      }
+      case 'start_windows_auto_scroll': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.startAutoScroll !== 'function') return { result: { success: false, error: 'System-wide auto-scroll is only available in the installed Windows desktop app.' } };
+        const status = await desktop.nativeStatus();
+        if (!status?.active) return { result: { success: false, error: 'Full Control Session is off. Enable it in Jess settings first.' } };
+        const result = await desktop.startAutoScroll({ direction: args?.direction === 'up' ? 'up' : 'down', speed: args?.speed ?? 4 });
+        return { result: { success: result?.ok === true, ...result } };
+      }
+      case 'stop_windows_auto_scroll': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.stopAutoScroll !== 'function') return { result: { success: false, error: 'System-wide auto-scroll is only available in the installed Windows desktop app.' } };
+        const result = await desktop.stopAutoScroll();
+        return { result: { success: result?.ok === true, ...result } };
       }
       case 'jess_stop': {
         const desktop = (window as any).hubMindDesktop;
