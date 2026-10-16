@@ -591,7 +591,7 @@ function startHubMindAutoScroll(options: { direction?: string; speed?: number } 
 
   const canScroll = (element: HTMLElement) => {
     if (!element.isConnected) return false;
-    const root = element === document.documentElement || element === document.body || element === document.scrollingElement;
+    const root = element === document.scrollingElement;
     const style = window.getComputedStyle(element);
     const overflow = style.overflowY;
     return element.scrollHeight - element.clientHeight > 8 && (root || overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay');
@@ -604,6 +604,8 @@ function startHubMindAutoScroll(options: { direction?: string; speed?: number } 
 
   let target: HTMLElement | null = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   while (target && target !== document.body && !canScroll(target)) target = target.parentElement;
+  // In standards-mode browsers, documentElement is the scrolling element; body.scrollTop can stay zero.
+  if (target === document.body || target === document.documentElement) target = document.scrollingElement as HTMLElement | null;
   if (!target || !canScroll(target)) {
     const candidates = Array.from(document.querySelectorAll<HTMLElement>('main, article, section, [role="main"], [role="dialog"], [data-scrollable], .overflow-y-auto, .overflow-auto, div, body, html'))
       .filter(element => canScroll(element) && isVisible(element))
