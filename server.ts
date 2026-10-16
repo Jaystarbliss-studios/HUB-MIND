@@ -14,7 +14,7 @@ import fs from "fs";
 import { createServer as createViteServer, createLogger } from "vite";
 import OpenAI from "openai";
 import { WebSocketServer } from "ws";
-import { firebaseAdminProjectId, firebaseAdminRequest, firestoreDocumentUrl, firebaseAuthAdminUrl, decodeFirestoreFields, encodeFirestoreFields } from "./src/server/firebaseAdminRest.ts";
+import { firebaseAdminRequest, firestoreDocumentUrl, firebaseAuthAdminUrl, decodeFirestoreFields, encodeFirestoreFields } from "./src/server/firebaseAdminRest.ts";
 
 const customLogger = createLogger();
 const origLoggerError = customLogger.error.bind(customLogger);
