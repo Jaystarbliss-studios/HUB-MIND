@@ -39,7 +39,7 @@ export function JessChatPanel({ onClose }: { onClose: () => void }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: next.filter(m => m.id !== 'welcome' || m.role === 'user').map(m => ({
+          messages: next.filter(m => !m.id.startsWith('welcome')).map(m => ({
             role: m.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: m.text }],
           })),
@@ -115,7 +115,7 @@ export function JessChatPanel({ onClose }: { onClose: () => void }) {
           </article>
         ))}
         {sending && <div className="jess-chat-typing"><span className="jess-chat-message-avatar"><Sparkles size={13} /></span><span className="jess-chat-typing-dots"><i /><i /><i /></span><span>Jess is thinking</span><LoaderCircle className="jess-chat-spinner" size={13} /></div>}
-        {error && <div className="jess-chat-error" role="alert">{error}<button type="button" onClick={() => void sendMessage(messages[messages.length - 1]?.role === 'user' ? messages[messages.length - 1].text : draft)}>Try again</button></div>}
+        {error && <div className="jess-chat-error" role="alert">{error}<button type="button" onClick={() => { const last = messages[messages.length - 1]; if (last?.role === 'user') { setMessages(current => current.filter(message => message.id !== last.id)); void sendMessage(last.text); } else { void sendMessage(draft); } }}>Try again</button></div>}
       </div>
 
       {messages.length <= 1 && <div className="jess-chat-starters">{starterPrompts.map(prompt => <button type="button" key={prompt.label} onClick={() => void sendMessage(prompt.text)}>{prompt.label}<span>↗</span></button>)}</div>}
