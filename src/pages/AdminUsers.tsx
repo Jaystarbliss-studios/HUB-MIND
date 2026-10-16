@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth';
 import { AdminJessSettings } from '../components/AdminJessSettings';
 import { createInvitation } from '../lib/invitations';
 import { RecurringTaskTemplate, User, ActivityLog } from '../types';
-import { Check, Copy, Loader2, Plus, Trash2, User as UserIcon, Pause, Play, Activity, Shield, Settings2, AlertTriangle } from 'lucide-react';
+import { Check, Copy, Loader2, Plus, Trash2, User as UserIcon, Pause, Play, Activity, Shield, AlertTriangle } from 'lucide-react';
 import { safeFormat } from '../lib/dateUtils';
 
 export function AdminUsers() {
