@@ -1441,7 +1441,7 @@ export function JessFloatingAssistant() {
           </div>
         </div>
       )}
-      {!isDesktopShell && <JessChatLauncher onClick={() => setChatOpen(open => !open)} />}
+      <JessChatLauncher onClick={() => setChatOpen(open => !open)} />
       {chatOpen && <JessChatPanel onClose={() => setChatOpen(false)} />}
     </>
   );
