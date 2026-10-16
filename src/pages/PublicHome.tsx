@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { ArrowRight, ArrowUpRight, Bell, Check, Download, FileText, FolderKanban, LockKeyhole, Menu, MessageCircle, Sparkles, Users, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Bell, Check, Download, FileText, FolderKanban, LockKeyhole, Menu, MessageCircle, Sparkles, X } from 'lucide-react';
 
 const FEATURES = [
   { icon: FolderKanban, title: 'Your work, in one place', text: 'Projects, tasks, documents, meetings and follow-ups in one calm workspace.' },
