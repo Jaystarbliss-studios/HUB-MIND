@@ -820,7 +820,7 @@ export async function executeJessTool(
         if (!response.ok || payload.serviceError) {
           return { result: { success: false, error: payload.text || payload.error || 'Web search is temporarily unavailable.' } };
         }
-        return { result: { success: true, query: queryText, answer: payload.text || 'No answer was returned.', sources: payload.sources || [], grounded: payload.grounded === true, model: payload.model || null } };
+        return { result: { success: true, query: queryText, answer: payload.text || 'No answer was returned.', sources: Array.isArray(payload.sources) ? payload.sources.map((source: any) => ({ title: String(source?.title || 'Web source'), url: String(source?.url || source?.uri || '') })).filter((source: any) => /^https?:\/\//i.test(source.url)) : [], grounded: payload.grounded === true, model: payload.model || null } };
       }
 
       case 'get_user_profile':
