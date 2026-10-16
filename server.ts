@@ -1189,6 +1189,16 @@ async function startServer() {
           parameters: { type: "OBJECT", properties: { action: { type: "STRING", enum: ["mouse_move", "click", "double_click", "right_click", "scroll"] }, x: { type: "NUMBER" }, y: { type: "NUMBER" }, delta: { type: "NUMBER" } }, required: ["action", "x", "y"] }
         },
         {
+          name: "start_windows_auto_scroll",
+          description: "Start continuous real Windows mouse-wheel scrolling at the current cursor position across Hub-Mind, browsers, and other desktop apps. Direction up/down and speed 1–15 wheel steps per second. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { direction: { type: "STRING", enum: ["up", "down"] }, speed: { type: "NUMBER" } } }
+        },
+        {
+          name: "stop_windows_auto_scroll",
+          description: "Stop continuous system-wide mouse-wheel scrolling immediately. Requires the Windows desktop app.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
           name: "drag_windows_mouse",
           description: "Drag the Windows mouse from one physical screen coordinate to another. Requires Full Control.",
           parameters: { type: "OBJECT", properties: { fromX: { type: "NUMBER" }, fromY: { type: "NUMBER" }, toX: { type: "NUMBER" }, toY: { type: "NUMBER" } }, required: ["fromX", "fromY", "toX", "toY"] }
@@ -1232,6 +1242,11 @@ async function startServer() {
           name: "invoke_windows_ui_element",
           description: "Activate an accessible Windows UI element by visible name, or by temporary index from list_windows_ui_elements. Numbered activation requires the exact expectedName from the listing to prevent stale-target actions. Verify the result with a screen read. Requires Full Control.",
           parameters: { type: "OBJECT", properties: { name: { type: "STRING" }, index: { type: "NUMBER" }, expectedName: { type: "STRING" } } }
+        },
+        {
+          name: "set_windows_ui_value",
+          description: "Set and verify a uniquely matched, non-read-only visible Windows control through Microsoft UI Automation ValuePattern. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: { name: { type: "STRING" }, value: { type: "STRING" } }, required: ["name", "value"] }
         },
         {
           name: "read_windows_screen",
@@ -1350,6 +1365,11 @@ async function startServer() {
         }
       ],
     },
+        {
+          name: "get_hubmind_repository_status",
+          description: "Fetch live public GitHub facts for Jaystarbliss-studios/HUB-MIND: recent commits and pull requests with merged/open status, summaries, and links. Use when asked what changed or what is implemented versus proposed. An open PR is not production; merged status alone is not runtime test evidence.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
   ];
 
   const JESS_PROMPT_INSTRUCTION = `You are an intelligent, capable AI operations assistant inside Hub-Mind. You are not a
