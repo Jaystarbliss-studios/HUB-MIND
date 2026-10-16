@@ -194,7 +194,7 @@ export function Layout() {
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden print:h-auto print:overflow-visible print:bg-white" style={{ backgroundColor: "#020617", color: "#f1f5f9", colorScheme: "dark" }}>
       {/* Desktop Fluid Hover Expansion Sidebar */}
       <DesktopSidebar
-        navItems={navItems}
+        navItems={visibleNavItems}
         profile={profile}
         unprocessedCount={unprocessedCount}
         onLogout={handleLogout}
