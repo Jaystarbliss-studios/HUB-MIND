@@ -1085,8 +1085,8 @@ async function startServer() {
         },
         {
           name: "take_windows_screenshot",
-          description: "Capture screenshots of connected Windows monitors with bounds and scale context. Requires Full Control.",
-          parameters: { type: "OBJECT", properties: {} }
+          description: "Capture a fresh Windows screenshot for visual inspection and action verification. Defaults to the primary monitor in standard detail; use detail high with an exact monitorName from list_windows for a sharper single-monitor capture. Use monitorName all for standard-detail captures of connected monitors. Requires Full Control Session.",
+          parameters: { type: "OBJECT", properties: { monitorName: { type: "STRING" }, detail: { type: "STRING", enum: ["standard", "high"] } } }
         },
         {
           name: "find_windows_ui_element",

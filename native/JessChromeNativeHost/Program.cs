@@ -8,6 +8,7 @@ const string PipeName = "hubmind-jess-chrome-v1";
 const string AllowedOrigin = "chrome-extension://baifedjcpcnkjjoikbafnkiombiaooai/";
 if (args.Length < 1 || !string.Equals(args[0], AllowedOrigin, StringComparison.Ordinal))
 {
+    Console.Error.WriteLine("Rejected Chrome native host launch: extension origin did not match the registered Jess extension.");
     Environment.ExitCode = 2;
     return;
 }
@@ -16,8 +17,9 @@ try
 {
     await pipe.ConnectAsync(10000);
 }
-catch
+catch (Exception ex)
 {
+    Console.Error.WriteLine($"Could not connect to the Hub-Mind named pipe '{PipeName}': {ex.Message}");
     Environment.ExitCode = 1;
     return;
 }
@@ -33,8 +35,9 @@ try
     bridgeToken = (await File.ReadAllTextAsync(tokenPath)).Trim();
     if (bridgeToken.Length < 32) throw new InvalidDataException("Bridge token is missing or too short.");
 }
-catch
+catch (Exception ex)
 {
+    Console.Error.WriteLine($"Could not read the per-user Jess bridge token: {ex.Message}");
     Environment.ExitCode = 3;
     return;
 }
@@ -42,6 +45,7 @@ await pipeWriter.WriteLineAsync(JsonSerializer.Serialize(new { type = "hello", t
 var acknowledgement = await pipeReader.ReadLineAsync();
 if (string.IsNullOrWhiteSpace(acknowledgement))
 {
+    Console.Error.WriteLine("Hub-Mind named pipe closed before acknowledging the native-host handshake.");
     Environment.ExitCode = 4;
     return;
 }
@@ -50,12 +54,14 @@ try
     using var document = JsonDocument.Parse(acknowledgement);
     if (!document.RootElement.TryGetProperty("type", out var ackType) || ackType.GetString() != "hello-ack")
     {
+        Console.Error.WriteLine("Hub-Mind returned an invalid native-host handshake acknowledgement.");
         Environment.ExitCode = 4;
         return;
     }
 }
-catch
+catch (Exception ex)
 {
+    Console.Error.WriteLine($"Could not parse the Hub-Mind native-host handshake acknowledgement: {ex.Message}");
     Environment.ExitCode = 4;
     return;
 }
@@ -65,7 +71,11 @@ var fromChrome = PumpNativeMessagesToPipeAsync(nativeIn, pipeWriter, stop.Token)
 var fromApp = PumpPipeMessagesToChromeAsync(pipeReader, nativeOut, stop.Token);
 await Task.WhenAny(fromChrome, fromApp);
 stop.Cancel();
-try { await Task.WhenAll(fromChrome, fromApp); } catch { }
+try { await Task.WhenAll(fromChrome, fromApp); }
+catch (Exception ex) when (ex is not OperationCanceledException)
+{
+    Console.Error.WriteLine($"Jess Chrome native-messaging bridge stopped: {ex.Message}");
+}
 Environment.ExitCode = 0;
 
 static async Task PumpNativeMessagesToPipeAsync(Stream input, StreamWriter pipeWriter, CancellationToken cancellationToken)

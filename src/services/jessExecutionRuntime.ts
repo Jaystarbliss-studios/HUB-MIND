@@ -58,6 +58,7 @@ const RETRY_SAFE_TOOLS = new Set([
   'take_windows_screenshot',
   'get_windows_time',
   'get_windows_system_info',
+  'chrome_bridge_status',
   'chrome_list_tabs',
   'chrome_read_page',
   'chrome_find_element',

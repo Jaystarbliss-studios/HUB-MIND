@@ -204,7 +204,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'press_windows_keys', description: 'Send a key or key combination to the active Windows app, e.g. CTRL+S, ALT+TAB, ENTER, ESC, WIN+R. Requires Full Control Session.', parameters: object({ keys: { type: 'string' }, holdMs: { type: 'number' } }, ['keys']) },
   { name: 'control_system_volume', description: 'Send a Windows volume up, down, or mute key event. The actual audio state must be checked separately; some audio drivers may not expose a readable state. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['volume_up','volume_down','volume_mute'] } }, ['action']) },
   { name: 'control_screen_brightness', description: 'Send a Windows brightness up or down key event. Hardware and display-driver support varies; do not claim the brightness changed without independent verification. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['brightness_up','brightness_down'] } }, ['action']) },
-  { name: 'take_windows_screenshot', description: 'Capture fresh screenshots of connected monitors, including monitor names, physical bounds and scale context. Use after visible UI actions to verify the actual postcondition when screen sharing is active. Requires Full Control Session.', parameters: object({}) },
+  { name: 'take_windows_screenshot', description: 'Capture a fresh Windows screenshot for visual inspection and action verification. Defaults to the primary monitor in standard detail; use detail high with an exact monitorName from list_windows for a sharper single-monitor capture. Use monitorName all for standard-detail captures of connected monitors. Requires Full Control Session.', parameters: object({ monitorName: { type: 'string' }, detail: { type: 'string', enum: ['standard','high'] } }) },
   { name: 'find_windows_ui_element', description: 'Find accessible Windows UI elements by visible name and return automation IDs and screen bounds. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
   { name: 'list_windows_ui_elements', description: 'List up to 50 visible, enabled accessible controls in the current foreground Windows window, numbered temporarily. Use this when the user says click/select the number shown or when the control name is unclear. The index is temporary; pass both index and the exact expectedName when invoking to prevent acting on a stale target. Requires Full Control Session.', parameters: object({}) },
   { name: 'invoke_windows_ui_element', description: 'Activate an accessible Windows UI element by visible name, or by a temporary index returned from list_windows_ui_elements. For numbered activation, pass index and the exact expectedName returned by that listing. The native helper rechecks the target name before acting. Follow with a screen read to verify the outcome. Requires Full Control Session.', parameters: object({ name: { type: 'string' }, index: { type: 'number' }, expectedName: { type: 'string' } }) },
@@ -217,6 +217,8 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'control_windows_power', description: 'Lock the Windows workstation, schedule shutdown or restart in 15 seconds, or cancel a pending shutdown/restart. Shutdown/restart require a fresh spoken yes/no confirmation; cancellation is always available. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['lock','shutdown','restart','cancel_shutdown'] } }, ['action']) },
   { name: 'get_windows_time', description: 'Read local Windows time and time zone.', parameters: object({}) },
   { name: 'get_windows_system_info', description: 'Read basic Windows computer and OS information.', parameters: object({}) },
+  { name: 'native_bridge_status', description: 'Diagnose the Windows native desktop helper without requiring Full Control. Reports whether the PowerShell sidecar is available/running, whether its script exists, the last startup/exit error, and pending requests. Use when Windows clicks, typing, screenshots, or other native actions are not bridging; this is read-only.', parameters: object({}) },
+  { name: 'chrome_bridge_status', description: 'Diagnose the installed Jess Chrome bridge without requiring Full Control. Reports whether the desktop pipe listener, native host connection and authentication handshake are healthy, plus the last bridge error. Use when Chrome control is not connecting; this is read-only.', parameters: object({}) },
   { name: 'chrome_list_tabs', description: 'List open Chrome tabs with IDs, titles, URLs and loading status. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({}) },
   { name: 'chrome_open_tab', description: 'Open an HTTP or HTTPS website in a new Chrome tab. Requires the installed Jess Chrome extension and an active Full Control Session.', parameters: object({ url: { type: 'string' }, active: { type: 'boolean' } }, ['url']) },
   { name: 'chrome_close_tab', description: 'Close a specific Chrome tab by its tab ID. Requires an explicit tabId; it never closes an unspecified active tab. Requires Full Control Session.', parameters: object({ tabId: { type: 'number' } }, ['tabId']) },
@@ -652,7 +654,7 @@ export async function executeJessTool(
         if (name === 'type_windows_text') { method = 'type_text'; payload = { text: String(args?.text || '') }; }
         if (name === 'press_windows_keys') { method = 'press_keys'; payload = { keys: String(args?.keys || ''), holdMs: args?.holdMs }; }
         if (name === 'control_system_volume' || name === 'control_screen_brightness') { method = 'media_key'; payload = { action: String(args?.action || '') }; }
-        if (name === 'take_windows_screenshot') { method = 'screenshot'; payload = {}; }
+        if (name === 'take_windows_screenshot') { method = 'screenshot'; payload = { monitorName: String(args?.monitorName || 'primary'), detail: String(args?.detail || 'standard') }; }
         if (name === 'read_windows_screen') { method = 'read_screen_text'; payload = {}; }
         if (name === 'find_windows_ui_element') { method = 'find_ui_element'; payload = { name: String(args?.name || '') }; }
         if (name === 'list_windows_ui_elements') { method = 'list_ui_elements'; payload = {}; }
@@ -668,6 +670,49 @@ export async function executeJessTool(
         const result = await desktop.nativeAction(method, payload, user.id, executionId);
         const actionStatus = result?.ok !== true ? 'failed' : result?.verified === true ? 'done_verified' : 'sent_unverified';
         return { result: { ...result, status: actionStatus, success: actionStatus !== 'failed', verified: result?.verified === true, evidence: result?.evidence ?? null, ...(actionStatus === 'sent_unverified' ? { note: 'Input was sent, but the resulting UI state was not independently verified. Do not repeat non-idempotent actions automatically.' } : {}) } };
+      }
+      case 'native_bridge_status': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.nativeStatus !== 'function') {
+          return { result: { success: false, verified: true, error: 'Native Windows bridge diagnostics are available only in the installed desktop app.' } };
+        }
+        const status = await desktop.nativeStatus();
+        const helper = status?.helper || status?.nativeBridge || {};
+        let probe: any = null;
+        if (helper.available && helper.scriptExists) {
+          try {
+            probe = await desktop.nativeAction('system_info', {}, user.id, executionId);
+          } catch (error: any) {
+            probe = { ok: false, verified: false, error: String(error?.message || 'Native helper probe failed.').slice(0, 500) };
+          }
+        }
+        const diagnosis = !helper.available
+          ? 'This is not the Windows desktop runtime. Native desktop control cannot run here.'
+          : !helper.scriptExists
+            ? 'The native helper script is missing from the expected install path. Repair or reinstall the Windows desktop package.'
+            : probe?.ok === true
+              ? 'The native helper completed a real, read-only system-info request through Electron IPC and the sidecar protocol. The bridge is responding. This does not yet prove mouse, keyboard, UI Automation or screenshot actions work.'
+              : probe?.error
+                ? 'The native helper did not complete the read-only round-trip. Inspect the probe error and jess-agent-runtime.jsonl before retrying desktop actions.'
+                : helper.lastError
+                  ? 'The native helper has reported an error. Inspect the latest error and runtime audit before retrying actions.'
+                  : 'The helper is present, but the read-only round-trip did not return a successful result.';
+        return { result: { success: true, verified: probe?.ok === true, status: helper, probe: probe ? { ok: probe.ok === true, verified: probe.verified === true, error: probe.error || null, evidence: probe.evidence || null } : null, fullControlActive: status?.active === true, diagnosis } };
+      }
+      case 'chrome_bridge_status': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.chromeStatus !== 'function') {
+          return { result: { success: false, verified: true, error: 'Chrome bridge diagnostics are available only in the installed Windows desktop app.' } };
+        }
+        const status = await desktop.chromeStatus();
+        const diagnosis = !status?.serverListening
+          ? 'The desktop named-pipe listener is not running. Restart Hub-Mind; if this persists, repair or reinstall the desktop app.'
+          : !status?.connected
+            ? 'The listener is running, but Chrome has not connected. Confirm the Jess extension is enabled in chrome://extensions and that the native host is registered.'
+            : !status?.authenticated
+              ? 'Chrome reached the pipe, but the native-host handshake is not authenticated. Repair the Chrome bridge installation and restart Chrome.'
+              : 'The Chrome native bridge is connected and authenticated.';
+        return { result: { success: true, verified: true, status, diagnosis } };
       }
       case 'chrome_list_tabs':
       case 'chrome_open_tab':

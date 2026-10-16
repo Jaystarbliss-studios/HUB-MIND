@@ -29,6 +29,7 @@ export const JESS_NATIVE_TOOL_NAMES = [
   'control_windows_power',
   'get_windows_time',
   'get_windows_system_info',
+  'chrome_bridge_status',
   'chrome_list_tabs',
   'chrome_open_tab',
   'chrome_close_tab',

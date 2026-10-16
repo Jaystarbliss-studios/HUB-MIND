@@ -16,12 +16,19 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   mcpCallTool: (modelToolName, args, userId, executionId) => ipcRenderer.invoke('hubmind:mcp-tool-call', modelToolName, args, userId, executionId),
   chromeAction: (method, args, userId, executionId) => ipcRenderer.invoke('hubmind:chrome-action', method, args, userId, executionId),
   startOfflineWake: () => ipcRenderer.invoke('hubmind:offline-wake-start'),
+  startOfflineDictation: () => ipcRenderer.invoke('hubmind:offline-dictation-start'),
   stopOfflineWake: () => ipcRenderer.invoke('hubmind:offline-wake-stop'),
   onOfflineWake: (callback) => {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('hubmind:offline-wake', listener);
     return () => ipcRenderer.removeListener('hubmind:offline-wake', listener);
+  },
+  onOfflineDictation: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('hubmind:offline-dictation', listener);
+    return () => ipcRenderer.removeListener('hubmind:offline-dictation', listener);
   },
   nativeAction: (method, args, userId, executionId) => ipcRenderer.invoke('hubmind:native-action', method, args, userId, executionId),
   showMain: () => ipcRenderer.invoke('hubmind:show-main'),

@@ -298,7 +298,7 @@ export function JessFloatingAssistant() {
       if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Screen capture is not supported by this installed app environment.');
       if (share.stream) share.stream.getTracks().forEach(track => track.stop());
       if (share.timer !== null) window.clearInterval(share.timer);
-      share.stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 1 }, audio: false });
+      share.stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 1, max: 2 } }, audio: false });
       share.video = document.createElement('video');
       share.video.muted = true;
       share.video.playsInline = true;
@@ -306,20 +306,34 @@ export function JessFloatingAssistant() {
       await share.video.play();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
+      let consecutiveFrameFailures = 0;
+      let frameFailureNotified = false;
       const sendFrame = () => {
         if (!share.video || !ctx || share.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
         const sourceWidth = share.video.videoWidth || 1280;
         const sourceHeight = share.video.videoHeight || 720;
-        const scale = Math.min(1, 1280 / sourceWidth, 1280 / sourceHeight);
+        // Keep enough pixels for readable UI text without sending native 4K frames
+        // on every tick. A fresh, bounded HD snapshot is sent once per second.
+        const scale = Math.min(1, 1920 / sourceWidth, 1920 / sourceHeight);
         canvas.width = Math.max(1, Math.round(sourceWidth * scale));
         canvas.height = Math.max(1, Math.round(sourceHeight * scale));
         ctx.drawImage(share.video, 0, 0, canvas.width, canvas.height);
-        clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.72));
+        const delivered = clientRef.current?.sendScreenFrame(canvas.toDataURL('image/jpeg', 0.84)) === true;
+        if (delivered) {
+          consecutiveFrameFailures = 0;
+          frameFailureNotified = false;
+        } else {
+          consecutiveFrameFailures += 1;
+          if (consecutiveFrameFailures >= 3 && !frameFailureNotified) {
+            frameFailureNotified = true;
+            setSpeechState({ text: 'Screen capture is active, but Jess is not receiving screen frames. Reconnect the live voice session before requesting visual analysis.', speaker: 'jess', visible: true });
+          }
+        }
       };
       sendFrame();
-      share.timer = window.setInterval(sendFrame, 1200);
+      share.timer = window.setInterval(sendFrame, 1000);
       setScreenSharingActive(true);
-      clientRef.current?.sendText('SCREEN SHARE STATUS: Screen sharing is now active. You may receive periodic screen frames. Only describe what is visible in received frames; frames are snapshots, not continuous video.');
+      clientRef.current?.sendText('SCREEN SHARE STATUS: Screen sharing is active. Jess receives a fresh HD snapshot about once per second, up to 1920 pixels on the longest edge. Frames are snapshots, not continuous video; only describe pixels present in a received frame.');
       share.stream.getVideoTracks()[0]?.addEventListener('ended', () => {
         void stopScreenSharing(false);
         setSpeechState({ text: 'Screen sharing has ended.', speaker: 'jess', visible: true });
@@ -768,10 +782,10 @@ export function JessFloatingAssistant() {
 
         if (fc.name === 'take_windows_screenshot' && Array.isArray(result.result?.evidence?.monitors)) {
           const monitors = result.result.evidence.monitors;
-          const primary = monitors.find((monitor: any) => monitor.primary) || monitors[0];
+          const selectedMonitor = monitors.find((monitor: any) => monitor.primary) || monitors[0];
           let delivered = false;
-          if (primary?.imageBase64) {
-            delivered = !!clientRef.current?.sendScreenFrame('data:image/jpeg;base64,' + primary.imageBase64);
+          if (selectedMonitor?.imageBase64) {
+            delivered = !!clientRef.current?.sendScreenFrame('data:image/jpeg;base64,' + selectedMonitor.imageBase64);
           }
           result.result.evidence = {
             ...result.result.evidence,
@@ -779,10 +793,13 @@ export function JessFloatingAssistant() {
               monitor: monitor.monitor,
               bounds: monitor.bounds,
               primary: monitor.primary,
-              imageDeliveredToJess: !!monitor.primary && delivered,
+              width: monitor.width,
+              height: monitor.height,
+              detail: monitor.detail,
+              imageDeliveredToJess: monitor === selectedMonitor && delivered,
             })),
             note: delivered
-              ? 'The primary monitor screenshot was sent to Jess as an image frame. Map image coordinates to physical screen coordinates by adding the primary monitor bounds offset; other monitors are listed but were not sent as images.'
+              ? 'The selected monitor screenshot was sent to Jess as an image frame. Map image-local coordinates to physical desktop coordinates by adding this monitor’s reported bounds offset. Other listed monitors were not sent as image frames.'
               : 'Screenshot metadata was captured, but the image frame could not be delivered to the live session.',
           };
           result.result.verified = delivered && result.result.verified === true;
@@ -1341,7 +1358,7 @@ export function JessFloatingAssistant() {
         <div className="fixed inset-0 z-[10002] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div role="dialog" aria-modal="true" aria-labelledby="jess-screen-share-title" className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 text-slate-100 shadow-2xl">
             <h3 id="jess-screen-share-title" className="text-base font-semibold">Share your screen with Jess?</h3>
-            <p className="mt-2 text-sm text-slate-400">Choose a screen or window in the system prompt. Jess will receive occasional frames while sharing is active. You can stop at any time.</p>
+            <p className="mt-2 text-sm text-slate-400">Choose a screen or window in the system prompt. Jess will receive HD snapshots about once per second while sharing is active. You can stop at any time.</p>
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" onClick={() => setScreenSharePrompt(false)} className="rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
               <button type="button" onClick={() => void beginDesktopScreenShare()} className="rounded-lg bg-teal-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-teal-400">Share screen</button>

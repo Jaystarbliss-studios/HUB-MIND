@@ -276,7 +276,7 @@ test('runtime filtering hides native tools outside the installed desktop app', (
     'list_windows',
     'chrome_open_tab',
   ]);
-  assert.equal(JESS_NATIVE_TOOL_NAMES.length, 36);
+  assert.equal(JESS_NATIVE_TOOL_NAMES.length, 37);
 });
 
 
