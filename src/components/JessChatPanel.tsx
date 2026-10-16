@@ -1,5 +1,6 @@
-import React, { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { ArrowUp, Check, Copy, LoaderCircle, MessageCircle, Plus, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import type { FormEvent, KeyboardEvent } from 'react';
+import { ArrowUp, Copy, LoaderCircle, MessageCircle, Plus, Sparkles, X } from 'lucide-react';
 
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string; at: number };
 
@@ -101,7 +102,7 @@ export function JessChatPanel({ onClose }: { onClose: () => void }) {
         </div>
       </header>
 
-      <div className="jess-chat-context"><span className="jess-chat-context-dot" /> TEXT CHAT <span>·</span> You can switch to voice by speaking to Jess separately.</div>
+      <div className="jess-chat-context"><span className="jess-chat-context-dot" /> TEXT CHAT <span>·</span> Text chat works without starting your microphone.</div>
 
       <div className="jess-chat-messages" ref={listRef} aria-live="polite">
         {messages.map((message, index) => (
