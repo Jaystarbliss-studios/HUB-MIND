@@ -49,11 +49,22 @@ export function AdminJessSettings() {
     if (profile?.role !== 'admin') return;
     setSaving(true); setError('');
     try {
-      await setDoc(doc(db, 'systemSettings', 'jess'), {
-        ...settings,
-        updatedAt: new Date().toISOString(),
-        updatedBy: profile.id,
-      }, { merge: true });
+      const timestamp = new Date().toISOString();
+      await Promise.all([
+        setDoc(doc(db, 'systemSettings', 'jess'), {
+          ...settings,
+          updatedAt: timestamp,
+          updatedBy: profile.id,
+        }, { merge: true }),
+        setDoc(doc(db, 'systemSettings', 'jessPublic'), {
+          memoryEnabled: settings.memoryEnabled,
+          screenSharingEnabled: settings.screenSharingEnabled,
+          automaticVoiceModesEnabled: settings.automaticVoiceModesEnabled,
+          offlineVoiceControlEnabled: settings.offlineVoiceControlEnabled,
+          confirmDestructiveActions: settings.confirmDestructiveActions,
+          updatedAt: timestamp,
+        }, { merge: true }),
+      ]);
       setSavedAt(new Date().toLocaleTimeString());
     } catch (err: any) {
       setError(err?.message || 'Could not save Jess settings.');
@@ -61,7 +72,7 @@ export function AdminJessSettings() {
   };
 
   const toggleRows: {key: keyof AdminJessConfig; icon: React.ElementType; title: string; description: string}[] = [
-    { key: 'memoryEnabled', icon: Brain, title: 'Conversation memory', description: 'Allow Jess chat to save conversation history and use the existing memory workflow.' },
+    { key: 'memoryEnabled', icon: Brain, title: 'Personal memory', description: 'Allow Jess to load and save user-specific memories. Conversation history remains available separately.' },
     { key: 'screenSharingEnabled', icon: Monitor, title: 'Screen sharing in chat', description: 'Allow users to deliberately share a screen snapshot with Jess while a chat is open.' },
     { key: 'automaticVoiceModesEnabled', icon: Volume2, title: 'Automatic voice-mode switching', description: 'Enable the planned intent router for dictation, live conversation, and voice commands.' },
     { key: 'offlineVoiceControlEnabled', icon: Sparkles, title: 'Local voice control', description: 'Permit the Wheelhouse integration work for offline speech recognition and deterministic desktop commands.' },
