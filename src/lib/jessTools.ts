@@ -210,6 +210,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'find_windows_ui_element', description: 'Find accessible Windows UI elements by visible name and return automation IDs and screen bounds. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
   { name: 'list_windows_ui_elements', description: 'List up to 50 visible, enabled accessible controls in the current foreground Windows window, numbered temporarily. Use this when the user says click/select the number shown or when the control name is unclear. The index is temporary; pass both index and the exact expectedName when invoking to prevent acting on a stale target. Requires Full Control Session.', parameters: object({}) },
   { name: 'invoke_windows_ui_element', description: 'Activate an accessible Windows UI element by visible name, or by a temporary index returned from list_windows_ui_elements. For numbered activation, pass index and the exact expectedName returned by that listing. The native helper rechecks the target name before acting. Follow with a screen read to verify the outcome. Requires Full Control Session.', parameters: object({ name: { type: 'string' }, index: { type: 'number' }, expectedName: { type: 'string' } }) },
+  { name: 'set_windows_ui_value', description: 'Set the value of one uniquely matched visible Windows control using Microsoft UI Automation ValuePattern, then verify the returned value. Use for accessible text fields and combo inputs; the action fails on ambiguous names or read-only controls. Requires Full Control Session.', parameters: object({ name: { type: 'string' }, value: { type: 'string' } }, ['name','value']) },
   { name: 'read_windows_screen', description: 'Read current accessible text from Windows UI Automation, with a local Windows OCR fallback when UI Automation exposes no text. Use after visible UI actions to verify the actual postcondition when screen sharing is active. OCR requires an installed Windows OCR language; secure desktop, protected content and protected controls remain unavailable. Requires Full Control Session.', parameters: object({}) },
   { name: 'open_local_windows_path', description: 'Open an existing local file or folder using its default Windows application. Requires Full Control Session. Does not execute a file as a command.', parameters: object({ path: { type: 'string' } }, ['path']) },
   { name: 'launch_windows_application', description: 'Launch an installed Windows desktop application by its visible Start Menu name or executable name (not limited to the built-in app list), bring its real desktop window into view, and verify whether a matching window appeared. Use autonomously during an active Full Control Session when the user has requested it. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
@@ -644,6 +645,7 @@ export async function executeJessTool(
       case 'read_windows_screen':
       case 'find_windows_ui_element':
       case 'list_windows_ui_elements':
+      case 'set_windows_ui_value':
       case 'invoke_windows_ui_element':
       case 'get_windows_time':
       case 'get_windows_system_info':
@@ -676,6 +678,7 @@ export async function executeJessTool(
         if (name === 'find_windows_ui_element') { method = 'find_ui_element'; payload = { name: String(args?.name || '') }; }
         if (name === 'list_windows_ui_elements') { method = 'list_ui_elements'; payload = {}; }
         if (name === 'invoke_windows_ui_element') { method = 'invoke_ui_element'; payload = { name: String(args?.name || ''), index: args?.index, expectedName: String(args?.expectedName || '') }; }
+        if (name === 'set_windows_ui_value') { method = 'set_ui_value'; payload = { name: String(args?.name || ''), value: String(args?.value ?? '') }; }
         if (name === 'launch_windows_application') { method = 'launch_app'; payload = { name: String(args?.name || '') }; }
         if (name === 'open_local_windows_path') { method = 'open_path'; payload = { path: String(args?.path || '') }; }
         if (name === 'run_windows_command_native') { method = 'run_command'; payload = { command: String(args?.command || ''), timeoutMs: args?.timeoutMs }; }
