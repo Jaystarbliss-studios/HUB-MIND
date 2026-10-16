@@ -333,7 +333,21 @@ async function startServer() {
 
   app.post("/api/chat", async (req, res) => {
     try {
-      const { messages, tools, systemInstruction } = req.body;
+      const { messages, tools } = req.body;
+      let systemInstruction = req.body.systemInstruction;
+      if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+        try {
+          const configDoc: any = await firebaseAdminRequest(firestoreDocumentUrl('systemSettings/jess'));
+          const adminConfig = decodeFirestoreFields(configDoc?.fields || {});
+          const extraInstructions = String(adminConfig.adminInstructions || '').trim();
+          if (extraInstructions) {
+            const existingText = typeof systemInstruction === 'string' ? systemInstruction : (systemInstruction?.parts?.[0]?.text || '');
+            systemInstruction = { parts: [{ text: existingText + '\n\nWorkspace administrator guidance (follow unless it conflicts with safety or platform rules):\n' + extraInstructions }] };
+          }
+        } catch (configError: any) {
+          if (configError?.status !== 404) console.warn('[Jess] Administrator guidance could not be loaded:', configError?.message || configError);
+        }
+      }
       
       const mapTypes = (params, toUpper) => {
         if (!params) return params;
@@ -358,7 +372,7 @@ async function startServer() {
       const geminiApiKey = process.env.GEMINI_API_KEY;
 
       // Prefer Groq / Ollama as requested
-      if (groqApiKey || ollamaUrl) {
+      const hasScreenImage = Array.isArray(messages) && messages.some((message: any) => Array.isArray(message.parts) && message.parts.some((part: any) => part?.inlineData?.data));\n      if ((groqApiKey || ollamaUrl) && !hasScreenImage) {
         try {
           const openai = new OpenAI({
             apiKey: groqApiKey || "ollama",
