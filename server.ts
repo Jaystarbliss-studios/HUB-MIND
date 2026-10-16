@@ -1199,6 +1199,16 @@ async function startServer() {
           parameters: { type: "OBJECT", properties: {} }
         },
         {
+          name: "show_windows_ui_numbers",
+          description: "Show temporary Wheelhouse-style numbered badges over accessible controls in the foreground Windows app. Then activate a selected number using its exact expectedName. Requires Full Control.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "hide_windows_ui_numbers",
+          description: "Hide the temporary numbered Windows UI Automation overlay.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
           name: "drag_windows_mouse",
           description: "Drag the Windows mouse from one physical screen coordinate to another. Requires Full Control.",
           parameters: { type: "OBJECT", properties: { fromX: { type: "NUMBER" }, fromY: { type: "NUMBER" }, toX: { type: "NUMBER" }, toY: { type: "NUMBER" } }, required: ["fromX", "fromY", "toX", "toY"] }
