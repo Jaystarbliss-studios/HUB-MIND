@@ -53,13 +53,15 @@ try {
   $bridgeToken = [Convert]::ToBase64String($tokenBytes)
 } finally { $random.Dispose() }
 [System.IO.File]::WriteAllText($tokenPath, $bridgeToken, [System.Text.UTF8Encoding]::new($false))
-$tokenAcl = New-Object System.Security.AccessControl.FileSecurity
+# Restrict the per-user bridge token without Set-Acl. Set-Acl may attempt
+# to write SACL/owner metadata and fail with SeSecurityPrivilege even for a
+# normal user's own token file. icacls changes the DACL only.
 $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
-$tokenAcl.SetOwner($currentSid)
-$tokenAcl.SetAccessRuleProtection($true, $false)
-$tokenRule = New-Object System.Security.AccessControl.FileSystemAccessRule -ArgumentList @($currentSid, 'FullControl', 'Allow')
-$tokenAcl.AddAccessRule($tokenRule)
-Set-Acl -LiteralPath $tokenPath -AclObject $tokenAcl
+$grant = "*$($currentSid.Value):(F)"
+& "$env:SystemRoot\System32\icacls.exe" $tokenPath /inheritance:r /grant:r $grant | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw "Could not restrict permissions on the Jess bridge token (icacls exit code $LASTEXITCODE). The token file remains at $tokenPath; remove it and rerun the installer."
+}
 
 $registryPath = Join-Path $registryRoot $hostName
 New-Item -Path $registryPath -Force | Out-Null
