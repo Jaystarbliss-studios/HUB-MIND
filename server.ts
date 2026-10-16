@@ -1199,6 +1199,16 @@ async function startServer() {
           parameters: { type: "OBJECT", properties: {} }
         },
         {
+          name: "start_hubmind_auto_scroll",
+          description: "Start adjustable auto-scroll in the current Hub-Mind reading pane, available in browser, desktop and mobile views. Scrolls only this page; use system-wide Windows auto-scroll for other apps.",
+          parameters: { type: "OBJECT", properties: { direction: { type: "STRING", enum: ["up", "down"] }, speed: { type: "NUMBER" } } }
+        },
+        {
+          name: "stop_hubmind_auto_scroll",
+          description: "Stop in-app Hub-Mind reading-pane auto-scroll.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
           name: "show_windows_ui_numbers",
           description: "Show temporary Wheelhouse-style numbered badges over accessible controls in the foreground Windows app. Then activate a selected number using its exact expectedName. Requires Full Control.",
           parameters: { type: "OBJECT", properties: {} }
@@ -1250,7 +1260,7 @@ async function startServer() {
         },
         {
           name: "invoke_windows_ui_element",
-          description: "Activate an accessible Windows UI element by visible name, or by temporary index from list_windows_ui_elements. Numbered activation requires the exact expectedName from the listing to prevent stale-target actions. Verify the result with a screen read. Requires Full Control.",
+          description: "Activate an accessible Windows UI element by visible name, or by temporary index from list_windows_ui_elements. Tries Microsoft UI Automation Invoke, SelectionItem, Toggle, and ExpandCollapse patterns; numbered activation requires exact expectedName to prevent stale-target actions. Verify the result with a screen read. Requires Full Control.",
           parameters: { type: "OBJECT", properties: { name: { type: "STRING" }, index: { type: "NUMBER" }, expectedName: { type: "STRING" } } }
         },
         {

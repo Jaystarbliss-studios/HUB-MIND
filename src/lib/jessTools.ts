@@ -201,6 +201,8 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'control_mouse', description: 'Move the Windows cursor, click, double-click, right-click or scroll at physical screen coordinates. Input delivery is not proof the target action succeeded. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['mouse_move','click','double_click','right_click','scroll'] }, x: { type: 'number' }, y: { type: 'number' }, delta: { type: 'number' } }, ['action','x','y']) },
   { name: 'start_windows_auto_scroll', description: 'Start continuous real mouse-wheel scrolling across the focused Windows desktop app or browser, at the current cursor position. Direction is up or down; speed is 1–15 wheel steps per second. Stop with stop_windows_auto_scroll or “Jess, stop”. Requires Full Control Session.', parameters: object({ direction: { type: 'string', enum: ['up','down'] }, speed: { type: 'number', description: 'Wheel steps per second, 1–15; default 4' } }) },
   { name: 'stop_windows_auto_scroll', description: 'Stop Jess continuous system-wide mouse-wheel scrolling immediately. Requires the Windows desktop app.', parameters: object({}) },
+  { name: 'start_hubmind_auto_scroll', description: 'Start adjustable in-app auto-scroll for the current Hub-Mind reading pane in browser, desktop, or mobile view. It scrolls only this page (not other apps), 30 pixels per step, speed 1–15 steps per second. Use the system-wide Windows version for other desktop apps.', parameters: object({ direction: { type: 'string', enum: ['up','down'] }, speed: { type: 'number', description: 'Steps per second, 1–15; default 4' } }) },
+  { name: 'stop_hubmind_auto_scroll', description: 'Stop in-app Hub-Mind reading-pane auto-scroll immediately.', parameters: object({}) },
   { name: 'show_windows_ui_numbers', description: 'Draw temporary Wheelhouse-style numbered badges over visible accessible controls in the foreground Windows app. Use when the user says show numbers or when control names are ambiguous. The overlay is click-through and hides after 20 seconds; then use invoke_windows_ui_element with the returned index and exact expectedName. Requires Full Control Session.', parameters: object({}) },
   { name: 'hide_windows_ui_numbers', description: 'Hide the temporary numbered Windows UI Automation overlay immediately.', parameters: object({}) },
   { name: 'drag_windows_mouse', description: 'Drag from one physical screen coordinate to another. Requires Full Control Session; the app-level result is not automatically verified.', parameters: object({ fromX: { type: 'number' }, fromY: { type: 'number' }, toX: { type: 'number' }, toY: { type: 'number' } }, ['fromX','fromY','toX','toY']) },
@@ -211,7 +213,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'take_windows_screenshot', description: 'Capture a fresh Windows screenshot for visual inspection and action verification. Defaults to the primary monitor in standard detail; use detail high with an exact monitorName from list_windows for a sharper single-monitor capture. Use monitorName all for standard-detail captures of connected monitors. Requires Full Control Session.', parameters: object({ monitorName: { type: 'string' }, detail: { type: 'string', enum: ['standard','high'] } }) },
   { name: 'find_windows_ui_element', description: 'Find accessible Windows UI elements by visible name and return automation IDs and screen bounds. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
   { name: 'list_windows_ui_elements', description: 'List up to 50 visible, enabled accessible controls in the current foreground Windows window, numbered temporarily. Use this when the user says click/select the number shown or when the control name is unclear. The index is temporary; pass both index and the exact expectedName when invoking to prevent acting on a stale target. Requires Full Control Session.', parameters: object({}) },
-  { name: 'invoke_windows_ui_element', description: 'Activate an accessible Windows UI element by visible name, or by a temporary index returned from list_windows_ui_elements. For numbered activation, pass index and the exact expectedName returned by that listing. The native helper rechecks the target name before acting. Follow with a screen read to verify the outcome. Requires Full Control Session.', parameters: object({ name: { type: 'string' }, index: { type: 'number' }, expectedName: { type: 'string' } }) },
+  { name: 'invoke_windows_ui_element', description: 'Activate an accessible Windows UI element by visible name, or by a temporary index returned from list_windows_ui_elements. Uses Microsoft UI Automation Invoke, SelectionItem, Toggle, then ExpandCollapse patterns as available; numbered activation requires index plus exact expectedName so the native helper rechecks the target before acting. Follow with a screen read to verify the outcome. Requires Full Control Session.', parameters: object({ name: { type: 'string' }, index: { type: 'number' }, expectedName: { type: 'string' } }) },
   { name: 'set_windows_ui_value', description: 'Set the value of one uniquely matched visible Windows control using Microsoft UI Automation ValuePattern, then verify the returned value. Use for accessible text fields and combo inputs; the action fails on ambiguous names or read-only controls. Requires Full Control Session.', parameters: object({ name: { type: 'string' }, value: { type: 'string' } }, ['name','value']) },
   { name: 'read_windows_screen', description: 'Read current accessible text from Windows UI Automation, with a local Windows OCR fallback when UI Automation exposes no text. Use after visible UI actions to verify the actual postcondition when screen sharing is active. OCR requires an installed Windows OCR language; secure desktop, protected content and protected controls remain unavailable. Requires Full Control Session.', parameters: object({}) },
   { name: 'open_local_windows_path', description: 'Open an existing local file or folder using its default Windows application. Requires Full Control Session. Does not execute a file as a command.', parameters: object({ path: { type: 'string' } }, ['path']) },
@@ -570,6 +572,71 @@ async function canWrite(collectionName: string, id: string, user: User) {
 
 const navigatePayload = (path: string) => ({ type: 'navigate', path });
 
+let hubMindAutoScrollTimer: number | null = null;
+let hubMindAutoScrollElement: HTMLElement | null = null;
+
+function stopHubMindAutoScroll(reason = 'user-stop') {
+  if (typeof window !== 'undefined' && hubMindAutoScrollTimer !== null) window.clearInterval(hubMindAutoScrollTimer);
+  hubMindAutoScrollTimer = null;
+  hubMindAutoScrollElement = null;
+  return { ok: true, active: false, reason };
+}
+
+function startHubMindAutoScroll(options: { direction?: string; speed?: number } = {}) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') throw new Error('In-app auto-scroll requires a browser view.');
+  const direction = options.direction === 'up' ? 'up' : 'down';
+  const speed = Number(options.speed ?? 4);
+  if (!Number.isFinite(speed) || speed < 1 || speed > 15) throw new Error('In-app scroll speed must be between 1 and 15 steps per second.');
+  stopHubMindAutoScroll('restarted');
+
+  const canScroll = (element: HTMLElement) => {
+    if (!element.isConnected) return false;
+    const root = element === document.scrollingElement;
+    const style = window.getComputedStyle(element);
+    const overflow = style.overflowY;
+    return element.scrollHeight - element.clientHeight > 8 && (root || overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay');
+  };
+  const isVisible = (element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight && style.display !== 'none' && style.visibility !== 'hidden';
+  };
+
+  let target: HTMLElement | null = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  while (target && target !== document.body && !canScroll(target)) target = target.parentElement;
+  // In standards-mode browsers, documentElement is the scrolling element; body.scrollTop can stay zero.
+  if (target === document.body || target === document.documentElement) target = document.scrollingElement as HTMLElement | null;
+  if (!target || !canScroll(target)) {
+    const candidates = Array.from(document.querySelectorAll<HTMLElement>('main, article, section, [role="main"], [role="dialog"], [data-scrollable], .overflow-y-auto, .overflow-auto, div, body, html'))
+      .filter(element => canScroll(element) && isVisible(element))
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
+        return (br.width * br.height) - (ar.width * ar.height);
+      });
+    target = candidates[0] || (document.scrollingElement as HTMLElement | null);
+  }
+  if (!target || !canScroll(target)) throw new Error('No scrollable reading area was found. Focus the document or reading pane and try again.');
+
+  hubMindAutoScrollElement = target;
+  const step = direction === 'down' ? 30 : -30;
+  const intervalMs = Math.max(40, Math.round(1000 / speed));
+  const container = {
+    tag: target.tagName.toLowerCase(),
+    id: target.id || '',
+    role: target.getAttribute('role') || '',
+    className: typeof target.className === 'string' ? target.className.slice(0, 120) : '',
+  };
+  hubMindAutoScrollTimer = window.setInterval(() => {
+    const active = hubMindAutoScrollElement;
+    if (!active || !active.isConnected) { stopHubMindAutoScroll('reading-area-removed'); return; }
+    const before = active.scrollTop;
+    active.scrollBy({ top: step, behavior: 'instant' as ScrollBehavior });
+    const atBoundary = direction === 'down' ? active.scrollTop + active.clientHeight >= active.scrollHeight - 2 : active.scrollTop <= 2;
+    if (active.scrollTop === before && atBoundary) stopHubMindAutoScroll('scroll-boundary-reached');
+  }, intervalMs);
+  return { ok: true, active: true, direction, speed, intervalMs, pixelsPerStep: 30, container, note: 'Scrolls only this Hub-Mind page/reading area. Use stop_hubmind_auto_scroll to stop.' };
+}
+
 export async function executeJessTool(
   name: string,
   args: any,
@@ -621,6 +688,14 @@ export async function executeJessTool(
         if (!desktop?.isDesktopApp || typeof desktop.showMain !== 'function') return { result: { success: false, error: 'Bringing the Hub-Mind workspace to the foreground is available only in the installed Windows desktop app.' } };
         const shown = await desktop.showMain();
         return { result: { success: shown === true, verified: shown === true, message: shown === true ? 'Hub-Mind workspace foreground request completed.' : 'Hub-Mind workspace foreground could not be confirmed.' } };
+      }
+      case 'start_hubmind_auto_scroll': {
+        const result = startHubMindAutoScroll({ direction: args?.direction === 'up' ? 'up' : 'down', speed: args?.speed ?? 4 });
+        return { result: { success: result.ok === true, ...result } };
+      }
+      case 'stop_hubmind_auto_scroll': {
+        const result = stopHubMindAutoScroll('user-request');
+        return { result: { success: result.ok === true, ...result } };
       }
       case 'start_windows_auto_scroll': {
         const desktop = (window as any).hubMindDesktop;
