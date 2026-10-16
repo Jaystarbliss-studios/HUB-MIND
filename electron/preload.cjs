@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   stopFullControl: () => ipcRenderer.invoke('hubmind:full-control-stop'),
   startAutoScroll: (options) => ipcRenderer.invoke('hubmind:auto-scroll-start', options),
   stopAutoScroll: () => ipcRenderer.invoke('hubmind:auto-scroll-stop'),
+  showUiNumberOverlay: () => ipcRenderer.invoke('hubmind:ui-number-overlay-show'),
+  hideUiNumberOverlay: () => ipcRenderer.invoke('hubmind:ui-number-overlay-hide'),
   nativeStatus: () => ipcRenderer.invoke('hubmind:native-status'),
   chromeStatus: () => ipcRenderer.invoke('hubmind:chrome-status'),
   installChromeBridge: () => ipcRenderer.invoke('hubmind:install-chrome-bridge'),
