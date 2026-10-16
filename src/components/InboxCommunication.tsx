@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
 import { Bell, CheckCheck, FileText, Inbox, Loader2, Mail, MessageSquare, Plus, Send, Trash2, X } from 'lucide-react';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
@@ -137,8 +137,10 @@ export function InboxCommunication() {
   const markNotificationRead = async (item: InboxNotification) => {
     if (!item.read) await updateDoc(doc(db, 'notifications', item.id), { read: true, readAt: new Date().toISOString() }).catch(err => console.warn('[Inbox] Could not mark notification read:', err));
     if (item.messageId) {
-      const message = messages.find(m => m.id === item.messageId);
-      if (message) setSelectedMessage(message);
+      try {
+        const snapshot = await getDoc(doc(db, 'messages', item.messageId));
+        if (snapshot.exists()) setSelectedMessage({ id: snapshot.id, ...(snapshot.data() as any) } as WorkspaceMessage);
+      } catch (err) { console.warn('[Inbox] Linked message could not be opened:', err); }
     }
   };
 
