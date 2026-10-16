@@ -99,6 +99,8 @@ const nativeToolNames = [
   'control_mouse',
   'start_windows_auto_scroll',
   'stop_windows_auto_scroll',
+  'show_windows_ui_numbers',
+  'hide_windows_ui_numbers',
   'drag_windows_mouse',
   'type_windows_text',
   'press_windows_keys',
