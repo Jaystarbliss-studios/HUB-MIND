@@ -373,7 +373,11 @@ async function startServer() {
 
       // Prefer Groq / Ollama as requested
       const hasScreenImage = Array.isArray(messages) && messages.some((message: any) => Array.isArray(message.parts) && message.parts.some((part: any) => part?.inlineData?.data));
-      if ((groqApiKey || ollamaUrl) && !hasScreenImage) {
+      const requiresGoogleGrounding = req.body.useSearch === true || req.body.searchGrounding === true || req.body.useMaps === true || req.body.mapsGrounding === true;
+      // Search/map grounding must go through Gemini's grounding tools. The Groq/Ollama
+      // compatibility path silently ignored these flags, which made Jess claim to search
+      // without returning grounded results or source links.
+      if ((groqApiKey || ollamaUrl) && !hasScreenImage && !requiresGoogleGrounding) {
         try {
           const openai = new OpenAI({
             apiKey: groqApiKey || "ollama",
@@ -485,6 +489,9 @@ async function startServer() {
       let response = null;
 
       if (!geminiApiKey) {
+        if (requiresGoogleGrounding) {
+          return res.status(503).json({ error: "Jess web search requires GEMINI_API_KEY because public web grounding is not available through the configured Groq/Ollama fallback. Configure the server-side Gemini key and retry." });
+        }
         return res.status(500).json({ error: "No AI provider configured. Add GROQ_API_KEY, OLLAMA_API_URL or GEMINI_API_KEY." });
       }
 
@@ -577,13 +584,25 @@ async function startServer() {
       }
 
       const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+      const sources = (groundingMetadata?.groundingChunks || [])
+        .map((chunk: any) => chunk?.web?.uri ? {
+          title: String(chunk.web.title || chunk.web.uri).slice(0, 300),
+          url: String(chunk.web.uri).slice(0, 2000),
+        } : null)
+        .filter(Boolean);
+      const textContent = response.text
+        || response.candidates?.[0]?.content?.parts?.map((part: any) => part?.text).filter(Boolean).join("\n")
+        || "";
 
-      res.json({ 
-        text: response.text, 
+      res.json({
+        text: textContent,
         functionCalls: response.functionCalls,
         message: response.candidates?.[0]?.content,
-        groundingChunks: groundingMetadata?.groundingChunks,
-        webSearchQueries: groundingMetadata?.webSearchQueries,
+        groundingChunks: groundingMetadata?.groundingChunks || [],
+        webSearchQueries: groundingMetadata?.webSearchQueries || [],
+        sources,
+        grounded: sources.length > 0 || (groundingMetadata?.webSearchQueries || []).length > 0,
+        model: response.modelVersion || null,
       });
     } catch (error: any) {
       console.error("API Error:", error);
