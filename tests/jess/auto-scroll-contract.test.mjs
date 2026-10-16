@@ -13,6 +13,7 @@ test('Hub-Mind in-app auto-scroll is available without native Windows permission
   assert.match(tools, /name: 'stop_hubmind_auto_scroll'/);
   assert.match(tools, /function startHubMindAutoScroll/);
   assert.match(tools, /window\.setInterval/);
+  assert.match(tools, /target === document\.body \|\| target === document\.documentElement/);
   assert.match(tools, /pixelsPerStep: 30/);
   assert.match(tools, /scroll-boundary-reached/);
   assert.match(live, /name: "start_hubmind_auto_scroll"/);
