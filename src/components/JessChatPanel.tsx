@@ -27,6 +27,7 @@ export function JessChatPanel({ onClose }: { onClose: () => void }) {
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [screenError, setScreenError] = useState('');
   const [screenSharingAllowed, setScreenSharingAllowed] = useState(true);
+  const [memoryEnabled, setMemoryEnabled] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -74,11 +75,13 @@ export function JessChatPanel({ onClose }: { onClose: () => void }) {
   }, []);
 
   useEffect(() => {
-    if (profile?.role !== 'admin') return;
-    return onSnapshot(doc(db, 'systemSettings', 'jess'), snapshot => {
-      setScreenSharingAllowed(snapshot.exists() ? snapshot.data().screenSharingEnabled !== false : true);
-    }, () => setScreenSharingAllowed(true));
-  }, [profile?.role]);
+    if (!profile?.id) return;
+    return onSnapshot(doc(db, 'systemSettings', 'jessPublic'), snapshot => {
+      const data = snapshot.exists() ? snapshot.data() : {};
+      setScreenSharingAllowed(data.screenSharingEnabled !== false);
+      setMemoryEnabled(data.memoryEnabled !== false);
+    }, () => { setScreenSharingAllowed(true); setMemoryEnabled(true); });
+  }, [profile?.id]);
 
   const startNewChat = () => {
     setActiveConversationId(null);
@@ -172,8 +175,8 @@ export function JessChatPanel({ onClose }: { onClose: () => void }) {
         });
       }
 
-      const memories = await getUserMemories(profile.id);
-      const memoryContext = formatMemoriesForPrompt(memories);
+      const memories = memoryEnabled ? await getUserMemories(profile.id) : [];
+      const memoryContext = memoryEnabled ? formatMemoriesForPrompt(memories) : 'Personal memory is disabled by the workspace administrator.';
       const systemText = 'You are Jess, the thoughtful, capable AI assistant inside Hub-Mind by Jaystarbliss Studios. Be warm, sharp, practical, and honest. Write naturally, not generically. Ask a focused clarifying question only when genuinely needed. Do not claim to have performed actions in the user’s workspace unless a connected tool has actually done so. Keep responses readable and useful.\n\nUser memory available to personalise this conversation:\n' + memoryContext;
       const requestMessages = next.filter(m => !m.id.startsWith('welcome')).map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
