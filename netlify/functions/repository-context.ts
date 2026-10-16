@@ -7,7 +7,7 @@ const headers = {
 };
 const responseJson = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
-  headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60, s-maxage=60' },
 });
 async function githubJson(path: string) {
   const response = await fetch(API + path, { headers, signal: AbortSignal.timeout(9000) });
