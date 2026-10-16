@@ -12,7 +12,8 @@ type AdminJessConfig = {
   confirmDestructiveActions: boolean;
   adminInstructions: string;
 };
-type AdminJessToggleKey = Exclude<keyof AdminJessConfig, 'adminInstructions'>;\nconst DEFAULTS: AdminJessConfig = {
+type AdminJessToggleKey = Exclude<keyof AdminJessConfig, 'adminInstructions'>;
+const DEFAULTS: AdminJessConfig = {
   memoryEnabled: true,
   screenSharingEnabled: true,
   automaticVoiceModesEnabled: true,
