@@ -201,6 +201,8 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'control_mouse', description: 'Move the Windows cursor, click, double-click, right-click or scroll at physical screen coordinates. Input delivery is not proof the target action succeeded. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['mouse_move','click','double_click','right_click','scroll'] }, x: { type: 'number' }, y: { type: 'number' }, delta: { type: 'number' } }, ['action','x','y']) },
   { name: 'start_windows_auto_scroll', description: 'Start continuous real mouse-wheel scrolling across the focused Windows desktop app or browser, at the current cursor position. Direction is up or down; speed is 1–15 wheel steps per second. Stop with stop_windows_auto_scroll or “Jess, stop”. Requires Full Control Session.', parameters: object({ direction: { type: 'string', enum: ['up','down'] }, speed: { type: 'number', description: 'Wheel steps per second, 1–15; default 4' } }) },
   { name: 'stop_windows_auto_scroll', description: 'Stop Jess continuous system-wide mouse-wheel scrolling immediately. Requires the Windows desktop app.', parameters: object({}) },
+  { name: 'show_windows_ui_numbers', description: 'Draw temporary Wheelhouse-style numbered badges over visible accessible controls in the foreground Windows app. Use when the user says show numbers or when control names are ambiguous. The overlay is click-through and hides after 20 seconds; then use invoke_windows_ui_element with the returned index and exact expectedName. Requires Full Control Session.', parameters: object({}) },
+  { name: 'hide_windows_ui_numbers', description: 'Hide the temporary numbered Windows UI Automation overlay immediately.', parameters: object({}) },
   { name: 'drag_windows_mouse', description: 'Drag from one physical screen coordinate to another. Requires Full Control Session; the app-level result is not automatically verified.', parameters: object({ fromX: { type: 'number' }, fromY: { type: 'number' }, toX: { type: 'number' }, toY: { type: 'number' } }, ['fromX','fromY','toX','toY']) },
   { name: 'type_windows_text', description: 'Type text into the currently focused Windows app. Requires Full Control Session. Never type into password or payment fields.', parameters: object({ text: { type: 'string' } }, ['text']) },
   { name: 'press_windows_keys', description: 'Send a key or key combination to the active Windows app, e.g. CTRL+S, ALT+TAB, ENTER, ESC, WIN+R. Requires Full Control Session.', parameters: object({ keys: { type: 'string' }, holdMs: { type: 'number' } }, ['keys']) },
@@ -626,6 +628,20 @@ export async function executeJessTool(
         const status = await desktop.nativeStatus();
         if (!status?.active) return { result: { success: false, error: 'Full Control Session is off. Enable it in Jess settings first.' } };
         const result = await desktop.startAutoScroll({ direction: args?.direction === 'up' ? 'up' : 'down', speed: args?.speed ?? 4 });
+        return { result: { success: result?.ok === true, ...result } };
+      }
+      case 'show_windows_ui_numbers': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.showUiNumberOverlay !== 'function') return { result: { success: false, error: 'Numbered UI overlays are only available in the installed Windows desktop app.' } };
+        const status = await desktop.nativeStatus();
+        if (!status?.active) return { result: { success: false, error: 'Full Control Session is off. Enable it in Jess settings first.' } };
+        const result = await desktop.showUiNumberOverlay();
+        return { result: { success: result?.ok === true, ...result } };
+      }
+      case 'hide_windows_ui_numbers': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.hideUiNumberOverlay !== 'function') return { result: { success: false, error: 'Numbered UI overlays are only available in the installed Windows desktop app.' } };
+        const result = await desktop.hideUiNumberOverlay();
         return { result: { success: result?.ok === true, ...result } };
       }
       case 'stop_windows_auto_scroll': {
