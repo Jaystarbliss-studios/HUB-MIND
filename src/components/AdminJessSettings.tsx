@@ -12,7 +12,7 @@ type AdminJessConfig = {
   confirmDestructiveActions: boolean;
   adminInstructions: string;
 };
-const DEFAULTS: AdminJessConfig = {
+type AdminJessToggleKey = Exclude<keyof AdminJessConfig, 'adminInstructions'>;\nconst DEFAULTS: AdminJessConfig = {
   memoryEnabled: true,
   screenSharingEnabled: true,
   automaticVoiceModesEnabled: true,
@@ -71,7 +71,7 @@ export function AdminJessSettings() {
     } finally { setSaving(false); }
   };
 
-  const toggleRows: {key: keyof AdminJessConfig; icon: React.ElementType; title: string; description: string}[] = [
+  const toggleRows: {key: AdminJessToggleKey; icon: React.ElementType; title: string; description: string}[] = [
     { key: 'memoryEnabled', icon: Brain, title: 'Personal memory', description: 'Allow Jess to load and save user-specific memories. Conversation history remains available separately.' },
     { key: 'screenSharingEnabled', icon: Monitor, title: 'Screen sharing in chat', description: 'Allow users to deliberately share a screen snapshot with Jess while a chat is open.' },
     { key: 'automaticVoiceModesEnabled', icon: Volume2, title: 'Automatic voice-mode switching', description: 'Enable the planned intent router for dictation, live conversation, and voice commands.' },
