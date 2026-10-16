@@ -2,14 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
+import { AdminJessSettings } from '../components/AdminJessSettings';
 import { createInvitation } from '../lib/invitations';
 import { RecurringTaskTemplate, User, ActivityLog } from '../types';
-import { Check, Copy, Loader2, Plus, Trash2, User as UserIcon, Pause, Play, Activity } from 'lucide-react';
+import { Check, Copy, Loader2, Plus, Trash2, User as UserIcon, Pause, Play, Activity, Shield, Settings2, AlertTriangle } from 'lucide-react';
 import { safeFormat } from '../lib/dateUtils';
 
 export function AdminUsers() {
-  const { profile } = useAuth();
-  const [tab, setTab] = useState<'people' | 'recurring' | 'activity'>('people');
+  const { profile, user: firebaseUser } = useAuth();
+  const [tab, setTab] = useState<'people' | 'recurring' | 'activity' | 'jess'>('people');
+  const [accessBusyId, setAccessBusyId] = useState<string | null>(null);
+  const [accessError, setAccessError] = useState('');
+  const [accessSuccess, setAccessSuccess] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [templates, setTemplates] = useState<RecurringTaskTemplate[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
@@ -75,6 +79,45 @@ export function AdminUsers() {
     await navigator.clipboard.writeText(inviteLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const updateUserAccess = async (target: User, patch: { role?: 'admin' | 'staff'; status?: 'active' | 'suspended' | 'inactive' }) => {
+    if (!firebaseUser) return;
+    setAccessBusyId(target.id); setAccessError(''); setAccessSuccess('');
+    try {
+      const token = await firebaseUser.getIdToken();
+      const response = await fetch('/api/admin/users/' + encodeURIComponent(target.id), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify(patch),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || 'Could not update this account.');
+      setAccessSuccess('Access updated for ' + (target.name || target.email) + '.');
+    } catch (error: any) {
+      setAccessError(error?.message || 'Could not update this account.');
+    } finally { setAccessBusyId(null); }
+  };
+
+  const deleteUserAccount = async (target: User) => {
+    if (!firebaseUser) return;
+    const confirmed = window.confirm(
+      'Permanently delete ' + (target.name || target.email) + '?\n\nThis disables and deletes their Firebase sign-in account and removes their user profile. Existing documents, tasks, and other workspace records are retained. This cannot be undone.'
+    );
+    if (!confirmed) return;
+    setAccessBusyId(target.id); setAccessError(''); setAccessSuccess('');
+    try {
+      const token = await firebaseUser.getIdToken();
+      const response = await fetch('/api/admin/users/' + encodeURIComponent(target.id), {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + token },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || 'Could not delete this account.');
+      setAccessSuccess('Deleted the sign-in account and profile for ' + (target.name || target.email) + '.');
+    } catch (error: any) {
+      setAccessError(error?.message || 'Could not delete this account.');
+    } finally { setAccessBusyId(null); }
   };
 
   const toggleDay = (day: number) =>
@@ -145,6 +188,12 @@ export function AdminUsers() {
           Recurring Task Templates
         </button>
         <button
+          onClick={() => setTab('jess')}
+          className={`pb-3 text-sm font-bold transition-colors cursor-pointer ${tab === 'jess' ? 'text-accent border-b-2 border-accent' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          Jess Settings
+        </button>
+        <button
           onClick={() => setTab('activity')}
           className={`pb-3 text-sm font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
             tab === 'activity' ? 'text-accent border-b-2 border-accent' : 'text-slate-500 hover:text-slate-300'
@@ -155,6 +204,9 @@ export function AdminUsers() {
         </button>
       </div>
 
+      {accessError && <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200 flex gap-2"><AlertTriangle className="w-4 h-4 shrink-0 mt-0.5"/><span>{accessError}</span></div>}
+      {accessSuccess && <div role="status" className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-200">{accessSuccess}</div>}
+      {tab === 'jess' && <AdminJessSettings />}
       {tab === 'people' && (
         <section className="space-y-4">
           <div className="flex justify-end">
@@ -195,19 +247,34 @@ export function AdminUsers() {
           )}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             {users.map(u => (
-              <div key={u.id} className="p-4 border-b border-slate-800 last:border-0 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 min-w-0">
+              <div key={u.id} className="p-4 border-b border-slate-800 last:border-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(280px,auto)] gap-4">
+                <div className="flex items-start gap-3 min-w-0">
                   <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center overflow-hidden shrink-0">
                     {u.photoUrl ? <img src={u.photoUrl} alt="" className="w-full h-full object-cover" /> : <UserIcon className="w-5 h-5 text-slate-400" />}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{u.name}</p>
+                    <p className="text-sm font-semibold text-white truncate">{u.name || u.displayName || 'Unnamed user'}</p>
                     <p className="text-xs text-slate-500 truncate">@{u.username} · {u.email}</p>
+                    <p className="mt-1 text-[10px] text-slate-600 break-all">User ID: {u.id}</p>
+                    {u.id === profile?.id && <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-teal-300"><Shield className="w-3 h-3"/> Your account</span>}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-[10px] uppercase font-bold">
-                  <span className="px-2 py-1 rounded bg-slate-800 text-slate-300">{u.role}</span>
-                  <span className="px-2 py-1 rounded bg-slate-800 text-slate-400">{u.status}</span>
+                <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                  <label className="grid gap-1 text-[9px] uppercase tracking-wider text-slate-500">
+                    Role
+                    <select aria-label={'Role for ' + (u.name || u.email)} disabled={accessBusyId === u.id || u.id === profile?.id} value={u.role || 'staff'} onChange={e => void updateUserAccess(u, { role: e.target.value as 'admin' | 'staff' })} className="min-w-[108px] rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs font-semibold normal-case tracking-normal text-slate-200 disabled:opacity-50">
+                      <option value="staff">Staff</option><option value="admin">Admin</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-[9px] uppercase tracking-wider text-slate-500">
+                    Status
+                    <select aria-label={'Status for ' + (u.name || u.email)} disabled={accessBusyId === u.id || u.id === profile?.id} value={u.status || 'active'} onChange={e => void updateUserAccess(u, { status: e.target.value as 'active' | 'suspended' | 'inactive' })} className="min-w-[118px] rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs font-semibold normal-case tracking-normal text-slate-200 disabled:opacity-50">
+                      <option value="active">Active</option><option value="suspended">Suspended</option><option value="inactive">Inactive</option>
+                    </select>
+                  </label>
+                  <button type="button" onClick={() => void deleteUserAccount(u)} disabled={accessBusyId === u.id || u.id === profile?.id} className="mt-4 inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-rose-500/25 px-2.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40" title="Delete sign-in account and profile">
+                    {accessBusyId === u.id ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <Trash2 className="w-3.5 h-3.5"/>} Delete
+                  </button>
                 </div>
               </div>
             ))}
