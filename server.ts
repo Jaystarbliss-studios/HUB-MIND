@@ -1199,6 +1199,16 @@ async function startServer() {
           parameters: { type: "OBJECT", properties: {} }
         },
         {
+          name: "start_hubmind_auto_scroll",
+          description: "Start adjustable auto-scroll in the current Hub-Mind reading pane, available in browser, desktop and mobile views. Scrolls only this page; use system-wide Windows auto-scroll for other apps.",
+          parameters: { type: "OBJECT", properties: { direction: { type: "STRING", enum: ["up", "down"] }, speed: { type: "NUMBER" } } }
+        },
+        {
+          name: "stop_hubmind_auto_scroll",
+          description: "Stop in-app Hub-Mind reading-pane auto-scroll.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
           name: "show_windows_ui_numbers",
           description: "Show temporary Wheelhouse-style numbered badges over accessible controls in the foreground Windows app. Then activate a selected number using its exact expectedName. Requires Full Control.",
           parameters: { type: "OBJECT", properties: {} }
