@@ -32,6 +32,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/repository-context"
+  to = "/.netlify/functions/repository-context"
+  status = 200
+
+[[redirects]]
   from = "/api/live-token"
   to = "/.netlify/functions/live-token"
   status = 200
