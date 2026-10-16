@@ -240,6 +240,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'search_workspace', description: 'Search the signed-in workspace for documents, tasks, projects, clients and records by keywords.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }, ['query']) },
   { name: 'search_google_drive', description: 'Search file names and indexed full text in the signed-in user’s connected Google Drive. Read-only; requires Google Drive permission to be granted in Hub-Mind.', parameters: object({ query: { type: 'string', description: 'Optional phrase to search in Drive' }, limit: { type: 'number', description: 'Maximum results, up to 20' } }) },
   { name: 'search_web', description: 'Search the public web for current information, research a topic, fact-check a claim, or inspect a supplied URL. Returns a grounded answer and source links. Use when the user asks you to browse, search online, or find current information.', parameters: object({ query: { type: 'string', description: 'A specific web search question or URL to inspect' } }, ['query']) },
+  { name: 'get_hubmind_repository_status', description: 'Fetch live public GitHub facts for Jaystarbliss-studios/HUB-MIND: recent commits, recent pull requests, whether each PR is merged/open, descriptions and links. Use whenever asked what changed, what is implemented versus still planned, repo health/status, or whether work reached main. Distinguish merged code from verified runtime behavior; commit/PR text is not proof that tests passed.', parameters: object({}) },
   
   // Workspace Users & Directory
   { name: 'list_workspace_users', description: 'List and search colleagues, team members, and users in the Hub-Mind workspace to find usernames, roles, and contacts for sharing resources, assigning tasks, and sending schedules.', parameters: object({ query: { type: 'string', description: 'Optional search query by name, username, or email' }, limit: { type: 'number' } }) },
@@ -801,6 +802,15 @@ export async function executeJessTool(
         const result = await desktop.openUserPath(String(args?.path || ''));
         return { result: { success: !!result?.opened, ...result } };
       }
+      case 'get_hubmind_repository_status': {
+        const response = await fetch('/api/repository-context', { method: 'GET', headers: { Accept: 'application/json' } });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.error) {
+          return { result: { success: false, error: String(payload.detail || payload.error || 'Could not retrieve live Hub-Mind repository status.') } };
+        }
+        return { result: { success: true, ...payload } };
+      }
+
       case 'search_web': {
         const queryText = String(args?.query || '').trim();
         if (!queryText || queryText.length > 2000) {
