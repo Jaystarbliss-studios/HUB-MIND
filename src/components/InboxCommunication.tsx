@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
-import { Bell, CheckCheck, FileText, Inbox, Loader2, Mail, MessageSquare, Plus, Send, Trash2, X } from 'lucide-react';
+import { Bell, FileText, Inbox, Loader2, Mail, MessageSquare, Plus, Send, Trash2, X } from 'lucide-react';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import './inbox-communication.css';
