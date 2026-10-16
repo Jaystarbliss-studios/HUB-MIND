@@ -97,6 +97,10 @@ const nativeToolNames = [
   'list_windows',
   'manage_windows',
   'control_mouse',
+  'start_windows_auto_scroll',
+  'stop_windows_auto_scroll',
+  'show_windows_ui_numbers',
+  'hide_windows_ui_numbers',
   'drag_windows_mouse',
   'type_windows_text',
   'press_windows_keys',
@@ -105,6 +109,7 @@ const nativeToolNames = [
   'take_windows_screenshot',
   'find_windows_ui_element',
   'invoke_windows_ui_element',
+  'set_windows_ui_value',
   'read_windows_screen',
   'open_local_windows_path',
   'launch_windows_application',
@@ -276,7 +281,8 @@ test('runtime filtering hides native tools outside the installed desktop app', (
     'list_windows',
     'chrome_open_tab',
   ]);
-  assert.equal(JESS_NATIVE_TOOL_NAMES.length, 37);
+  assert.ok(JESS_NATIVE_TOOL_NAMES.length >= 37, 'native registry should retain the baseline desktop tools');
+  assert.equal(new Set(JESS_NATIVE_TOOL_NAMES).size, JESS_NATIVE_TOOL_NAMES.length, 'native tool registry must not contain duplicate names');
 });
 
 

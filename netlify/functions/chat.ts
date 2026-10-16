@@ -75,7 +75,7 @@ function sourceList(chunks: any[] = []) {
     const uri = typeof web?.uri === 'string' ? web.uri : '';
     if (!uri || !/^https?:\/\//i.test(uri) || seen.has(uri)) return [];
     seen.add(uri);
-    return [{ title: typeof web?.title === 'string' && web.title.trim() ? web.title : 'Web source', uri }];
+    return [{ title: typeof web?.title === 'string' && web.title.trim() ? web.title : 'Web source', uri, url: uri }];
   });
 }
 

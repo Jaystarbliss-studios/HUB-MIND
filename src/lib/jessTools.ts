@@ -199,6 +199,10 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'list_windows', description: 'List visible Windows desktop windows with titles, process names, bounds, state and foreground status. Requires Full Control Session.', parameters: object({}) },
   { name: 'manage_windows', description: 'Manage real Windows desktop windows (not just Hub-Mind panels): focus/bring to foreground, close, minimize, maximize, restore, move, resize or snap. If the target is ambiguous, call list_windows first and use its exact title/handle. Move/resize need coordinates/dimensions; snap supports halves, corners, thirds, and an optional monitorId from list_windows. After acting, use list_windows or read_windows_screen to verify the postcondition. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window'] }, title: { type: 'string' }, handle: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, monitorId: { type: 'string' }, position: { type: 'string', enum: ['left','right','top-left','top-right','bottom-left','bottom-right','left-third','center-third','right-third'] } }, ['action']) },
   { name: 'control_mouse', description: 'Move the Windows cursor, click, double-click, right-click or scroll at physical screen coordinates. Input delivery is not proof the target action succeeded. Requires Full Control Session.', parameters: object({ action: { type: 'string', enum: ['mouse_move','click','double_click','right_click','scroll'] }, x: { type: 'number' }, y: { type: 'number' }, delta: { type: 'number' } }, ['action','x','y']) },
+  { name: 'start_windows_auto_scroll', description: 'Start continuous real mouse-wheel scrolling across the focused Windows desktop app or browser, at the current cursor position. Direction is up or down; speed is 1–15 wheel steps per second. Stop with stop_windows_auto_scroll or “Jess, stop”. Requires Full Control Session.', parameters: object({ direction: { type: 'string', enum: ['up','down'] }, speed: { type: 'number', description: 'Wheel steps per second, 1–15; default 4' } }) },
+  { name: 'stop_windows_auto_scroll', description: 'Stop Jess continuous system-wide mouse-wheel scrolling immediately. Requires the Windows desktop app.', parameters: object({}) },
+  { name: 'show_windows_ui_numbers', description: 'Draw temporary Wheelhouse-style numbered badges over visible accessible controls in the foreground Windows app. Use when the user says show numbers or when control names are ambiguous. The overlay is click-through and hides after 20 seconds; then use invoke_windows_ui_element with the returned index and exact expectedName. Requires Full Control Session.', parameters: object({}) },
+  { name: 'hide_windows_ui_numbers', description: 'Hide the temporary numbered Windows UI Automation overlay immediately.', parameters: object({}) },
   { name: 'drag_windows_mouse', description: 'Drag from one physical screen coordinate to another. Requires Full Control Session; the app-level result is not automatically verified.', parameters: object({ fromX: { type: 'number' }, fromY: { type: 'number' }, toX: { type: 'number' }, toY: { type: 'number' } }, ['fromX','fromY','toX','toY']) },
   { name: 'type_windows_text', description: 'Type text into the currently focused Windows app. Requires Full Control Session. Never type into password or payment fields.', parameters: object({ text: { type: 'string' } }, ['text']) },
   { name: 'press_windows_keys', description: 'Send a key or key combination to the active Windows app, e.g. CTRL+S, ALT+TAB, ENTER, ESC, WIN+R. Requires Full Control Session.', parameters: object({ keys: { type: 'string' }, holdMs: { type: 'number' } }, ['keys']) },
@@ -208,6 +212,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'find_windows_ui_element', description: 'Find accessible Windows UI elements by visible name and return automation IDs and screen bounds. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
   { name: 'list_windows_ui_elements', description: 'List up to 50 visible, enabled accessible controls in the current foreground Windows window, numbered temporarily. Use this when the user says click/select the number shown or when the control name is unclear. The index is temporary; pass both index and the exact expectedName when invoking to prevent acting on a stale target. Requires Full Control Session.', parameters: object({}) },
   { name: 'invoke_windows_ui_element', description: 'Activate an accessible Windows UI element by visible name, or by a temporary index returned from list_windows_ui_elements. For numbered activation, pass index and the exact expectedName returned by that listing. The native helper rechecks the target name before acting. Follow with a screen read to verify the outcome. Requires Full Control Session.', parameters: object({ name: { type: 'string' }, index: { type: 'number' }, expectedName: { type: 'string' } }) },
+  { name: 'set_windows_ui_value', description: 'Set the value of one uniquely matched visible Windows control using Microsoft UI Automation ValuePattern, then verify the returned value. Use for accessible text fields and combo inputs; the action fails on ambiguous names or read-only controls. Requires Full Control Session.', parameters: object({ name: { type: 'string' }, value: { type: 'string' } }, ['name','value']) },
   { name: 'read_windows_screen', description: 'Read current accessible text from Windows UI Automation, with a local Windows OCR fallback when UI Automation exposes no text. Use after visible UI actions to verify the actual postcondition when screen sharing is active. OCR requires an installed Windows OCR language; secure desktop, protected content and protected controls remain unavailable. Requires Full Control Session.', parameters: object({}) },
   { name: 'open_local_windows_path', description: 'Open an existing local file or folder using its default Windows application. Requires Full Control Session. Does not execute a file as a command.', parameters: object({ path: { type: 'string' } }, ['path']) },
   { name: 'launch_windows_application', description: 'Launch an installed Windows desktop application by its visible Start Menu name or executable name (not limited to the built-in app list), bring its real desktop window into view, and verify whether a matching window appeared. Use autonomously during an active Full Control Session when the user has requested it. Requires Full Control Session.', parameters: object({ name: { type: 'string' } }, ['name']) },
@@ -238,6 +243,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'search_workspace', description: 'Search the signed-in workspace for documents, tasks, projects, clients and records by keywords.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }, ['query']) },
   { name: 'search_google_drive', description: 'Search file names and indexed full text in the signed-in user’s connected Google Drive. Read-only; requires Google Drive permission to be granted in Hub-Mind.', parameters: object({ query: { type: 'string', description: 'Optional phrase to search in Drive' }, limit: { type: 'number', description: 'Maximum results, up to 20' } }) },
   { name: 'search_web', description: 'Search the public web for current information, research a topic, fact-check a claim, or inspect a supplied URL. Returns a grounded answer and source links. Use when the user asks you to browse, search online, or find current information.', parameters: object({ query: { type: 'string', description: 'A specific web search question or URL to inspect' } }, ['query']) },
+  { name: 'get_hubmind_repository_status', description: 'Fetch live public GitHub facts for Jaystarbliss-studios/HUB-MIND: recent commits, recent pull requests, whether each PR is merged/open, descriptions and links. Use whenever asked what changed, what is implemented versus still planned, repo health/status, or whether work reached main. Distinguish merged code from verified runtime behavior; commit/PR text is not proof that tests passed.', parameters: object({}) },
   
   // Workspace Users & Directory
   { name: 'list_workspace_users', description: 'List and search colleagues, team members, and users in the Hub-Mind workspace to find usernames, roles, and contacts for sharing resources, assigning tasks, and sending schedules.', parameters: object({ query: { type: 'string', description: 'Optional search query by name, username, or email' }, limit: { type: 'number' } }) },
@@ -616,6 +622,34 @@ export async function executeJessTool(
         const shown = await desktop.showMain();
         return { result: { success: shown === true, verified: shown === true, message: shown === true ? 'Hub-Mind workspace foreground request completed.' : 'Hub-Mind workspace foreground could not be confirmed.' } };
       }
+      case 'start_windows_auto_scroll': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.startAutoScroll !== 'function') return { result: { success: false, error: 'System-wide auto-scroll is only available in the installed Windows desktop app.' } };
+        const status = await desktop.nativeStatus();
+        if (!status?.active) return { result: { success: false, error: 'Full Control Session is off. Enable it in Jess settings first.' } };
+        const result = await desktop.startAutoScroll({ direction: args?.direction === 'up' ? 'up' : 'down', speed: args?.speed ?? 4 });
+        return { result: { success: result?.ok === true, ...result } };
+      }
+      case 'show_windows_ui_numbers': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.showUiNumberOverlay !== 'function') return { result: { success: false, error: 'Numbered UI overlays are only available in the installed Windows desktop app.' } };
+        const status = await desktop.nativeStatus();
+        if (!status?.active) return { result: { success: false, error: 'Full Control Session is off. Enable it in Jess settings first.' } };
+        const result = await desktop.showUiNumberOverlay();
+        return { result: { success: result?.ok === true, ...result } };
+      }
+      case 'hide_windows_ui_numbers': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.hideUiNumberOverlay !== 'function') return { result: { success: false, error: 'Numbered UI overlays are only available in the installed Windows desktop app.' } };
+        const result = await desktop.hideUiNumberOverlay();
+        return { result: { success: result?.ok === true, ...result } };
+      }
+      case 'stop_windows_auto_scroll': {
+        const desktop = (window as any).hubMindDesktop;
+        if (!desktop?.isDesktopApp || typeof desktop.stopAutoScroll !== 'function') return { result: { success: false, error: 'System-wide auto-scroll is only available in the installed Windows desktop app.' } };
+        const result = await desktop.stopAutoScroll();
+        return { result: { success: result?.ok === true, ...result } };
+      }
       case 'jess_stop': {
         const desktop = (window as any).hubMindDesktop;
         if (!desktop?.isDesktopApp || typeof desktop.stopFullControl !== 'function') return { result: { success: false, error: 'Native control is only available in the installed Windows desktop app.' } };
@@ -627,6 +661,7 @@ export async function executeJessTool(
       case 'read_windows_screen':
       case 'find_windows_ui_element':
       case 'list_windows_ui_elements':
+      case 'set_windows_ui_value':
       case 'invoke_windows_ui_element':
       case 'get_windows_time':
       case 'get_windows_system_info':
@@ -659,6 +694,7 @@ export async function executeJessTool(
         if (name === 'find_windows_ui_element') { method = 'find_ui_element'; payload = { name: String(args?.name || '') }; }
         if (name === 'list_windows_ui_elements') { method = 'list_ui_elements'; payload = {}; }
         if (name === 'invoke_windows_ui_element') { method = 'invoke_ui_element'; payload = { name: String(args?.name || ''), index: args?.index, expectedName: String(args?.expectedName || '') }; }
+        if (name === 'set_windows_ui_value') { method = 'set_ui_value'; payload = { name: String(args?.name || ''), value: String(args?.value ?? '') }; }
         if (name === 'launch_windows_application') { method = 'launch_app'; payload = { name: String(args?.name || '') }; }
         if (name === 'open_local_windows_path') { method = 'open_path'; payload = { path: String(args?.path || '') }; }
         if (name === 'run_windows_command_native') { method = 'run_command'; payload = { command: String(args?.command || ''), timeoutMs: args?.timeoutMs }; }
@@ -668,6 +704,7 @@ export async function executeJessTool(
         if (name === 'get_windows_time') { method = 'get_time'; payload = {}; }
         if (name === 'get_windows_system_info') { method = 'system_info'; payload = {}; }
         const result = await desktop.nativeAction(method, payload, user.id, executionId);
+        if (name === 'invoke_windows_ui_element' && result?.ok === true) { try { await desktop.hideUiNumberOverlay?.(); } catch {} }
         const actionStatus = result?.ok !== true ? 'failed' : result?.verified === true ? 'done_verified' : 'sent_unverified';
         return { result: { ...result, status: actionStatus, success: actionStatus !== 'failed', verified: result?.verified === true, evidence: result?.evidence ?? null, ...(actionStatus === 'sent_unverified' ? { note: 'Input was sent, but the resulting UI state was not independently verified. Do not repeat non-idempotent actions automatically.' } : {}) } };
       }
@@ -785,6 +822,15 @@ export async function executeJessTool(
         const result = await desktop.openUserPath(String(args?.path || ''));
         return { result: { success: !!result?.opened, ...result } };
       }
+      case 'get_hubmind_repository_status': {
+        const response = await fetch('/api/repository-context', { method: 'GET', headers: { Accept: 'application/json' } });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.error) {
+          return { result: { success: false, error: String(payload.detail || payload.error || 'Could not retrieve live Hub-Mind repository status.') } };
+        }
+        return { result: { success: true, ...payload } };
+      }
+
       case 'search_web': {
         const queryText = String(args?.query || '').trim();
         if (!queryText || queryText.length > 2000) {
@@ -804,7 +850,7 @@ export async function executeJessTool(
         if (!response.ok || payload.serviceError) {
           return { result: { success: false, error: payload.text || payload.error || 'Web search is temporarily unavailable.' } };
         }
-        return { result: { success: true, query: queryText, answer: payload.text || 'No answer was returned.', sources: payload.sources || [], grounded: payload.grounded === true, model: payload.model || null } };
+        return { result: { success: true, query: queryText, answer: payload.text || 'No answer was returned.', sources: Array.isArray(payload.sources) ? payload.sources.map((source: any) => ({ title: String(source?.title || 'Web source'), url: String(source?.url || source?.uri || '') })).filter((source: any) => /^https?:\/\//i.test(source.url)) : [], grounded: payload.grounded === true, model: payload.model || null } };
       }
 
       case 'get_user_profile':

@@ -26,6 +26,9 @@ let fullControlConsentGranted = false;
 let controlAuditPath = null;
 let offlineWakeProcess = null;
 let offlineWakeMode = null;
+let autoScrollSession = null;
+let uiNumberOverlayWindows = [];
+let uiNumberOverlayTimer = null;
 let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
 let offlineWakeConsentLoaded = false;
@@ -498,7 +501,120 @@ function activateFullControl(reason = 'settings') {
   auditNativeAction({ event: 'full-control-started', reason, startedAt: controlSessionStartedAt, userId: controlSessionUserId });
   return { ok: true, active: true, startedAt: controlSessionStartedAt, stopHotkey: 'Ctrl+Alt+Shift+J' };
 }
+function hideUiNumberOverlay(reason = 'user-hide') {
+  if (uiNumberOverlayTimer) { clearTimeout(uiNumberOverlayTimer); uiNumberOverlayTimer = null; }
+  const windows = uiNumberOverlayWindows;
+  uiNumberOverlayWindows = [];
+  for (const win of windows) {
+    try { if (!win.isDestroyed()) win.close(); } catch {}
+  }
+  auditNativeAction({ event: 'ui-number-overlay-hidden', reason, windows: windows.length });
+  return { ok: true, visible: false, reason };
+}
+async function showUiNumberOverlay() {
+  if (process.platform !== 'win32') throw new Error('Numbered Windows UI overlays are available only in the Windows desktop app.');
+  if (!fullControlActive || !controlSessionSecret) throw new Error('Enable Jess Full Control before showing numbered Windows controls.');
+  hideUiNumberOverlay('replaced');
+  const result = await nativeAgent.call('list_ui_elements', {}, 10000);
+  const elements = result?.evidence?.elements;
+  if (result?.ok !== true || !Array.isArray(elements) || elements.length === 0) {
+    throw new Error(result?.error || 'Microsoft UI Automation found no visible, named controls in the foreground window.');
+  }
+  const displays = screen.getAllDisplays();
+  const escapedElements = elements.slice(0, 50).map((element, index) => ({
+    index: index + 1,
+    name: String(element.name || '').slice(0, 240),
+    automationId: String(element.automationId || '').slice(0, 240),
+    controlType: String(element.controlType || ''),
+    bounds: element.bounds,
+  }));
+  for (const display of displays) {
+    const factor = Number(display.scaleFactor) || 1;
+    const physical = {
+      x: display.bounds.x * factor, y: display.bounds.y * factor,
+      width: display.bounds.width * factor, height: display.bounds.height * factor,
+    };
+    const localItems = escapedElements.filter(item => {
+      const b = item.bounds || {};
+      const cx = Number(b.x) + Number(b.width) / 2;
+      const cy = Number(b.y) + Number(b.height) / 2;
+      return cx >= physical.x && cy >= physical.y && cx < physical.x + physical.width && cy < physical.y + physical.height;
+    }).map(item => ({
+      ...item,
+      left: Math.max(0, Math.min(display.bounds.width - 24, (Number(item.bounds.x) - physical.x) / factor)),
+      top: Math.max(0, Math.min(display.bounds.height - 24, (Number(item.bounds.y) - physical.y) / factor)),
+    }));
+    if (!localItems.length) continue;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><style>
+      *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:Segoe UI,Arial,sans-serif}
+      .number{position:absolute;min-width:23px;height:23px;padding:0 5px;border:2px solid #fff;border-radius:7px;background:#b91c1c;color:#fff;font-size:12px;font-weight:800;line-height:19px;text-align:center;box-shadow:0 1px 6px #000b;white-space:nowrap}
+    </style></head><body><script>const items=${JSON.stringify(localItems).replace(/</g,'\\u003c')};for(const item of items){const badge=document.createElement('div');badge.className='number';badge.textContent=String(item.index);badge.title=item.name;badge.style.left=item.left+'px';badge.style.top=item.top+'px';document.body.appendChild(badge);}</script></body></html>`;
+    const win = new BrowserWindow({
+      x: display.bounds.x, y: display.bounds.y, width: display.bounds.width, height: display.bounds.height,
+      frame: false, transparent: true, backgroundColor: '#00000000', resizable: false, movable: false,
+      minimizable: false, maximizable: false, closable: true, focusable: false, skipTaskbar: true,
+      hasShadow: false, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    win.setAlwaysOnTop(true, 'screen-saver');
+    win.setIgnoreMouseEvents(true, { forward: true });
+    try { win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); } catch {}
+    win.on('closed', () => { uiNumberOverlayWindows = uiNumberOverlayWindows.filter(current => current !== win); });
+    uiNumberOverlayWindows.push(win);
+    await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  }
+  if (!uiNumberOverlayWindows.length) throw new Error('Could not position the numbered UI overlay on any connected display.');
+  uiNumberOverlayTimer = setTimeout(() => hideUiNumberOverlay('timeout'), 20000);
+  uiNumberOverlayTimer.unref?.();
+  auditNativeAction({ event: 'ui-number-overlay-shown', elements: escapedElements.length, windows: uiNumberOverlayWindows.length });
+  return { ok: true, visible: true, count: escapedElements.length, elements: escapedElements, autoHideMs: 20000, note: 'Say the number and expected control name to activate it safely; the native helper rechecks the current target before clicking.' };
+}
+function stopAutoScroll(reason = 'user-stop') {
+  if (!autoScrollSession) return { ok: true, active: false, reason };
+  const previous = autoScrollSession;
+  autoScrollSession = null;
+  if (previous.timer) clearTimeout(previous.timer);
+  auditNativeAction({ event: 'auto-scroll-stopped', reason, direction: previous.direction, speed: previous.speed });
+  return { ok: true, active: false, reason };
+}
+function startAutoScroll(options = {}) {
+  if (process.platform !== 'win32') throw new Error('System-wide auto-scroll is available only in the Windows desktop app.');
+  if (!fullControlActive || !controlSessionSecret) throw new Error('Enable Jess Full Control before starting system-wide auto-scroll.');
+  const direction = options.direction === 'up' ? 'up' : 'down';
+  const speed = Number(options.speed ?? 4);
+  if (!Number.isFinite(speed) || speed < 1 || speed > 15) throw new Error('Auto-scroll speed must be between 1 and 15 wheel steps per second.');
+  stopAutoScroll('restarted');
+  const session = { direction, speed, x: null, y: null, timer: null, startedAt: new Date().toISOString() };
+  autoScrollSession = session;
+  const tick = async () => {
+    if (autoScrollSession !== session || !fullControlActive) return;
+    try {
+      const delta = direction === 'down' ? -120 : 120;
+      const result = await nativeAgent.call('scroll', { x: session.x, y: session.y, delta }, 5000);
+      if (result?.ok !== true) throw new Error(result?.error || 'Windows did not accept the wheel event.');
+      if (autoScrollSession !== session) return;
+      session.timer = setTimeout(tick, Math.max(50, Math.round(1000 / speed)));
+      session.timer.unref?.();
+    } catch (error) {
+      auditNativeAction({ event: 'auto-scroll-failed', direction, speed, error: String(error?.message || error).slice(0, 300) });
+      stopAutoScroll('native-error');
+    }
+  };
+  return nativeAgent.call('cursor_position', {}, 5000).then(position => {
+    if (autoScrollSession !== session) return { ok: false, active: false, error: 'Auto-scroll was cancelled before it started.' };
+    if (position?.ok !== true || !position?.evidence || !Number.isFinite(position.evidence.x) || !Number.isFinite(position.evidence.y)) {
+      stopAutoScroll('cursor-position-unavailable');
+      throw new Error(position?.error || 'Could not read the current Windows cursor position.');
+    }
+    session.x = position.evidence.x;
+    session.y = position.evidence.y;
+    auditNativeAction({ event: 'auto-scroll-started', direction, speed, x: session.x, y: session.y });
+    void tick();
+    return { ok: true, active: true, direction, speed, x: session.x, y: session.y, startedAt: session.startedAt, note: 'Uses real Windows mouse-wheel events at the current cursor location across desktop apps and browsers.' };
+  });
+}
 function stopFullControl(reason = 'user-stop') {
+  stopAutoScroll('full-control-stopped');
+  hideUiNumberOverlay('full-control-stopped');
   fullControlActive = false;
   controlSessionSecret = null;
   controlSessionStartedAt = null;
@@ -763,11 +879,27 @@ app.whenReady().then(() => {
     auditNativeAction({ event: 'chrome-action-result', method, userId, executionId: correlationId, durationMs: Date.now() - started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
     return result;
   });
+  ipcMain.handle('hubmind:ui-number-overlay-show', async (event) => {
+    assertTrustedSender(event);
+    return showUiNumberOverlay();
+  });
+  ipcMain.handle('hubmind:ui-number-overlay-hide', (event) => {
+    assertTrustedSender(event);
+    return hideUiNumberOverlay('user-request');
+  });
+  ipcMain.handle('hubmind:auto-scroll-start', async (event, options = {}) => {
+    assertTrustedSender(event);
+    return startAutoScroll(options && typeof options === 'object' ? options : {});
+  });
+  ipcMain.handle('hubmind:auto-scroll-stop', (event) => {
+    assertTrustedSender(event);
+    return stopAutoScroll('user-stop');
+  });
   ipcMain.handle('hubmind:native-action', async (event, method, args, userId, executionId) => {
     assertTrustedSender(event);
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
     if (!['get_time','system_info'].includes(method) && (!fullControlActive || !controlSessionSecret)) throw new Error('Native action blocked because Jess Full Control is not active.');
-    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','list_ui_elements','find_ui_element','invoke_ui_element','launch_app','run_command','file_action','clipboard_action','system_power_action','media_key','get_time','system_info','open_path']);
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','list_ui_elements','find_ui_element','invoke_ui_element','launch_app','run_command','file_action','clipboard_action','system_power_action','media_key','get_time','system_info','open_path','cursor_position','set_ui_value']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method, { userId, executionId: correlationId });
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
