@@ -82,7 +82,7 @@ service cloud.firestore {
       allow delete: if admin() || (member() && resource.data.userId == request.auth.uid);
     }
     match /systemSettings/{settingId} {
-      allow get, list: if admin();
+      allow get, list: if admin() || (member() && settingId == 'jessPublic');
       allow create, update, delete: if admin();
     }
     match /activityLogs/{id} { allow get, list: if admin() || member(); allow create: if member(); allow update, delete: if admin(); }
