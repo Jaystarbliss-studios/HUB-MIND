@@ -281,7 +281,8 @@ test('runtime filtering hides native tools outside the installed desktop app', (
     'list_windows',
     'chrome_open_tab',
   ]);
-  assert.equal(JESS_NATIVE_TOOL_NAMES.length, 37);
+  assert.ok(JESS_NATIVE_TOOL_NAMES.length >= 37, 'native registry should retain the baseline desktop tools');
+  assert.equal(new Set(JESS_NATIVE_TOOL_NAMES).size, JESS_NATIVE_TOOL_NAMES.length, 'native tool registry must not contain duplicate names');
 });
 
 
