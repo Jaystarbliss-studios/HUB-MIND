@@ -27,6 +27,8 @@ let controlAuditPath = null;
 let offlineWakeProcess = null;
 let offlineWakeMode = null;
 let autoScrollSession = null;
+let uiNumberOverlayWindows = [];
+let uiNumberOverlayTimer = null;
 let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
 let offlineWakeConsentLoaded = false;
@@ -499,6 +501,73 @@ function activateFullControl(reason = 'settings') {
   auditNativeAction({ event: 'full-control-started', reason, startedAt: controlSessionStartedAt, userId: controlSessionUserId });
   return { ok: true, active: true, startedAt: controlSessionStartedAt, stopHotkey: 'Ctrl+Alt+Shift+J' };
 }
+function hideUiNumberOverlay(reason = 'user-hide') {
+  if (uiNumberOverlayTimer) { clearTimeout(uiNumberOverlayTimer); uiNumberOverlayTimer = null; }
+  const windows = uiNumberOverlayWindows;
+  uiNumberOverlayWindows = [];
+  for (const win of windows) {
+    try { if (!win.isDestroyed()) win.close(); } catch {}
+  }
+  auditNativeAction({ event: 'ui-number-overlay-hidden', reason, windows: windows.length });
+  return { ok: true, visible: false, reason };
+}
+async function showUiNumberOverlay() {
+  if (process.platform !== 'win32') throw new Error('Numbered Windows UI overlays are available only in the Windows desktop app.');
+  if (!fullControlActive || !controlSessionSecret) throw new Error('Enable Jess Full Control before showing numbered Windows controls.');
+  hideUiNumberOverlay('replaced');
+  const result = await nativeAgent.call('list_ui_elements', {}, 10000);
+  const elements = result?.evidence?.elements;
+  if (result?.ok !== true || !Array.isArray(elements) || elements.length === 0) {
+    throw new Error(result?.error || 'Microsoft UI Automation found no visible, named controls in the foreground window.');
+  }
+  const displays = screen.getAllDisplays();
+  const escapedElements = elements.slice(0, 50).map((element, index) => ({
+    index: index + 1,
+    name: String(element.name || '').slice(0, 240),
+    automationId: String(element.automationId || '').slice(0, 240),
+    controlType: String(element.controlType || ''),
+    bounds: element.bounds,
+  }));
+  for (const display of displays) {
+    const factor = Number(display.scaleFactor) || 1;
+    const physical = {
+      x: display.bounds.x * factor, y: display.bounds.y * factor,
+      width: display.bounds.width * factor, height: display.bounds.height * factor,
+    };
+    const localItems = escapedElements.filter(item => {
+      const b = item.bounds || {};
+      const cx = Number(b.x) + Number(b.width) / 2;
+      const cy = Number(b.y) + Number(b.height) / 2;
+      return cx >= physical.x && cy >= physical.y && cx < physical.x + physical.width && cy < physical.y + physical.height;
+    }).map(item => ({
+      ...item,
+      left: Math.max(0, Math.min(display.bounds.width - 24, (Number(item.bounds.x) - physical.x) / factor)),
+      top: Math.max(0, Math.min(display.bounds.height - 24, (Number(item.bounds.y) - physical.y) / factor)),
+    }));
+    if (!localItems.length) continue;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><style>
+      *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:Segoe UI,Arial,sans-serif}
+      .number{position:absolute;min-width:23px;height:23px;padding:0 5px;border:2px solid #fff;border-radius:7px;background:#b91c1c;color:#fff;font-size:12px;font-weight:800;line-height:19px;text-align:center;box-shadow:0 1px 6px #000b;white-space:nowrap}
+    </style></head><body><script>const items=${JSON.stringify(localItems).replace(/</g,'\\u003c')};for(const item of items){const badge=document.createElement('div');badge.className='number';badge.textContent=String(item.index);badge.title=item.name;badge.style.left=item.left+'px';badge.style.top=item.top+'px';document.body.appendChild(badge);}</script></body></html>`;
+    const win = new BrowserWindow({
+      x: display.bounds.x, y: display.bounds.y, width: display.bounds.width, height: display.bounds.height,
+      frame: false, transparent: true, backgroundColor: '#00000000', resizable: false, movable: false,
+      minimizable: false, maximizable: false, closable: true, focusable: false, skipTaskbar: true,
+      hasShadow: false, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    win.setAlwaysOnTop(true, 'screen-saver');
+    win.setIgnoreMouseEvents(true, { forward: true });
+    try { win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); } catch {}
+    win.on('closed', () => { uiNumberOverlayWindows = uiNumberOverlayWindows.filter(current => current !== win); });
+    uiNumberOverlayWindows.push(win);
+    await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  }
+  if (!uiNumberOverlayWindows.length) throw new Error('Could not position the numbered UI overlay on any connected display.');
+  uiNumberOverlayTimer = setTimeout(() => hideUiNumberOverlay('timeout'), 20000);
+  uiNumberOverlayTimer.unref?.();
+  auditNativeAction({ event: 'ui-number-overlay-shown', elements: escapedElements.length, windows: uiNumberOverlayWindows.length });
+  return { ok: true, visible: true, count: escapedElements.length, elements: escapedElements, autoHideMs: 20000, note: 'Say the number and expected control name to activate it safely; the native helper rechecks the current target before clicking.' };
+}
 function stopAutoScroll(reason = 'user-stop') {
   if (!autoScrollSession) return { ok: true, active: false, reason };
   const previous = autoScrollSession;
@@ -545,6 +614,7 @@ function startAutoScroll(options = {}) {
 }
 function stopFullControl(reason = 'user-stop') {
   stopAutoScroll('full-control-stopped');
+  hideUiNumberOverlay('full-control-stopped');
   fullControlActive = false;
   controlSessionSecret = null;
   controlSessionStartedAt = null;
@@ -808,6 +878,14 @@ app.whenReady().then(() => {
     const result = await chromeBridge.request(method, safeArgs, method === 'chrome_read_page' ? 20000 : 12000);
     auditNativeAction({ event: 'chrome-action-result', method, userId, executionId: correlationId, durationMs: Date.now() - started, ok: result?.ok === true, verified: result?.verified === true, error: result?.error || null });
     return result;
+  });
+  ipcMain.handle('hubmind:ui-number-overlay-show', async (event) => {
+    assertTrustedSender(event);
+    return showUiNumberOverlay();
+  });
+  ipcMain.handle('hubmind:ui-number-overlay-hide', (event) => {
+    assertTrustedSender(event);
+    return hideUiNumberOverlay('user-request');
   });
   ipcMain.handle('hubmind:auto-scroll-start', async (event, options = {}) => {
     assertTrustedSender(event);
