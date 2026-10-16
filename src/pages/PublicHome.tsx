@@ -19,7 +19,20 @@ export function PublicHome() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [release, setRelease] = useState<{ url: string; name: string; version: string; extensionUrl?: string } | null>(null);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
-  const [installHelpOpen, setInstallHelpOpen] = useState(false);\n\n  useEffect(() => {\n    const root = document.querySelector('.hm-public');\n    if (!root) return;\n    root.classList.add('hm-motion-ready');\n    const nodes = Array.from(root.querySelectorAll<HTMLElement>('.hm-reveal'));\n    if (!('IntersectionObserver' in window)) { nodes.forEach(node => node.classList.add('is-visible')); return; }\n    const observer = new IntersectionObserver(entries => {\n      entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add('is-visible'); observer.unobserve(entry.target); } });\n    }, { threshold: 0.12, rootMargin: '0px 0px -35px 0px' });\n    nodes.forEach(node => observer.observe(node));\n    return () => observer.disconnect();\n  }, []);
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
+
+  useEffect(() => {
+    const root = document.querySelector('.hm-public');
+    if (!root) return;
+    root.classList.add('hm-motion-ready');
+    const nodes = Array.from(root.querySelectorAll<HTMLElement>('.hm-reveal'));
+    if (!('IntersectionObserver' in window)) { nodes.forEach(node => node.classList.add('is-visible')); return; }
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add('is-visible'); observer.unobserve(entry.target); } });
+    }, { threshold: 0.12, rootMargin: '0px 0px -35px 0px' });
+    nodes.forEach(node => observer.observe(node));
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -127,7 +140,9 @@ export function PublicHome() {
           <div className="hm-scroll-cue"><span/> A calmer way to work</div>
         </section>
 
-        <section className="hm-signal-strip hm-reveal" aria-label="Hub-Mind principles"><div><span>01</span><strong>One connected workspace</strong><small>Projects, tasks, knowledge and follow-through</small></div><div><span>02</span><strong>One thought partner</strong><small>Jess for writing, research and planning</small></div><div><span>03</span><strong>Your work stays yours</strong><small>Invitation-based access and role-aware controls</small></div></section>\n\n        <section id="features" className="hm-features section-shell hm-reveal">
+        <section className="hm-signal-strip hm-reveal" aria-label="Hub-Mind principles"><div><span>01</span><strong>One connected workspace</strong><small>Projects, tasks, knowledge and follow-through</small></div><div><span>02</span><strong>One thought partner</strong><small>Jess for writing, research and planning</small></div><div><span>03</span><strong>Your work stays yours</strong><small>Invitation-based access and role-aware controls</small></div></section>
+
+        <section id="features" className="hm-features section-shell hm-reveal">
           <div className="hm-section-heading"><div className="hm-eyebrow">THE WORKSPACE</div><h2>Less scattered.<br/><span>More in sync.</span></h2><p>Everything you need to organise your work, without another noisy place to manage.</p></div>
           <div className="hm-feature-grid">{FEATURES.map((feature, i) => <article className="hm-feature hm-reveal" key={feature.title}><div className={'hm-feature-icon tone-' + i}><feature.icon size={20}/></div><span className="hm-feature-index">0{i+1}</span><h3>{feature.title}</h3><p>{feature.text}</p></article>)}</div>
         </section>
