@@ -628,8 +628,9 @@ function startHubMindAutoScroll(options: { direction?: string; speed?: number } 
     const active = hubMindAutoScrollElement;
     if (!active || !active.isConnected) { stopHubMindAutoScroll('reading-area-removed'); return; }
     const before = active.scrollTop;
-    active.scrollBy({ top: step, behavior: 'auto' });
-    if (active.scrollTop === before) stopHubMindAutoScroll('scroll-boundary-reached');
+    active.scrollBy({ top: step, behavior: 'instant' as ScrollBehavior });
+    const atBoundary = direction === 'down' ? active.scrollTop + active.clientHeight >= active.scrollHeight - 2 : active.scrollTop <= 2;
+    if (active.scrollTop === before && atBoundary) stopHubMindAutoScroll('scroll-boundary-reached');
   }, intervalMs);
   return { ok: true, active: true, direction, speed, intervalMs, pixelsPerStep: 30, container, note: 'Scrolls only this Hub-Mind page/reading area. Use stop_hubmind_auto_scroll to stop.' };
 }
