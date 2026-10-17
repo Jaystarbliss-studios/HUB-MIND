@@ -36,3 +36,24 @@ test('native SendInput return count uses matching unsigned types and text entry 
  assert.match(handler,/nativeAgent\.call\('type_text'/);
  assert.doesNotMatch(handler,/Add-Type -TypeDefinition/);
 });
+
+test('native agent announces readiness after startup and uses blittable Win32 point and SendInput mouse events',()=>{
+ const agent=fs.readFileSync(path.join(base,'jess-agent.ps1'),'utf8');
+ const bridge=fs.readFileSync(path.join(base,'agentBridge.cjs'),'utf8');
+ assert.match(agent,/\{"type":"ready"\}/);
+ assert.match(agent,/public struct POINT\{public int X,Y;\}/);
+ assert.match(agent,/GetCursorPos\(out POINT point\)/);
+ assert.match(agent,/SendMouseEvent\(uint flags,uint data\)/);
+ assert.match(agent,/GetVisibleWindowHandles\(\)/);
+ assert.doesNotMatch(agent,/mouse_event\(/);
+ assert.doesNotMatch(agent,/GetCursorPos\(out System\.Drawing\.Point/);
+ assert.match(bridge,/Native helper startup timed out/);
+ assert.match(bridge,/sidecar-ready/);
+ assert.match(bridge,/awaitReady/);
+});
+test('brightness actions use the WMI monitor brightness interface rather than unrelated keyboard keys',()=>{
+ const agent=fs.readFileSync(path.join(base,'jess-agent.ps1'),'utf8');
+ assert.match(agent,/WmiMonitorBrightnessMethods/);
+ assert.match(agent,/WmiSetBrightness/);
+ assert.doesNotMatch(agent,/brightness_up=111;brightness_down=112/);
+});
