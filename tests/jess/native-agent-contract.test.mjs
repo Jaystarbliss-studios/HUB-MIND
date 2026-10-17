@@ -49,6 +49,7 @@ test('native agent announces readiness after startup and uses blittable Win32 po
  assert.doesNotMatch(agent,/GetCursorPos\(out System\.Drawing\.Point/);
  assert.match(bridge,/Native helper startup timed out/);
  assert.match(bridge,/sidecar-ready/);
+ assert.match(bridge,/-STA/);
  assert.match(bridge,/awaitReady/);
 });
 test('brightness actions use the WMI monitor brightness interface rather than unrelated keyboard keys',()=>{
