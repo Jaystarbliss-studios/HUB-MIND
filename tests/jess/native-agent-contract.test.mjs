@@ -28,3 +28,11 @@ test('Chrome bridge installer supports optional HKLM registration and force-inst
 test('file reads support bounded chunks and next-offset continuation',()=>{const s=fs.readFileSync(path.join(base,'jess-agent.ps1'),'utf8');assert.match(s,/nextOffset=\$next/);assert.match(s,/characterCount=\$text\.Length/);assert.match(s,/truncated=\(\$next -lt \$text\.Length\)/);});
 
 test('Chrome screenshot tool returns a bounded compressed preview for the active tab',async()=>{const [worker,manifest,assistant,main]=await Promise.all([fs.promises.readFile(path.resolve('chrome-extension/service-worker.js'),'utf8'),fs.promises.readFile(path.resolve('chrome-extension/manifest.json'),'utf8'),fs.promises.readFile(path.resolve('src/components/JessFloatingAssistant.tsx'),'utf8'),fs.promises.readFile(path.resolve('electron/main.cjs'),'utf8')]);assert.match(worker,/case 'chrome_capture_screenshot'/);assert.match(worker,/OffscreenCanvas/);assert.match(worker,/if \(!tab\.active\)/);assert.match(manifest,/"activeTab"/);assert.match(assistant,/chromeScreenshotPreview/);assert.match(main,/chrome_capture_screenshot/);});
+
+test('native SendInput return count uses matching unsigned types and text entry shares the sidecar',async()=>{
+ const [agent,main]=await Promise.all([fs.promises.readFile(path.join(base,'jess-agent.ps1'),'utf8'),fs.promises.readFile(path.join(base,'main.cjs'),'utf8')]);
+ assert.match(agent,/SendInput\(\(uint\)inputs\.Length,inputs,Marshal\.SizeOf\(typeof\(INPUT\)\)\)==\(uint\)inputs\.Length/);
+ const handler=main.slice(main.indexOf("ipcMain.handle('hubmind:type-text'"),main.indexOf("ipcMain.handle('hubmind:press-shortcut'"));
+ assert.match(handler,/nativeAgent\.call\('type_text'/);
+ assert.doesNotMatch(handler,/Add-Type -TypeDefinition/);
+});

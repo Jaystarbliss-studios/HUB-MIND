@@ -48,7 +48,7 @@ public static class JessWin32 {
    if(key==33||key==34||key==35||key==36||key==37||key==38||key==39||key==40||key==45||key==46||key==91||key==92||key==144||key==145||key>=173&&key<=179) flags|=EXTENDED;
    inputs[keys.Length+i]=new INPUT();inputs[keys.Length+i].type=1;inputs[keys.Length+i].U.ki=new KEYBDINPUT{vk=key,scan=0,flags=flags,time=0,extra=IntPtr.Zero};
   }
-  return SendInput((uint)inputs.Length,inputs,Marshal.SizeOf(typeof(INPUT)))==inputs.Length;
+  return SendInput((uint)inputs.Length,inputs,Marshal.SizeOf(typeof(INPUT)))==(uint)inputs.Length;
  }
 }
 '@

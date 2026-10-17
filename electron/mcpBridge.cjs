@@ -13,6 +13,13 @@ function cleanString(value, max = 500) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
+function safeMcpDiagnostic(value, max = 2000) {
+  return String(value ?? '')
+    .replace(/(["']?(?:api[_-]?key|token|password|secret|authorization)["']?\s*[:=]\s*["']?)[^"'\s,;}{]+["']?/ig, '$1[redacted]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/ig, 'Bearer [redacted]')
+    .slice(-max);
+}
+
 function sanitizeServerConfig(input, userId) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('MCP server configuration must be an object.');
   const id = cleanString(input.id, 80) || ('mcp-' + randomUUID());
@@ -222,7 +229,7 @@ class McpBridge {
     if (!config) throw new Error('MCP server configuration was not found for this account.');
     if (!config.enabled) throw new Error('This MCP server is disabled.');
     await this.disconnectServer(userId, id);
-    const state = { connected: false, config, tools: [], pending: new Map(), nextId: 0, process: null, sessionId: null, protocolVersion: PROTOCOL_VERSION, buffer: '' };
+    const state = { connected: false, config, tools: [], pending: new Map(), nextId: 0, process: null, sessionId: null, protocolVersion: PROTOCOL_VERSION, buffer: '', stderr: '', processError: '' };
     this.connections.set(key, state);
     try {
       if (config.transport === 'stdio') await this.connectStdio(key, state);
@@ -242,7 +249,9 @@ class McpBridge {
       for (const tool of state.tools) this.toolIndex.set(tool.name, { ...tool, userId, serverKey: key });
       return this.listServers(userId);
     } catch (error) {
-      const message = error instanceof Error ? error.message.slice(0, 500) : 'MCP server connection failed.';
+      const baseMessage = error instanceof Error ? error.message.slice(0, 500) : 'MCP server connection failed.';
+      const diagnostic = safeMcpDiagnostic(state.stderr || state.processError, 1200);
+      const message = diagnostic && !baseMessage.includes(diagnostic) ? baseMessage + ' Server diagnostic: ' + diagnostic : baseMessage;
       await this.disconnectServer(userId, id);
       this.connections.set(key, { config, connected: false, tools: [], error: message });
       throw new Error('Could not connect to ' + config.name + ': ' + message);
@@ -262,11 +271,18 @@ class McpBridge {
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => this.consumeStdout(state, chunk));
-    child.stderr.on('data', () => { /* Never log server stderr; it may contain credentials. */ });
-    child.on('error', error => this.failPending(state, error));
+    child.stderr.on('data', chunk => {
+      // Retain only a short redacted diagnostic for the connection error UI; never write raw stderr to logs.
+      state.stderr = safeMcpDiagnostic(state.stderr + String(chunk), 2000);
+    });
+    child.on('error', error => {
+      state.processError = safeMcpDiagnostic(error?.message || error, 1000);
+      this.failPending(state, new Error('MCP process launch failed: ' + state.processError));
+    });
     child.on('exit', (code, signal) => {
       state.connected = false;
-      this.failPending(state, new Error('MCP process exited (' + (code ?? signal ?? 'unknown') + ').'));
+      const detail = state.stderr ? ' Server diagnostic: ' + safeMcpDiagnostic(state.stderr, 1200) : '';
+      this.failPending(state, new Error('MCP process exited (' + (code ?? signal ?? 'unknown') + ').' + detail));
     });
     await this.request(state, 'initialize', {
       protocolVersion: PROTOCOL_VERSION,
@@ -318,6 +334,7 @@ class McpBridge {
   }
 
   failPending(state, error) {
+    if (!state || !(state.pending instanceof Map)) return;
     for (const pending of state.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(error);
@@ -333,7 +350,8 @@ class McpBridge {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         state.pending.delete(String(id));
-        reject(new Error('MCP ' + method + ' timed out.'));
+        const diagnostic = safeMcpDiagnostic(state.stderr || state.processError, 1200);
+        reject(new Error('MCP ' + method + ' timed out.' + (diagnostic ? ' Server diagnostic: ' + diagnostic : ' No startup diagnostic was written to stderr.')));
       }, this.timeoutMs);
       state.pending.set(String(id), { resolve, reject, timer });
       state.process.stdin.write(JSON.stringify(payload) + '\n', error => {

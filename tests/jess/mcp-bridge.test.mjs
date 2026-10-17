@@ -180,3 +180,36 @@ test('MCP environment only permits non-secret Windows-MCP settings and telemetry
   assert.throws(() => sanitizeServerConfig({ name: 'Unsafe', transport: 'stdio', command: 'node', env: { API_TOKEN: 'secret' } }, 'user-a'), /not allowlisted/);
   assert.throws(() => sanitizeServerConfig({ name: 'Unsafe', transport: 'stdio', command: 'node', env: { ANONYMIZED_TELEMETRY: 'false\nINJECTED=1' } }, 'user-a'), /single-line/);
 });
+
+test('MCP stdio startup diagnostics are redacted and included when initialization times out', async () => {
+  const source = fs.readFileSync(path.resolve('electron/mcpBridge.cjs'), 'utf8');
+  assert.match(source, /state\.stderr = safeMcpDiagnostic/);
+  assert.match(source, /Server diagnostic:/);
+  assert.match(source, /if \(!state \|\| !\(state\.pending instanceof Map\)\) return/);
+  assert.match(source, /No startup diagnostic was written to stderr/);
+  assert.match(source, /Bearer \[redacted\]/);
+});
+
+test('MCP initialize timeout includes a redacted child startup diagnostic', async () => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'hubmind-mcp-timeout-test-'));
+  const bridge = new McpBridge({ userDataPath, timeoutMs: 700 });
+  try {
+    await assert.rejects(
+      () => bridge.saveServer({
+        id: 'timeout-server',
+        name: 'Timeout diagnostic server',
+        transport: 'stdio',
+        command: process.execPath,
+        args: ['-e', "process.stderr.write('TypeError: Cannot read properties of undefined (reading values)\\n'); process.stdin.resume();"],
+        enabled: true,
+      }, 'user-a'),
+      /MCP initialize timed out\. Server diagnostic: TypeError/
+    );
+    const saved = bridge.listServers('user-a');
+    assert.equal(saved.length, 1);
+    assert.match(saved[0].error, /Server diagnostic: TypeError/);
+  } finally {
+    await bridge.shutdown();
+    fs.rmSync(userDataPath, { recursive: true, force: true });
+  }
+});

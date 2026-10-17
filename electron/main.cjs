@@ -1059,29 +1059,9 @@ app.whenReady().then(() => {
     assertTrustedSender(event);
     if (!fullControlActive) throw new Error('Start Jess Full Control before typing into Windows apps.');
     if (typeof requestedText !== 'string' || !requestedText.length || requestedText.length > 3000) throw new Error('Text must be between 1 and 3,000 characters.');
-    const textBase64 = Buffer.from(requestedText, 'utf8').toString('base64');
-    const script = String.raw`Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class HubMindUnicodeInput {
-  [StructLayout(LayoutKind.Sequential)] public struct INPUT { public uint type; public InputUnion U; }
-  [StructLayout(LayoutKind.Explicit)] public struct InputUnion { [FieldOffset(0)] public KEYBDINPUT ki; }
-  [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
-  [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
-  public static void Type(string value) {
-    foreach (char ch in value) {
-      INPUT down = new INPUT(); down.type = 1; down.U.ki.wScan = ch; down.U.ki.dwFlags = 4;
-      INPUT up = new INPUT(); up.type = 1; up.U.ki.wScan = ch; up.U.ki.dwFlags = 6;
-      INPUT[] pair = new INPUT[] { down, up };
-      SendInput(2, pair, Marshal.SizeOf(typeof(INPUT)));
-    }
-  }
-}
-'@
-$text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${textBase64}'))
-[HubMindUnicodeInput]::Type($text)`;
-    await new Promise((resolve, reject) => execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024, shell: false }, error => error ? reject(new Error(String(error.message || 'Text entry failed.').slice(0, 1000))) : resolve(true)));
-    return { typed: true, characterCount: requestedText.length };
+    const result = await nativeAgent.call('type_text', { text: requestedText }, 15000);
+    if (!result?.ok) throw new Error(result?.error || 'The Jess native helper could not type the requested text.');
+    return { typed: true, characterCount: requestedText.length, verified: result.verified === true };
   });
   ipcMain.handle('hubmind:press-shortcut', async (event, shortcutName) => {
     assertTrustedSender(event);
