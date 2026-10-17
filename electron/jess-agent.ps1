@@ -351,4 +351,4 @@ function Invoke-Action($q){
  }
 }
 [Console]::Out.WriteLine('{"type":"ready"}');[Console]::Out.Flush()
-while($true){$line=[Console]::ReadLine();if($null -eq $line){break};try{$q=ConvertFrom-Json $line;$r=Invoke-Action $q;$o=@{id=$q.id;result=$r}}catch{$o=@{id=$q.id;result=@{ok=$false;verified=$false;evidence=$null;error=$_.Exception.Message}}};try{[Console]::Out.WriteLine((ConvertTo-Json -InputObject $o -Depth 12 -Compress));[Console]::Out.Flush()}catch{}}
+while($true){$line=[Console]::ReadLine();if($null -eq $line){break};try{$q=ConvertFrom-Json $line;$r=Invoke-Action $q;$o=@{id=$q.id;result=$r}}catch{$message=[string]$_.Exception.Message;$where='';$stack='';try{$where=[string]$_.InvocationInfo.PositionMessage}catch{};try{$stack=[string]$_.ScriptStackTrace}catch{};$detail=($where+([Environment]::NewLine)+$stack).Trim();if($detail.Length -gt 1600){$detail=$detail.Substring(0,1600)};$o=@{id=$q.id;result=@{ok=$false;verified=$false;evidence=$null;error=$message;errorType=$_.Exception.GetType().FullName;diagnostic=$detail}}};try{[Console]::Out.WriteLine((ConvertTo-Json -InputObject $o -Depth 12 -Compress));[Console]::Out.Flush()}catch{}}
