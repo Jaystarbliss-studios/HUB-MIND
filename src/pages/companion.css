@@ -20,6 +20,15 @@ body:has(.jess-orb-window) #root > div {
   background: transparent !important;
 }
 
+.jess-orb-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+.jess-orb-controls .jess-orb-tiny-close {
+  pointer-events: auto;
+}
 .jess-orb-window {
   width: 96px;
   height: 96px;
