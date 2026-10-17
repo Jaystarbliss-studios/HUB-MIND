@@ -29,6 +29,8 @@ export const JESS_NATIVE_TOOL_NAMES = [
   'open_local_windows_path',
   'launch_windows_application',
   'run_windows_command_native',
+  'scan_windows_storage',
+  'clean_windows_storage_candidates',
   'manage_windows_files',
   'manage_windows_clipboard',
   'control_windows_power',
