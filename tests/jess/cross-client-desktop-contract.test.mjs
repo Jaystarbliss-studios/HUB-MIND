@@ -21,7 +21,7 @@ test('Jess voice sessions coordinate through a per-user Firestore lease', () => 
   assert.match(assistant, /releaseJessSession\(previousLease\.userId, previousLease\.sessionId\)/);
   assert.match(assistant, /Jess is already active in/);
   assert.match(assistant, /jessActivationRequest/);
-  assert.match(assistant, /!isDesktopShell && !orbDismissed/);
+  assert.match(assistant, /!orbDismissed && !isDesktopShell/);
 });
 
 test('transparent companion styles stay scoped to the companion route', () => {
