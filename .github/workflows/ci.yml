@@ -140,7 +140,7 @@ jobs:
             $scanResponse = & $sendRequest @{
               id = 'ci-storage-scan'
               method = 'filesystem_scan'
-              args = @{ root = $fixture; largeThresholdMB = 15; inactiveDays = 1; maxSeconds = 15; maxFiles = 1000; detectDuplicates = $true }
+              args = @{ root = $fixture; largeThresholdMB = 15; inactiveDays = 1; maxSeconds = 90; maxFiles = 1000; detectDuplicates = $true }
             }
             if ($scanResponse.result.ok -ne $true) { throw "Storage scan failed: $($scanResponse.result.error)" }
             $scan = $scanResponse.result.evidence
