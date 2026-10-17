@@ -13,7 +13,7 @@ test('google_search is declared for Jess Live and routed through the grounded we
   assert.ok(server.includes('name: "google_search"'));
   assert.ok(server.includes('required: ["query"]'));
   assert.ok(tools.includes("name: 'google_search'"));
-  assert.ok(tools.includes("case 'google_search':\n      case 'search_web':"));
+  assert.match(tools, /case 'google_search':\s*case 'search_web':/);
   assert.ok(tools.includes("['google_search', 'search_web', 'desktop_open_website'].includes(name)"));
   assert.ok(server.includes('app.post("/api/web-search"'));
   assert.ok(service.includes('tools: [{ googleSearch: {} }]'));
