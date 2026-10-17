@@ -33,10 +33,10 @@ test('desktop and installed app start at sign-in, while the orb remains icon-onl
   assert.match(main, /function createMainWindow\(initialPath = '\/login'\)/);
   assert.match(main, /APP_URL \+ '\/companion'/);
   assert.match(orb, /JessOrbVisualizer/);
-  assert.match(orb, /jess-orb-controls/);
+  assert.match(orb, /jess-orb-drag/);
   assert.match(orb, /hideCompanion/);
   assert.match(orb, /moveCompanionBy/);
-  assert.match(css, /is-transcript-visible \.jess-transcript\{display:flex\}/);
+  assert.match(await read('electron/main.cjs'), /createTranscriptOverlayWindow/);
   assert.match(main, /screen-share-picker\.html/);
   assert.match(main, /callback\(selected \? \{ video: selected \} : \{\}\)/);
 });
@@ -47,9 +47,9 @@ test('Jess has practical web search and screen-verification tools', async () => 
     read('electron/main.cjs'),
     read('src/services/liveAudioClient.ts'),
   ]);
-  assert.match(tools, /name: 'search_web'/);
+  assert.match(tools, /name: 'google_search'/);
   assert.match(tools, /name: 'take_windows_screenshot'/);
-  assert.match(tools, /Search the public web for current information/);
+  assert.match(tools, /Search the live public web using Google Search grounding/);
   assert.match(main, /hubmind:native-action/);
   assert.match(main, /verified/);
   assert.match(live, /WEB RESEARCH/);

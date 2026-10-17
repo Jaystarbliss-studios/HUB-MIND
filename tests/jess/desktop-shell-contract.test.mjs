@@ -25,12 +25,12 @@ test('Jess desktop overlay is a compact, movable, closeable orb', () => {
   assert.match(main, /alwaysOnTop: true/);
   assert.match(main, /hubmind:move-companion-by/);
   assert.match(main, /hubmind:hide-companion/);
-  assert.ok(orb.includes('jess-orb-controls'));
+  assert.ok(orb.includes('jess-orb-drag'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
   assert.ok(orb.includes('JessOrbVisualizer'));
   assert.ok(orb.includes('JessOrbVisualizer'));
-  assert.match(orb, /is-transcript-visible/);
+  assert.match(orb, /jess-orb-window/);
 });
 
 test('authenticated workspace explicitly preserves the established dark background', () => {

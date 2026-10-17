@@ -21,7 +21,7 @@ test('Jess voice sessions coordinate through a per-user Firestore lease', () => 
   assert.match(assistant, /releaseJessSession\(previousLease\.userId, previousLease\.sessionId\)/);
   assert.match(assistant, /Jess is already active in/);
   assert.match(assistant, /jessActivationRequest/);
-  assert.match(assistant, /!isDesktopShell && !orbDismissed/);
+  assert.match(assistant, /!orbDismissed && !isDesktopShell/);
 });
 
 test('transparent companion styles stay scoped to the companion route', () => {
@@ -30,7 +30,7 @@ test('transparent companion styles stay scoped to the companion route', () => {
   assert.ok(!app.includes("import './pages/companion.css';"));
 });
 
-test('desktop workspace and icon-only orb visibility follow the requested lifecycle', () => {
+test('desktop workspace and icon-only orb visibility follow the current lifecycle', () => {
   assert.ok(electron.includes("mainWindow.on('show', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });"));
   assert.ok(electron.includes("mainWindow.on('restore', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });"));
   assert.ok(electron.includes("mainWindow.on('minimize', () => { createCompanionWindow();"));
@@ -41,11 +41,8 @@ test('desktop workspace and icon-only orb visibility follow the requested lifecy
   assert.ok(electron.includes('hubmind:hide-companion'));
   assert.ok(electron.includes('hubmind:move-companion-by'));
   assert.ok(orb.includes('JessOrbVisualizer'));
-  assert.ok(orb.includes('JessOrbVisualizer'));
-  assert.ok(orb.includes('jess-orb-controls'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
-  assert.match(orb, /is-transcript-visible/);
 });
 
 test('native Windows tools use a full-control session, narrow preload bridge and honesty protocol', () => {
