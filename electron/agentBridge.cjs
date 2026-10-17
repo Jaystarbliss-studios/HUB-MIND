@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const { app } = require('electron');
 const { randomUUID } = require('node:crypto');
 
-let child = null, nextId = 0, buffer = '';
+let child = null, nextId = 0;
 let childReady = false, childReadyPromise = null;
 let lastStartedAt = null, lastExitedAt = null, lastError = null, lastExitCode = null, lastExitSignal = null, lastStderr = null, lastScriptPath = null;
 const pending = new Map();
@@ -62,6 +62,7 @@ function ensureAgent() {
     windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], shell: false,
   });
   child = spawned;
+  let processBuffer = '';
   childReady = false;
   lastStartedAt = new Date().toISOString();
   lastError = null;
@@ -93,18 +94,18 @@ function ensureAgent() {
   audit('sidecar-started', { pid: spawned.pid, scriptPath });
 
   spawned.stdout.on('data', chunk => {
-    buffer += chunk;
-    if (buffer.length > MAX_RESPONSE_LINE_CHARS && !buffer.includes('\n')) {
+    processBuffer += chunk;
+    if (processBuffer.length > MAX_RESPONSE_LINE_CHARS && !processBuffer.includes('\n')) {
       lastError = 'Native helper response exceeded the 16 MB protocol limit.';
-      audit('sidecar-protocol-overflow', { pid: spawned.pid, bufferedChars: buffer.length, error: lastError });
+      audit('sidecar-protocol-overflow', { pid: spawned.pid, bufferedChars: processBuffer.length, error: lastError });
       try { spawned.kill(); } catch {}
       return;
     }
     while (true) {
-      const at = buffer.indexOf('\n');
+      const at = processBuffer.indexOf('\n');
       if (at < 0) break;
-      const line = buffer.slice(0, at).trim();
-      buffer = buffer.slice(at + 1);
+      const line = processBuffer.slice(0, at).trim();
+      processBuffer = processBuffer.slice(at + 1);
       if (!line) continue;
       if (line.length > MAX_RESPONSE_LINE_CHARS) {
         lastError = 'Native helper returned a response line above the 16 MB protocol limit.';
@@ -158,7 +159,6 @@ function ensureAgent() {
       pending.delete(id);
     }
     if (child === spawned) { child = null; childReady = false; if (childReadyPromise === readyPromise) childReadyPromise = null; }
-    buffer = '';
   });
   return spawned;
 }
@@ -193,7 +193,6 @@ function call(method, args = {}, timeout = 15000) {
         child = null;
         childReady = false;
         childReadyPromise = null;
-        buffer = '';
       }
       reject(new Error('Native action timed out: ' + method + '. The sidecar was stopped to prevent a hung command from blocking later actions.'));
     }, timeout);
