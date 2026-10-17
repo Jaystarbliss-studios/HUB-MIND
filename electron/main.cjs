@@ -137,9 +137,9 @@ function chooseDisplaySource(sources) {
     pendingDisplayMediaResolve = resolve;
     const picker = new BrowserWindow({
       width: 980, height: 720, minWidth: 660, minHeight: 520,
-      show: false, frame: false, resizable: true, movable: true,
-      alwaysOnTop: true, skipTaskbar: false, autoHideMenuBar: true,
-      backgroundColor: '#020617', title: 'Choose what to share · Hub-Mind',
+      show: false, frame: false, transparent: true, resizable: true, movable: true,
+      center: true, alwaysOnTop: true, skipTaskbar: false, autoHideMenuBar: true,
+      backgroundColor: '#00000000', title: 'Choose what to share · Jess',
       webPreferences: {
         contextIsolation: true, nodeIntegration: false, sandbox: true,
         preload: path.join(__dirname, 'screen-share-preload.cjs'),
@@ -147,6 +147,7 @@ function chooseDisplaySource(sources) {
     });
     screenSharePickerWindow = picker;
     picker.setAlwaysOnTop(true, 'screen-saver');
+    picker.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     picker.once('ready-to-show', () => { if (!picker.isDestroyed()) picker.show(); });
     picker.on('closed', () => {
       if (screenSharePickerWindow === picker) screenSharePickerWindow = null;
