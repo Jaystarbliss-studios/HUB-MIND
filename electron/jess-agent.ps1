@@ -179,16 +179,16 @@ function Get-JessFilesystemScan($a) {
     if ($limited) { break }
   }
 
-  $hashBuckets = @{}
+  $hashRecords = New-Object 'System.Collections.Generic.List[object]'
   $duplicateGroups = New-Object 'System.Collections.Generic.List[object]'
   $hashBudget = [int64](2 * 1GB)
   $hashFiles = 0
   $hashingTruncated = $false
+  $duplicateSizeGroups = @($files | Group-Object -Property { [string]$_.sizeBytes } | Where-Object { @($_.Group).Length -gt 1 })
+  $sameSizeGroupCount = $duplicateSizeGroups.Count
   if ($detectDuplicates) {
-    foreach ($sizeKey in @($sizeGroups.Keys)) {
-      # Materialize the generic List to a real PowerShell array. Direct List access
-      # can surface Count inconsistently across Windows PowerShell 5.1 pipeline contexts.
-      $sameSize = @($sizeGroups[$sizeKey].ToArray())
+    foreach ($sizeGroup in $duplicateSizeGroups) {
+      $sameSize = @($sizeGroup.Group)
       if ($sameSize.Length -lt 2) { continue }
       foreach ($item in $sameSize) {
         if ($timer.Elapsed.TotalSeconds -ge $maxSeconds -or $hashFiles -ge 1500 -or $hashBudget -le 0) { $hashingTruncated = $true; break }
@@ -198,20 +198,20 @@ function Get-JessFilesystemScan($a) {
           $item.sha256 = $hash
           $hashFiles++
           $hashBudget -= [int64]$item.sizeBytes
-          if (!$hashBuckets.ContainsKey($hash)) { $hashBuckets[$hash] = New-Object 'System.Collections.Generic.List[object]' }
-          [void]$hashBuckets[$hash].Add($item)
+          [void]$hashRecords.Add($item)
         } catch {}
       }
       if ($timer.Elapsed.TotalSeconds -ge $maxSeconds -or $hashFiles -ge 1500 -or $hashBudget -le 0) { $hashingTruncated = $true; break }
     }
-    foreach ($hash in @($hashBuckets.Keys)) {
-      $sameContent = @($hashBuckets[$hash].ToArray())
+    $hashedGroups = @($hashRecords | Group-Object -Property sha256 | Where-Object { $_.Name -and @($_.Group).Length -gt 1 })
+    foreach ($hashGroup in $hashedGroups) {
+      $sameContent = @($hashGroup.Group)
       if ($sameContent.Length -lt 2) { continue }
       $ordered = @($sameContent | Sort-Object -Property path)
       $keeper = $ordered[0]
       $duplicateIds = New-Object 'System.Collections.Generic.List[string]'
       $duplicatePaths = New-Object 'System.Collections.Generic.List[string]'
-      for ($i = 1; $i -lt $ordered.Count; $i++) {
+      for ($i = 1; $i -lt $ordered.Length; $i++) {
         $duplicate = $ordered[$i]
         if (!($duplicate.reasons -contains 'duplicate')) { $duplicate.reasons = @($duplicate.reasons + 'duplicate') }
         $duplicate.cleanupEligible = $true
@@ -219,12 +219,11 @@ function Get-JessFilesystemScan($a) {
         [void]$duplicatePaths.Add([string]$duplicate.path)
       }
       if ($duplicateIds.Count -gt 0 -and $duplicateGroups.Count -lt 100) {
-        [void]$duplicateGroups.Add(@{sha256=$hash;sizeBytes=[int64]$keeper.sizeBytes;keepPath=$keeper.path;candidateIds=@($duplicateIds.ToArray());duplicatePaths=@($duplicatePaths.ToArray());count=$duplicateIds.Count})
+        [void]$duplicateGroups.Add(@{sha256=$hashGroup.Name;sizeBytes=[int64]$keeper.sizeBytes;keepPath=$keeper.path;candidateIds=@($duplicateIds.ToArray());duplicatePaths=@($duplicatePaths.ToArray());count=$duplicateIds.Count})
       }
     }
   }
-
-  $sameSizeGroupCount = @($sizeGroups.GetEnumerator() | Where-Object {$_.Value.Count -gt 1}).Count
+  $hashBucketsCount = @($hashRecords | Group-Object -Property sha256 | Where-Object {$_.Name}).Count
   $candidateCache = @{}
   foreach ($item in $files) {
     if ($item.cleanupEligible -or $item.inactive) {
@@ -270,7 +269,7 @@ function Get-JessFilesystemScan($a) {
       }
       largestFiles = $largest; mediumFilesSample = $mediumSample; smallFilesSample = $smallSample
       largestDirectories = $largestDirectories; inactiveFilesSample = $inactiveSample; temporaryFilesSample = $tempSample
-      duplicateGroups = @($duplicateGroups.ToArray()); sameSizeGroupsCount = $sameSizeGroupCount; hashBucketsCount = $hashBuckets.Count; hashesComputed = $hashFiles; duplicateHashingLimited = $hashingTruncated
+      duplicateGroups = @($duplicateGroups.ToArray()); sameSizeGroupsCount = $sameSizeGroupCount; hashBucketsCount = $hashBuckets.Count; hashesComputed = $hashFiles; duplicateHashingLimited = $hashingTruncated; detectDuplicatesEnabled = $detectDuplicates
       candidateCount = $candidateCache.Count; cleanupEligibleCount = $cleanupEligibleCount; candidates = $candidatePreview; candidatesTruncated = ($candidateCache.Count -gt $candidatePreview.Count)
       inactiveDays = $inactiveDays; largeThresholdMB = $thresholdMb; maxFiles = $maxFiles; maxSeconds = $maxSeconds; note = $note
     }
