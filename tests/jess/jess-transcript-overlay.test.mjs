@@ -58,7 +58,7 @@ test('Jess exposes google_search as the canonical external research tool while p
   const tools = await read('../../src/lib/jessTools.ts');
   assert.match(tools, /name: 'google_search'/);
   assert.match(tools, /case 'google_search':[\s\S]{0,80}case 'search_web':/);
-  assert.match(tools, /'google_search', 'search_web', 'desktop_open_website'/);
+  assert.match(tools, /\['search_web', 'google_search', 'desktop_open_website'\]/);
 });
 
 test('transcript and screen-share chooser use stronger transparent glass surfaces and stay above other apps', async () => {
