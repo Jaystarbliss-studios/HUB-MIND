@@ -24,6 +24,9 @@ test('desktop transcript is a separate fixed and click-through window', async ()
   assert.match(page, /setTranscriptOverlayVisible/);
   assert.match(css, /pointer-events: none/);
   assert.match(css, /backdrop-filter: blur/);
+  assert.match(css, /rgba\(15, 23, 42, \.12\)/);
+  assert.match(css, /backdrop-filter: blur\(28px\) saturate\(175%\)/);
+  assert.doesNotMatch(css, /rgba\(2, 6, 23, \.56\)/);
   assert.match(css, /justify-content: center/);
 });
 
