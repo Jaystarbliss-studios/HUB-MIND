@@ -21,10 +21,18 @@ test('workspace palette remains dark regardless of Windows/browser theme prefere
   assert.match(rootCss, /background-color:\s*#020617\s*!important/);
 });
 
-test('Electron desktop screen sharing checks trusted-origin permissions and presents an explicit source chooser', () => {
+test('Electron desktop screen sharing checks permissions and opens an independent topmost glass overlay', async () => {
+  const picker = readFileSync(new URL('../../electron/screen-share-picker.html', import.meta.url), 'utf8');
   assert.match(electronMain, /setPermissionCheckHandler/);
   assert.match(electronMain, /setDisplayMediaRequestHandler/);
   assert.match(electronMain, /Choose what to share/);
   assert.match(electronMain, /callback\(selected \? \{ video: selected \} : \{\}\)/);
   assert.match(electronMain, /chooseDisplaySource\(unique\)/);
+  assert.match(electronMain, /transparent: true, backgroundColor: '#00000000'/);
+  assert.match(electronMain, /alwaysOnTop: true, skipTaskbar: true/);
+  assert.match(electronMain, /area\.x \+ \(area\.width - width\) \/ 2/);
+  assert.match(electronMain, /picker\.focus\(\)/);
+  assert.match(picker, /background:transparent/);
+  assert.match(picker, /backdrop-filter:blur\(32px\) saturate\(175%\)/);
+  assert.match(picker, /-webkit-app-region:drag/);
 });
