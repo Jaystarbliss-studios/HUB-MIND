@@ -67,10 +67,29 @@ test('transcript and screen-share chooser use stronger transparent glass surface
     read('../../electron/main.cjs'),
     read('../../electron/screen-share-picker.html'),
   ]);
-  assert.ok(css.includes('rgba(15, 23, 42, .48)'));
-  assert.ok(css.includes('blur(26px) saturate(175%)'));
+  assert.ok(css.includes('rgba(15, 23, 42, .22)'));
+  assert.ok(css.includes('blur(34px) saturate(190%)'));
   assert.match(main, /picker\.setVisibleOnAllWorkspaces\(true, \{ visibleOnFullScreen: true \}\)/);
   assert.ok(main.includes("title: 'Choose what to share · Jess'"));
   assert.ok(main.includes("backgroundColor: '#00000000'"));
   assert.ok(picker.includes('backdrop-filter:blur(34px) saturate(180%)'));
+});
+
+
+test('GitHub repository service supports authenticated release, commit and metadata requests', async () => {
+  const service = await read('../../src/server/githubService.ts');
+  assert.match(service, /process\\.env\\.GITHUB_TOKEN \\|\\| process\\.env\\.GH_TOKEN/);
+  assert.match(service, /export async function fetchHubMindReleases/);
+  assert.match(service, /export async function fetchHubMindCommits/);
+  assert.match(service, /export async function fetchHubMindOverview/);
+  assert.ok(service.includes('Authorization = `Bearer ${token}`'));
+});
+
+test('screen-share chooser is a separate transparent always-on-top Electron window', async () => {
+  const main = await read('../../electron/main.cjs');
+  assert.match(main, /function chooseDisplaySource\\(sources\\)/);
+  assert.match(main, /const picker = new BrowserWindow\\(\\{/);
+  assert.match(main, /frame: false, transparent: true/);
+  assert.match(main, /picker\\.setAlwaysOnTop\\(true, 'screen-saver'\\)/);
+  assert.ok(main.includes("picker.loadFile(path.join(__dirname, 'screen-share-picker.html'))"));
 });
