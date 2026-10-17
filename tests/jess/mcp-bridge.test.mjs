@@ -189,3 +189,27 @@ test('MCP stdio startup diagnostics are redacted and included when initializatio
   assert.match(source, /No startup diagnostic was written to stderr/);
   assert.match(source, /Bearer \[redacted\]/);
 });
+
+test('MCP initialize timeout includes a redacted child startup diagnostic', async () => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'hubmind-mcp-timeout-test-'));
+  const bridge = new McpBridge({ userDataPath, timeoutMs: 700 });
+  try {
+    await assert.rejects(
+      () => bridge.saveServer({
+        id: 'timeout-server',
+        name: 'Timeout diagnostic server',
+        transport: 'stdio',
+        command: process.execPath,
+        args: ['-e', "process.stderr.write('TypeError: Cannot read properties of undefined (reading values)\\n'); process.stdin.resume();"],
+        enabled: true,
+      }, 'user-a'),
+      /MCP initialize timed out\\. Server diagnostic: TypeError/
+    );
+    const saved = bridge.listServers('user-a');
+    assert.equal(saved.length, 1);
+    assert.match(saved[0].error, /Server diagnostic: TypeError/);
+  } finally {
+    await bridge.shutdown();
+    fs.rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
