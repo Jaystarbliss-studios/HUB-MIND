@@ -222,6 +222,7 @@ function Get-JessFilesystemScan($a) {
     }
   }
 
+  $sameSizeGroupCount = @($sizeGroups.GetEnumerator() | Where-Object {$_.Value.Count -gt 1}).Count
   $candidateCache = @{}
   foreach ($item in $files) {
     if ($item.cleanupEligible -or $item.inactive) {
@@ -267,7 +268,7 @@ function Get-JessFilesystemScan($a) {
       }
       largestFiles = $largest; mediumFilesSample = $mediumSample; smallFilesSample = $smallSample
       largestDirectories = $largestDirectories; inactiveFilesSample = $inactiveSample; temporaryFilesSample = $tempSample
-      duplicateGroups = @($duplicateGroups.ToArray()); hashesComputed = $hashFiles; duplicateHashingLimited = $hashingTruncated
+      duplicateGroups = @($duplicateGroups.ToArray()); sameSizeGroupsCount = $sameSizeGroupCount; hashBucketsCount = $hashBuckets.Count; hashesComputed = $hashFiles; duplicateHashingLimited = $hashingTruncated
       candidateCount = $candidateCache.Count; cleanupEligibleCount = $cleanupEligibleCount; candidates = $candidatePreview; candidatesTruncated = ($candidateCache.Count -gt $candidatePreview.Count)
       inactiveDays = $inactiveDays; largeThresholdMB = $thresholdMb; maxFiles = $maxFiles; maxSeconds = $maxSeconds; note = $note
     }
