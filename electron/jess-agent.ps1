@@ -74,7 +74,7 @@ function Get-Windows {
    $items.Add([pscustomobject]@{handle=$h.ToInt64();title=$title;process=$proc;pid=$processId;bounds=@{x=$r.Left;y=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top};monitor=@{deviceName=$mon.DeviceName;primary=$mon.Primary;bounds=@{x=$mb.X;y=$mb.Y;width=$mb.Width;height=$mb.Height};workingArea=@{x=$mw.X;y=$mw.Y;width=$mw.Width;height=$mw.Height}};state=$(if([JessWin32]::IsIconic($h)){'minimized'}elseif([JessWin32]::IsZoomed($h)){'maximized'}else{'normal'});foreground=($h -eq [JessWin32]::GetForegroundWindow())})
   }catch{}
  }
- return @($items)
+ return ,([object[]]$items.ToArray())
 }
 function Find-Window($a){
  $ws=Get-Windows
