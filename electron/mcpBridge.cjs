@@ -15,8 +15,8 @@ function cleanString(value, max = 500) {
 
 function safeMcpDiagnostic(value, max = 2000) {
   return String(value ?? '')
-    .replace(/(["']?(?:api[_-]?key|token|password|secret|authorization)["']?\\s*[:=]\\s*["']?)[^"'\\s,;}{]+["']?/ig, '$1[redacted]')
-    .replace(/\\bBearer\\s+[A-Za-z0-9._~+\\/-]+=*/ig, 'Bearer [redacted]')
+    .replace(/(["']?(?:api[_-]?key|token|password|secret|authorization)["']?\s*[:=]\s*["']?)[^"'\s,;}{]+["']?/ig, '$1[redacted]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/ig, 'Bearer [redacted]')
     .slice(-max);
 }
 
