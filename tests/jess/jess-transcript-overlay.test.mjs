@@ -67,9 +67,9 @@ test('transcript and screen-share chooser use stronger transparent glass surface
     read('../../electron/main.cjs'),
     read('../../electron/screen-share-picker.html'),
   ]);
-  assert.match(css, /rgba\\(15, 23, 42, \.48\\)/);
-  assert.match(css, /blur\\(26px\\) saturate\\(175%\\)/);
+  assert.ok(css.includes('rgba(15, 23, 42, .48)'));
+  assert.ok(css.includes('blur(26px) saturate(175%)'));
   assert.match(main, /picker\.setVisibleOnAllWorkspaces\(true, \{ visibleOnFullScreen: true \}\)/);
   assert.match(main, /skipTaskbar: true, autoHideMenuBar: true,[\s\S]{0,80}backgroundColor: '#00000000', title: 'Jess · Screen sharing'/);
-  assert.match(picker, /backdrop-filter:blur\\(26px\\) saturate\\(150%\\)/);
+  assert.ok(picker.includes('backdrop-filter:blur(26px) saturate(150%)'));
 });
