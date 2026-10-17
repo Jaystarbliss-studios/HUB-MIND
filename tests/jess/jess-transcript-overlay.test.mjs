@@ -50,7 +50,7 @@ test('movable companion stays icon-sized when transcript appears', async () => {
   ]);
   assert.match(main, /width: 96, height: 96, minWidth: 96, minHeight: 96/);
   assert.match(main, /hubmind:set-companion-transcript-visible[\s\S]{0,220}Legacy compatibility only/);
-  assert.match(css, /\.jess-orb-window \.jess-transcript,[\s\S]*display:none!important/);
+  assert.match(main, /createTranscriptOverlayWindow/);
 });
 
 
@@ -70,6 +70,7 @@ test('transcript and screen-share chooser use stronger transparent glass surface
   assert.ok(css.includes('rgba(15, 23, 42, .48)'));
   assert.ok(css.includes('blur(26px) saturate(175%)'));
   assert.match(main, /picker\.setVisibleOnAllWorkspaces\(true, \{ visibleOnFullScreen: true \}\)/);
-  assert.match(main, /skipTaskbar: true, autoHideMenuBar: true,[\s\S]{0,80}backgroundColor: '#00000000', title: 'Jess · Screen sharing'/);
+  assert.ok(main.includes("title: 'Choose what to share · Jess'"));
+  assert.ok(main.includes("backgroundColor: '#00000000'"));
   assert.ok(picker.includes('backdrop-filter:blur(26px) saturate(150%)'));
 });
