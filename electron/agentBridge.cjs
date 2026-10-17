@@ -58,7 +58,7 @@ function ensureAgent() {
   lastScriptPath = scriptPath;
   if (!fs.existsSync(scriptPath)) { lastError = 'Jess native agent script is missing from this build: ' + scriptPath; throw new Error(lastError); }
 
-  const spawned = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
+  const spawned = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
     windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], shell: false,
   });
   child = spawned;
