@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 public static class JessWin32 {
  public delegate bool EnumWindowsProc(IntPtr h,IntPtr lp);
  [StructLayout(LayoutKind.Sequential)] public struct RECT{public int Left,Top,Right,Bottom;}
+ [StructLayout(LayoutKind.Sequential)] public struct POINT{public int X,Y;}
  [StructLayout(LayoutKind.Sequential)] public struct INPUT{public uint type;public InputUnion U;}
  [StructLayout(LayoutKind.Explicit)] public struct InputUnion{[FieldOffset(0)]public KEYBDINPUT ki;[FieldOffset(0)]public MOUSEINPUT mi;}
  [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT{public ushort vk,scan;public uint flags,time;public IntPtr extra;}
@@ -28,9 +29,10 @@ public static class JessWin32 {
  [DllImport("user32.dll")]public static extern bool IsZoomed(IntPtr h);
  [DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);
- [DllImport("user32.dll")]public static extern bool GetCursorPos(out System.Drawing.Point point);
- [DllImport("user32.dll")]public static extern void mouse_event(uint f,uint dx,uint dy,uint data,UIntPtr extra);
+ [DllImport("user32.dll")]public static extern bool GetCursorPos(out POINT point);
  [DllImport("user32.dll")]public static extern uint SendInput(uint n,INPUT[] i,int size);
+ public static IntPtr[] GetVisibleWindowHandles(){var handles=new System.Collections.Generic.List<IntPtr>();EnumWindows(delegate(IntPtr h,IntPtr lp){if(IsWindowVisible(h))handles.Add(h);return true;},IntPtr.Zero);return handles.ToArray();}
+ public static bool SendMouseEvent(uint flags,uint data){var input=new INPUT();input.type=0;input.U.mi=new MOUSEINPUT{dx=0,dy=0,data=data,flags=flags,time=0,extra=IntPtr.Zero};return SendInput(1,new INPUT[]{input},Marshal.SizeOf(typeof(INPUT)))==1;}
  [DllImport("shcore.dll")]private static extern int SetProcessDpiAwareness(int awareness);
  public static void EnablePerMonitorDpi(){try{SetProcessDpiAwareness(2);}catch{}}
  public const uint KEYUP=2,UNICODE=4,EXTENDED=1;
@@ -54,13 +56,25 @@ public static class JessWin32 {
 '@
 function Get-Windows {
  $items=New-Object System.Collections.Generic.List[object]
- $cb=[JessWin32+EnumWindowsProc]{param([IntPtr]$h,[IntPtr]$lp)
-  if(-not [JessWin32]::IsWindowVisible($h)){return $true}
-  $sb=New-Object System.Text.StringBuilder 1024;[void][JessWin32]::GetWindowText($h,$sb,$sb.Capacity);$title=$sb.ToString().Trim();if(!$title){return $true}
-  $processId=[uint32]0;[void][JessWin32]::GetWindowThreadProcessId($h,[ref]$processId);$r=New-Object JessWin32+RECT;[void][JessWin32]::GetWindowRect($h,[ref]$r);$proc='';try{$proc=(Get-Process -Id $processId -ErrorAction Stop).ProcessName}catch{}
-  try{$mon=[System.Windows.Forms.Screen]::FromHandle($h)}catch{$mon=[System.Windows.Forms.Screen]::PrimaryScreen};if(!$mon){$mon=[System.Windows.Forms.Screen]::AllScreens|Select-Object -First 1};$mb=$mon.Bounds;$mw=$mon.WorkingArea;$items.Add([pscustomobject]@{handle=$h.ToInt64();title=$title;process=$proc;pid=$processId;bounds=@{x=$r.Left;y=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top};monitor=@{deviceName=$mon.DeviceName;primary=$mon.Primary;bounds=@{x=$mb.X;y=$mb.Y;width=$mb.Width;height=$mb.Height};workingArea=@{x=$mw.X;y=$mw.Y;width=$mw.Width;height=$mw.Height}};state=$(if([JessWin32]::IsIconic($h)){'minimized'}elseif([JessWin32]::IsZoomed($h)){'maximized'}else{'normal'});foreground=($h -eq [JessWin32]::GetForegroundWindow())});return $true
+ foreach($h in [JessWin32]::GetVisibleWindowHandles()){
+  try{
+   $sb=New-Object System.Text.StringBuilder 1024
+   [void][JessWin32]::GetWindowText($h,$sb,$sb.Capacity)
+   $title=$sb.ToString().Trim()
+   if(!$title){continue}
+   $processId=[uint32]0
+   [void][JessWin32]::GetWindowThreadProcessId($h,[ref]$processId)
+   $r=New-Object JessWin32+RECT
+   [void][JessWin32]::GetWindowRect($h,[ref]$r)
+   $proc=''
+   try{$proc=(Get-Process -Id $processId -ErrorAction Stop).ProcessName}catch{}
+   try{$mon=[System.Windows.Forms.Screen]::FromHandle($h)}catch{$mon=[System.Windows.Forms.Screen]::PrimaryScreen}
+   if(!$mon){$mon=[System.Windows.Forms.Screen]::AllScreens|Select-Object -First 1}
+   $mb=$mon.Bounds;$mw=$mon.WorkingArea
+   $items.Add([pscustomobject]@{handle=$h.ToInt64();title=$title;process=$proc;pid=$processId;bounds=@{x=$r.Left;y=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top};monitor=@{deviceName=$mon.DeviceName;primary=$mon.Primary;bounds=@{x=$mb.X;y=$mb.Y;width=$mb.Width;height=$mb.Height};workingArea=@{x=$mw.X;y=$mw.Y;width=$mw.Width;height=$mw.Height}};state=$(if([JessWin32]::IsIconic($h)){'minimized'}elseif([JessWin32]::IsZoomed($h)){'maximized'}else{'normal'});foreground=($h -eq [JessWin32]::GetForegroundWindow())})
+  }catch{}
  }
- [void][JessWin32]::EnumWindows($cb,[IntPtr]::Zero);return @($items)
+ return @($items)
 }
 function Find-Window($a){
  $ws=Get-Windows
@@ -103,7 +117,32 @@ function Invoke-Action($q){
  'drag' {[void][JessWin32]::SetCursorPos([int]$a.fromX,[int]$a.fromY);[JessWin32]::mouse_event(2,0,0,0,[UIntPtr]::Zero);$steps=12;for($i=1;$i -le $steps;$i++){$x=[int]($a.fromX+($a.toX-$a.fromX)*$i/$steps);$y=[int]($a.fromY+($a.toY-$a.fromY)*$i/$steps);[void][JessWin32]::SetCursorPos($x,$y);Start-Sleep -Milliseconds 12};[JessWin32]::mouse_event(4,0,0,0,[UIntPtr]::Zero);return @{ok=$true;verified=$false;evidence=@{from=@{x=$a.fromX;y=$a.fromY};to=@{x=$a.toX;y=$a.toY};note='Drag input sent; target effect not independently confirmed'}}}
  'type_text' {$text=[string]$a.text;if($text.Length -gt 10000){throw 'Text limited to 10,000 characters'};foreach($ch in $text.ToCharArray()){$i=New-Object JessWin32+INPUT;$i.type=1;$i.U.ki.scan=[uint16][char]$ch;$i.U.ki.flags=4;$up=$i;$up.U.ki.flags=6;$arr=@($i,$up);[void][JessWin32]::SendInput(2,$arr,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]))};return @{ok=$true;verified=$false;evidence=@{characters=$text.Length;note='Unicode input sent; field content not independently verified'}}}
  'press_keys' {$hold=45;if($null -ne $a.holdMs){$hold=[int]$a.holdMs};Send-Key ([string]$a.keys) $hold;return @{ok=$true;verified=$false;evidence=@{keys=$a.keys;holdMs=$hold;note='C# SendInput accepted the key down/up sequence; target effect requires a screen or UI readback'}}}
- 'media_key' {$action=[string]$a.action;$map=@{volume_up=175;volume_down=174;volume_mute=173;brightness_up=111;brightness_down=112};if(!$map.ContainsKey($action)){throw 'Unsupported media or brightness key'};$vk=[uint16]$map[$action];$down=New-Object JessWin32+INPUT;$down.type=1;$down.U.ki.vk=$vk;$up=New-Object JessWin32+INPUT;$up.type=1;$up.U.ki.vk=$vk;$up.U.ki.flags=[JessWin32]::KEYUP;$arr=@($down,$up);[void][JessWin32]::SendInput(2,$arr,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]));return @{ok=$true;verified=$false;evidence=@{action=$action;virtualKey=$vk;note='Windows media/brightness key event sent. Some keyboards, display drivers or external monitors may not expose this control; read the actual system state to verify.'}}}
+  'media_key' {
+   $action=[string]$a.action
+   if($action -in @('brightness_up','brightness_down')){
+    $monitor=@(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue|Select-Object -First 1)
+    $method=@(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue|Select-Object -First 1)
+    if(!$monitor -or !$method){throw 'Windows does not expose a controllable WMI brightness interface for this display.'}
+    $current=[int]$monitor[0].CurrentBrightness
+    $target=[Math]::Max(0,[Math]::Min(100,($current + $(if($action -eq 'brightness_up'){10}else{-10}))))
+    $change=Invoke-CimMethod -InputObject $method[0] -MethodName WmiSetBrightness -Arguments @{Timeout=[uint32]1;Brightness=[byte]$target} -ErrorAction Stop
+    if([int]$change.ReturnValue -ne 0){throw ('WmiSetBrightness failed with return code '+$change.ReturnValue)}
+    Start-Sleep -Milliseconds 300
+    $after=@(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue|Select-Object -First 1)
+    $actual=$null;if($after.Count -gt 0){$actual=[int]$after[0].CurrentBrightness}
+    $verified=($null -ne $actual -and $actual -eq $target)
+    return @{ok=$true;verified=$verified;evidence=@{action=$action;before=$current;requested=$target;actual=$actual;interface='WMI WmiMonitorBrightnessMethods';note='Brightness change request accepted; verification depends on display-driver readback.'}}
+   }
+   $map=@{volume_up=175;volume_down=174;volume_mute=173}
+   if(!$map.ContainsKey($action)){throw 'Unsupported media action'}
+   $vk=[uint16]$map[$action]
+   $down=New-Object JessWin32+INPUT;$down.type=1;$down.U.ki.vk=$vk
+   $up=New-Object JessWin32+INPUT;$up.type=1;$up.U.ki.vk=$vk;$up.U.ki.flags=[JessWin32]::KEYUP
+   $arr=@($down,$up)
+   $sent=[JessWin32]::SendInput(2,$arr,[Runtime.InteropServices.Marshal]::SizeOf([type][JessWin32+INPUT]))
+   if($sent -ne 2){throw ('Windows SendInput accepted '+$sent+' of 2 media-key events')}
+   return @{ok=$true;verified=$false;evidence=@{action=$action;virtualKey=$vk;note='Windows media key events submitted; the actual system volume should be read back to verify.'}}
+  }
   'find_ui_element' {
     $name=[string]$a.name
     if(!$name -or $name.Length -gt 200){throw 'A UI element name under 200 characters is required'}
@@ -311,4 +350,5 @@ function Invoke-Action($q){
  default {throw ('Unknown method: '+$q.method)}
  }
 }
+[Console]::Out.WriteLine('{"type":"ready"}');[Console]::Out.Flush()
 while($true){$line=[Console]::ReadLine();if($null -eq $line){break};try{$q=ConvertFrom-Json $line;$r=Invoke-Action $q;$o=@{id=$q.id;result=$r}}catch{$o=@{id=$q.id;result=@{ok=$false;verified=$false;evidence=$null;error=$_.Exception.Message}}};try{[Console]::Out.WriteLine((ConvertTo-Json -InputObject $o -Depth 12 -Compress));[Console]::Out.Flush()}catch{}}
