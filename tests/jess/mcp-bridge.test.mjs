@@ -190,9 +190,50 @@ test('MCP stdio startup diagnostics are redacted and included when initializatio
   assert.match(source, /Bearer \[redacted\]/);
 });
 
+test('stdio MCP initialization has a separate budget for first-run dependency installation', async () => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'hubmind-mcp-startup-budget-test-'));
+  const bridge = new McpBridge({ userDataPath, timeoutMs: 100, initializeTimeoutMs: 5000 });
+  const fakeServer = [
+    "const readline = require('node:readline');",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "rl.on('line', line => {",
+    "  let message; try { message = JSON.parse(line); } catch { return; }",
+    "  if (message.method === 'initialize') {",
+    "    setTimeout(() => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'slow-start-server', version: '1' } } }) + '\\n'), 350);",
+    "  } else if (message.method === 'tools/list' && message.id !== undefined) {",
+    "    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { tools: [] } }) + '\\n');",
+    "  }",
+    "});",
+  ].join('\\n');
+
+  try {
+    const servers = await bridge.saveServer({
+      id: 'slow-start-server',
+      name: 'Slow first-run server',
+      transport: 'stdio',
+      command: process.execPath,
+      args: ['-e', fakeServer],
+      enabled: true,
+    }, 'user-a');
+    assert.equal(servers[0].connected, true);
+    assert.equal(servers[0].toolCount, 0);
+  } finally {
+    await bridge.shutdown();
+    fs.rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('MCP stdio initialization uses a distinct configurable startup timeout', () => {
+  const source = fs.readFileSync(path.resolve('electron/mcpBridge.cjs'), 'utf8');
+  assert.match(source, /MCP_INITIALIZE_TIMEOUT_MS = 90_000/);
+  assert.match(source, /initializeTimeoutMs = MCP_INITIALIZE_TIMEOUT_MS/);
+  assert.match(source, /request\(state, method, params, timeoutMs = this\.timeoutMs\)/);
+  assert.match(source, /this\.request\(state, 'initialize',[\s\S]{0,350}this\.initializeTimeoutMs\)/);
+});
+
 test('MCP initialize timeout includes a redacted child startup diagnostic', async () => {
   const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'hubmind-mcp-timeout-test-'));
-  const bridge = new McpBridge({ userDataPath, timeoutMs: 700 });
+  const bridge = new McpBridge({ userDataPath, timeoutMs: 700, initializeTimeoutMs: 700 });
   try {
     await assert.rejects(
       () => bridge.saveServer({
