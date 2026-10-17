@@ -19,10 +19,10 @@ test('desktop orb displays only the Jess icon with a working hide control', () =
   const orb = read('../../src/pages/CompanionPage.tsx');
   assert.ok(orb.includes('JessOrbVisualizer'));
   assert.ok(orb.includes('JessOrbVisualizer'));
-  assert.ok(orb.includes('jess-orb-controls'));
+  assert.ok(orb.includes('jess-orb-drag'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
-  assert.match(orb, /is-transcript-visible/);
+  assert.match(orb, /jess-orb-window/);
 });
 
 test('voice turns are mirrored into the cross-window desktop transcript cache', () => {
