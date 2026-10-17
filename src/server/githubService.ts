@@ -70,7 +70,7 @@ function getGithubHeaders(): Record<string, string> {
     'User-Agent': 'Hub-Mind-Jess-Assistant',
     'X-GitHub-Api-Version': '2022-11-28',
   };
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
   // Server-only token: never return or pass it to a renderer. Public-read-only
   // access remains available when a deployment intentionally has no token.
   if (token) headers.Authorization = `Bearer ${token}`;
