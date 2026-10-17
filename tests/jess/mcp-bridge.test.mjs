@@ -204,7 +204,7 @@ test('stdio MCP initialization has a separate budget for first-run dependency in
     "    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { tools: [] } }) + '\\n');",
     "  }",
     "});",
-  ].join('\\n');
+  ].join('\n');
 
   try {
     const servers = await bridge.saveServer({
