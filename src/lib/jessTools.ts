@@ -244,6 +244,7 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'get_workspace_overview', description: 'Get a concise overview of tasks, documents, and projects.', parameters: object({}) },
   { name: 'search_workspace', description: 'Search the signed-in workspace for documents, tasks, projects, clients and records by keywords.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }, ['query']) },
   { name: 'search_google_drive', description: 'Search file names and indexed full text in the signed-in user’s connected Google Drive. Read-only; requires Google Drive permission to be granted in Hub-Mind.', parameters: object({ query: { type: 'string', description: 'Optional phrase to search in Drive' }, limit: { type: 'number', description: 'Maximum results, up to 20' } }) },
+  { name: 'google_search', description: 'Search the live public web through Google Search grounding, synthesize a current answer with source URLs, and distinguish facts from uncertainty. Use for external research, current information, news, documentation, and fact-checking.', parameters: object({ query: { type: 'string', description: 'Specific web search question or URL to inspect, maximum 2,000 characters' } }, ['query']) },
   { name: 'search_web', description: 'Search the public web globally for current information, research any topic, verify facts, search documentation or news, or inspect a supplied URL. Returns an accurate synthesized answer with source links. Use automatically whenever asked to search online, browse, check external facts, or inspect a URL.', parameters: object({ query: { type: 'string', description: 'A specific web search question or URL to inspect' } }, ['query']) },
   { name: 'get_hubmind_repository_status', description: 'Fetch live public GitHub status for Jaystarbliss-studios/HUB-MIND: recent commits, latest released version, open/merged pull requests, branches, and codebase health. Use whenever asked what changed in the repo, what is implemented, or repository status.', parameters: object({}) },
   { name: 'get_desktop_version_history', description: 'Fetch the complete version history of all Hub-Mind desktop applications released so far from GitHub releases (including desktop-v488, desktop-v14, desktop-v13, etc.), with download links for the Windows installer (Hub-Mind-Setup-x64.exe), release dates, file sizes, and changelogs. Use whenever asked what desktop versions have been released, what is the latest release, or what was changed in recent updates.', parameters: object({ limit: { type: 'number', description: 'Maximum number of recent releases to return (default 10)' } }) },
@@ -657,7 +658,7 @@ export async function executeJessTool(
     if (prefs.memoryEnabled === false && name === 'save_user_memory') {
       return { result: { success: false, error: 'Memory saving is disabled in Jess settings. Enable it in Workspace → Jess settings first.' } };
     }
-    if (prefs.webResearchEnabled === false && ['search_web', 'desktop_open_website'].includes(name)) {
+    if (prefs.webResearchEnabled === false && ['google_search', 'search_web', 'desktop_open_website'].includes(name)) {
       return { result: { success: false, error: 'Web research is disabled in Jess settings. Enable it in Workspace → Jess settings first.' } };
     }
   } catch {
@@ -965,6 +966,7 @@ export async function executeJessTool(
         };
       }
 
+      case 'google_search':
       case 'search_web': {
         const queryText = String(args?.query || '').trim();
         if (!queryText || queryText.length > 2000) {
