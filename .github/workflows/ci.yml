@@ -92,24 +92,96 @@ jobs:
           }
       - name: TypeScript validation
         run: npm run typecheck
-      - name: Smoke-test native PowerShell sidecar startup and Win32 interop compilation
+      - name: Smoke-test native PowerShell sidecar, storage scan and cleanup confirmation guard
         shell: pwsh
         run: |
-          $request = '{"id":"ci-list-windows","method":"list_windows","args":{}}'
-          $raw = @($request | & powershell.exe -NoLogo -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File electron/jess-agent.ps1)
-          if ($LASTEXITCODE -ne 0) {
-            $detail = $raw -join [Environment]::NewLine
-            throw "Native helper exited with code $LASTEXITCODE. Output: $detail"
-          }
-          $messages = @($raw | ForEach-Object { $_ | ConvertFrom-Json -ErrorAction Stop })
-          if ($messages.Count -lt 2 -or $messages[0].type -ne 'ready') {
-            $detail = $raw -join [Environment]::NewLine
-            throw "Native helper did not emit the ready handshake and list_windows response. Output: $detail"
-          }
-          $response = $messages | Where-Object { $_.id -eq 'ci-list-windows' } | Select-Object -First 1
-          if ($null -eq $response -or $response.result.ok -ne $true) {
-            $detail = $raw -join [Environment]::NewLine
-            throw "Native list_windows smoke test failed. Output: $detail"
+          $fixture = Join-Path $env:RUNNER_TEMP ('jess-storage-fixture-' + [Guid]::NewGuid().ToString('N'))
+          $process = $null
+          try {
+            $null = New-Item -ItemType Directory -Path $fixture -Force
+            [System.IO.File]::WriteAllText((Join-Path $fixture 'small.txt'), ('small file fixture' * 100))
+            [System.IO.File]::WriteAllBytes((Join-Path $fixture 'duplicate-one.bin'), [byte[]]::new(32768))
+            [System.IO.File]::WriteAllBytes((Join-Path $fixture 'duplicate-two.bin'), [byte[]]::new(32768))
+            $mediumStream = [System.IO.File]::Open((Join-Path $fixture 'medium.bin'), [System.IO.FileMode]::CreateNew)
+            $mediumStream.SetLength(12MB)
+            $mediumStream.Dispose()
+            $largeStream = [System.IO.File]::Open((Join-Path $fixture 'large.bin'), [System.IO.FileMode]::CreateNew)
+            $largeStream.SetLength(20MB)
+            $largeStream.Dispose()
+            [System.IO.File]::WriteAllText((Join-Path $fixture 'candidate.tmp'), 'temporary candidate fixture')
+
+            $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $startInfo.FileName = 'powershell.exe'
+            $scriptPath = Join-Path $PWD 'electron\jess-agent.ps1'
+            $startInfo.Arguments = '-NoLogo -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File "' + $scriptPath + '"'
+            $startInfo.UseShellExecute = $false
+            $startInfo.CreateNoWindow = $true
+            $startInfo.RedirectStandardInput = $true
+            $startInfo.RedirectStandardOutput = $true
+            $startInfo.RedirectStandardError = $true
+            $process = [System.Diagnostics.Process]::new()
+            $process.StartInfo = $startInfo
+            [void]$process.Start()
+
+            $readyLine = $process.StandardOutput.ReadLine()
+            if ([string]::IsNullOrWhiteSpace($readyLine)) { throw 'Native sidecar returned no ready handshake.' }
+            $ready = $readyLine | ConvertFrom-Json -ErrorAction Stop
+            if ($ready.type -ne 'ready') { throw "Native sidecar ready handshake was invalid: $readyLine" }
+
+            $sendRequest = {
+              param($request)
+              $process.StandardInput.WriteLine(($request | ConvertTo-Json -Compress -Depth 10))
+              $process.StandardInput.Flush()
+              $line = $process.StandardOutput.ReadLine()
+              if ([string]::IsNullOrWhiteSpace($line)) { throw "Native sidecar returned no response for $($request.id)." }
+              return ($line | ConvertFrom-Json -ErrorAction Stop)
+            }
+
+            $scanResponse = & $sendRequest @{
+              id = 'ci-storage-scan'
+              method = 'filesystem_scan'
+              args = @{ root = $fixture; largeThresholdMB = 15; inactiveDays = 1; maxSeconds = 15; maxFiles = 1000; detectDuplicates = $true }
+            }
+            if ($scanResponse.result.ok -ne $true) { throw "Storage scan failed: $($scanResponse.result.error)" }
+            $scan = $scanResponse.result.evidence
+            if (!$scan.scanId -or $scan.filesScanned -lt 5) { throw "Storage scan returned incomplete fixture data: $($scan.filesScanned) files" }
+            if ($scan.categoryStats.small.count -lt 3 -or $scan.categoryStats.medium.count -lt 1 -or $scan.categoryStats.large.count -lt 1) {
+              throw 'Storage scan size categories did not classify small, medium and large fixture files correctly.'
+            }
+            if (@($scan.duplicateGroups).Count -lt 1 -or @($scan.duplicateGroups[0].candidateIds).Count -lt 1) { throw 'Storage scan did not find the two same-content duplicate fixtures.' }
+
+            $tempCandidate = @($scan.candidates | Where-Object { $_.path -like '*.tmp' -and $_.cleanupEligible } | Select-Object -First 1)
+            $duplicateCandidateId = [string](@($scan.duplicateGroups[0].candidateIds)[0])
+            if ($tempCandidate.Count -ne 1 -or !$duplicateCandidateId) { throw 'Storage scan did not expose exact temp/duplicate candidate IDs for the cleanup preview.' }
+            $candidateIds = @([string]$tempCandidate[0].candidateId, $duplicateCandidateId)
+            $preview = & $sendRequest @{
+              id = 'ci-storage-clean-preview'
+              method = 'filesystem_clean'
+              args = @{ scanId = $scan.scanId; candidateIds = $candidateIds; previewOnly = $true }
+            }
+            if ($preview.result.ok -ne $true -or $preview.result.evidence.count -ne 2) { throw "Storage cleanup preview failed: $($preview.result.error)" }
+
+            $blockedClean = & $sendRequest @{
+              id = 'ci-storage-clean-confirmation-guard'
+              method = 'filesystem_clean'
+              args = @{ scanId = $scan.scanId; candidateIds = $candidateIds }
+            }
+            if ($blockedClean.result.ok -ne $false -or $blockedClean.result.error -notlike '*confirmation*') {
+              throw 'Storage cleanup did not enforce the trusted desktop confirmation flag.'
+            }
+            foreach ($candidate in $preview.result.evidence.items) {
+              if (!(Test-Path -LiteralPath $candidate.path -PathType Leaf)) { throw "Cleanup guard changed a file without confirmation: $($candidate.path)" }
+            }
+            Write-Output "Storage scan fixture passed: $($scan.filesScanned) files, $(@($scan.duplicateGroups).Count) duplicate group(s), $($preview.result.evidence.count) cleanup candidates guarded."
+          } finally {
+            if ($process) {
+              try { $process.StandardInput.Close() } catch {}
+              if (!$process.HasExited) {
+                if (!$process.WaitForExit(10000)) { try { $process.Kill() } catch {}; try { $process.WaitForExit(2000) } catch {} }
+              }
+              try { $process.Dispose() } catch {}
+            }
+            if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue }
           }
       - name: Unit and contract tests
         run: npm run test:unit
