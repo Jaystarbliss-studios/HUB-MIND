@@ -73,9 +73,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # The current lockfile is missing four declared devDependencies; npm ci would fail before tests.
-      # Use npm install until the repository lockfile is regenerated and committed.
-      - run: npm ci --no-audit --no-fund
+      # The committed lockfile is currently out of sync with package.json. npm install
+      # reconciles the dependency tree so the test suite can run; regenerate and commit
+      # package-lock.json separately before switching this back to npm ci.
+      - run: npm install --no-audit --no-fund
       - run: npm run verify:jess
       - run: npm run typecheck
       - run: node --check electron/main.cjs
