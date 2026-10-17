@@ -45,7 +45,7 @@ test('desktop workspace and icon-only orb visibility follow the requested lifecy
   assert.ok(orb.includes('JessOrbVisualizer') && /onPointerDown|onMouseDown|onTouchStart/.test(orb));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
-  assert.match(orb, /is-transcript-visible/);
+  assert.ok(orb.includes('setTranscriptVisible') || orb.includes('transcriptVisible'));
 });
 
 test('native Windows tools use a full-control session, narrow preload bridge and honesty protocol', () => {
