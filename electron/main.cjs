@@ -148,7 +148,6 @@ function chooseDisplaySource(sources) {
     screenSharePickerWindow = picker;
     picker.setAlwaysOnTop(true, 'screen-saver');
     picker.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    picker.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     picker.once('ready-to-show', () => { if (!picker.isDestroyed()) picker.show(); });
     picker.on('closed', () => {
       if (screenSharePickerWindow === picker) screenSharePickerWindow = null;
