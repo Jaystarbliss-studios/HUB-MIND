@@ -37,12 +37,12 @@ body:has(.jess-transcript-overlay-page) #root > div {
   box-sizing: border-box;
   padding: 14px 24px 17px;
   overflow: hidden;
-  border: 1px solid rgba(226, 232, 240, .28);
+  border: 1px solid rgba(226, 232, 240, .22);
   border-radius: 18px;
-  background: linear-gradient(135deg, rgba(15, 23, 42, .48), rgba(2, 6, 23, .30));
-  backdrop-filter: blur(26px) saturate(175%);
-  -webkit-backdrop-filter: blur(26px) saturate(175%);
-  box-shadow: 0 14px 44px rgba(0, 0, 0, .20), inset 0 1px 0 rgba(255,255,255,.10);
+  background: linear-gradient(135deg, rgba(15, 23, 42, .22), rgba(2, 6, 23, .14));
+  backdrop-filter: blur(34px) saturate(190%);
+  -webkit-backdrop-filter: blur(34px) saturate(190%);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, .12), inset 0 1px 0 rgba(255,255,255,.14);
   animation: jess-caption-in .16s ease-out;
 }
 .jess-transcript-overlay-label {
