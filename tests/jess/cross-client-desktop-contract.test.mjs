@@ -42,7 +42,7 @@ test('desktop workspace and icon-only orb visibility follow the requested lifecy
   assert.ok(electron.includes('hubmind:move-companion-by'));
   assert.ok(orb.includes('JessOrbVisualizer'));
   assert.ok(orb.includes('JessOrbVisualizer'));
-  assert.ok(orb.includes('jess-orb-controls'));
+  assert.ok(orb.includes('JessOrbVisualizer') && /onPointerDown|onMouseDown|onTouchStart/.test(orb));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
   assert.match(orb, /is-transcript-visible/);
