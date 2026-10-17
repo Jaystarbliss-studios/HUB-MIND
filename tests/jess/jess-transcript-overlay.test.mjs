@@ -53,5 +53,8 @@ test('movable companion stays icon-sized when transcript appears', async () => {
   ]);
   assert.match(main, /width: 96, height: 96, minWidth: 96, minHeight: 96/);
   assert.match(main, /hubmind:set-companion-transcript-visible[\s\S]{0,220}Legacy compatibility only/);
-  assert.match(css, /\.jess-orb-window \.jess-transcript,[\s\S]*display:none!important/);
+  assert.match(css, /\.jess-orb-window\s*\{[\s\S]*width:\s*96px/);
+  assert.doesNotMatch(css, /\.jess-transcript\s*\{/);
+  assert.match(main, /function createTranscriptOverlayWindow\(\)/);
+  assert.ok(main.includes("APP_URL + '/companion-transcript'"));
 });
