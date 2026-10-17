@@ -68,10 +68,12 @@ function getGithubHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github.v3+json',
     'User-Agent': 'Hub-Mind-Jess-Assistant',
+    'X-GitHub-Api-Version': '2022-11-28',
   };
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (token) {
-    headers.Authorization = `token ${token}`;
+    // Supports classic PATs and fine-grained GitHub tokens without exposing the token client-side.
+    headers.Authorization = `Bearer ${token}`;
   }
   return headers;
 }
@@ -339,6 +341,7 @@ export async function inspectCodebase(targetPath = '', branch = 'main'): Promise
   return { success: false, path: normalizedPath, type: 'error', error: 'Unknown file type.' };
 }
 
+/** Server-side repository snapshot: release notes, recent commits and repository metadata. */
 export async function getFullRepositoryStatus() {
   const [releases, commits, overview, pulls] = await Promise.all([
     fetchHubMindReleases(),
