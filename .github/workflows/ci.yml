@@ -148,7 +148,7 @@ jobs:
             if ($scan.categoryStats.small.count -lt 3 -or $scan.categoryStats.medium.count -lt 1 -or $scan.categoryStats.large.count -lt 1) {
               throw 'Storage scan size categories did not classify small, medium and large fixture files correctly.'
             }
-            if (@($scan.duplicateGroups).Count -lt 1 -or @($scan.duplicateGroups[0].candidateIds).Count -lt 1) { throw 'Storage scan did not find the two same-content duplicate fixtures.' }
+            if (@($scan.duplicateGroups).Count -lt 1 -or @($scan.duplicateGroups[0].candidateIds).Count -lt 1) { throw ('Storage scan did not find duplicate fixtures. Files={0}; sameSizeGroups={1}; hashes={2}; hashBuckets={3}; hashLimit={4}; scanSeconds={5}; partial={6}' -f $scan.filesScanned,$scan.sameSizeGroupsCount,$scan.hashesComputed,$scan.hashBucketsCount,$scan.duplicateHashingLimited,$scan.scanDurationSeconds,$scan.partial) }
 
             $tempCandidate = @($scan.candidates | Where-Object { $_.path -like '*.tmp' -and $_.cleanupEligible } | Select-Object -First 1)
             $duplicateCandidateId = [string](@($scan.duplicateGroups[0].candidateIds)[0])
