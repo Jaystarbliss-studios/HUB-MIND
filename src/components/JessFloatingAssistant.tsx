@@ -30,7 +30,9 @@ import {
   X,
   Brain,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Download,
+  Globe
 } from 'lucide-react';
 
 const POSITION_KEY = 'hubmind.jess.position.v2';
@@ -967,6 +969,47 @@ export function JessFloatingAssistant() {
     }, error => console.warn('[Jess] Desktop activation request listener failed:', error));
   }, [profile?.id, start]);
 
+  // Desktop companion window real-time sync bridge
+  useEffect(() => {
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel('hubmind-jess-desktop-bridge');
+      channel.onmessage = (event) => {
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+        if (data.type === 'ping') {
+          channel?.postMessage({
+            type: 'sync',
+            state,
+            connection,
+            speechState,
+            inputLevel,
+            outputLevel,
+            activeBgTasks,
+          });
+        } else if (data.type === 'toggle') {
+          activate();
+        } else if (data.type === 'start') {
+          void start(data.prompt);
+        } else if (data.type === 'stop') {
+          void stop();
+        }
+      };
+      channel.postMessage({
+        type: 'sync',
+        state,
+        connection,
+        speechState,
+        inputLevel,
+        outputLevel,
+        activeBgTasks,
+      });
+    } catch {}
+    return () => {
+      try { channel?.close(); } catch {}
+    };
+  }, [activate, activeBgTasks, connection, inputLevel, outputLevel, speechState, start, state, stop]);
+
   // Passive wake is strictly app-only. Normal browser tabs must never leave a
   // background microphone listener running. Native shells can provide a native
   // wake plugin; installed desktop PWAs use browser recognition as a fallback.
@@ -1058,6 +1101,9 @@ export function JessFloatingAssistant() {
 
   const handleExecuteContextAction = (action: ContextActionSuggestion) => {
     setShowContextMenu(false);
+    if (action.id === 'gen_desktop_releases') {
+      window.dispatchEvent(new CustomEvent('hubmind:open-updates-panel'));
+    }
     if (connection === 'connected' && clientRef.current) {
       clientRef.current.sendText(action.prompt);
     } else {
@@ -1116,6 +1162,13 @@ export function JessFloatingAssistant() {
       e.currentTarget.releasePointerCapture?.(e.pointerId);
     } catch {
       /* already released */
+    }
+    if (showOrbDismiss && (e.clientY > window.innerHeight - 100 || renderedPosition.y > 0.85)) {
+      setOrbDismissed(true);
+      setShowOrbDismiss(false);
+      setShowContextMenu(false);
+      try { if ('vibrate' in navigator) navigator.vibrate([18, 35, 18]); } catch {}
+      return;
     }
     if (p.moved || p.longPressed) { p.longPressed = false; return; }
     const now = Date.now();
@@ -1188,6 +1241,8 @@ export function JessFloatingAssistant() {
       case 'Share2': return <Share2 className="w-4 h-4 text-teal-400 shrink-0" />;
       case 'Users': return <Users className="w-4 h-4 text-cyan-300 shrink-0" />;
       case 'Activity': return <Activity className="w-4 h-4 text-teal-400 shrink-0" />;
+      case 'Download': return <Download className="w-4 h-4 text-teal-300 shrink-0" />;
+      case 'Globe': return <Globe className="w-4 h-4 text-sky-400 shrink-0" />;
       default: return <Lightbulb className="w-4 h-4 text-teal-400 shrink-0" />;
     }
   };
@@ -1308,8 +1363,8 @@ export function JessFloatingAssistant() {
         </div>
       )}
 
-      {/* Floating Assistant Orb Button — the native desktop shell owns the only visible orb. */}
-      {!isDesktopShell && !orbDismissed && <button
+      {/* Floating Assistant Orb Button (hidden in desktop app because the dedicated companion window is always on screen) */}
+      {!orbDismissed && !isDesktopShell && <button
         data-jess-orb="true"
         type="button"
         onPointerDown={onPointerDown}
@@ -1339,21 +1394,63 @@ export function JessFloatingAssistant() {
           </div>
         )}
       </button>}
+      {/* Very tiny X by the side of the orb to close/dismiss */}
+      {!orbDismissed && !isDesktopShell && (
+        <button
+          type="button"
+          aria-label="Hide Jess assistant orb"
+          title="Hide Jess orb"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOrbDismissed(true);
+            setShowContextMenu(false);
+            setShowOrbDismiss(false);
+          }}
+          style={{
+            position: 'fixed',
+            left: `calc(${renderedPosition.x * 100}% + ${size / 2 - 3}px)`,
+            top: `calc(${renderedPosition.y * 100}% - ${size / 2 - 3}px)`,
+            zIndex: 10000,
+          }}
+          className="w-5 h-5 rounded-full bg-slate-950/90 hover:bg-rose-600 border border-teal-500/30 hover:border-rose-400 text-slate-300 hover:text-white shadow-lg flex items-center justify-center transition-colors cursor-pointer"
+        >
+          <X className="w-2.5 h-2.5" />
+        </button>
+      )}
       {remoteJessOwner && remoteJessOwner.leaseUntil > Date.now() && remoteJessOwner.sessionId !== sessionLeaseRef.current?.sessionId && !orbDismissed && (
         <div role="status" aria-live="polite" style={{ position: 'fixed', left: `${Math.max(4, Math.min(96, renderedPosition.x * 100))}%`, top: `${Math.max(3, renderedPosition.y * 100 - 5)}%`, transform: 'translate(-50%, -100%)', zIndex: 9998, pointerEvents: 'none' }} className="max-w-[230px] rounded-full border border-teal-500/25 bg-slate-950/95 px-3 py-1.5 text-[10px] text-teal-100 shadow-xl">
           Jess is active in {remoteJessOwner.client === 'windows-desktop' ? 'the Windows app' : remoteJessOwner.client === 'installed-web-app' ? 'the installed Chrome app' : 'another browser/device'}
         </div>
       )}
       {showOrbDismiss && !orbDismissed && (
-        <button
-          type="button"
-          aria-label="Remove Jess orb from this screen"
-          title="Remove Jess from this screen"
-          onPointerDown={e => e.stopPropagation()}
-          onClick={() => { setOrbDismissed(true); setShowOrbDismiss(false); setShowContextMenu(false); try { if ('vibrate' in navigator) navigator.vibrate([18, 35, 18]); } catch {} }}
-          style={{ position: 'fixed', left: `${Math.min(96, Math.max(4, renderedPosition.x * 100 + 4))}%`, top: `${Math.max(4, renderedPosition.y * 100 - 4)}%`, zIndex: 10001 }}
-          className="w-7 h-7 rounded-full bg-red-600 hover:bg-red-500 border border-red-300 text-white shadow-lg flex items-center justify-center"
-        ><X className="w-4 h-4" /></button>
+        <div
+          role="region"
+          aria-label="Drop here to close Jess orb"
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: '28px',
+            transform: 'translateX(-50%)',
+            zIndex: 10001,
+          }}
+          className="flex flex-col items-center gap-1.5 animate-in fade-in zoom-in-95 duration-200"
+        >
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => {
+              setOrbDismissed(true);
+              setShowOrbDismiss(false);
+              setShowContextMenu(false);
+              try { if ('vibrate' in navigator) navigator.vibrate([18, 35, 18]); } catch {}
+            }}
+            className="px-4 py-2 rounded-full bg-rose-600/95 hover:bg-rose-500 text-white font-medium text-xs shadow-2xl border border-rose-300/40 flex items-center gap-2 cursor-pointer transition-all"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>Drop orb or click here to dismiss</span>
+          </button>
+        </div>
       )}
 
       {screenSharePrompt && (

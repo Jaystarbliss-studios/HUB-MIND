@@ -38,6 +38,7 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: Hub-Mind
   deleteAppDataOnUninstall: false
+  include: scripts/installer.nsh
 publish:
   provider: github
   owner: Jaystarbliss-studios

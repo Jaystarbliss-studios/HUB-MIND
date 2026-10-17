@@ -63,6 +63,10 @@ const RETRY_SAFE_TOOLS = new Set([
   'chrome_read_page',
   'chrome_find_element',
   'search_web',
+  'get_hubmind_repository_status',
+  'get_desktop_version_history',
+  'inspect_github_codebase',
+  'open_visual_updates_panel',
 ]);
 
 function makeExecutionId(): string {

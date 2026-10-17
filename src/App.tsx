@@ -9,6 +9,8 @@ import { JessDocumentBridge } from './components/JessDocumentBridge';
 import { PublicHome } from './pages/PublicHome';
 import './pages/public-home.css';
 import { Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { isJessInstalledApp } from './services/jessWakeListener';
+import { DesktopUpdatesModal } from './components/DesktopUpdatesModal';
 
 function safeLazy<T extends React.ComponentType<any>>(importer: () => Promise<{ [key: string]: any }>, namedExport?: string): React.LazyExoticComponent<T> {
   return lazy(async () => {
@@ -151,10 +153,11 @@ export default function App() {
         <Route path="/documents/*" element={<LegacyWorkspaceRedirect />} />
         <Route path="/notifications" element={<Navigate to="/workspace/notifications" replace />} />
         <Route path="/admin" element={<Navigate to="/workspace/admin" replace />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<FallbackCatchAllRoute />} />
       </Routes>
     </Suspense>
     <AuthenticatedAssistantWidgets />
+    <DesktopUpdatesModal />
   </BrowserRouter></LoadingProvider></AuthProvider></AppErrorBoundary>;
 }
 
@@ -163,11 +166,26 @@ function LegacyWorkspaceRedirect() {
   return <Navigate to={'/workspace' + location.pathname + location.search + location.hash} replace />;
 }
 
+function FallbackCatchAllRoute() {
+  const installed = isJessInstalledApp();
+  const { user, profile } = useAuth();
+  if (installed) {
+    if (user && profile && profile.status === 'active') {
+      return <Navigate to="/workspace" replace />;
+    }
+    return <Navigate to="/login" replace />;
+  }
+  return <Navigate to="/" replace />;
+}
+
 function AppHomeRoute() {
-  const installed = typeof window !== 'undefined' && (
-    window.matchMedia?.('(display-mode: standalone)').matches === true ||
-    (navigator as any).standalone === true ||
-    (window as any).hubMindDesktop?.isDesktopApp === true
-  );
-  return installed ? <Navigate to="/login" replace /> : <PublicHome />;
+  const installed = isJessInstalledApp();
+  const { user, profile } = useAuth();
+  if (installed) {
+    if (user && profile && profile.status === 'active') {
+      return <Navigate to="/workspace" replace />;
+    }
+    return <Navigate to="/login" replace />;
+  }
+  return <PublicHome />;
 }

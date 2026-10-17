@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { readJessExecutionEvents, type JessExecutionEvent } from '../services/jessExecutionRuntime';
-import { Brain, ShieldCheck, SlidersHorizontal, Loader2, MonitorCog } from 'lucide-react';
+import { Brain, ShieldCheck, SlidersHorizontal, Loader2, MonitorCog, Layers, Download, ExternalLink } from 'lucide-react';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { JessMcpServersSettings } from '../components/JessMcpServersSettings';
@@ -173,6 +173,43 @@ export function JessSettings() {
           <label className="flex items-center justify-between gap-4 py-3"><span><strong className="block text-sm">Web research</strong><span className="text-xs text-slate-400">Allow Jess to use available online search and URL context tools.</span></span><input type="checkbox" checked={prefs.webResearchEnabled} onChange={e => update('webResearchEnabled',e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
           <label className="flex items-center justify-between gap-4 py-3 border-t border-slate-800"><span><strong className="block text-sm">Verify actions visually</strong><span className="text-xs text-slate-400">When screen access is available, ask Jess to inspect the result before claiming success.</span></span><input type="checkbox" checked={prefs.screenVerificationEnabled} onChange={e => update('screenVerificationEnabled',e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
           <label className="block mt-4"><span className="text-sm font-medium">Personalization instructions</span><textarea value={prefs.personalization} onChange={e => update('personalization',e.target.value.slice(0,2000))} rows={4} maxLength={2000} placeholder="For example: be concise, explain unfamiliar terms, prefer keyboard shortcuts, and use my preferred writing tone." className="mt-2 w-full resize-y rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-100 placeholder:text-slate-600 focus:border-teal-400 focus:outline-none"/></label>
+        </section>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-3">
+              <Layers className="text-teal-300 shrink-0" size={20}/>
+              <div>
+                <h2 className="font-semibold">Desktop Releases & Version History</h2>
+                <p className="text-xs text-slate-400 mt-1">Inspect official releases, Windows installers, recent GitHub commits, and codebase history.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('hubmind:open-updates-panel'))}
+              className="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shrink-0"
+            >
+              <Download size={14}/>
+              <span>View Releases Panel</span>
+            </button>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-xs space-y-2 text-slate-300">
+            <div className="flex items-center justify-between">
+              <span>Public GitHub Repository</span>
+              <a href="https://github.com/Jaystarbliss-studios/HUB-MIND" target="_blank" rel="noreferrer" className="text-teal-400 hover:underline inline-flex items-center gap-1">
+                Jaystarbliss-studios/HUB-MIND <ExternalLink size={12}/>
+              </a>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Jess GitHub Awareness</span>
+              <span className="text-emerald-300">Enabled (Releases, Commits, Codebase inspection)</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Global Web Search</span>
+              <span className={prefs.webResearchEnabled ? "text-emerald-300" : "text-amber-300"}>
+                {prefs.webResearchEnabled ? "Active (Google Search Grounding)" : "Disabled"}
+              </span>
+            </div>
+          </div>
         </section>
         <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 flex gap-3"><MonitorCog className="text-slate-400 shrink-0" size={19}/><p className="text-xs leading-relaxed text-slate-400">Full Control operates through the installed desktop app. The web workspace cannot itself control Windows. UAC secure-desktop prompts require user interaction.</p></section>
         <div className="flex items-center justify-end gap-3"><span aria-live="polite" className="text-xs text-emerald-300">{saving ? 'Saving…' : saved ? 'Auto-saved' : 'Changes save automatically'}</span></div>

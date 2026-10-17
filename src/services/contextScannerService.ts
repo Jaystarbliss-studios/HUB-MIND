@@ -225,6 +225,22 @@ export function scanCurrentPageContext(pathname: string): ContextActionSuggestio
       icon: 'Activity',
     },
     {
+      id: 'gen_desktop_releases',
+      title: 'Desktop Releases & History',
+      description: 'Check latest release, installers & updates',
+      prompt: 'Check the live GitHub repository Jaystarbliss-studios/HUB-MIND, give me the latest desktop version history, and open the visual updates panel.',
+      category: 'general',
+      icon: 'Download',
+    },
+    {
+      id: 'gen_search_web',
+      title: 'Global Web Search',
+      description: 'Search online facts, news & research',
+      prompt: 'Search the web globally for current news and updates on Jaystarbliss Studios Hub-Mind.',
+      category: 'general',
+      icon: 'Globe',
+    },
+    {
       id: 'gen_draft_document',
       title: 'Draft New Workspace Document',
       description: 'Create memo, report, or lesson plan',

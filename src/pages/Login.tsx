@@ -4,6 +4,7 @@ import { auth } from '../firebaseConfig';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Loader2, LogIn, AlertCircle, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { isJessInstalledApp } from '../services/jessWakeListener';
 
 export function Login() {
   const [error, setError] = useState('');
@@ -48,7 +49,11 @@ export function Login() {
 
   return <main className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
     <section className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
-      <button onClick={() => navigate('/')} className="text-xs text-slate-400 hover:text-teal-300 inline-flex items-center gap-2 mb-7"><ArrowLeft size={14}/> Back to Hub-Mind</button>
+      {!isJessInstalledApp() && (
+        <button onClick={() => navigate('/')} className="text-xs text-slate-400 hover:text-teal-300 inline-flex items-center gap-2 mb-7">
+          <ArrowLeft size={14}/> Back to Hub-Mind
+        </button>
+      )}
       <div className="flex flex-col items-center mb-8"><img src="/hub-mind%20logo.png" alt="Hub-Mind" className="w-20 h-20 object-contain mb-4" width={80} height={80} /><h1 className="text-2xl font-bold text-slate-100">Welcome back</h1><p className="text-sm text-slate-400 mt-2 text-center">Sign in to open your Hub-Mind workspace.</p></div>
       {invite && <div className="mb-5 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20"><p className="text-sm text-emerald-300 font-medium">Invitation detected</p><p className="text-xs text-slate-400 mt-1">Sign in with the Google account that received the invitation. Your invitation will be verified before access is granted.</p></div>}
       {error && <div role="alert" className="p-3 mb-5 bg-rose-950/40 border border-rose-800/60 rounded-xl text-rose-300 text-sm flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>{error}</span></div>}

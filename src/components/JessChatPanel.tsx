@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
-import { ArrowUp, Copy, History, LoaderCircle, MessageCircle, Monitor, MonitorOff, Plus, Sparkles, X } from 'lucide-react';
+import { ArrowUp, Copy, Download, History, LoaderCircle, MessageCircle, Monitor, MonitorOff, Plus, Sparkles, X } from 'lucide-react';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { formatMemoriesForPrompt, getUserMemories, saveUserMemory } from '../services/memoryService';
@@ -177,7 +177,7 @@ export function JessChatPanel({ onClose }: { onClose: () => void }) {
 
       const memories = memoryEnabled ? await getUserMemories(profile.id) : [];
       const memoryContext = memoryEnabled ? formatMemoriesForPrompt(memories) : 'Personal memory is disabled by the workspace administrator.';
-      const systemText = 'You are Jess, the thoughtful, capable AI assistant inside Hub-Mind by Jaystarbliss Studios. Be warm, sharp, practical, and honest. Write naturally, not generically. Ask a focused clarifying question only when genuinely needed. Do not claim to have performed actions in the user’s workspace unless a connected tool has actually done so. Keep responses readable and useful.\n\nUser memory available to personalise this conversation:\n' + memoryContext;
+      const systemText = 'You are Jess, the thoughtful, capable AI assistant inside Hub-Mind by Jaystarbliss Studios. Be warm, sharp, practical, and honest. Write naturally, not generically. You have live global web search enabled and full live access to your public GitHub repository Jaystarbliss-studios/HUB-MIND. You know about all released desktop versions (such as desktop-v488, desktop-v14, etc.), installers, recent commits, and the codebase. When the user asks about version history, releases, code, or current facts, provide accurate details and note that they can open the visual Desktop Releases & Version History panel. Do not claim to have performed actions in the user’s workspace unless a connected tool has actually done so.\n\nUser memory available to personalise this conversation:\n' + memoryContext;
       const requestMessages = next.filter(m => !m.id.startsWith('welcome')).map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.text }],
@@ -191,10 +191,16 @@ export function JessChatPanel({ onClose }: { onClose: () => void }) {
         }
       }
       const token = await firebaseUser.getIdToken();
+      const textQuery = userMessage.text.toLowerCase();
+      const needsSearch = /search|browse|web|lookup|look up|who is|what is|news|latest|release|version|installer|desktop|github|repo|commit/i.test(textQuery) || /^https?:\/\//i.test(userMessage.text);
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ messages: requestMessages, systemInstruction: { parts: [{ text: systemText + (imageAttached ? '\n\nThe user deliberately shared a current screen snapshot. Describe only what is visible, acknowledge uncertainty, and ask before taking any consequential action.' : '') }] } }),
+        body: JSON.stringify({
+          messages: requestMessages,
+          useSearch: needsSearch,
+          systemInstruction: { parts: [{ text: systemText + (imageAttached ? '\n\nThe user deliberately shared a current screen snapshot. Describe only what is visible, acknowledge uncertainty, and ask before taking any consequential action.' : '') }] }
+        }),
         signal: AbortSignal.timeout(60000),
       });
       const data = await response.json().catch(() => ({}));
@@ -232,6 +238,7 @@ export function JessChatPanel({ onClose }: { onClose: () => void }) {
           <div className="jess-chat-heading"><strong>Jess</strong><span><i/> Hub-Mind thought partner</span></div>
         </div>
         <div className="jess-chat-header-actions">
+          <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('hubmind:open-updates-panel'))} title="Desktop Releases & Version History" aria-label="Desktop Releases & Version History"><Download size={16}/></button>
           <button type="button" onClick={() => setHistoryOpen(open => !open)} title="Saved conversations" aria-label="Saved conversations"><History size={16}/></button>
           <button type="button" onClick={startNewChat} title="Start a fresh chat" aria-label="Start a fresh chat"><Plus size={17}/></button>
           <button type="button" onClick={onClose} title="Close chat" aria-label="Close chat"><X size={18}/></button>

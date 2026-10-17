@@ -244,8 +244,11 @@ export const JESS_TOOLS_DECLARATIONS: JessToolDefinition[] = [
   { name: 'get_workspace_overview', description: 'Get a concise overview of tasks, documents, and projects.', parameters: object({}) },
   { name: 'search_workspace', description: 'Search the signed-in workspace for documents, tasks, projects, clients and records by keywords.', parameters: object({ query: { type: 'string' }, limit: { type: 'number' } }, ['query']) },
   { name: 'search_google_drive', description: 'Search file names and indexed full text in the signed-in user’s connected Google Drive. Read-only; requires Google Drive permission to be granted in Hub-Mind.', parameters: object({ query: { type: 'string', description: 'Optional phrase to search in Drive' }, limit: { type: 'number', description: 'Maximum results, up to 20' } }) },
-  { name: 'search_web', description: 'Search the public web for current information, research a topic, fact-check a claim, or inspect a supplied URL. Returns a grounded answer and source links. Use when the user asks you to browse, search online, or find current information.', parameters: object({ query: { type: 'string', description: 'A specific web search question or URL to inspect' } }, ['query']) },
-  { name: 'get_hubmind_repository_status', description: 'Fetch live public GitHub facts for Jaystarbliss-studios/HUB-MIND: recent commits, recent pull requests, whether each PR is merged/open, descriptions and links. Use whenever asked what changed, what is implemented versus still planned, repo health/status, or whether work reached main. Distinguish merged code from verified runtime behavior; commit/PR text is not proof that tests passed.', parameters: object({}) },
+  { name: 'search_web', description: 'Search the public web globally for current information, research any topic, verify facts, search documentation or news, or inspect a supplied URL. Returns an accurate synthesized answer with source links. Use automatically whenever asked to search online, browse, check external facts, or inspect a URL.', parameters: object({ query: { type: 'string', description: 'A specific web search question or URL to inspect' } }, ['query']) },
+  { name: 'get_hubmind_repository_status', description: 'Fetch live public GitHub status for Jaystarbliss-studios/HUB-MIND: recent commits, latest released version, open/merged pull requests, branches, and codebase health. Use whenever asked what changed in the repo, what is implemented, or repository status.', parameters: object({}) },
+  { name: 'get_desktop_version_history', description: 'Fetch the complete version history of all Hub-Mind desktop applications released so far from GitHub releases (including desktop-v488, desktop-v14, desktop-v13, etc.), with download links for the Windows installer (Hub-Mind-Setup-x64.exe), release dates, file sizes, and changelogs. Use whenever asked what desktop versions have been released, what is the latest release, or what was changed in recent updates.', parameters: object({ limit: { type: 'number', description: 'Maximum number of recent releases to return (default 10)' } }) },
+  { name: 'inspect_github_codebase', description: 'Inspect files and directories in the public Hub-Mind repository (Jaystarbliss-studios/HUB-MIND). Allows reading source code, package.json, documentation, Electron files, or listing directory contents. Use whenever asked about the codebase, files, or internal code structure.', parameters: object({ path: { type: 'string', description: 'File or directory path in the repository (e.g. "package.json", "electron/main.cjs", "README.md", "src/App.tsx")' }, branch: { type: 'string', description: 'Optional git branch (default: "main")' } }) },
+  { name: 'open_visual_updates_panel', description: 'Open the visual Desktop Releases & Version History panel on screen for the user so they can visually view all releases, download desktop installers, and review changelogs.', parameters: object({}) },
   
   // Workspace Users & Directory
   { name: 'list_workspace_users', description: 'List and search colleagues, team members, and users in the Hub-Mind workspace to find usernames, roles, and contacts for sharing resources, assigning tasks, and sending schedules.', parameters: object({ query: { type: 'string', description: 'Optional search query by name, username, or email' }, limit: { type: 'number' } }) },
@@ -906,11 +909,97 @@ export async function executeJessTool(
         return { result: { success: true, ...payload } };
       }
 
+      case 'get_desktop_version_history': {
+        const response = await fetch('/api/github/releases', { method: 'GET', headers: { Accept: 'application/json' } });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.releases) {
+          return { result: { success: false, error: String(payload.error || 'Could not retrieve desktop releases from GitHub.') } };
+        }
+        const limit = Math.min(Number(args?.limit) || 10, 30);
+        const releases = payload.releases.slice(0, limit);
+        const latest = releases[0] || null;
+        const formattedList = releases.map((r: any) => ({
+          tag: r.tag,
+          name: r.name,
+          publishedAt: r.publishedAt,
+          installer: r.installerAsset ? { name: r.installerAsset.name, size: r.installerAsset.sizeFormatted, downloadUrl: r.installerAsset.downloadUrl } : null,
+          releaseNotes: r.body ? r.body.slice(0, 400) : '',
+        }));
+
+        const spokenSummary = latest
+          ? `The latest released desktop app is ${latest.name} (${latest.tag}), published ${new Date(latest.publishedAt).toLocaleDateString()}.${latest.installerAsset ? ` Installer file: ${latest.installerAsset.name} (${latest.installerAsset.sizeFormatted}).` : ''} There are ${payload.releases.length} desktop releases in total, including ${releases.slice(1, 4).map((r: any) => r.tag).join(', ')}.`
+          : 'No releases found on GitHub.';
+
+        return {
+          result: {
+            success: true,
+            totalReleases: payload.releases.length,
+            latestRelease: latest,
+            releases: formattedList,
+            spokenSummary,
+          }
+        };
+      }
+
+      case 'inspect_github_codebase': {
+        const targetPath = String(args?.path || '').trim();
+        const branch = String(args?.branch || 'main').trim();
+        const url = `/api/github/codebase?path=${encodeURIComponent(targetPath)}&branch=${encodeURIComponent(branch)}`;
+        const response = await fetch(url, { method: 'GET', headers: { Accept: 'application/json' } });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.error) {
+          return { result: { success: false, error: String(payload.error || `Could not inspect codebase at "${targetPath}".`) } };
+        }
+        return { result: { success: true, ...payload } };
+      }
+
+      case 'open_visual_updates_panel': {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('hubmind:open-updates-panel'));
+        }
+        return {
+          result: {
+            success: true,
+            message: 'Opened the Desktop Releases & Version History visual panel on screen.',
+          }
+        };
+      }
+
       case 'search_web': {
         const queryText = String(args?.query || '').trim();
         if (!queryText || queryText.length > 2000) {
           return { result: { success: false, error: 'Provide a web search query under 2,000 characters.' } };
         }
+
+        try {
+          // Dedicated search endpoint with Google Search grounding and URL fetching
+          const searchResp = await fetch('/api/web-search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: queryText }),
+          });
+
+          if (searchResp.ok) {
+            const data = await searchResp.json();
+            if (data.success && data.answer) {
+              return {
+                result: {
+                  success: true,
+                  query: queryText,
+                  answer: data.answer,
+                  sources: Array.isArray(data.sources) ? data.sources : [],
+                  grounded: data.grounded === true,
+                  model: data.model || null,
+                  isUrlInspection: data.isUrlInspection === true,
+                }
+              };
+            }
+          }
+        } catch (searchErr) {
+          console.warn('[JessTools] /api/web-search failed, falling back to /api/chat:', searchErr);
+        }
+
+        // Fallback to /api/chat with search
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -15,6 +15,8 @@ import { createServer as createViteServer, createLogger } from "vite";
 import OpenAI from "openai";
 import { WebSocketServer } from "ws";
 import { firebaseAdminRequest, firestoreDocumentUrl, firebaseAuthAdminUrl, decodeFirestoreFields, encodeFirestoreFields } from "./src/server/firebaseAdminRest.ts";
+import { getFullRepositoryStatus, fetchHubMindReleases, fetchHubMindCommits, inspectCodebase } from "./src/server/githubService.ts";
+import { performGlobalWebSearch } from "./src/server/webSearchService.ts";
 
 const customLogger = createLogger();
 const origLoggerError = customLogger.error.bind(customLogger);
@@ -286,6 +288,66 @@ async function startServer() {
         }
       ]
     });
+  });
+
+  // Global Web Search Endpoint for Jess
+  app.post("/api/web-search", async (req, res) => {
+    try {
+      const query = String(req.body?.query || req.query?.query || '').trim();
+      const result = await performGlobalWebSearch(query);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[Server] /api/web-search error:", err);
+      res.status(500).json({ success: false, error: err?.message || "Web search error" });
+    }
+  });
+
+  // Live GitHub Repository Status for Jaystarbliss-studios/HUB-MIND
+  app.get("/api/repository-context", async (req, res) => {
+    try {
+      const status = await getFullRepositoryStatus();
+      res.json(status);
+    } catch (err: any) {
+      console.error("[Server] /api/repository-context error:", err);
+      res.status(500).json({ success: false, error: err?.message || "Failed to load repository status" });
+    }
+  });
+
+  // Desktop Releases & Version History
+  app.get("/api/github/releases", async (req, res) => {
+    try {
+      const force = req.query.fresh === 'true';
+      const releases = await fetchHubMindReleases(force);
+      res.json({ success: true, releases, count: releases.length });
+    } catch (err: any) {
+      console.error("[Server] /api/github/releases error:", err);
+      res.status(500).json({ success: false, error: err?.message || "Failed to load releases" });
+    }
+  });
+
+  // Recent Commits
+  app.get("/api/github/commits", async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 20, 50);
+      const commits = await fetchHubMindCommits(limit);
+      res.json({ success: true, commits, count: commits.length });
+    } catch (err: any) {
+      console.error("[Server] /api/github/commits error:", err);
+      res.status(500).json({ success: false, error: err?.message || "Failed to load commits" });
+    }
+  });
+
+  // Codebase Inspector (Local Workspace + GitHub API)
+  app.get("/api/github/codebase", async (req, res) => {
+    try {
+      const targetPath = String(req.query.path || '').trim();
+      const branch = String(req.query.branch || 'main').trim();
+      const result = await inspectCodebase(targetPath, branch);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[Server] /api/github/codebase error:", err);
+      res.status(500).json({ success: false, error: err?.message || "Failed to inspect codebase" });
+    }
   });
 
 
