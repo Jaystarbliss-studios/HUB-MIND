@@ -960,7 +960,7 @@ app.whenReady().then(() => {
       if (safeArgs.action === 'write' && typeof safeArgs.text !== 'string') throw new Error('Clipboard write requires text.');
     }
     if (method === 'filesystem_scan') {
-      if (safeArgs.root !== undefined && (typeof safeArgs.root !== 'string' || safeArgs.root.length > 2048 || safeArgs.root.includes('\\0'))) throw new Error('Scan root must be a valid local folder path under 2,048 characters.');
+      if (safeArgs.root !== undefined && (typeof safeArgs.root !== 'string' || safeArgs.root.length > 2048 || safeArgs.root.includes('\0'))) throw new Error('Scan root must be a valid local folder path under 2,048 characters.');
       if (safeArgs.largeThresholdMB !== undefined && (!Number.isFinite(safeArgs.largeThresholdMB) || safeArgs.largeThresholdMB < 10 || safeArgs.largeThresholdMB > 1048576)) throw new Error('Large-file threshold must be between 10 and 1,048,576 MB.');
       if (safeArgs.inactiveDays !== undefined && (!Number.isInteger(safeArgs.inactiveDays) || safeArgs.inactiveDays < 1 || safeArgs.inactiveDays > 36500)) throw new Error('Inactive age must be between 1 and 36,500 days.');
       if (safeArgs.maxSeconds !== undefined && (!Number.isInteger(safeArgs.maxSeconds) || safeArgs.maxSeconds < 15 || safeArgs.maxSeconds > 240)) throw new Error('Storage scan time limit must be between 15 and 240 seconds.');
@@ -970,7 +970,7 @@ app.whenReady().then(() => {
     if (method === 'filesystem_clean') {
       if (typeof safeArgs.scanId !== 'string' || !/^scan-[a-f0-9]{12}$/.test(safeArgs.scanId)) throw new Error('Provide a valid scan ID returned by a recent storage scan.');
       if (!Array.isArray(safeArgs.candidateIds) || safeArgs.candidateIds.length < 1 || safeArgs.candidateIds.length > 100) throw new Error('Choose between 1 and 100 exact candidate IDs from the scan report.');
-      if (safeArgs.candidateIds.some(id => typeof id !== 'string' || !/^F\\d{6}$/.test(id)) || new Set(safeArgs.candidateIds).size !== safeArgs.candidateIds.length) throw new Error('Candidate IDs must be unique IDs copied from the scan report.');
+      if (safeArgs.candidateIds.some(id => typeof id !== 'string' || !/^F\d{6}$/.test(id)) || new Set(safeArgs.candidateIds).size !== safeArgs.candidateIds.length) throw new Error('Candidate IDs must be unique IDs copied from the scan report.');
     }
     if (method === 'file_action') {
       const actions = new Set(['list','read','write','copy','move','rename','search','recycle']);
