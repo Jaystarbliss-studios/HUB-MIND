@@ -30,7 +30,9 @@ test('Jess desktop overlay is a compact, movable, closeable orb', () => {
   assert.ok(orb.includes('moveCompanionBy'));
   assert.ok(orb.includes('JessOrbVisualizer'));
   assert.ok(orb.includes('JessOrbVisualizer'));
-  assert.match(orb, /is-transcript-visible/);
+  assert.match(main, /function createTranscriptOverlayWindow\(\)/);
+  assert.ok(main.includes("APP_URL + '/companion-transcript'"));
+  assert.doesNotMatch(orb, /jess-transcript/);
 });
 
 test('authenticated workspace explicitly preserves the established dark background', () => {
