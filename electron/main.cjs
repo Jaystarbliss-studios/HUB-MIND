@@ -135,19 +135,36 @@ function chooseDisplaySource(sources) {
   pendingDisplayMediaSources = Array.isArray(sources) ? sources : [];
   return new Promise(resolve => {
     pendingDisplayMediaResolve = resolve;
+    // This is a standalone, topmost desktop overlay—not a child of the Hub-Mind
+    // workspace—so it remains visible when screen sharing is initiated from another app.
+    const area = screen.getPrimaryDisplay().workArea;
+    const width = Math.max(480, Math.min(1080, area.width - 40));
+    const height = Math.max(420, Math.min(760, area.height - 40));
     const picker = new BrowserWindow({
-      width: 980, height: 720, minWidth: 660, minHeight: 520,
-      show: false, frame: false, resizable: true, movable: true,
-      alwaysOnTop: true, skipTaskbar: false, autoHideMenuBar: true,
-      backgroundColor: '#020617', title: 'Choose what to share · Hub-Mind',
+      width, height,
+      minWidth: Math.min(660, width), minHeight: Math.min(520, height),
+      show: false, frame: false, transparent: true, backgroundColor: '#00000000',
+      resizable: true, movable: true, focusable: true, fullscreenable: false,
+      alwaysOnTop: true, skipTaskbar: true, autoHideMenuBar: true,
+      title: 'Choose what to share · Hub-Mind',
       webPreferences: {
         contextIsolation: true, nodeIntegration: false, sandbox: true,
         preload: path.join(__dirname, 'screen-share-preload.cjs'),
       },
     });
+    picker.setBounds({
+      x: Math.round(area.x + (area.width - width) / 2),
+      y: Math.round(area.y + (area.height - height) / 2),
+      width, height,
+    }, false);
     screenSharePickerWindow = picker;
     picker.setAlwaysOnTop(true, 'screen-saver');
-    picker.once('ready-to-show', () => { if (!picker.isDestroyed()) picker.show(); });
+    picker.once('ready-to-show', () => {
+      if (!picker.isDestroyed()) {
+        picker.show();
+        picker.focus();
+      }
+    });
     picker.on('closed', () => {
       if (screenSharePickerWindow === picker) screenSharePickerWindow = null;
       if (pendingDisplayMediaResolve) finishDisplaySourceChoice(null);
