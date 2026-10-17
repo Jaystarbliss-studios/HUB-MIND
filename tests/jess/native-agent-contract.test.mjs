@@ -41,7 +41,7 @@ test('native agent announces readiness after startup and uses blittable Win32 po
  const agent=fs.readFileSync(path.join(base,'jess-agent.ps1'),'utf8');
  const bridge=fs.readFileSync(path.join(base,'agentBridge.cjs'),'utf8');
  assert.match(agent,/\{"type":"ready"\}/);
- assert.match(agent,/public struct POINT\{public int X,Y;\}/);
+ assert.match(agent,/public struct POINT\\{public int X,Y;\\}/);
  assert.match(agent,/GetCursorPos\(out POINT point\)/);
  assert.match(agent,/SendMouseEvent\(uint flags,uint data\)/);
  assert.match(agent,/GetVisibleWindowHandles\(\)/);
@@ -57,4 +57,20 @@ test('brightness actions use the WMI monitor brightness interface rather than un
  assert.match(agent,/WmiMonitorBrightnessMethods/);
  assert.match(agent,/WmiSetBrightness/);
  assert.doesNotMatch(agent,/brightness_up=111;brightness_down=112/);
+});
+
+test('Win32 interop uses a unique namespace, explicit Winapi calling convention and typed cursor APIs',()=>{
+ const agent=fs.readFileSync(path.join(base,'jess-agent.ps1'),'utf8');
+ assert.match(agent,/namespace HubMind\\.Interop/);
+ assert.match(agent,/DllImport\\("user32\\.dll", CallingConvention=CallingConvention\\.Winapi/);
+ assert.match(agent,/GetCursorPos\\(out POINT point\\)/);
+ assert.match(agent,/SetCursorPos\\(int x,int y\\)/);
+ assert.match(agent,/SendInput\\(uint n,INPUT\\[\\] i,int size\\)/);
+ assert.doesNotMatch(agent,/mouse_event\\(/);
+});
+test('dismissed Jess orb can be restored with a global shortcut and tray menu',()=>{
+ const main=fs.readFileSync(path.resolve('electron/main.cjs'),'utf8');
+ assert.match(main,/Control\\+Alt\\+Shift\\+O/);
+ assert.match(main,/label: 'Show Jess orb'/);
+ assert.match(main,/createCompanionWindow\\(true\\)/);
 });
