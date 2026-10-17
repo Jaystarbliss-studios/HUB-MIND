@@ -186,8 +186,10 @@ function Get-JessFilesystemScan($a) {
   $hashingTruncated = $false
   if ($detectDuplicates) {
     foreach ($sizeKey in @($sizeGroups.Keys)) {
-      $sameSize = $sizeGroups[$sizeKey]
-      if ($sameSize.Count -lt 2) { continue }
+      # Materialize the generic List to a real PowerShell array. Direct List access
+      # can surface Count inconsistently across Windows PowerShell 5.1 pipeline contexts.
+      $sameSize = @($sizeGroups[$sizeKey].ToArray())
+      if ($sameSize.Length -lt 2) { continue }
       foreach ($item in $sameSize) {
         if ($timer.Elapsed.TotalSeconds -ge $maxSeconds -or $hashFiles -ge 1500 -or $hashBudget -le 0) { $hashingTruncated = $true; break }
         if ([int64]$item.sizeBytes -gt 536870912) { $hashingTruncated = $true; continue }
@@ -203,8 +205,8 @@ function Get-JessFilesystemScan($a) {
       if ($timer.Elapsed.TotalSeconds -ge $maxSeconds -or $hashFiles -ge 1500 -or $hashBudget -le 0) { $hashingTruncated = $true; break }
     }
     foreach ($hash in @($hashBuckets.Keys)) {
-      $sameContent = $hashBuckets[$hash]
-      if ($sameContent.Count -lt 2) { continue }
+      $sameContent = @($hashBuckets[$hash].ToArray())
+      if ($sameContent.Length -lt 2) { continue }
       $ordered = @($sameContent | Sort-Object -Property path)
       $keeper = $ordered[0]
       $duplicateIds = New-Object 'System.Collections.Generic.List[string]'
