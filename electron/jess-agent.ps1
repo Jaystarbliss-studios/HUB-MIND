@@ -96,6 +96,7 @@ function Get-JessFilesystemScan($a) {
   $directoriesVisited = 0
   $inaccessibleDirectories = 0
   $skippedReparseDirectories = 0
+  $skippedReparseFiles = 0
   $fileNumber = 0
   $limited = $false
   $tempRoots = @($env:TEMP, (Join-Path $env:WINDIR 'Temp'), (Join-Path $env:LOCALAPPDATA 'Temp')) | Where-Object { $_ } | ForEach-Object { ([string]$_).TrimEnd([char]'\') }
@@ -116,11 +117,14 @@ function Get-JessFilesystemScan($a) {
       catch { $inaccessibleDirectories++; continue }
       foreach ($entry in $entries) {
         if ($timer.Elapsed.TotalSeconds -ge $walkDeadline -or $files.Count -ge $maxFiles) { $limited = $true; break }
+        $isReparsePoint = $false
+        try { $isReparsePoint = (([int]$entry.Attributes -band [int][System.IO.FileAttributes]::ReparsePoint) -ne 0) } catch { $isReparsePoint = $true }
+        if ($isReparsePoint) {
+          if ($entry.PSIsContainer) { $skippedReparseDirectories++ } else { $skippedReparseFiles++ }
+          continue
+        }
         if ($entry.PSIsContainer) {
-          try {
-            if (([int]$entry.Attributes -band [int][System.IO.FileAttributes]::ReparsePoint) -ne 0) { $skippedReparseDirectories++; continue }
-            [void]$stack.Push($entry.FullName)
-          } catch { $skippedReparseDirectories++ }
+          try { [void]$stack.Push($entry.FullName) } catch { $skippedReparseDirectories++ }
           continue
         }
         try {
@@ -228,9 +232,12 @@ function Get-JessFilesystemScan($a) {
       }
     }
   }
-  $candidatePreview = @($candidateCache.Values | Sort-Object -Property sizeBytes -Descending | Select-Object -First 200 | ForEach-Object {
+  $eligibleCandidatePreview = @($candidateCache.Values | Where-Object {$_.eligible} | Sort-Object -Property sizeBytes -Descending | Select-Object -First 150)
+  $inactiveOnlyPreview = @($candidateCache.Values | Where-Object {!$_.eligible} | Sort-Object -Property sizeBytes -Descending | Select-Object -First 50)
+  $candidatePreview = @(($eligibleCandidatePreview + $inactiveOnlyPreview) | ForEach-Object {
     @{candidateId=$_.id;path=$_.path;sizeBytes=$_.sizeBytes;sizeFormatted=('{0:N1} MB' -f ($_.sizeBytes / 1MB));reasons=$_.reasons;cleanupEligible=$_.eligible;lastWriteTimeUtc=([DateTime]::new([int64]$_.lastWriteTicks,[DateTimeKind]::Utc)).ToString('o')}
   })
+  $cleanupEligibleCount = @($candidateCache.Values | Where-Object {$_.eligible}).Count
   $largest = @($files | Sort-Object -Property sizeBytes -Descending | Select-Object -First 100 | ForEach-Object {@{id=$_.id;path=$_.path;sizeBytes=$_.sizeBytes;sizeFormatted=$_.sizeFormatted;category=$_.category;lastWriteTimeUtc=$_.lastWriteTimeUtc}})
   $mediumSample = @($files | Where-Object {$_.category -eq 'medium'} | Sort-Object -Property sizeBytes -Descending | Select-Object -First 40 | ForEach-Object {@{id=$_.id;path=$_.path;sizeBytes=$_.sizeBytes;sizeFormatted=$_.sizeFormatted;lastWriteTimeUtc=$_.lastWriteTimeUtc}})
   $smallSample = @($files | Where-Object {$_.category -eq 'small'} | Sort-Object -Property sizeBytes -Descending | Select-Object -First 40 | ForEach-Object {@{id=$_.id;path=$_.path;sizeBytes=$_.sizeBytes;sizeFormatted=$_.sizeFormatted;lastWriteTimeUtc=$_.lastWriteTimeUtc}})
@@ -251,7 +258,7 @@ function Get-JessFilesystemScan($a) {
     evidence = @{
       scanId = $scanId; roots = @($roots.ToArray()); scanDurationSeconds = [Math]::Round($timer.Elapsed.TotalSeconds,2)
       filesScanned = $files.Count; directoriesVisited = $directoriesVisited; inaccessibleDirectories = $inaccessibleDirectories
-      skippedReparsePointDirectories = $skippedReparseDirectories; partial = ($limited -or $hashingTruncated); completionReason = $completionReason
+      skippedReparsePointDirectories = $skippedReparseDirectories; skippedReparsePointFiles = $skippedReparseFiles; partial = ($limited -or $hashingTruncated); completionReason = $completionReason
       totalSizeBytes = $totalBytes; totalSizeFormatted = ('{0:N2} GB' -f ($totalBytes / 1GB))
       categoryStats = @{
         small = @{count=$stats.small.count;bytes=$stats.small.bytes;definition='under 10 MiB'}
@@ -261,7 +268,7 @@ function Get-JessFilesystemScan($a) {
       largestFiles = $largest; mediumFilesSample = $mediumSample; smallFilesSample = $smallSample
       largestDirectories = $largestDirectories; inactiveFilesSample = $inactiveSample; temporaryFilesSample = $tempSample
       duplicateGroups = @($duplicateGroups.ToArray()); hashesComputed = $hashFiles; duplicateHashingLimited = $hashingTruncated
-      candidateCount = $candidateCache.Count; candidates = $candidatePreview; candidatesTruncated = ($candidateCache.Count -gt $candidatePreview.Count)
+      candidateCount = $candidateCache.Count; cleanupEligibleCount = $cleanupEligibleCount; candidates = $candidatePreview; candidatesTruncated = ($candidateCache.Count -gt $candidatePreview.Count)
       inactiveDays = $inactiveDays; largeThresholdMB = $thresholdMb; maxFiles = $maxFiles; maxSeconds = $maxSeconds; note = $note
     }
   }
