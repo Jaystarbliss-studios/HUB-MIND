@@ -900,7 +900,7 @@ app.whenReady().then(() => {
     assertTrustedSender(event);
     const correlationId = typeof executionId === 'string' && /^jess-exec-[A-Za-z0-9_-]{1,120}$/.test(executionId) ? executionId : null;
     if (!['get_time','system_info'].includes(method) && (!fullControlActive || !controlSessionSecret)) throw new Error('Native action blocked because Jess Full Control is not active.');
-    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','list_ui_elements','find_ui_element','invoke_ui_element','launch_app','run_command','file_action','clipboard_action','system_power_action','media_key','get_time','system_info','open_path','cursor_position','set_ui_value']);
+    const allowed = new Set(['list_windows','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','screenshot','read_screen_text','list_ui_elements','find_ui_element','invoke_ui_element','launch_app','run_command','file_action','filesystem_scan','filesystem_clean','clipboard_action','system_power_action','media_key','get_time','system_info','open_path','cursor_position','set_ui_value']);
     if (typeof method !== 'string' || !allowed.has(method)) throw new Error('Unknown or unavailable native action.');
     if (!['get_time','system_info'].includes(method)) requireFullControl(method, { userId, executionId: correlationId });
     const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
@@ -959,6 +959,19 @@ app.whenReady().then(() => {
       if (safeArgs.text !== undefined && (typeof safeArgs.text !== 'string' || safeArgs.text.length > 100000)) throw new Error('Clipboard text exceeds the 100,000-character limit.');
       if (safeArgs.action === 'write' && typeof safeArgs.text !== 'string') throw new Error('Clipboard write requires text.');
     }
+    if (method === 'filesystem_scan') {
+      if (safeArgs.root !== undefined && (typeof safeArgs.root !== 'string' || safeArgs.root.length > 2048 || safeArgs.root.includes('\\0'))) throw new Error('Scan root must be a valid local folder path under 2,048 characters.');
+      if (safeArgs.largeThresholdMB !== undefined && (!Number.isFinite(safeArgs.largeThresholdMB) || safeArgs.largeThresholdMB < 10 || safeArgs.largeThresholdMB > 1048576)) throw new Error('Large-file threshold must be between 10 and 1,048,576 MB.');
+      if (safeArgs.inactiveDays !== undefined && (!Number.isInteger(safeArgs.inactiveDays) || safeArgs.inactiveDays < 1 || safeArgs.inactiveDays > 36500)) throw new Error('Inactive age must be between 1 and 36,500 days.');
+      if (safeArgs.maxSeconds !== undefined && (!Number.isInteger(safeArgs.maxSeconds) || safeArgs.maxSeconds < 15 || safeArgs.maxSeconds > 240)) throw new Error('Storage scan time limit must be between 15 and 240 seconds.');
+      if (safeArgs.maxFiles !== undefined && (!Number.isInteger(safeArgs.maxFiles) || safeArgs.maxFiles < 1000 || safeArgs.maxFiles > 100000)) throw new Error('Storage scan file limit must be between 1,000 and 100,000 files.');
+      if (safeArgs.detectDuplicates !== undefined && typeof safeArgs.detectDuplicates !== 'boolean') throw new Error('detectDuplicates must be true or false.');
+    }
+    if (method === 'filesystem_clean') {
+      if (typeof safeArgs.scanId !== 'string' || !/^scan-[a-f0-9]{12}$/.test(safeArgs.scanId)) throw new Error('Provide a valid scan ID returned by a recent storage scan.');
+      if (!Array.isArray(safeArgs.candidateIds) || safeArgs.candidateIds.length < 1 || safeArgs.candidateIds.length > 100) throw new Error('Choose between 1 and 100 exact candidate IDs from the scan report.');
+      if (safeArgs.candidateIds.some(id => typeof id !== 'string' || !/^F\\d{6}$/.test(id)) || new Set(safeArgs.candidateIds).size !== safeArgs.candidateIds.length) throw new Error('Candidate IDs must be unique IDs copied from the scan report.');
+    }
     if (method === 'file_action') {
       const actions = new Set(['list','read','write','copy','move','rename','search','recycle']);
       if (!actions.has(String(safeArgs.action || ''))) throw new Error('Unsupported local file action.');
@@ -970,15 +983,15 @@ app.whenReady().then(() => {
       if (safeArgs.limit !== undefined && (!Number.isInteger(safeArgs.limit) || safeArgs.limit < 1000 || safeArgs.limit > 100000)) throw new Error('File read limit must be an integer from 1,000 to 100,000 characters.');
       if (['copy','move','rename'].includes(String(safeArgs.action)) && !String(safeArgs.destination || '').trim()) throw new Error('This file action requires a destination.');
     }
-    const mutatingActions = new Set(['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','file_action','clipboard_action','system_power_action','open_path','media_key']);
-    const routineActions = new Set(['list_windows','focus_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','open_path','media_key','screenshot','read_screen_text','find_ui_element']);
+    const mutatingActions = new Set(['filesystem_clean','focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','run_command','file_action','clipboard_action','system_power_action','open_path','media_key']);
+    const routineActions = new Set(['filesystem_scan','list_windows','focus_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window','show_desktop','minimize_all','start_menu','switch_window','mouse_move','click','double_click','drag','right_click','scroll','type_text','press_keys','invoke_ui_element','launch_app','open_path','media_key','screenshot','read_screen_text','find_ui_element']);
     const allowEverything = fullControlActive && !!controlSessionSecret && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-everything';
     const readOnlyFileAction = method === 'file_action' && ['list','read','search'].includes(String(safeArgs.action || ''));
     const readOnlyClipboardAction = method === 'clipboard_action' && String(safeArgs.action || '') === 'read';
     const allowRoutine = fullControlActive && !!controlSessionSecret && jessPreferences.fullControlEnabled && jessPreferences.permissionMode === 'allow-routine' && (routineActions.has(method) || readOnlyFileAction || readOnlyClipboardAction);
     const alwaysAllowed = allowEverything || allowRoutine;
     const isMutation = mutatingActions.has(method) && !readOnlyFileAction && !readOnlyClipboardAction;
-    if (isMutation && !alwaysAllowed) {
+    if (isMutation && !alwaysAllowed && method !== 'filesystem_clean') {
       const details = method === 'run_command' ? String(safeArgs.command || '') :
         method === 'type_text' ? String(safeArgs.text || '').slice(0, 1000) :
         method === 'open_path' ? String(safeArgs.path || '') :
@@ -993,7 +1006,40 @@ app.whenReady().then(() => {
     }
     const started = Date.now();
     try {
-      let result = await nativeAgent.call(method, safeArgs, method === 'screenshot' ? 30000 : 15000);
+      let result;
+      if (method === 'filesystem_clean') {
+        const cleanRequest = { scanId: safeArgs.scanId, candidateIds: [...safeArgs.candidateIds] };
+        const preview = await nativeAgent.call('filesystem_clean', { ...cleanRequest, previewOnly: true }, 30000);
+        const previewItems = Array.isArray(preview?.evidence?.items) ? preview.evidence.items : [];
+        if (preview?.ok !== true || previewItems.length !== cleanRequest.candidateIds.length) {
+          return { ok: false, verified: false, evidence: preview?.evidence || null, error: preview?.error || 'Cleanup preview could not be verified. No files were changed.' };
+        }
+        const bytes = Number(preview?.evidence?.totalBytes || 0);
+        const prettySize = bytes >= 1024 ** 3 ? (bytes / (1024 ** 3)).toFixed(2) + ' GB' : bytes >= 1024 ** 2 ? (bytes / (1024 ** 2)).toFixed(1) + ' MB' : (bytes / 1024).toFixed(1) + ' KB';
+        const paths = previewItems.slice(0, 12).map(item => String(item.path || '').slice(0, 220));
+        const remaining = previewItems.length - paths.length;
+        const choice = await dialog.showMessageBox(getDialogParent(), {
+          type: 'warning',
+          buttons: ['Cancel cleanup', 'Move to Recycle Bin'],
+          defaultId: 0,
+          cancelId: 0,
+          title: 'Confirm Windows storage cleanup',
+          message: 'Move ' + previewItems.length + ' selected files (' + prettySize + ') to the Windows Recycle Bin?',
+          detail: 'Review the exact files before continuing:\n\n' + paths.map((item, index) => (index + 1) + '. ' + item).join('\n') + (remaining > 0 ? '\n… and ' + remaining + ' more selected files.' : '') + '\n\nOnly temporary or hash-verified duplicate candidates are accepted. Files are moved to the Recycle Bin, not permanently deleted. Inactive files alone are review-only.',
+        });
+        if (choice.response !== 1) {
+          auditNativeAction({ event: 'filesystem-clean-cancelled', method, userId, executionId: correlationId, candidateCount: cleanRequest.candidateIds.length });
+          return { ok: false, verified: true, evidence: { count: previewItems.length, totalBytes: bytes, cancelled: true }, error: 'Cleanup cancelled. No files were changed.' };
+        }
+        result = await nativeAgent.call('filesystem_clean', { ...cleanRequest, confirmedByDesktop: true }, 120000);
+      } else {
+        const actionTimeout = method === 'screenshot'
+          ? 30000
+          : method === 'filesystem_scan'
+            ? Math.min(300000, Math.max(45000, (Number(safeArgs.maxSeconds) || 90) * 1000 + 15000))
+            : 15000;
+        result = await nativeAgent.call(method, safeArgs, actionTimeout);
+      }
       if (method === 'system_info' && result?.evidence && typeof result.evidence === 'object') result.evidence.hubMindDesktopVersion = app.getVersion();
       if (method === 'read_screen_text' && !String(result?.evidence?.text || '').trim()) {
         try {
