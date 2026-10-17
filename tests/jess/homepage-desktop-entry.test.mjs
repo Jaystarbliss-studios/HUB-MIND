@@ -36,7 +36,9 @@ test('desktop and installed app start at sign-in, while the orb remains icon-onl
   assert.match(orb, /jess-orb-controls/);
   assert.match(orb, /hideCompanion/);
   assert.match(orb, /moveCompanionBy/);
-  assert.match(css, /is-transcript-visible \.jess-transcript\{display:flex\}/);
+  assert.match(main, /function createTranscriptOverlayWindow\(\)/);
+  assert.ok(main.includes("APP_URL + '/companion-transcript'"));
+  assert.doesNotMatch(css, /\.jess-transcript\s*\{/);
   assert.match(main, /screen-share-picker\.html/);
   assert.match(main, /callback\(selected \? \{ video: selected \} : \{\}\)/);
 });

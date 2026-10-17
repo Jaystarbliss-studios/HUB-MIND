@@ -24,6 +24,9 @@ test('desktop transcript is a separate fixed and click-through window', async ()
   assert.match(page, /setTranscriptOverlayVisible/);
   assert.match(css, /pointer-events: none/);
   assert.match(css, /backdrop-filter: blur/);
+  assert.match(css, /rgba\(15, 23, 42, \.12\)/);
+  assert.match(css, /backdrop-filter: blur\(28px\) saturate\(175%\)/);
+  assert.doesNotMatch(css, /rgba\(2, 6, 23, \.56\)/);
   assert.match(css, /justify-content: center/);
 });
 
@@ -50,5 +53,8 @@ test('movable companion stays icon-sized when transcript appears', async () => {
   ]);
   assert.match(main, /width: 96, height: 96, minWidth: 96, minHeight: 96/);
   assert.match(main, /hubmind:set-companion-transcript-visible[\s\S]{0,220}Legacy compatibility only/);
-  assert.match(css, /\.jess-orb-window \.jess-transcript,[\s\S]*display:none!important/);
+  assert.match(css, /\.jess-orb-window\s*\{[\s\S]*width:\s*96px/);
+  assert.doesNotMatch(css, /\.jess-transcript\s*\{/);
+  assert.match(main, /function createTranscriptOverlayWindow\(\)/);
+  assert.ok(main.includes("APP_URL + '/companion-transcript'"));
 });

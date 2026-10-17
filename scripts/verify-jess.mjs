@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 
 const root = process.cwd();
 const failures = [];
-const forbidden = /Shawn|shawn|Angel|angel|WakeWord|wake-word|wake word/;
+const forbidden = /\b(?:Shawn|Angel|WakeWord|wake-word|wake\s+word)\b/i;
 const textExtensions = new Set(['.ts','.tsx','.js','.jsx','.mjs','.cjs','.json','.md','.html','.css','.yml','.yaml','.rules']);
 
 function walk(dir) {

@@ -22,7 +22,10 @@ test('desktop orb displays only the Jess icon with a working hide control', () =
   assert.ok(orb.includes('jess-orb-controls'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
-  assert.match(orb, /is-transcript-visible/);
+  const main = read('../../electron/main.cjs');
+  assert.match(main, /function createTranscriptOverlayWindow\(\)/);
+  assert.ok(main.includes("APP_URL + '/companion-transcript'"));
+  assert.doesNotMatch(orb, /jess-transcript/);
 });
 
 test('voice turns are mirrored into the cross-window desktop transcript cache', () => {

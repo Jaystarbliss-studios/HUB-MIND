@@ -20,7 +20,9 @@ test('desktop orb is a compact draggable icon-only surface', () => {
   assert.match(main, /mainWindow\.on\('show', \(\) => \{ createCompanionWindow\(\); positionCompanionBottomRightIfNeeded\(\); \}\)/);
   assert.match(orb, /JessOrbVisualizer/);
   assert.match(orb, /moveCompanionBy/);
-  assert.match(orb, /is-transcript-visible/);
+  assert.match(main, /function createTranscriptOverlayWindow\(\)/);
+  assert.ok(main.includes("APP_URL + '/companion-transcript'"));
+  assert.doesNotMatch(orb, /jess-transcript/);
 });
 
 test('screen sharing uses Electron capture plumbing and a thumbnail source picker', () => {

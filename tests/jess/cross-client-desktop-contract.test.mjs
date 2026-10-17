@@ -21,7 +21,7 @@ test('Jess voice sessions coordinate through a per-user Firestore lease', () => 
   assert.match(assistant, /releaseJessSession\(previousLease\.userId, previousLease\.sessionId\)/);
   assert.match(assistant, /Jess is already active in/);
   assert.match(assistant, /jessActivationRequest/);
-  assert.match(assistant, /!isDesktopShell && !orbDismissed/);
+  assert.match(assistant, /!orbDismissed && !isDesktopShell/);
 });
 
 test('transparent companion styles stay scoped to the companion route', () => {
@@ -45,7 +45,9 @@ test('desktop workspace and icon-only orb visibility follow the requested lifecy
   assert.ok(orb.includes('jess-orb-controls'));
   assert.ok(orb.includes('hideCompanion'));
   assert.ok(orb.includes('moveCompanionBy'));
-  assert.match(orb, /is-transcript-visible/);
+  assert.match(electron, /function createTranscriptOverlayWindow\(\)/);
+  assert.ok(electron.includes("APP_URL + '/companion-transcript'"));
+  assert.doesNotMatch(orb, /jess-transcript/);
 });
 
 test('native Windows tools use a full-control session, narrow preload bridge and honesty protocol', () => {

@@ -66,14 +66,19 @@ function formatBytes(bytes: number): string {
 
 function getGithubHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
-    Accept: 'application/vnd.github.v3+json',
+    Accept: 'application/vnd.github+json',
     'User-Agent': 'Hub-Mind-Jess-Assistant',
+    'X-GitHub-Api-Version': '2022-11-28',
   };
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  if (token) {
-    headers.Authorization = `token ${token}`;
-  }
+  const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+  // Server-only token: never return or pass it to a renderer. Public-read-only
+  // access remains available when a deployment intentionally has no token.
+  if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
+}
+
+function isGithubTokenConfigured(): boolean {
+  return Boolean((process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim());
 }
 
 export async function fetchHubMindReleases(forceFresh = false): Promise<RepoRelease[]> {
@@ -364,6 +369,10 @@ export async function getFullRepositoryStatus() {
   return {
     success: true,
     repository: GITHUB_REPO,
+    githubAuthentication: {
+      authenticated: isGithubTokenConfigured(),
+      mode: isGithubTokenConfigured() ? 'token-authenticated' : 'public-read-only',
+    },
     overview,
     latestRelease,
     releasesCount: releases.length,
