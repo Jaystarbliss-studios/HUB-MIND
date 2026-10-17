@@ -26,7 +26,7 @@ test('public landing page uses official branding and exposes workspace, install,
 
 test('desktop and installed app start at sign-in, while the orb remains icon-only and dismissible', async () => {
   const [main, orb, css] = await Promise.all([
-    read('electron/main.cjs'),
+    read('../../electron/main.cjs'),
     read('src/pages/CompanionPage.tsx'),
     read('src/pages/companion.css'),
   ]);
@@ -49,7 +49,7 @@ test('Jess has practical web search and screen-verification tools', async () => 
   ]);
   assert.match(tools, /name: 'google_search'/);
   assert.match(tools, /name: 'take_windows_screenshot'/);
-  assert.match(tools, /Search the public web for current information/);
+  assert.match(tools, /Search the live public web using Google Search grounding/);
   assert.match(main, /hubmind:native-action/);
   assert.match(main, /verified/);
   assert.match(live, /WEB RESEARCH/);
