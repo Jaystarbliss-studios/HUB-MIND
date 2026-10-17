@@ -72,5 +72,5 @@ test('transcript and screen-share chooser use stronger transparent glass surface
   assert.match(main, /picker\.setVisibleOnAllWorkspaces\(true, \{ visibleOnFullScreen: true \}\)/);
   assert.ok(main.includes("title: 'Choose what to share · Jess'"));
   assert.ok(main.includes("backgroundColor: '#00000000'"));
-  assert.ok(picker.includes('backdrop-filter:blur(26px) saturate(150%)'));
+  assert.ok(picker.includes('backdrop-filter:blur(34px) saturate(180%)'));
 });
