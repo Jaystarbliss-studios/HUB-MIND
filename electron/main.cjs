@@ -1172,6 +1172,12 @@ app.whenReady().then(() => {
     if (fullControlActive) stopFullControl('global-hotkey');
   });
   if (!stopHotkeyRegistered) console.warn('[Jess native control] Could not register Ctrl+Alt+Shift+J emergency stop hotkey.');
+  const showOrbHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+O', () => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide();
+    createCompanionWindow(true);
+    positionCompanionBottomRightIfNeeded();
+  });
+  if (!showOrbHotkeyRegistered) console.warn('[Jess orb] Could not register Ctrl+Alt+Shift+O show-orb hotkey.');
   createMainWindow();
   createTranscriptOverlayWindow();
   createTray();
