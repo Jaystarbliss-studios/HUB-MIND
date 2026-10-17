@@ -41,7 +41,7 @@ test('native agent announces readiness after startup and uses blittable Win32 po
  const agent=fs.readFileSync(path.join(base,'jess-agent.ps1'),'utf8');
  const bridge=fs.readFileSync(path.join(base,'agentBridge.cjs'),'utf8');
  assert.match(agent,/\{"type":"ready"\}/);
- assert.match(agent,/public struct POINT\\{public int X,Y;\\}/);
+  assert.ok(agent.includes('public struct POINT{public int X,Y;}'));
  assert.match(agent,/GetCursorPos\(out POINT point\)/);
  assert.match(agent,/SendMouseEvent\(uint flags,uint data\)/);
  assert.match(agent,/GetVisibleWindowHandles\(\)/);
