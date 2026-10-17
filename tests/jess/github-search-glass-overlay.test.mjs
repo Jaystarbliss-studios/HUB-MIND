@@ -20,7 +20,7 @@ test('GitHub service supports server-side authentication and repository snapshot
 });
 test('transcript uses glassmorphism and screen-share picker is an external glass overlay', async () => {
  const [css,main,html]=await Promise.all([read('../../src/pages/jess-transcript-overlay.css'),read('../../electron/main.cjs'),read('../../electron/screen-share-picker.html')]);
- assert.ok(css.includes('blur(26px) saturate(175%)'));
+ assert.ok(css.includes('blur(34px) saturate(190%)'));
  assert.ok(main.includes('transparent: true, resizable: true, movable: true'));
  assert.ok(main.includes("picker.setAlwaysOnTop(true, 'screen-saver')"));
  assert.ok(html.includes('class="glass-panel"'));
