@@ -203,7 +203,7 @@ test('MCP initialize timeout includes a redacted child startup diagnostic', asyn
         args: ['-e', "process.stderr.write('TypeError: Cannot read properties of undefined (reading values)\\n'); process.stdin.resume();"],
         enabled: true,
       }, 'user-a'),
-      /MCP initialize timed out\\. Server diagnostic: TypeError/
+      /MCP initialize timed out\. Server diagnostic: TypeError/
     );
     const saved = bridge.listServers('user-a');
     assert.equal(saved.length, 1);
