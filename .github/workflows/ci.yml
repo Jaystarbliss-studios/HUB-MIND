@@ -92,6 +92,25 @@ jobs:
           }
       - name: TypeScript validation
         run: npm run typecheck
+      - name: Smoke-test native PowerShell sidecar startup and Win32 interop compilation
+        shell: pwsh
+        run: |
+          $request = '{"id":"ci-list-windows","method":"list_windows","args":{}}'
+          $raw = @($request | & powershell.exe -NoLogo -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File electron/jess-agent.ps1)
+          if ($LASTEXITCODE -ne 0) {
+            $detail = $raw -join [Environment]::NewLine
+            throw "Native helper exited with code $LASTEXITCODE. Output: $detail"
+          }
+          $messages = @($raw | ForEach-Object { $_ | ConvertFrom-Json -ErrorAction Stop })
+          if ($messages.Count -lt 2 -or $messages[0].type -ne 'ready') {
+            $detail = $raw -join [Environment]::NewLine
+            throw "Native helper did not emit the ready handshake and list_windows response. Output: $detail"
+          }
+          $response = $messages | Where-Object { $_.id -eq 'ci-list-windows' } | Select-Object -First 1
+          if ($null -eq $response -or $response.result.ok -ne $true) {
+            $detail = $raw -join [Environment]::NewLine
+            throw "Native list_windows smoke test failed. Output: $detail"
+          }
       - name: Unit and contract tests
         run: npm run test:unit
       - name: Production build
