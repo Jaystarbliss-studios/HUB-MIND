@@ -261,6 +261,7 @@ export function CompanionPage() {
         </div>
       </div>
 
+      <div className="jess-orb-controls">
       {/* Tiny X close button right beside the orb */}
       <button
         type="button"
@@ -295,6 +296,7 @@ export function CompanionPage() {
           <span>Release to dismiss</span>
         </div>
       )}
+      </div>
     </main>
   );
 }
