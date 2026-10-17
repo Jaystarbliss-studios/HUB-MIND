@@ -78,7 +78,7 @@ test('transcript and screen-share chooser use stronger transparent glass surface
 
 test('GitHub repository service supports authenticated release, commit and metadata requests', async () => {
   const service = await read('../../src/server/githubService.ts');
-  assert.match(service, /process\\.env\\.GITHUB_TOKEN \\|\\| process\\.env\\.GH_TOKEN/);
+  assert.ok(service.includes('process.env.GITHUB_TOKEN || process.env.GH_TOKEN'));
   assert.match(service, /export async function fetchHubMindReleases/);
   assert.match(service, /export async function fetchHubMindCommits/);
   assert.match(service, /export async function fetchHubMindOverview/);
@@ -87,9 +87,9 @@ test('GitHub repository service supports authenticated release, commit and metad
 
 test('screen-share chooser is a separate transparent always-on-top Electron window', async () => {
   const main = await read('../../electron/main.cjs');
-  assert.match(main, /function chooseDisplaySource\\(sources\\)/);
-  assert.match(main, /const picker = new BrowserWindow\\(\\{/);
-  assert.match(main, /frame: false, transparent: true/);
-  assert.match(main, /picker\\.setAlwaysOnTop\\(true, 'screen-saver'\\)/);
+  assert.ok(main.includes('function chooseDisplaySource(sources)'));
+  assert.ok(main.includes('const picker = new BrowserWindow({'));
+  assert.ok(main.includes('frame: false, transparent: true'));
+  assert.ok(main.includes("picker.setAlwaysOnTop(true, 'screen-saver')"));
   assert.ok(main.includes("picker.loadFile(path.join(__dirname, 'screen-share-picker.html'))"));
 });
