@@ -5,6 +5,8 @@ const { createHash, randomUUID } = require('node:crypto');
 
 const PROTOCOL_VERSION = '2024-11-05';
 const REQUEST_TIMEOUT_MS = 30_000;
+// First-run stdio servers may create a virtual environment and install their dependencies before initialize completes.
+const MCP_INITIALIZE_TIMEOUT_MS = 90_000;
 const MAX_TOOL_OUTPUT_CHARS = 60_000;
 const MAX_LINE_CHARS = 2_000_000;
 const MAX_TOOLS_PER_SERVER = 100;
@@ -132,11 +134,14 @@ function truncateToolResult(value) {
 }
 
 class McpBridge {
-  constructor({ userDataPath, spawnImpl = spawn, timeoutMs = REQUEST_TIMEOUT_MS, encryptConfig = null, decryptConfig = null, requireEncryptedStorage = false } = {}) {
+  constructor({ userDataPath, spawnImpl = spawn, timeoutMs = REQUEST_TIMEOUT_MS, initializeTimeoutMs = MCP_INITIALIZE_TIMEOUT_MS, encryptConfig = null, decryptConfig = null, requireEncryptedStorage = false } = {}) {
     this.userDataPath = userDataPath || process.cwd();
     this.configPath = path.join(this.userDataPath, 'jess-mcp-servers.json');
     this.spawnImpl = spawnImpl;
     this.timeoutMs = timeoutMs;
+    this.initializeTimeoutMs = Number.isFinite(initializeTimeoutMs) && initializeTimeoutMs > 0
+      ? Math.max(this.timeoutMs, initializeTimeoutMs)
+      : Math.max(this.timeoutMs, MCP_INITIALIZE_TIMEOUT_MS);
     this.encryptConfig = typeof encryptConfig === 'function' ? encryptConfig : null;
     this.decryptConfig = typeof decryptConfig === 'function' ? decryptConfig : null;
     this.requireEncryptedStorage = requireEncryptedStorage === true;
@@ -288,7 +293,7 @@ class McpBridge {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
       clientInfo: { name: 'Hub-Mind Jess', version: '0.1.0' },
-    });
+    }, this.initializeTimeoutMs);
     this.notify(state, 'notifications/initialized', {});
   }
 
@@ -342,7 +347,7 @@ class McpBridge {
     state.pending.clear();
   }
 
-  request(state, method, params) {
+  request(state, method, params, timeoutMs = this.timeoutMs) {
     if (state.config.transport === 'streamable-http') return this.httpRequest(state, method, params, false);
     if (!state.process || state.process.killed || !state.process.stdin.writable) return Promise.reject(new Error('MCP server process is not running.'));
     const id = ++this.requestCounter;
@@ -352,7 +357,7 @@ class McpBridge {
         state.pending.delete(String(id));
         const diagnostic = safeMcpDiagnostic(state.stderr || state.processError, 1200);
         reject(new Error('MCP ' + method + ' timed out.' + (diagnostic ? ' Server diagnostic: ' + diagnostic : ' No startup diagnostic was written to stderr.')));
-      }, this.timeoutMs);
+      }, timeoutMs);
       state.pending.set(String(id), { resolve, reject, timer });
       state.process.stdin.write(JSON.stringify(payload) + '\n', error => {
         if (!error) return;
