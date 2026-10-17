@@ -52,3 +52,24 @@ test('movable companion stays icon-sized when transcript appears', async () => {
   assert.match(main, /hubmind:set-companion-transcript-visible[\s\S]{0,220}Legacy compatibility only/);
   assert.match(css, /\.jess-orb-window \.jess-transcript,[\s\S]*display:none!important/);
 });
+
+
+test('Jess exposes google_search as the canonical external research tool while preserving search_web compatibility', async () => {
+  const tools = await read('../../src/lib/jessTools.ts');
+  assert.match(tools, /name: 'google_search'/);
+  assert.match(tools, /case 'google_search':[\s\S]{0,80}case 'search_web':/);
+  assert.match(tools, /'google_search', 'search_web', 'desktop_open_website'/);
+});
+
+test('transcript and screen-share chooser use stronger transparent glass surfaces and stay above other apps', async () => {
+  const [css, main, picker] = await Promise.all([
+    read('../../src/pages/jess-transcript-overlay.css'),
+    read('../../electron/main.cjs'),
+    read('../../electron/screen-share-picker.html'),
+  ]);
+  assert.match(css, /rgba\\(15, 23, 42, \.34\\)/);
+  assert.match(css, /blur\\(24px\\) saturate\\(155%\\)/);
+  assert.match(main, /picker\.setVisibleOnAllWorkspaces\(true, \{ visibleOnFullScreen: true \}\)/);
+  assert.match(main, /skipTaskbar: true, autoHideMenuBar: true,[\s\S]{0,80}backgroundColor: '#00000000', title: 'Jess · Screen sharing'/);
+  assert.match(picker, /backdrop-filter:blur\\(26px\\) saturate\\(150%\\)/);
+});
