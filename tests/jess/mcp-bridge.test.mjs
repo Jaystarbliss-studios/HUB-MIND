@@ -180,3 +180,12 @@ test('MCP environment only permits non-secret Windows-MCP settings and telemetry
   assert.throws(() => sanitizeServerConfig({ name: 'Unsafe', transport: 'stdio', command: 'node', env: { API_TOKEN: 'secret' } }, 'user-a'), /not allowlisted/);
   assert.throws(() => sanitizeServerConfig({ name: 'Unsafe', transport: 'stdio', command: 'node', env: { ANONYMIZED_TELEMETRY: 'false\nINJECTED=1' } }, 'user-a'), /single-line/);
 });
+
+test('MCP stdio startup diagnostics are redacted and included when initialization times out', async () => {
+  const source = fs.readFileSync(path.resolve('electron/mcpBridge.cjs'), 'utf8');
+  assert.match(source, /state\.stderr = safeMcpDiagnostic/);
+  assert.match(source, /Server diagnostic:/);
+  assert.match(source, /if \(!state \|\| !\(state\.pending instanceof Map\)\) return/);
+  assert.match(source, /No startup diagnostic was written to stderr/);
+  assert.match(source, /Bearer \[redacted\]/);
+});
