@@ -56,6 +56,291 @@ public static class JessWin32 {
 }
 }
 '@
+$script:JessFilesystemScans = @{}
+function Get-JessSha256([string]$Path) {
+  if (!$Path -or $Path.Length -gt 2048) { throw 'A valid file path is required for hashing.' }
+  $stream = $null
+  $sha = $null
+  try {
+    $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '')
+  } finally {
+    if ($sha) { $sha.Dispose() }
+    if ($stream) { $stream.Dispose() }
+  }
+}
+function Get-JessFilesystemScan($a) {
+  $rootInput = [string]$a.root
+  $thresholdMb = 500
+  if ($null -ne $a.largeThresholdMB) { $thresholdMb = [Math]::Max(10,[Math]::Min(1048576,[double]$a.largeThresholdMB)) }
+  $inactiveDays = 180
+  if ($null -ne $a.inactiveDays) { $inactiveDays = [Math]::Max(1,[Math]::Min(36500,[int]$a.inactiveDays)) }
+  $maxSeconds = 300
+  if ($null -ne $a.maxSeconds) { $maxSeconds = [Math]::Max(15,[Math]::Min(600,[int]$a.maxSeconds)) }
+  $maxFiles = 100000
+  if ($null -ne $a.maxFiles) { $maxFiles = [Math]::Max(1000,[Math]::Min(500000,[int]$a.maxFiles)) }
+  $detectDuplicates = $true
+  if ($null -ne $a.detectDuplicates) { $detectDuplicates = [bool]$a.detectDuplicates }
+  $roots = New-Object 'System.Collections.Generic.List[string]'
+  if ($rootInput.Trim()) {
+    if ($rootInput.Length -gt 2048 -or $rootInput.Contains([char]0)) { throw 'Scan root path is invalid.' }
+    $resolvedRoot = [System.IO.Path]::GetFullPath($rootInput)
+    if (!(Test-Path -LiteralPath $resolvedRoot -PathType Container)) { throw 'Scan root must be an existing directory.' }
+    [void]$roots.Add($resolvedRoot)
+  } else {
+    foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
+      try { if ($drive.IsReady -and $drive.DriveType -eq [System.IO.DriveType]::Fixed) { [void]$roots.Add($drive.RootDirectory.FullName) } } catch {}
+    }
+  }
+  if ($roots.Count -eq 0) { throw 'No ready local fixed drives were found to scan.' }
+  $scanId = 'scan-' + [Guid]::NewGuid().ToString('N').Substring(0,12)
+  $timer = [System.Diagnostics.Stopwatch]::StartNew()
+  $walkDeadline = $maxSeconds * 0.72
+  $files = New-Object 'System.Collections.Generic.List[object]'
+  $directorySizes = @{}
+  $sizeGroups = @{}
+  $stats = @{
+    small = @{ count = [int64]0; bytes = [int64]0 }
+    medium = @{ count = [int64]0; bytes = [int64]0 }
+    large = @{ count = [int64]0; bytes = [int64]0 }
+  }
+  $totalBytes = [int64]0
+  $directoriesVisited = 0
+  $inaccessibleDirectories = 0
+  $skippedReparseDirectories = 0
+  $skippedReparseFiles = 0
+  $fileNumber = 0
+  $limited = $false
+  $tempRoots = @($env:TEMP, (Join-Path $env:WINDIR 'Temp'), (Join-Path $env:LOCALAPPDATA 'Temp')) | Where-Object { $_ } | ForEach-Object { ([string]$_).TrimEnd([char]'\') }
+  $tempExtensions = @('.tmp','.temp','.bak','.old','.dmp','.etl','.crdownload','.part','.download','.cache')
+  $cutoff = [DateTime]::UtcNow.AddDays(-$inactiveDays)
+  $smallCutoff = [int64](10 * 1MB)
+  $largeCutoff = [int64]($thresholdMb * 1MB)
+
+  foreach ($scanRoot in $roots) {
+    $stack = New-Object 'System.Collections.Generic.Stack[string]'
+    [void]$stack.Push($scanRoot)
+    $boundary = ([System.IO.Path]::GetFullPath($scanRoot)).TrimEnd([char]'\')
+    while ($stack.Count -gt 0) {
+      if ($timer.Elapsed.TotalSeconds -ge $walkDeadline -or $files.Count -ge $maxFiles) { $limited = $true; break }
+      $current = $stack.Pop()
+      $directoriesVisited++
+      try { $entries = @(Get-ChildItem -LiteralPath $current -Force -ErrorAction Stop) }
+      catch { $inaccessibleDirectories++; continue }
+      foreach ($entry in $entries) {
+        if ($timer.Elapsed.TotalSeconds -ge $walkDeadline -or $files.Count -ge $maxFiles) { $limited = $true; break }
+        $isReparsePoint = $false
+        try { $isReparsePoint = (([int]$entry.Attributes -band [int][System.IO.FileAttributes]::ReparsePoint) -ne 0) } catch { $isReparsePoint = $true }
+        if ($isReparsePoint) {
+          if ($entry.PSIsContainer) { $skippedReparseDirectories++ } else { $skippedReparseFiles++ }
+          continue
+        }
+        if ($entry.PSIsContainer) {
+          try { [void]$stack.Push($entry.FullName) } catch { $skippedReparseDirectories++ }
+          continue
+        }
+        try {
+          $length = [int64]$entry.Length
+          $writeUtc = $entry.LastWriteTimeUtc
+          $accessUtc = $entry.LastAccessTimeUtc
+          $parent = [System.IO.Path]::GetDirectoryName($entry.FullName)
+          $walkParent = $parent
+          while ($walkParent) {
+            $normalParent = $walkParent.TrimEnd([char]'\')
+            if (!($normalParent.Equals($boundary,[StringComparison]::OrdinalIgnoreCase) -or $walkParent.StartsWith(($boundary + '\'),[StringComparison]::OrdinalIgnoreCase))) { break }
+            if (!$directorySizes.ContainsKey($walkParent)) { $directorySizes[$walkParent] = [int64]0 }
+            $directorySizes[$walkParent] += $length
+            if ($normalParent.Equals($boundary,[StringComparison]::OrdinalIgnoreCase)) { break }
+            $parentInfo = [System.IO.Directory]::GetParent($walkParent)
+            if (!$parentInfo) { break }
+            $walkParent = $parentInfo.FullName
+          }
+          if ($length -lt $smallCutoff) { $category = 'small' }
+          elseif ($length -ge $largeCutoff) { $category = 'large' }
+          else { $category = 'medium' }
+          $stats[$category].count++
+          $stats[$category].bytes += $length
+          $totalBytes += $length
+          $fileNumber++
+          $fileId = 'F' + $fileNumber.ToString('D6')
+          $fullPath = [string]$entry.FullName
+          $inTempPath = $false
+          foreach ($tempRoot in $tempRoots) {
+            if ($fullPath.StartsWith(($tempRoot + '\'),[StringComparison]::OrdinalIgnoreCase)) { $inTempPath = $true; break }
+          }
+          $isTemp = $inTempPath -or ($tempExtensions -contains ([string]$entry.Extension).ToLowerInvariant())
+          $isInactive = ($writeUtc -le $cutoff -and $accessUtc -le $cutoff)
+          $reasons = New-Object 'System.Collections.Generic.List[string]'
+          if ($isTemp) { [void]$reasons.Add('temporary') }
+          if ($isInactive) { [void]$reasons.Add('inactive') }
+          $record = @{
+            id = $fileId; path = $fullPath; name = [string]$entry.Name; sizeBytes = $length
+            sizeFormatted = ('{0:N1} MB' -f ($length / 1MB)); category = $category
+            lastWriteTimeUtc = $writeUtc.ToString('o'); lastAccessTimeUtc = $accessUtc.ToString('o')
+            lastWriteTicks = [int64]$writeUtc.Ticks; sha256 = ''; reasons = @($reasons.ToArray())
+            cleanupEligible = $isTemp; temp = $isTemp; inactive = $isInactive
+          }
+          [void]$files.Add($record)
+          $sizeKey = [string]$length
+          if (!$sizeGroups.ContainsKey($sizeKey)) { $sizeGroups[$sizeKey] = New-Object 'System.Collections.Generic.List[object]' }
+          [void]$sizeGroups[$sizeKey].Add($record)
+        } catch { continue }
+      }
+      if ($limited) { break }
+    }
+    if ($limited) { break }
+  }
+
+  $hashRecords = New-Object 'System.Collections.Generic.List[object]'
+  $duplicateGroups = New-Object 'System.Collections.Generic.List[object]'
+  $hashBudget = [int64](2 * 1GB)
+  $hashFiles = 0
+  $hashingFailures = 0
+  $lastHashError = ''
+  $hashingTruncated = $false
+  $duplicateSizeGroups = @($files | Group-Object -Property { [string]$_.sizeBytes } | Where-Object { @($_.Group).Length -gt 1 })
+  $sameSizeGroupCount = $duplicateSizeGroups.Count
+  if ($detectDuplicates) {
+    foreach ($sizeGroup in $duplicateSizeGroups) {
+      $sameSize = @($sizeGroup.Group)
+      if ($sameSize.Length -lt 2) { continue }
+      foreach ($item in $sameSize) {
+        if ($timer.Elapsed.TotalSeconds -ge $maxSeconds -or $hashFiles -ge 1500 -or $hashBudget -le 0) { $hashingTruncated = $true; break }
+        if ([int64]$item.sizeBytes -gt 536870912) { $hashingTruncated = $true; continue }
+        try {
+          $hash = Get-JessSha256 ([string]$item.path)
+          $item.sha256 = $hash
+          $hashFiles++
+          $hashBudget -= [int64]$item.sizeBytes
+          [void]$hashRecords.Add($item)
+        } catch {
+          $hashingFailures++
+          if (!$lastHashError) { $lastHashError = ([string]$_.Exception.Message).Substring(0, [Math]::Min(300, ([string]$_.Exception.Message).Length)) }
+        }
+      }
+      if ($timer.Elapsed.TotalSeconds -ge $maxSeconds -or $hashFiles -ge 1500 -or $hashBudget -le 0) { $hashingTruncated = $true; break }
+    }
+    $hashedGroups = @($hashRecords | Group-Object -Property { [string]$_.sha256 } | Where-Object { $_.Name -and @($_.Group).Length -gt 1 })
+    foreach ($hashGroup in $hashedGroups) {
+      $sameContent = @($hashGroup.Group)
+      if ($sameContent.Length -lt 2) { continue }
+      $ordered = @($sameContent | Sort-Object -Property path)
+      $keeper = $ordered[0]
+      $duplicateIds = New-Object 'System.Collections.Generic.List[string]'
+      $duplicatePaths = New-Object 'System.Collections.Generic.List[string]'
+      for ($i = 1; $i -lt $ordered.Length; $i++) {
+        $duplicate = $ordered[$i]
+        if (!($duplicate.reasons -contains 'duplicate')) { $duplicate.reasons = @($duplicate.reasons + 'duplicate') }
+        $duplicate.cleanupEligible = $true
+        [void]$duplicateIds.Add([string]$duplicate.id)
+        [void]$duplicatePaths.Add([string]$duplicate.path)
+      }
+      if ($duplicateIds.Count -gt 0 -and $duplicateGroups.Count -lt 100) {
+        [void]$duplicateGroups.Add(@{sha256=$hashGroup.Name;sizeBytes=[int64]$keeper.sizeBytes;keepPath=$keeper.path;candidateIds=@($duplicateIds.ToArray());duplicatePaths=@($duplicatePaths.ToArray());count=$duplicateIds.Count})
+      }
+    }
+  }
+  $hashBucketsCount = @($hashRecords | Group-Object -Property { [string]$_.sha256 } | Where-Object {$_.Name}).Count
+  $candidateCache = @{}
+  foreach ($item in $files) {
+    if ($item.cleanupEligible -or $item.inactive) {
+      $candidateCache[[string]$item.id] = @{
+        id = [string]$item.id; path = [string]$item.path; sizeBytes = [int64]$item.sizeBytes
+        lastWriteTicks = [int64]$item.lastWriteTicks; sha256 = [string]$item.sha256
+        reasons = @($item.reasons); eligible = [bool]$item.cleanupEligible
+      }
+    }
+  }
+  $eligibleCandidatePreview = @($candidateCache.Values | Where-Object {$_.eligible} | Sort-Object -Property sizeBytes -Descending | Select-Object -First 150)
+  $inactiveOnlyPreview = @($candidateCache.Values | Where-Object {!$_.eligible} | Sort-Object -Property sizeBytes -Descending | Select-Object -First 50)
+  $candidatePreview = @(($eligibleCandidatePreview + $inactiveOnlyPreview) | ForEach-Object {
+    @{candidateId=$_.id;path=$_.path;sizeBytes=$_.sizeBytes;sizeFormatted=('{0:N1} MB' -f ($_.sizeBytes / 1MB));reasons=$_.reasons;cleanupEligible=$_.eligible;lastWriteTimeUtc=([DateTime]::new([int64]$_.lastWriteTicks,[DateTimeKind]::Utc)).ToString('o')}
+  })
+  $cleanupEligibleCount = @($candidateCache.Values | Where-Object {$_.eligible}).Count
+  $largest = @($files | Sort-Object -Property sizeBytes -Descending | Select-Object -First 100 | ForEach-Object {@{id=$_.id;path=$_.path;sizeBytes=$_.sizeBytes;sizeFormatted=$_.sizeFormatted;category=$_.category;lastWriteTimeUtc=$_.lastWriteTimeUtc}})
+  $mediumSample = @($files | Where-Object {$_.category -eq 'medium'} | Sort-Object -Property sizeBytes -Descending | Select-Object -First 40 | ForEach-Object {@{id=$_.id;path=$_.path;sizeBytes=$_.sizeBytes;sizeFormatted=$_.sizeFormatted;lastWriteTimeUtc=$_.lastWriteTimeUtc}})
+  $smallSample = @($files | Where-Object {$_.category -eq 'small'} | Sort-Object -Property sizeBytes -Descending | Select-Object -First 40 | ForEach-Object {@{id=$_.id;path=$_.path;sizeBytes=$_.sizeBytes;sizeFormatted=$_.sizeFormatted;lastWriteTimeUtc=$_.lastWriteTimeUtc}})
+  $inactiveSample = @($files | Where-Object {$_.inactive} | Sort-Object -Property lastWriteTimeUtc | Select-Object -First 100 | ForEach-Object {@{candidateId=$_.id;path=$_.path;sizeBytes=$_.sizeBytes;sizeFormatted=$_.sizeFormatted;lastWriteTimeUtc=$_.lastWriteTimeUtc;lastAccessTimeUtc=$_.lastAccessTimeUtc;cleanupEligible=$_.cleanupEligible}})
+  $tempSample = @($files | Where-Object {$_.temp} | Sort-Object -Property sizeBytes -Descending | Select-Object -First 100 | ForEach-Object {@{candidateId=$_.id;path=$_.path;sizeBytes=$_.sizeBytes;sizeFormatted=$_.sizeFormatted;reasons=$_.reasons;cleanupEligible=$true}})
+  $largestDirectories = @($directorySizes.GetEnumerator() | Sort-Object -Property Value -Descending | Select-Object -First 30 | ForEach-Object {@{path=$_.Key;sizeBytes=[int64]$_.Value;sizeFormatted=('{0:N1} GB' -f ($_.Value / 1GB))}})
+  $scan = @{
+    scanId = $scanId; createdAtUtc = [DateTime]::UtcNow.ToString('o'); roots = @($roots.ToArray())
+    candidateCache = $candidateCache; filesScanned = $files.Count; truncated = $limited -or $hashingTruncated
+  }
+  $script:JessFilesystemScans[$scanId] = $scan
+  while ($script:JessFilesystemScans.Count -gt 5) { $oldest = $script:JessFilesystemScans.GetEnumerator() | Sort-Object { $_.Value.createdAtUtc } | Select-Object -First 1; if (!$oldest) { break }; $script:JessFilesystemScans.Remove($oldest.Key) }
+  $timer.Stop()
+  $completionReason = if ($limited) { 'time_or_file_limit' } elseif ($hashingTruncated) { 'duplicate_hash_budget_or_time_limit' } else { 'completed' }
+  $note = 'Inactive candidates require both last-write and last-access timestamps to be older than the selected age. Windows may disable last-access timestamp updates, so treat age as advisory. Temporary filenames and identical hashes are candidates, not a guarantee that files are useless. Cleanup only supports explicitly selected temporary/duplicate files and always moves them to the Recycle Bin after a separate confirmation dialog.'
+  return @{
+    ok = $true; verified = $true
+    evidence = @{
+      scanId = $scanId; roots = @($roots.ToArray()); scanDurationSeconds = [Math]::Round($timer.Elapsed.TotalSeconds,2)
+      filesScanned = $files.Count; directoriesVisited = $directoriesVisited; inaccessibleDirectories = $inaccessibleDirectories
+      skippedReparsePointDirectories = $skippedReparseDirectories; skippedReparsePointFiles = $skippedReparseFiles; partial = ($limited -or $hashingTruncated); completionReason = $completionReason
+      totalSizeBytes = $totalBytes; totalSizeFormatted = ('{0:N2} GB' -f ($totalBytes / 1GB))
+      categoryStats = @{
+        small = @{count=$stats.small.count;bytes=$stats.small.bytes;definition='under 10 MiB'}
+        medium = @{count=$stats.medium.count;bytes=$stats.medium.bytes;definition=('10 MiB up to '+$thresholdMb+' MiB')}
+        large = @{count=$stats.large.count;bytes=$stats.large.bytes;definition=('at least '+$thresholdMb+' MiB')}
+      }
+      largestFiles = $largest; mediumFilesSample = $mediumSample; smallFilesSample = $smallSample
+      largestDirectories = $largestDirectories; inactiveFilesSample = $inactiveSample; temporaryFilesSample = $tempSample
+      duplicateGroups = @($duplicateGroups.ToArray()); sameSizeGroupsCount = $sameSizeGroupCount; hashBucketsCount = $hashBucketsCount; hashesComputed = $hashFiles; hashRecordsCount = $hashRecords.Count; hashingFailures = $hashingFailures; lastHashError = $lastHashError; duplicateHashingLimited = $hashingTruncated; detectDuplicatesEnabled = $detectDuplicates
+      candidateCount = $candidateCache.Count; cleanupEligibleCount = $cleanupEligibleCount; candidates = $candidatePreview; candidatesTruncated = ($candidateCache.Count -gt $candidatePreview.Count)
+      inactiveDays = $inactiveDays; largeThresholdMB = $thresholdMb; maxFiles = $maxFiles; maxSeconds = $maxSeconds; note = $note
+    }
+  }
+}
+function Invoke-JessFilesystemClean($a) {
+  $scanId = [string]$a.scanId
+  if (!$scanId -or !$script:JessFilesystemScans.ContainsKey($scanId)) { throw 'Scan ID was not found or expired. Run a new storage scan first.' }
+  $candidateIds = @($a.candidateIds)
+  if ($candidateIds.Count -lt 1 -or $candidateIds.Count -gt 100) { throw 'Select between 1 and 100 exact candidate IDs from a recent scan.' }
+  $cache = $script:JessFilesystemScans[$scanId].candidateCache
+  $selected = New-Object 'System.Collections.Generic.List[object]'
+  $seen = @{}
+  foreach ($candidateIdValue in $candidateIds) {
+    $candidateId = [string]$candidateIdValue
+    if (!$candidateId -or !$cache.ContainsKey($candidateId) -or $seen.ContainsKey($candidateId)) { throw ('Candidate ID is invalid, duplicated, or was not returned by this scan: ' + $candidateId) }
+    $seen[$candidateId] = $true
+    $candidate = $cache[$candidateId]
+    if (!$candidate.eligible -or !(($candidate.reasons -contains 'temporary') -or ($candidate.reasons -contains 'duplicate'))) { throw ('Candidate is for review only and cannot be cleaned automatically: ' + $candidate.path) }
+    if (!(Test-Path -LiteralPath $candidate.path -PathType Leaf)) { throw ('Candidate file no longer exists: ' + $candidate.path) }
+    $fullPath = [System.IO.Path]::GetFullPath([string]$candidate.path)
+    $protectedRoots = @($env:WINDIR,$env:ProgramFiles,[Environment]::GetEnvironmentVariable('ProgramFiles(x86)'),$env:ProgramData,(Join-Path $env:SystemDrive 'System Volume Information'),(Join-Path $env:SystemDrive '$Recycle.Bin')) | Where-Object { $_ } | ForEach-Object { ([string]$_).TrimEnd([char]'\') }
+    foreach ($protectedRoot in $protectedRoots) {
+      if ($fullPath.Equals($protectedRoot,[StringComparison]::OrdinalIgnoreCase) -or $fullPath.StartsWith(($protectedRoot + '\'),[StringComparison]::OrdinalIgnoreCase)) { throw ('Refusing to clean a file inside a protected Windows/system directory: ' + $fullPath) }
+    }
+    $info = Get-Item -LiteralPath $fullPath -ErrorAction Stop
+    if ([int64]$info.Length -ne [int64]$candidate.sizeBytes -or [int64]$info.LastWriteTimeUtc.Ticks -ne [int64]$candidate.lastWriteTicks) { throw ('Candidate changed after the scan; scan again before cleaning: ' + $fullPath) }
+    if ($candidate.reasons -contains 'duplicate') {
+      if (!$candidate.sha256 -or (Get-JessSha256 $fullPath) -ne $candidate.sha256) { throw ('Duplicate candidate content changed after the scan: ' + $fullPath) }
+    }
+    [void]$selected.Add(@{id=$candidateId;path=$fullPath;sizeBytes=[int64]$candidate.sizeBytes;reasons=@($candidate.reasons)})
+  }
+  $totalBytes = [int64]0
+  foreach ($item in $selected) { $totalBytes += [int64]$item.sizeBytes }
+  if ($a.previewOnly -eq $true) {
+    return @{ok=$true;verified=$true;evidence=@{scanId=$scanId;count=$selected.Count;totalBytes=$totalBytes;items=@($selected.ToArray())}}
+  }
+  if ($a.confirmedByDesktop -ne $true) { throw 'Cleanup requires confirmation through the trusted desktop confirmation dialog.' }
+  Add-Type -AssemblyName Microsoft.VisualBasic
+  $results = New-Object 'System.Collections.Generic.List[object]'
+  foreach ($item in $selected) {
+    try {
+      [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile([string]$item.path,[Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,[Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin)
+      $gone = !(Test-Path -LiteralPath $item.path)
+      [void]$results.Add(@{id=$item.id;path=$item.path;ok=$gone;sentToRecycleBin=$gone;permanentDelete=$false;sizeBytes=$item.sizeBytes;reasons=$item.reasons})
+      if ($gone) { $cache.Remove([string]$item.id) }
+    } catch {
+      [void]$results.Add(@{id=$item.id;path=$item.path;ok=$false;sentToRecycleBin=$false;error=$_.Exception.Message;permanentDelete=$false;sizeBytes=$item.sizeBytes})
+    }
+  }
+  $succeeded = @($results | Where-Object {$_.ok}).Count
+  return @{ok=($succeeded -eq $selected.Count);verified=($succeeded -eq $selected.Count);evidence=@{scanId=$scanId;requested=$selected.Count;recycled=$succeeded;failed=($selected.Count-$succeeded);totalBytes=$totalBytes;results=@($results.ToArray());permanentDelete=$false;note='Selected files were moved to the Windows Recycle Bin, not permanently deleted.'}}
+}
 function Get-Windows {
  $items=New-Object System.Collections.Generic.List[object]
  foreach($h in [HubMind.Interop.JessWin32]::GetVisibleWindowHandles()){
@@ -316,6 +601,8 @@ function Invoke-Action($q){
     default {throw 'Unsupported clipboard action'}
    }
   }
+ 'filesystem_scan' { return (Get-JessFilesystemScan $a) }
+ 'filesystem_clean' { return (Invoke-JessFilesystemClean $a) }
  'file_action' {
    $action=[string]$a.action;$target=[string]$a.path;$destination=[string]$a.destination;$content=[string]$a.content;$pattern=[string]$a.pattern
    if(!$target -or $target.Length -gt 2048 -or $target.Contains([char]0)){throw 'A valid local path is required'}
@@ -324,7 +611,7 @@ function Invoke-Action($q){
     'list' {if(!(Test-Path -LiteralPath $resolved -PathType Container)){throw 'List requires an existing folder'};$items=@(Get-ChildItem -LiteralPath $resolved -Force -ErrorAction Stop|Select-Object -First 300|ForEach-Object{@{name=$_.Name;path=$_.FullName;type=$(if($_.PSIsContainer){'directory'}else{'file'});length=$(if($_.PSIsContainer){$null}else{$_.Length});lastWriteTime=$_.LastWriteTimeUtc.ToString('o')}});return @{ok=$true;verified=$true;evidence=@{path=$resolved;items=$items;truncated=($items.Count -ge 300)}}}
     'read' {if(!(Test-Path -LiteralPath $resolved -PathType Leaf)){throw 'Read requires an existing file'};$info=Get-Item -LiteralPath $resolved;if($info.Length -gt 1048576){throw 'File exceeds the 1 MiB read limit'};$text=[System.IO.File]::ReadAllText($resolved,[System.Text.Encoding]::UTF8);$offset=0;if($null -ne $a.offset){$offset=[int]$a.offset};$offset=[Math]::Max(0,[Math]::Min($text.Length,$offset));$limit=100000;if($null -ne $a.limit){$limit=[Math]::Max(1000,[Math]::Min(100000,[int]$a.limit))};$count=[Math]::Min($limit,$text.Length-$offset);$chunk=$text.Substring($offset,$count);$next=$offset+$count;return @{ok=$true;verified=$true;evidence=@{path=$resolved;content=$chunk;bytes=$info.Length;encoding='UTF-8';offset=$offset;nextOffset=$next;characterCount=$text.Length;truncated=($next -lt $text.Length)}}}
     'write' {if($content.Length -gt 500000){throw 'File content exceeds the 500,000-character write limit'};$parent=[System.IO.Path]::GetDirectoryName($resolved);if(!(Test-Path -LiteralPath $parent -PathType Container)){throw 'Parent folder does not exist'};[System.IO.File]::WriteAllText($resolved,$content,[System.Text.UTF8Encoding]::new($false));$info=Get-Item -LiteralPath $resolved;$same=[System.IO.File]::ReadAllText($resolved,[System.Text.Encoding]::UTF8) -ceq $content;return @{ok=$same;verified=$same;evidence=@{path=$resolved;bytes=$info.Length;contentMatches=$same}}}
-    'copy' {if(!(Test-Path -LiteralPath $resolved -PathType Leaf)){throw 'Copy source must be an existing file'};if(!$destination -or $destination.Length -gt 2048){throw 'Copy requires a destination path'};$dest=[System.IO.Path]::GetFullPath($destination);if(Test-Path -LiteralPath $dest){throw 'Destination already exists; refusing to overwrite'};Copy-Item -LiteralPath $resolved -Destination $dest -ErrorAction Stop;$ok=(Test-Path -LiteralPath $dest -PathType Leaf) -and ((Get-FileHash -LiteralPath $resolved).Hash -eq (Get-FileHash -LiteralPath $dest).Hash);return @{ok=$ok;verified=$ok;evidence=@{source=$resolved;destination=$dest;hashVerified=$ok}}}
+    'copy' {if(!(Test-Path -LiteralPath $resolved -PathType Leaf)){throw 'Copy source must be an existing file'};if(!$destination -or $destination.Length -gt 2048){throw 'Copy requires a destination path'};$dest=[System.IO.Path]::GetFullPath($destination);if(Test-Path -LiteralPath $dest){throw 'Destination already exists; refusing to overwrite'};Copy-Item -LiteralPath $resolved -Destination $dest -ErrorAction Stop;$ok=(Test-Path -LiteralPath $dest -PathType Leaf) -and ((Get-JessSha256 $resolved) -ceq (Get-JessSha256 $dest));return @{ok=$ok;verified=$ok;evidence=@{source=$resolved;destination=$dest;hashVerified=$ok}}}
     'move' {if(!(Test-Path -LiteralPath $resolved)){throw 'Move source does not exist'};if(!$destination -or $destination.Length -gt 2048){throw 'Move requires a destination path'};$dest=[System.IO.Path]::GetFullPath($destination);if(Test-Path -LiteralPath $dest){throw 'Destination already exists; refusing to overwrite'};Move-Item -LiteralPath $resolved -Destination $dest -ErrorAction Stop;$ok=(Test-Path -LiteralPath $dest) -and !(Test-Path -LiteralPath $resolved);return @{ok=$ok;verified=$ok;evidence=@{source=$resolved;destination=$dest;sourceRemains=(Test-Path -LiteralPath $resolved)}}}
     'rename' {if(!(Test-Path -LiteralPath $resolved)){throw 'Rename source does not exist'};if(!$destination -or $destination.Length -gt 255 -or $destination -match '[\\/:*?"<>|]'){throw 'Provide a simple new filename, not a path'};$parent=[System.IO.Path]::GetDirectoryName($resolved);$dest=Join-Path $parent $destination;if(Test-Path -LiteralPath $dest){throw 'A file with that name already exists'};Rename-Item -LiteralPath $resolved -NewName $destination -ErrorAction Stop;$ok=Test-Path -LiteralPath $dest;return @{ok=$ok;verified=$ok;evidence=@{source=$resolved;destination=$dest}}}
     'search' {if(!(Test-Path -LiteralPath $resolved -PathType Container)){throw 'Search root must be an existing folder'};if(!$pattern -or $pattern.Length -gt 120 -or $pattern -match '[\\/:]'){throw 'Search requires a filename pattern such as *.pdf'};$items=@(Get-ChildItem -LiteralPath $resolved -Filter $pattern -File -Recurse -ErrorAction SilentlyContinue|Select-Object -First 100|ForEach-Object{@{name=$_.Name;path=$_.FullName;length=$_.Length;lastWriteTime=$_.LastWriteTimeUtc.ToString('o')}});return @{ok=$true;verified=$true;evidence=@{root=$resolved;pattern=$pattern;items=$items;limit=100;truncated=($items.Count -ge 100)}}}
@@ -335,9 +622,13 @@ function Invoke-Action($q){
  'run_command' {
    $command=[string]$a.command
    if($command.Length -gt 4000){throw 'Command limited to 4,000 characters'}
-   $blocked='(?i)\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+/w)\b'
-   if($command -match $blocked -or $command -match '\.(ps1|bat|cmd|vbs|js|hta)\b' -or $command -match '(?i)\b(invoke-expression|iex|start-process\s+.*-verb\s+runas)\b'){throw 'Potentially destructive or elevated command blocked'}
-   $timeoutMs=10000;if($null -ne $a.timeoutMs){$timeoutMs=[Math]::Max(1000,[Math]::Min(10000,[int]$a.timeoutMs))}
+   if($a.allowUnrestricted -ne $true) {
+     $blocked='(?i)\b(remove-item|format-volume|format-disk|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+/w)\b'
+     if($command -match $blocked -or $command -match '\.(ps1|bat|cmd|vbs|js|hta)\b' -or $command -match '(?i)\b(invoke-expression|iex|start-process\s+.*-verb\s+runas)\b'){throw 'Potentially destructive or elevated command blocked. Enable advanced shell commands in Jess settings to run it as the current Windows user.'}
+   } elseif ($command -match '(?i)\b(start-process\s+.*-verb\s+runas|runas\.exe)\b') {
+     throw 'Jess cannot launch an elevated command. Run the command as the current Windows user or approve any elevation directly in Windows.'
+   }
+   $timeoutMs=30000;if($null -ne $a.timeoutMs){$timeoutMs=[Math]::Max(1000,[Math]::Min(120000,[int]$a.timeoutMs))}
    $encoded=[Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
    $stamp=[Guid]::NewGuid().ToString('N');$outFile=Join-Path $env:TEMP ('jess-command-'+$stamp+'.out');$errFile=Join-Path $env:TEMP ('jess-command-'+$stamp+'.err');$proc=$null
    try{

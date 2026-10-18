@@ -169,6 +169,13 @@ function highRiskJessConfirmation(toolName: string, args: any): string | null {
   if (name === 'control_windows_power' && ['shutdown','restart'].includes(action)) {
     return 'schedule Windows ' + action + ' in 15 seconds; the action can be cancelled with shutdown /a before it begins';
   }
+  if (name === 'run_windows_command_native') {
+    const command = String(args?.command || '').trim();
+    if (/\b(remove-item|remove-itemproperty|clear-content|format(?:-volume|-disk)?|clear-disk|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+(?:add|delete|import)|cipher\s+\/w|move-item|copy-item|rename-item|invoke-expression|iex)\b/i.test(command) ||
+        /\.(ps1|bat|cmd|vbs|js|hta)\b/i.test(command)) {
+      return 'run a high-impact Windows command as your current user: ' + command.slice(0, 220);
+    }
+  }
   const normalized = name.replace(/_/g, ' ');
   if (/(delete|remove|format|shutdown|restart|send email|send message|send information|send direct information|transfer|payment|purchase|publish|submit|charge)/i.test(normalized)) {
     const details = ['recipient','to','email','subject','path','destination','file','document','amount','account','url','title']
@@ -198,6 +205,11 @@ export function JessFloatingAssistant() {
     personalization: '',
     webResearchEnabled: true,
     screenVerificationEnabled: true,
+    allowSystemWideFileScan: true,
+    allowAutomatedFileManagement: true,
+    allowShellCommands: true,
+    moodAdaptiveTone: true,
+    conversationStyle: 'adaptive' as 'adaptive' | 'friendly' | 'professional' | 'concise',
   });
   useEffect(() => {
     if (!profile?.id) return;
@@ -618,7 +630,7 @@ export function JessFloatingAssistant() {
             spokenHighRiskApprovalRef.current = null;
             pendingHighRiskConfirmationRef.current = null;
           }
-          const webResearchTools = new Set(['search_web', 'desktop_open_website']);
+          const webResearchTools = new Set(['search_web', 'google_search', 'desktop_open_website']);
           if (jessPreferencesRef.current.webResearchEnabled === false && webResearchTools.has(fc.name)) {
             result = { result: { success: false, error: 'Web research is disabled in Jess settings. Enable it in Workspace → Jess settings to use online search or website-opening tools.' } };
           } else try {
@@ -916,6 +928,8 @@ export function JessFloatingAssistant() {
         personalization: String(prefs.personalization || '').slice(0, 2000),
         webResearchEnabled: prefs.webResearchEnabled !== false,
         screenVerificationEnabled: prefs.screenVerificationEnabled !== false,
+        moodAdaptiveTone: prefs.moodAdaptiveTone !== false,
+        conversationStyle: ['adaptive','friendly','professional','concise'].includes(prefs.conversationStyle) ? prefs.conversationStyle : 'adaptive',
       });
       // Manual activation should enter a clean listening state immediately.
       // Do not make Jess speak a startup greeting: it adds latency and can occupy

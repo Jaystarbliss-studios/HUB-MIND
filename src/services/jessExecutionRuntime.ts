@@ -53,6 +53,7 @@ const RETRY_SAFE_TOOLS = new Set([
   'get_document_content',
   'get_task',
   'list_tasks',
+  'scan_windows_storage',
   'list_windows',
   'read_windows_screen',
   'take_windows_screenshot',
