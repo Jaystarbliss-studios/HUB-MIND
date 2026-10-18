@@ -32,7 +32,7 @@ let uiNumberOverlayTimer = null;
 let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
 let offlineWakeConsentLoaded = false;
-let jessPreferences = { permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, confirmHighRiskOutLoud: true, memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true };
+let jessPreferences = { permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, confirmHighRiskOutLoud: true, memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true, allowSystemWideFileScan: true, allowAutomatedFileManagement: true, allowShellCommands: true, moodAdaptiveTone: true, conversationStyle: 'adaptive' };
 let jessPreferencesUserId = null;
 let mcpBridge = null;
 function persistJessPreferences(prefs, userId) {
@@ -48,6 +48,11 @@ function persistJessPreferences(prefs, userId) {
     personalization: typeof prefs.personalization === 'string' ? prefs.personalization.slice(0, 2000) : '',
     webResearchEnabled: prefs.webResearchEnabled !== false,
     screenVerificationEnabled: prefs.screenVerificationEnabled !== false,
+    allowSystemWideFileScan: prefs.allowSystemWideFileScan !== false,
+    allowAutomatedFileManagement: prefs.allowAutomatedFileManagement !== false,
+    allowShellCommands: prefs.allowShellCommands !== false,
+    moodAdaptiveTone: prefs.moodAdaptiveTone !== false,
+    conversationStyle: ['adaptive','friendly','professional','concise'].includes(prefs.conversationStyle) ? prefs.conversationStyle : 'adaptive',
   };
   jessPreferencesUserId = userId;
   const file = path.join(app.getPath('userData'), 'jess-preferences.json');
@@ -917,17 +922,10 @@ app.whenReady().then(() => {
     }
     if (method === 'media_key' && !['volume_up','volume_down','volume_mute','brightness_up','brightness_down'].includes(String(safeArgs.action))) throw new Error('Unsupported volume or brightness action.');
     if (method === 'run_command') {
+      if (jessPreferences.allowShellCommands !== true) throw new Error('Advanced shell commands are disabled in Jess settings. Enable Advanced shell commands to execute this command as your Windows user.');
       const command = String(safeArgs.command || '');
-      if (safeArgs.timeoutMs !== undefined && (!Number.isFinite(safeArgs.timeoutMs) || safeArgs.timeoutMs < 1000 || safeArgs.timeoutMs > 10000)) throw new Error('Command timeout must be between 1,000 and 10,000 milliseconds.');
-      if (command.length > 4000) throw new Error('Command exceeds the 4,000-character limit.');
-      // This runner uses the current Windows user's token only. Refuse common
-      // destructive aliases and script-based bypasses; high-risk operations
-      // remain unavailable until a dedicated spoken-confirmation flow exists.
-      if (/\b(rm|del|erase|rd|rmdir|ri|remove-item|clear-content|format(?:-volume|-disk)?|diskpart|bcdedit|shutdown|restart-computer|stop-computer|set-executionpolicy|reg\s+delete|cipher\s+\/w)\b/i.test(command) ||
-          /\.(ps1|bat|cmd|vbs|js|hta)\b/i.test(command) ||
-          /\b(invoke-expression|iex|start-process\s+.*-verb\s+runas)\b/i.test(command)) {
-        throw new Error('This command is blocked because it can modify the system, launch a script, or bypass the command safety checks. Elevated commands are not silently executed.');
-      }
+      if (safeArgs.timeoutMs !== undefined && (!Number.isFinite(safeArgs.timeoutMs) || safeArgs.timeoutMs < 1000 || safeArgs.timeoutMs > 120000)) throw new Error('Command timeout must be between 1,000 and 120,000 milliseconds.');
+      if (command.length > 10000) throw new Error('Command exceeds the 10,000-character limit.');
     }
     if (['focus_window','close_window','minimize_window','maximize_window','restore_window','move_window','resize_window','snap_window'].includes(method)) {
       if (safeArgs.handle !== undefined && safeArgs.handle !== null &&
@@ -963,8 +961,8 @@ app.whenReady().then(() => {
       if (safeArgs.root !== undefined && (typeof safeArgs.root !== 'string' || safeArgs.root.length > 2048 || safeArgs.root.includes('\0'))) throw new Error('Scan root must be a valid local folder path under 2,048 characters.');
       if (safeArgs.largeThresholdMB !== undefined && (!Number.isFinite(safeArgs.largeThresholdMB) || safeArgs.largeThresholdMB < 10 || safeArgs.largeThresholdMB > 1048576)) throw new Error('Large-file threshold must be between 10 and 1,048,576 MB.');
       if (safeArgs.inactiveDays !== undefined && (!Number.isInteger(safeArgs.inactiveDays) || safeArgs.inactiveDays < 1 || safeArgs.inactiveDays > 36500)) throw new Error('Inactive age must be between 1 and 36,500 days.');
-      if (safeArgs.maxSeconds !== undefined && (!Number.isInteger(safeArgs.maxSeconds) || safeArgs.maxSeconds < 15 || safeArgs.maxSeconds > 240)) throw new Error('Storage scan time limit must be between 15 and 240 seconds.');
-      if (safeArgs.maxFiles !== undefined && (!Number.isInteger(safeArgs.maxFiles) || safeArgs.maxFiles < 1000 || safeArgs.maxFiles > 100000)) throw new Error('Storage scan file limit must be between 1,000 and 100,000 files.');
+      if (safeArgs.maxSeconds !== undefined && (!Number.isInteger(safeArgs.maxSeconds) || safeArgs.maxSeconds < 15 || safeArgs.maxSeconds > 600)) throw new Error('Storage scan time limit must be between 15 and 600 seconds.');
+      if (safeArgs.maxFiles !== undefined && (!Number.isInteger(safeArgs.maxFiles) || safeArgs.maxFiles < 1000 || safeArgs.maxFiles > 500000)) throw new Error('Storage scan file limit must be between 1,000 and 500,000 files.');
       if (safeArgs.detectDuplicates !== undefined && typeof safeArgs.detectDuplicates !== 'boolean') throw new Error('detectDuplicates must be true or false.');
     }
     if (method === 'filesystem_clean') {
@@ -972,7 +970,17 @@ app.whenReady().then(() => {
       if (!Array.isArray(safeArgs.candidateIds) || safeArgs.candidateIds.length < 1 || safeArgs.candidateIds.length > 100) throw new Error('Choose between 1 and 100 exact candidate IDs from the scan report.');
       if (safeArgs.candidateIds.some(id => typeof id !== 'string' || !/^F\d{6}$/.test(id)) || new Set(safeArgs.candidateIds).size !== safeArgs.candidateIds.length) throw new Error('Candidate IDs must be unique IDs copied from the scan report.');
     }
+    if (method === 'filesystem_scan' && !String(safeArgs.root || '').trim() && jessPreferences.allowSystemWideFileScan !== true) {
+      throw new Error('Full-drive recursive scanning is disabled in Jess settings. Enable “Scan all local drives” or provide a specific folder to scan.');
+    }
+    if (method === 'filesystem_clean' && jessPreferences.allowAutomatedFileManagement !== true) {
+      throw new Error('Automated file management is disabled in Jess settings. Enable it before cleaning scanned candidates.');
+    }
     if (method === 'file_action') {
+      const mutatingFileActions = new Set(['write','copy','move','rename','recycle']);
+      if (mutatingFileActions.has(String(safeArgs.action || '')) && jessPreferences.allowAutomatedFileManagement !== true) {
+        throw new Error('Automated file management is disabled in Jess settings. Enable it before modifying files.');
+      }
       const actions = new Set(['list','read','write','copy','move','rename','search','recycle']);
       if (!actions.has(String(safeArgs.action || ''))) throw new Error('Unsupported local file action.');
       if (typeof safeArgs.path !== 'string' || !safeArgs.path.trim() || safeArgs.path.length > 2048 || safeArgs.path.includes('\\0')) throw new Error('Provide a valid local file path.');
@@ -1036,9 +1044,14 @@ app.whenReady().then(() => {
         const actionTimeout = method === 'screenshot'
           ? 30000
           : method === 'filesystem_scan'
-            ? Math.min(300000, Math.max(45000, (Number(safeArgs.maxSeconds) || 90) * 1000 + 15000))
-            : 15000;
-        result = await nativeAgent.call(method, safeArgs, actionTimeout);
+            ? Math.min(630000, Math.max(45000, (Number(safeArgs.maxSeconds) || 300) * 1000 + 15000))
+            : method === 'run_command'
+              ? Math.min(125000, Math.max(15000, (Number(safeArgs.timeoutMs) || 30000) + 5000))
+              : 15000;
+        const nativeArgs = method === 'run_command'
+          ? { ...safeArgs, allowUnrestricted: jessPreferences.allowShellCommands === true }
+          : safeArgs;
+        result = await nativeAgent.call(method, nativeArgs, actionTimeout);
       }
       if (method === 'system_info' && result?.evidence && typeof result.evidence === 'object') result.evidence.hubMindDesktopVersion = app.getVersion();
       if (method === 'read_screen_text' && !String(result?.evidence?.text || '').trim()) {
