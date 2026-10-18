@@ -221,7 +221,7 @@ function Get-JessFilesystemScan($a) {
       }
       if ($timer.Elapsed.TotalSeconds -ge $maxSeconds -or $hashFiles -ge 1500 -or $hashBudget -le 0) { $hashingTruncated = $true; break }
     }
-    $hashedGroups = @($hashRecords | Group-Object -Property sha256 | Where-Object { $_.Name -and @($_.Group).Length -gt 1 })
+    $hashedGroups = @($hashRecords | Group-Object -Property { [string]$_.sha256 } | Where-Object { $_.Name -and @($_.Group).Length -gt 1 })
     foreach ($hashGroup in $hashedGroups) {
       $sameContent = @($hashGroup.Group)
       if ($sameContent.Length -lt 2) { continue }
@@ -241,7 +241,7 @@ function Get-JessFilesystemScan($a) {
       }
     }
   }
-  $hashBucketsCount = @($hashRecords | Group-Object -Property sha256 | Where-Object {$_.Name}).Count
+  $hashBucketsCount = @($hashRecords | Group-Object -Property { [string]$_.sha256 } | Where-Object {$_.Name}).Count
   $candidateCache = @{}
   foreach ($item in $files) {
     if ($item.cleanupEligible -or $item.inactive) {
@@ -287,7 +287,7 @@ function Get-JessFilesystemScan($a) {
       }
       largestFiles = $largest; mediumFilesSample = $mediumSample; smallFilesSample = $smallSample
       largestDirectories = $largestDirectories; inactiveFilesSample = $inactiveSample; temporaryFilesSample = $tempSample
-      duplicateGroups = @($duplicateGroups.ToArray()); sameSizeGroupsCount = $sameSizeGroupCount; hashBucketsCount = $hashBucketsCount; hashesComputed = $hashFiles; hashingFailures = $hashingFailures; lastHashError = $lastHashError; duplicateHashingLimited = $hashingTruncated; detectDuplicatesEnabled = $detectDuplicates
+      duplicateGroups = @($duplicateGroups.ToArray()); sameSizeGroupsCount = $sameSizeGroupCount; hashBucketsCount = $hashBucketsCount; hashesComputed = $hashFiles; hashRecordsCount = $hashRecords.Count; hashingFailures = $hashingFailures; lastHashError = $lastHashError; duplicateHashingLimited = $hashingTruncated; detectDuplicatesEnabled = $detectDuplicates
       candidateCount = $candidateCache.Count; cleanupEligibleCount = $cleanupEligibleCount; candidates = $candidatePreview; candidatesTruncated = ($candidateCache.Count -gt $candidatePreview.Count)
       inactiveDays = $inactiveDays; largeThresholdMB = $thresholdMb; maxFiles = $maxFiles; maxSeconds = $maxSeconds; note = $note
     }
