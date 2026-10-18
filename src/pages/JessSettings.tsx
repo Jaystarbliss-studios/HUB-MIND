@@ -16,10 +16,17 @@ type JessPreferences = {
   personalization: string;
   webResearchEnabled: boolean;
   screenVerificationEnabled: boolean;
+  allowSystemWideFileScan: boolean;
+  allowAutomatedFileManagement: boolean;
+  allowShellCommands: boolean;
+  moodAdaptiveTone: boolean;
+  conversationStyle: 'adaptive' | 'friendly' | 'professional' | 'concise';
 };
 const DEFAULTS: JessPreferences = {
   permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, confirmHighRiskOutLoud: true, memoryEnabled: true, contextEnabled: true,
   personalization: '', webResearchEnabled: true, screenVerificationEnabled: true,
+  allowSystemWideFileScan: true, allowAutomatedFileManagement: true, allowShellCommands: true,
+  moodAdaptiveTone: true, conversationStyle: 'adaptive',
 };
 
 export function JessSettings() {
@@ -137,6 +144,22 @@ export function JessSettings() {
           <div className="mt-3 rounded-lg bg-slate-950 p-3 text-xs text-slate-400" aria-live="polite">Desktop live state: <strong className={desktopState?.active ? 'text-emerald-300' : 'text-amber-200'}>{desktopState?.active ? 'Full Control active' : 'Not active / browser only'}</strong>{desktopState?.permissionMode ? ` · Main-process mode: ${desktopState.permissionMode}` : ''}{desktopState?.startedAt ? ` · Started ${new Date(desktopState.startedAt).toLocaleTimeString()}` : ''}</div>
         </section>
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
+          <div className="flex items-center gap-3 mb-4"><ShieldCheck className="text-teal-300" size={20}/><div><h2 className="font-semibold">Advanced local access</h2><p className="text-xs text-slate-400 mt-1">Choose what Jess may do on this Windows account. Changes auto-save.</p></div></div>
+          <label className="flex items-center justify-between gap-4 py-3 border-b border-slate-800">
+            <span><strong className="block text-sm">Scan all local drives</strong><span className="block text-xs text-slate-400 mt-1">Allow recursive read-only scans of ready fixed drives, including C:. You can still scan a specific folder when this is off.</span></span>
+            <input type="checkbox" checked={prefs.allowSystemWideFileScan} onChange={e => update('allowSystemWideFileScan', e.target.checked)} className="w-5 h-5 accent-teal-400"/>
+          </label>
+          <label className="flex items-center justify-between gap-4 py-3 border-b border-slate-800">
+            <span><strong className="block text-sm">Automated file management</strong><span className="block text-xs text-slate-400 mt-1">Permit creating, writing, copying, moving, renaming and recycling files through Jess. Storage cleanup still shows a native confirmation with the selected paths.</span></span>
+            <input type="checkbox" checked={prefs.allowAutomatedFileManagement} onChange={e => update('allowAutomatedFileManagement', e.target.checked)} className="w-5 h-5 accent-teal-400"/>
+          </label>
+          <label className="flex items-center justify-between gap-4 py-3">
+            <span><strong className="block text-sm">Advanced shell commands</strong><span className="block text-xs text-slate-400 mt-1">Allow broader PowerShell commands, including script launches, as your current Windows user. The app does not elevate privileges or bypass Windows/UAC prompts. Commands have a configurable 1–120 second timeout.</span></span>
+            <input type="checkbox" checked={prefs.allowShellCommands} onChange={e => update('allowShellCommands', e.target.checked)} className="w-5 h-5 accent-teal-400"/>
+          </label>
+          <p className="mt-3 rounded-lg bg-slate-950 p-3 text-xs leading-relaxed text-slate-400">These controls govern Jess's product-level access. Your Windows account permissions, protected folders, secure desktop, device policies and OS prompts still apply. Keep “Ask out loud before high-impact actions” enabled for a fresh spoken yes/no on risky commands.</p>
+        </section>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
           <div className="flex items-center gap-3 mb-4"><MonitorCog className="text-teal-300" size={20}/><div><h2 className="font-semibold">Chrome browser bridge</h2><p className="text-xs text-slate-400 mt-1">Connect Jess to real Chrome tabs through the installed desktop app.</p></div></div>
           <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm space-y-2" aria-live="polite">
             <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-slate-300">Desktop named-pipe listener</span><span className={chromeBridgeState?.serverListening ? 'text-emerald-300' : 'text-amber-200'}>{chromeBridgeState?.serverListening ? 'Listening' : chromeBridgeState ? 'Not listening' : 'Checking…'}</span></div>
@@ -170,6 +193,8 @@ export function JessSettings() {
           <div className="flex items-center gap-3 mb-4"><Brain className="text-teal-300" size={20}/><div><h2 className="font-semibold">Memory and personalization</h2><p className="text-xs text-slate-400 mt-1">Control how Jess adapts to your working style.</p></div></div>
           <label className="flex items-center justify-between gap-4 py-3 border-b border-slate-800"><span><strong className="block text-sm">Remember useful details</strong><span className="text-xs text-slate-400">Allow Jess to store and use saved memories.</span></span><input type="checkbox" checked={prefs.memoryEnabled} onChange={e => update('memoryEnabled',e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
           <label className="flex items-center justify-between gap-4 py-3 border-b border-slate-800"><span><strong className="block text-sm">Use workspace context</strong><span className="text-xs text-slate-400">Use relevant open-page and workspace information.</span></span><input type="checkbox" checked={prefs.contextEnabled} onChange={e => update('contextEnabled',e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
+          <label className="flex items-center justify-between gap-4 py-3 border-b border-slate-800"><span><strong className="block text-sm">Adapt to my mood and conversational cues</strong><span className="text-xs text-slate-400">Let Jess become calmer, more encouraging, playful or focused when the situation calls for it without guessing or forcing a mood.</span></span><input type="checkbox" checked={prefs.moodAdaptiveTone} onChange={e => update('moodAdaptiveTone',e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
+          <label className="block py-3 border-b border-slate-800"><span className="text-sm font-medium">Conversation style</span><select value={prefs.conversationStyle} onChange={e => update('conversationStyle',e.target.value as JessPreferences['conversationStyle'])} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-100 focus:border-teal-400 focus:outline-none"><option value="adaptive">Adaptive and natural</option><option value="friendly">Friendly and companionable</option><option value="professional">Professional and composed</option><option value="concise">Concise and direct</option></select><span className="mt-1 block text-xs text-slate-400">Jess can sound warm and familiar without pretending to be human or claiming to have real feelings.</span></label>
           <label className="flex items-center justify-between gap-4 py-3"><span><strong className="block text-sm">Web research</strong><span className="text-xs text-slate-400">Allow Jess to use available online search and URL context tools.</span></span><input type="checkbox" checked={prefs.webResearchEnabled} onChange={e => update('webResearchEnabled',e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
           <label className="flex items-center justify-between gap-4 py-3 border-t border-slate-800"><span><strong className="block text-sm">Verify actions visually</strong><span className="text-xs text-slate-400">When screen access is available, ask Jess to inspect the result before claiming success.</span></span><input type="checkbox" checked={prefs.screenVerificationEnabled} onChange={e => update('screenVerificationEnabled',e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
           <label className="block mt-4"><span className="text-sm font-medium">Personalization instructions</span><textarea value={prefs.personalization} onChange={e => update('personalization',e.target.value.slice(0,2000))} rows={4} maxLength={2000} placeholder="For example: be concise, explain unfamiliar terms, prefer keyboard shortcuts, and use my preferred writing tone." className="mt-2 w-full resize-y rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-100 placeholder:text-slate-600 focus:border-teal-400 focus:outline-none"/></label>
