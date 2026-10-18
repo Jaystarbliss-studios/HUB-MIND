@@ -30,8 +30,13 @@ test('storage scan covers ready fixed drives, categorizes files, aggregates dire
   assert.ok(agent.includes("small = @{count=$stats.small.count;bytes=$stats.small.bytes"));
   assert.ok(agent.includes("mediumFilesSample = $mediumSample"));
   assert.ok(agent.includes("largestDirectories = $largestDirectories"));
-  assert.ok(agent.includes('Get-FileHash -LiteralPath $item.path -Algorithm SHA256'));
+  assert.ok(agent.includes('function Get-JessSha256([string]$Path)'));
+  assert.ok(agent.includes('$hash = Get-JessSha256 ([string]$item.path)'));
+  assert.ok(agent.includes('$hashingFailures++'));
+  assert.ok(agent.includes('lastHashError = $lastHashError'));
   assert.ok(agent.includes('$hashBudget = [int64](2 * 1GB)'));
+  assert.ok(agent.includes('hashBucketsCount = $hashBucketsCount'));
+  assert.ok(agent.includes('Get-JessSha256 $fullPath'));
   assert.ok(agent.includes('[System.IO.FileAttributes]::ReparsePoint'));
   assert.ok(agent.includes('filesScanned = $files.Count'));
   assert.ok(agent.includes('completionReason = $completionReason'));
@@ -67,4 +72,25 @@ test('cleanup validation rejects malformed scan IDs and duplicated or oversized 
   assert.ok(main.includes("new Set(safeArgs.candidateIds).size !== safeArgs.candidateIds.length"));
   assert.ok(main.includes("!/^F\\d{6}$/.test(id)"));
   assert.ok(main.includes('Candidate IDs must be unique IDs copied from the scan report.'));
+});
+
+
+test('Jess settings expose local access controls and conversational style choices', async () => {
+  const [settings, main, assistant, live, tools] = await Promise.all([
+    read('../../src/pages/JessSettings.tsx'),
+    read('../../electron/main.cjs'),
+    read('../../src/components/JessFloatingAssistant.tsx'),
+    read('../../src/services/liveAudioClient.ts'),
+    read('../../src/lib/jessTools.ts'),
+  ]);
+  for (const key of ['allowSystemWideFileScan','allowAutomatedFileManagement','allowShellCommands','moodAdaptiveTone','conversationStyle']) {
+    assert.ok(settings.includes(key), 'Jess settings missing ' + key);
+    assert.ok(main.includes(key), 'main-process preferences missing ' + key);
+  }
+  assert.ok(main.includes('Advanced shell commands are disabled in Jess settings'));
+  assert.ok(main.includes('allowUnrestricted: jessPreferences.allowShellCommands === true'));
+  assert.ok(assistant.includes('run a high-impact Windows command as your current user'));
+  assert.ok(live.includes('MOOD ADAPTATION:'));
+  assert.ok(live.includes("new Set(['search_web', 'google_search', 'desktop_open_website'])"));
+  assert.ok(tools.includes("name: 'google_search'"));
 });
