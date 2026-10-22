@@ -3,11 +3,19 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { execFile, spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
+const { pathToFileURL } = require('node:url');
 const nativeAgent = require('./agentBridge.cjs');
 const chromeBridge = require('./chromeBridge.cjs');
 const { McpBridge } = require('./mcpBridge.cjs');
 
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
+const JESS_PET_WIDTH = 260;
+const JESS_PET_HEIGHT = 300;
+const JESS_PET_STATES = new Set(['idle', 'stride', 'run', 'jump', 'think', 'happy', 'walk', 'tired', 'celebrate']);
+const JESS_PET_EXPRESSIONS = new Set(['happy', 'happyEyesClosed', 'concerned', 'surprised', 'annoyed']);
+let pendingJessPetState = 'idle';
+let pendingJessPetSpeech = null;
+let jessPetReady = false;
 let mainWindow;
 let companionWindow;
 let transcriptOverlayWindow;
@@ -124,6 +132,24 @@ function guardNavigation(win) {
   });
 }
 
+
+function guardPetNavigation(win) {
+  const allowedUrl = pathToFileURL(path.join(__dirname, 'jess-pet', 'index.html')).href;
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url !== allowedUrl) event.preventDefault();
+  });
+  win.webContents.on('will-redirect', (event, url) => {
+    if (url !== allowedUrl) event.preventDefault();
+  });
+}
+
+function assertPetWindowSender(event) {
+  if (!companionWindow || companionWindow.isDestroyed() || event.sender !== companionWindow.webContents) {
+    throw new Error('Blocked request from an untrusted Jess pet window.');
+  }
+}
+
 function finishDisplaySourceChoice(source = null) {
   const resolve = pendingDisplayMediaResolve;
   pendingDisplayMediaResolve = null;
@@ -224,24 +250,42 @@ function createCompanionWindow(force = false) {
   }
   const saved = readOrbPosition();
   companionWindow = new BrowserWindow(secureWindowOptions({
-    width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 420, maxHeight: 520,
+    width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT,
+    minWidth: JESS_PET_WIDTH, minHeight: JESS_PET_HEIGHT,
+    maxWidth: JESS_PET_WIDTH, maxHeight: JESS_PET_HEIGHT,
     icon: path.join(__dirname, '..', 'dist', 'hub-mind logo.png'),
     frame: false, transparent: true, resizable: false, movable: true, focusable: true,
     alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
-    title: 'Jess', show: false, webPreferences: { backgroundThrottling: false }
+    title: 'Jess', show: false,
+    webPreferences: {
+      backgroundThrottling: false,
+      preload: path.join(__dirname, 'jess-pet', 'preload.cjs')
+    }
   }));
-  guardNavigation(companionWindow);
+  guardPetNavigation(companionWindow);
   companionWindow.setAlwaysOnTop(true, 'screen-saver');
   companionWindow.setIgnoreMouseEvents(false);
   if (saved) companionWindow.setPosition(saved.x, saved.y, false);
   else positionCompanionBottomRight();
   companionWindow.once('ready-to-show', () => companionWindow.showInactive());
+  jessPetReady = false;
+  companionWindow.webContents.on('did-finish-load', () => {
+    if (!companionWindow || companionWindow.isDestroyed()) return;
+    jessPetReady = true;
+    companionWindow.webContents.send('hubmind:pet-state', pendingJessPetState);
+    if (pendingJessPetSpeech && Date.now() - pendingJessPetSpeech.at < 6000) {
+      companionWindow.webContents.send('hubmind:pet-speech', pendingJessPetSpeech);
+    }
+  });
   companionWindow.on('move', () => {
     if (!companionWindow || companionWindow.isDestroyed()) return;
     try { fs.writeFileSync(orbPositionPath(), JSON.stringify({ x: companionWindow.getBounds().x, y: companionWindow.getBounds().y }), 'utf8'); } catch {}
   });
-  companionWindow.on('closed', () => { companionWindow = null; });
-  companionWindow.loadURL(APP_URL + '/companion');
+  companionWindow.on('closed', () => { companionWindow = null; jessPetReady = false; });
+  companionWindow.loadFile(path.join(__dirname, 'jess-pet', 'index.html')).catch(error => {
+    console.error('[Jess pet] Failed to load local companion page:', error);
+    auditNativeAction({ event: 'jess-pet-local-load-failed', error: String(error?.message || error).slice(0, 500) });
+  });
 }
 function positionTranscriptOverlayWindow() {
   if (!transcriptOverlayWindow || transcriptOverlayWindow.isDestroyed()) return;
@@ -280,9 +324,9 @@ function orbPositionPath() { return path.join(app.getPath('userData'), 'jess-orb
 function readOrbPosition() {
   try {
     const value = JSON.parse(fs.readFileSync(orbPositionPath(), 'utf8'));
-    const display = screen.getDisplayMatching({ x: value.x, y: value.y, width: 96, height: 96 });
+    const display = screen.getDisplayMatching({ x: value.x, y: value.y, width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT });
     const area = display.workArea;
-    if (Number.isFinite(value.x) && Number.isFinite(value.y) && value.x >= area.x && value.y >= area.y && value.x + 96 <= area.x + area.width && value.y + 96 <= area.y + area.height) return value;
+    if (Number.isFinite(value.x) && Number.isFinite(value.y) && value.x >= area.x && value.y >= area.y && value.x + JESS_PET_WIDTH <= area.x + area.width && value.y + JESS_PET_HEIGHT <= area.y + area.height) return value;
   } catch {}
   return null;
 }
@@ -1074,13 +1118,54 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('hubmind:pet-open-app', async (event) => {
+    assertPetWindowSender(event);
+    const opened = await showMainVerified();
+    return { ok: opened === true };
+  });
+  ipcMain.handle('hubmind:pet-hide', (event) => {
+    assertPetWindowSender(event);
+    companionDismissed = true;
+    if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+    return { ok: true };
+  });
+  ipcMain.handle('hubmind:pet-move-by', (event, dx, dy) => {
+    assertPetWindowSender(event);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy) || Math.abs(dx) > 300 || Math.abs(dy) > 300) throw new Error('Invalid Jess drag movement.');
+    const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay();
+    const area = display.workArea;
+    const [x, y] = companionWindow.getPosition();
+    const nextX = Math.max(area.x, Math.min(area.x + area.width - JESS_PET_WIDTH, x + dx));
+    const nextY = Math.max(area.y, Math.min(area.y + area.height - JESS_PET_HEIGHT, y + dy));
+    companionWindow.setPosition(Math.round(nextX), Math.round(nextY), false);
+    return { ok: true };
+  });
+  ipcMain.handle('hubmind:pet-set-state', (event, state) => {
+    assertTrustedSender(event);
+    if (typeof state !== 'string' || !JESS_PET_STATES.has(state)) throw new Error('Unsupported Jess animation state.');
+    pendingJessPetState = state;
+    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow(true);
+    else if (jessPetReady) companionWindow.webContents.send('hubmind:pet-state', state);
+    return { ok: true, state };
+  });
+  ipcMain.handle('hubmind:pet-say', (event, message, expression) => {
+    assertTrustedSender(event);
+    if (typeof message !== 'string') throw new Error('Jess pet speech must be text.');
+    const text = message.trim().slice(0, 180);
+    const face = typeof expression === 'string' && JESS_PET_EXPRESSIONS.has(expression) ? expression : 'happy';
+    pendingJessPetSpeech = text ? { text, expression: face, at: Date.now() } : null;
+    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow(true);
+    else if (jessPetReady && pendingJessPetSpeech) companionWindow.webContents.send('hubmind:pet-speech', pendingJessPetSpeech);
+    return { ok: true };
+  });
+
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
   ipcMain.handle('hubmind:show-workspace', async (event) => { assertTrustedSender(event); return await showWorkspaceVerified(); });
   ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); return true; });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionDismissed = true; companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:set-companion-transcript-visible', (event, _visible) => {
     assertTrustedSender(event);
-    // Legacy compatibility only. The movable companion remains an icon-only window.
+    // Legacy compatibility route only; the native companion now renders Jess from bundled local sprites.
     return true;
   });
   ipcMain.handle('hubmind:set-transcript-overlay-visible', (event, visible) => {
@@ -1238,6 +1323,7 @@ app.whenReady().then(() => {
     positionCompanionBottomRightIfNeeded();
   });
   if (!showOrbHotkeyRegistered) console.warn('[Jess orb] Could not register Ctrl+Alt+Shift+O show-orb hotkey.');
+  createCompanionWindow(true);
   createMainWindow();
   createTranscriptOverlayWindow();
   createTray();

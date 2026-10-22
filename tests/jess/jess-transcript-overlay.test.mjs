@@ -43,13 +43,15 @@ test('workspace route changes do not unmount Jess or rebuild Live callbacks', as
   assert.doesNotMatch(assistant, /\}, \[connection, location\.pathname, navigate, profile/);
 });
 
-test('movable companion stays icon-sized when transcript appears', async () => {
+test('movable Jess character keeps its own size when transcript appears', async () => {
   const [main, css] = await Promise.all([
     read('../../electron/main.cjs'),
     read('../../src/pages/companion.css'),
   ]);
-  assert.match(main, /width: 96, height: 96, minWidth: 96, minHeight: 96/);
-  assert.match(main, /hubmind:set-companion-transcript-visible[\s\S]{0,220}Legacy compatibility only/);
+  assert.match(main, /width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT/);
+  assert.match(main, /minWidth: JESS_PET_WIDTH, minHeight: JESS_PET_HEIGHT/);
+  assert.match(main, /hubmind:set-companion-transcript-visible/);
+  assert.match(main, /Legacy compatibility route only; the native companion now renders Jess from bundled local sprites/);
   assert.match(main, /createTranscriptOverlayWindow/);
 });
 

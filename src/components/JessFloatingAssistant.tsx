@@ -259,6 +259,25 @@ export function JessFloatingAssistant() {
       }));
     } catch { /* Cross-window animation state is best-effort only. */ }
   }, [state, inputLevel, outputLevel, connection]);
+
+  // Drive the local desktop character from the real Live session state.
+  // The pet is a separate transparent BrowserWindow and never depends on this
+  // React tree being the visible foreground window.
+  useEffect(() => {
+    if (!isDesktopShell) return;
+    const stateMap: Record<JessState, string> = {
+      idle: 'idle',
+      listening: 'idle',
+      thinking: 'think',
+      speaking: 'happy',
+      interrupted: 'think',
+      muted: 'idle',
+      error: 'think',
+    };
+    const bridge = (window as any).hubMindDesktop;
+    void Promise.resolve(bridge?.setJessPetState?.(stateMap[state] || 'idle')).catch(() => {});
+  }, [state]);
+
   const [activeBgTasks, setActiveBgTasks] = useState<JessBackgroundTask[]>([]);
 
   // 70% transparent transient Gemini Live style subtitle overlay
@@ -267,6 +286,21 @@ export function JessFloatingAssistant() {
     speaker: 'user',
     visible: false,
   });
+
+  // Forward real assistant/user speech to Jess's local character bubble. Text is
+  // truncated and expression names are validated again in the Electron main process.
+  useEffect(() => {
+    if (!isDesktopShell || !speechState.visible || !speechState.text.trim()) return;
+    const lower = speechState.text.toLowerCase();
+    const expression = speechState.speaker === 'user'
+      ? 'surprised'
+      : (state === 'error' || /could not|failed|unable to|cancelled|denied/.test(lower))
+        ? 'concerned'
+        : state === 'speaking' ? 'happyEyesClosed' : 'happy';
+    const bridge = (window as any).hubMindDesktop;
+    void Promise.resolve(bridge?.setJessPetSpeech?.(speechState.text, expression)).catch(() => {});
+  }, [speechState.text, speechState.speaker, speechState.visible, state]);
+
   const [recentMemorySaved, setRecentMemorySaved] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
 

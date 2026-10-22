@@ -12,15 +12,29 @@ test('packaged Windows app unpacks and resolves the Jess PowerShell sidecar', ()
   assert.match(bridge, /existsSync\(scriptPath\)/);
 });
 
-test('desktop orb is a compact draggable icon-only surface', () => {
+test('desktop Jess character loads bundled animations in an offline companion window', () => {
   const main = read('../../electron/main.cjs');
-  const orb = read('../../src/pages/CompanionPage.tsx');
-  assert.match(main, /width: 96, height: 96/);
-  assert.match(main, /APP_URL \+ '\/companion'/);
+  const page = read('../../electron/jess-pet/index.html');
+  const style = read('../../electron/jess-pet/pet.css');
+  const pet = read('../../electron/jess-pet/pet.js');
+  const manifest = read('../../electron/jess-pet/manifest.js');
+  const preload = read('../../electron/jess-pet/preload.cjs');
+  assert.match(main, /const JESS_PET_WIDTH = 260/);
+  assert.match(main, /const JESS_PET_HEIGHT = 300/);
+  assert.match(main, /loadFile\(path\.join\(__dirname, 'jess-pet', 'index\.html'\)\)/);
+  assert.doesNotMatch(main, /loadURL\(APP_URL \+ '\/companion'\)/);
   assert.match(main, /mainWindow\.on\('show', \(\) => \{ createCompanionWindow\(\); positionCompanionBottomRightIfNeeded\(\); \}\)/);
-  assert.match(orb, /JessOrbVisualizer/);
-  assert.match(orb, /moveCompanionBy/);
-  assert.match(orb, /setCompanionTranscriptVisible/);
+  assert.match(page, /jess-canvas/);
+  assert.match(page, /data-state="walk"/);
+  assert.match(style, /background: transparent/);
+  assert.match(pet, /manifest\.rowAssets\.map\(loadImage\)/);
+  assert.doesNotMatch(pet, /\bfetch\s*\(|XMLHttpRequest|WebSocket|https?:\/\//);
+  for (const state of ['idle', 'walk', 'run', 'jump', 'think', 'tired', 'celebrate']) {
+    assert.match(manifest, new RegExp(state + ':'));
+  }
+  assert.match(main, /hubmind:pet-move-by/);
+  assert.match(main, /hubmind:pet-hide/);
+  assert.match(preload, /contextBridge\.exposeInMainWorld\('jessPet'/);
 });
 
 test('screen sharing uses Electron capture plumbing and a thumbnail source picker', () => {
