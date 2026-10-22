@@ -12,6 +12,10 @@ const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 const JESS_PET_WIDTH = 260;
 const JESS_PET_HEIGHT = 300;
 const JESS_PET_STATES = new Set(['idle', 'stride', 'run', 'jump', 'think', 'happy', 'walk', 'tired', 'celebrate']);
+const JESS_PET_EXPRESSIONS = new Set(['happy', 'happyEyesClosed', 'concerned', 'surprised', 'annoyed']);
+let pendingJessPetState = 'idle';
+let pendingJessPetSpeech = null;
+let jessPetReady = false;
 let mainWindow;
 let companionWindow;
 let transcriptOverlayWindow;
@@ -264,11 +268,20 @@ function createCompanionWindow(force = false) {
   if (saved) companionWindow.setPosition(saved.x, saved.y, false);
   else positionCompanionBottomRight();
   companionWindow.once('ready-to-show', () => companionWindow.showInactive());
+  jessPetReady = false;
+  companionWindow.webContents.on('did-finish-load', () => {
+    if (!companionWindow || companionWindow.isDestroyed()) return;
+    jessPetReady = true;
+    companionWindow.webContents.send('hubmind:pet-state', pendingJessPetState);
+    if (pendingJessPetSpeech && Date.now() - pendingJessPetSpeech.at < 6000) {
+      companionWindow.webContents.send('hubmind:pet-speech', pendingJessPetSpeech);
+    }
+  });
   companionWindow.on('move', () => {
     if (!companionWindow || companionWindow.isDestroyed()) return;
     try { fs.writeFileSync(orbPositionPath(), JSON.stringify({ x: companionWindow.getBounds().x, y: companionWindow.getBounds().y }), 'utf8'); } catch {}
   });
-  companionWindow.on('closed', () => { companionWindow = null; });
+  companionWindow.on('closed', () => { companionWindow = null; jessPetReady = false; });
   companionWindow.loadFile(path.join(__dirname, 'jess-pet', 'index.html')).catch(error => {
     console.error('[Jess pet] Failed to load local companion page:', error);
     auditNativeAction({ event: 'jess-pet-local-load-failed', error: String(error?.message || error).slice(0, 500) });
@@ -1130,9 +1143,20 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:pet-set-state', (event, state) => {
     assertTrustedSender(event);
     if (typeof state !== 'string' || !JESS_PET_STATES.has(state)) throw new Error('Unsupported Jess animation state.');
+    pendingJessPetState = state;
     if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow(true);
-    if (companionWindow && !companionWindow.isDestroyed()) companionWindow.webContents.send('hubmind:pet-state', state);
+    else if (jessPetReady) companionWindow.webContents.send('hubmind:pet-state', state);
     return { ok: true, state };
+  });
+  ipcMain.handle('hubmind:pet-say', (event, message, expression) => {
+    assertTrustedSender(event);
+    if (typeof message !== 'string') throw new Error('Jess pet speech must be text.');
+    const text = message.trim().slice(0, 180);
+    const face = typeof expression === 'string' && JESS_PET_EXPRESSIONS.has(expression) ? expression : 'happy';
+    pendingJessPetSpeech = text ? { text, expression: face, at: Date.now() } : null;
+    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow(true);
+    else if (jessPetReady && pendingJessPetSpeech) companionWindow.webContents.send('hubmind:pet-speech', pendingJessPetSpeech);
+    return { ok: true };
   });
 
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
