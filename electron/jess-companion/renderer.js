@@ -121,6 +121,11 @@
         }
         sprite.src = urls[index];
       }, Math.round(1000 / fps));
+    } else if (animation.loop === false) {
+      frameTimer = window.setTimeout(() => {
+        frameTimer = null;
+        if (token === animationToken && name !== 'idle') playAnimation('idle');
+      }, 900);
     }
   }
 
@@ -129,6 +134,7 @@
     if (state === 'listening') return 'listening';
     if (state === 'thinking') return 'thinking';
     if (state === 'speaking') return 'speaking';
+    if (state === 'success') return 'success';
     if (state === 'muted') return 'muted';
     if (state === 'error') return 'error';
     if (state === 'waiting_approval') return 'waiting_approval';
