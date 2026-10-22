@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 // The pet page is local and receives a deliberately small API.
 // It does not receive Jess's full desktop-control or shell-execution bridge.
-contextBridge.exposeInMainWorld("jessPet", Object.freeze({
+contextBridge.exposeInMainWorld('jessPet', Object.freeze({
   openHubMind: () => ipcRenderer.invoke("hubmind:pet-open-app"),
   hide: () => ipcRenderer.invoke("hubmind:pet-hide"),
   moveBy: (dx, dy) => ipcRenderer.invoke("hubmind:pet-move-by", dx, dy),
