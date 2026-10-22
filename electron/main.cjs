@@ -1141,7 +1141,7 @@ app.whenReady().then(() => {
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionDismissed = true; companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:set-companion-transcript-visible', (event, _visible) => {
     assertTrustedSender(event);
-    // Legacy compatibility only. The movable companion remains an icon-only window.
+    // Legacy compatibility route only; the native companion now renders Jess from bundled local sprites.
     return true;
   });
   ipcMain.handle('hubmind:set-transcript-overlay-visible', (event, visible) => {
