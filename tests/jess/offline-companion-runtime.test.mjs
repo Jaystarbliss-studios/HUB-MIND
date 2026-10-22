@@ -9,6 +9,8 @@ test('Jess companion is created before the remote workspace can finish loading',
   assert.match(main, /createCompanionWindow\(true\);\s*createMainWindow\(\);/);
   assert.match(main, /companionWindow\.loadFile\(path\.join\(__dirname, 'jess-companion', 'index\.html'\)\)/);
   assert.doesNotMatch(main, /companionWindow\.loadURL\(APP_URL \+ '\/companion'\)/);
+  assert.match(main, /return mainWindow\.loadURL\(APP_URL \+ initialPath\)\.catch/);
+  assert.match(main, /transcriptOverlayWindow\.loadURL\(APP_URL \+ '\/companion-transcript'\)\.catch/);
 });
 
 test('local companion has a restricted preload and only bounded actions', async () => {
@@ -16,6 +18,7 @@ test('local companion has a restricted preload and only bounded actions', async 
   const preload = await read('../../electron/companion-preload.cjs');
   assert.match(main, /function assertCompanionSender\(event\)/);
   assert.match(main, /event\.sender !== companionWindow\.webContents/);
+  assert.match(main, /event\.senderFrame !== event\.sender\.mainFrame/);
   assert.match(main, /hubmind:jess-companion-action/);
   assert.match(preload, /contextBridge\.exposeInMainWorld\('jessCompanion'/);
   assert.match(preload, /hubmind:jess-companion-action/);
