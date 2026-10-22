@@ -18,7 +18,7 @@ test('desktop Jess uses a local character window and keeps the transcript overla
   assert.match(electronMain, /function createTranscriptOverlayWindow\(\)/);
   assert.match(electronMain, /movable: false, focusable: false/);
   assert.match(electronMain, /area\.x \+ \(area\.width - width\) \/ 2/);
-  assert.match(electronMain, /legacy route only; the native companion now renders Jess from bundled local sprites/i);
+  assert.match(electronMain, /legacy compatibility route only; the native companion now renders Jess from bundled local sprites/i);
 });
 
 test('workspace palette remains dark regardless of Windows/browser theme preferences', () => {
