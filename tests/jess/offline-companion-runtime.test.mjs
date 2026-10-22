@@ -17,7 +17,7 @@ test('local companion has a restricted preload and only bounded actions', async 
   const main = await read('../../electron/main.cjs');
   const preload = await read('../../electron/companion-preload.cjs');
   assert.match(main, /function assertCompanionSender\(event\)/);
-  assert.match(main, /event\.sender !== companionWindow\.webContents/);
+  assert.match(main, /event\?\.sender !== companionWindow\.webContents/);
   assert.match(main, /event\.senderFrame !== event\.sender\.mainFrame/);
   assert.match(main, /hubmind:jess-companion-action/);
   assert.match(preload, /contextBridge\.exposeInMainWorld\('jessCompanion'/);
