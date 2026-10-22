@@ -35,6 +35,13 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
     return () => ipcRenderer.removeListener('hubmind:offline-dictation', listener);
   },
   nativeAction: (method, args, userId, executionId) => ipcRenderer.invoke('hubmind:native-action', method, args, userId, executionId),
+  publishJessCompanionState: (state) => ipcRenderer.send('hubmind:jess-companion-state', state),
+  onJessCompanionCommand: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, command) => callback(command);
+    ipcRenderer.on('hubmind:jess-companion-command', listener);
+    return () => ipcRenderer.removeListener('hubmind:jess-companion-command', listener);
+  },
   showMain: () => ipcRenderer.invoke('hubmind:show-main'),
   showWorkspace: () => ipcRenderer.invoke('hubmind:show-workspace'),
   showCompanion: () => ipcRenderer.invoke('hubmind:show-companion'),
