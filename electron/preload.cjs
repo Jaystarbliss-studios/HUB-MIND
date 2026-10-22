@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   startFullControl: (userId) => ipcRenderer.invoke('hubmind:full-control-start', userId),
   setJessPreferences: (prefs, userId) => ipcRenderer.invoke('hubmind:jess-preferences-set', prefs, userId),
   setJessPetState: (state) => ipcRenderer.invoke('hubmind:pet-set-state', state),
+  setJessPetSpeech: (text, expression) => ipcRenderer.invoke('hubmind:pet-say', text, expression),
   getJessPreferences: (userId) => ipcRenderer.invoke('hubmind:jess-preferences-get', userId),
   stopFullControl: () => ipcRenderer.invoke('hubmind:full-control-stop'),
   startAutoScroll: (options) => ipcRenderer.invoke('hubmind:auto-scroll-start', options),
