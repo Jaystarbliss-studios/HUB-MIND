@@ -11,5 +11,11 @@ contextBridge.exposeInMainWorld('jessPet', Object.freeze({
     const listener = (_event, state) => callback(state);
     ipcRenderer.on("hubmind:pet-state", listener);
     return () => ipcRenderer.removeListener("hubmind:pet-state", listener);
+  },
+  onSpeech: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("hubmind:pet-speech", listener);
+    return () => ipcRenderer.removeListener("hubmind:pet-speech", listener);
   }
 }));
