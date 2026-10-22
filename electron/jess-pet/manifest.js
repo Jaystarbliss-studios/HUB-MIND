@@ -1,7 +1,7 @@
 // Local animation manifest. Kept as a script instead of fetch() so file:// startup is offline-safe.
 window.JessPetManifest = Object.freeze({
-  frameWidth: 160,
-  frameHeight: 160,
+  frameWidth: 96,
+  frameHeight: 96,
   columns: 5,
   rows: 6,
   animations: {
