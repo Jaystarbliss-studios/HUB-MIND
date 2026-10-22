@@ -2,18 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const css = readFileSync(new URL('../../src/pages/companion.css', import.meta.url), 'utf8');
+const legacyCss = readFileSync(new URL('../../src/pages/companion.css', import.meta.url), 'utf8');
+const petCss = readFileSync(new URL('../../electron/jess-pet/pet.css', import.meta.url), 'utf8');
+const petPage = readFileSync(new URL('../../electron/jess-pet/index.html', import.meta.url), 'utf8');
 const rootCss = readFileSync(new URL('../../src/index.css', import.meta.url), 'utf8');
 const electronMain = readFileSync(new URL('../../electron/main.cjs', import.meta.url), 'utf8');
 
-test('desktop Jess overlay remains a compact orb and never expands into a transcript panel', () => {
-  assert.match(css, /\.jess-orb-window\s*\{[^}]*width:\s*96px/s);
+test('desktop Jess uses a local character window and keeps the transcript overlay separate', () => {
+  assert.match(legacyCss, /\.jess-orb-window\s*\{[^}]*width:\s*96px/s);
+  assert.match(petCss, /\.pet-shell\s*\{[^}]*width:\s*260px/s);
+  assert.match(petCss, /height:\s*300px/);
+  assert.match(petPage, /jess-canvas/);
   assert.match(electronMain, /createTranscriptOverlayWindow/);
-  assert.match(electronMain, /width: 96, height: 96, minWidth: 96, minHeight: 96/);
+  assert.match(electronMain, /width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT/);
   assert.match(electronMain, /function createTranscriptOverlayWindow\(\)/);
   assert.match(electronMain, /movable: false, focusable: false/);
   assert.match(electronMain, /area\.x \+ \(area\.width - width\) \/ 2/);
-  assert.match(electronMain, /Legacy compatibility only\. The movable companion remains an icon-only window/);
+  assert.match(electronMain, /legacy route only; the native companion now renders Jess from bundled local sprites/i);
 });
 
 test('workspace palette remains dark regardless of Windows/browser theme preferences', () => {
