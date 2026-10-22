@@ -1112,7 +1112,7 @@ app.whenReady().then(() => {
     if (!mainWindow || event.sender !== mainWindow.webContents) return;
     try { assertTrustedSender(event); } catch { return; }
     const input = payload && typeof payload === 'object' ? payload : {};
-    const states = new Set(['idle', 'listening', 'thinking', 'speaking', 'interrupted', 'muted', 'error', 'waiting_approval']);
+    const states = new Set(['idle', 'listening', 'thinking', 'speaking', 'interrupted', 'muted', 'error', 'waiting_approval', 'success']);
     const connections = new Set(['connected', 'connecting', 'disconnected', 'error', 'idle']);
     const finiteLevel = value => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
     companionVisualState = {
