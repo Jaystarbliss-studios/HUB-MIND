@@ -42,6 +42,20 @@ test('desktop Jess character loads bundled animations in an offline companion wi
   assert.match(preload, /contextBridge\.exposeInMainWorld\('jessPet'/);
 });
 
+test('all Jess WebP strips contain five square frames, including mixed-resolution walk poses', () => {
+  const readBytes = (path) => readFileSync(new URL(path, import.meta.url));
+  for (let row = 0; row < 6; row += 1) {
+    const asset = readBytes(`../../electron/jess-pet/assets/rows/jess-row-${row}.webp`);
+    assert.equal(asset.toString('ascii', 0, 4), 'RIFF', `row ${row} is a valid RIFF file`);
+    assert.equal(asset.toString('ascii', 8, 12), 'WEBP', `row ${row} is WebP`);
+    assert.equal(asset.toString('ascii', 12, 16), 'VP8X', `row ${row} has an extended WebP header`);
+    const width = asset.readUIntLE(24, 3) + 1;
+    const height = asset.readUIntLE(27, 3) + 1;
+    assert.equal(width % 5, 0, `row ${row} width divides into five frames`);
+    assert.equal(width / 5, height, `row ${row} uses square frames`);
+  }
+});
+
 test('screen sharing uses Electron capture plumbing and a thumbnail source picker', () => {
   const main = read('../../electron/main.cjs');
   const handlerStart = main.indexOf('setDisplayMediaRequestHandler');
