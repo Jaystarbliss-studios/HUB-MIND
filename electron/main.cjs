@@ -91,8 +91,14 @@ function assertTrustedSender(event) {
 }
 
 function assertCompanionSender(event) {
-  if (!companionWindow || companionWindow.isDestroyed() || event?.sender !== companionWindow.webContents) {
-    throw new Error('Blocked request from an untrusted Jess companion window.');
+  if (
+    !companionWindow ||
+    companionWindow.isDestroyed() ||
+    event?.sender !== companionWindow.webContents ||
+    !event?.senderFrame ||
+    event.senderFrame !== event.sender.mainFrame
+  ) {
+    throw new Error('Blocked request from an untrusted Jess companion window or subframe.');
   }
 }
 
@@ -256,6 +262,7 @@ function createCompanionWindow(force = false) {
   // The offline companion is a bundled local page, not the remote /companion route.
   // This keeps the visual character available before or without network access.
   companionWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  companionWindow.webContents.on('will-navigate', event => event.preventDefault());
   companionWindow.setAlwaysOnTop(true, 'screen-saver');
   // Let transparent pixels pass input to the real desktop. The local renderer
   // enables interaction only over Jess's declared hit area and the hide control.
