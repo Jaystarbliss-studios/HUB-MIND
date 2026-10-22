@@ -20,7 +20,7 @@ test('Windows shell identifies itself as an installed app and uses the native di
 
 test('Jess desktop overlay is a compact, movable, closeable orb', () => {
   assert.ok(main.includes('width: 96, height: 96'));
-  assert.ok(main.includes("APP_URL + '/companion'"));
+  assert.ok(main.includes("companionWindow.loadFile(path.join(__dirname, 'jess-companion', 'index.html'))"));
   assert.match(main, /transparent: true/);
   assert.match(main, /alwaysOnTop: true/);
   assert.match(main, /hubmind:move-companion-by/);

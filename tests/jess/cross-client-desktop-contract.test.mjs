@@ -36,7 +36,7 @@ test('desktop workspace and icon-only orb visibility follow the current lifecycl
   assert.ok(electron.includes("mainWindow.on('minimize', () => { createCompanionWindow();"));
   assert.ok(electron.includes("mainWindow.on('close', (event) => { if (!quitting)"));
   assert.ok(electron.includes('width: 96, height: 96'));
-  assert.ok(electron.includes("APP_URL + '/companion'"));
+  assert.ok(electron.includes("companionWindow.loadFile(path.join(__dirname, 'jess-companion', 'index.html'))"));
   assert.ok(electron.includes('hubmind:set-companion-transcript-visible'));
   assert.ok(electron.includes('hubmind:hide-companion'));
   assert.ok(electron.includes('hubmind:move-companion-by'));

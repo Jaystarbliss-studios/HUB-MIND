@@ -16,7 +16,7 @@ test('desktop orb is a compact draggable icon-only surface', () => {
   const main = read('../../electron/main.cjs');
   const orb = read('../../src/pages/CompanionPage.tsx');
   assert.match(main, /width: 96, height: 96/);
-  assert.match(main, /APP_URL \+ '\/companion'/);
+  assert.match(main, /companionWindow\.loadFile\(path\.join\(__dirname, 'jess-companion', 'index\.html'\)\)/);
   assert.match(main, /mainWindow\.on\('show', \(\) => \{ createCompanionWindow\(\); positionCompanionBottomRightIfNeeded\(\); \}\)/);
   assert.match(orb, /JessOrbVisualizer/);
   assert.match(orb, /moveCompanionBy/);

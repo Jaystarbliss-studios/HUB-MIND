@@ -10,6 +10,13 @@ const { McpBridge } = require('./mcpBridge.cjs');
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 let mainWindow;
 let companionWindow;
+let companionVisualState = {
+  state: 'idle',
+  connection: 'disconnected',
+  inputLevel: 0,
+  outputLevel: 0,
+  activeTaskCount: 0,
+};
 let transcriptOverlayWindow;
 let screenSharePickerWindow = null;
 let pendingDisplayMediaResolve = null;
@@ -81,6 +88,24 @@ function assertTrustedSender(event) {
   try { origin = new URL(event.senderFrame?.url || '').origin; } catch {}
   if (!event?.senderFrame || event.senderFrame !== event.sender.mainFrame) throw new Error('Blocked desktop action from a non-top-level frame.');
   if (origin !== new URL(APP_URL).origin) throw new Error('Blocked desktop action from an untrusted page.');
+}
+
+function assertCompanionSender(event) {
+  if (
+    !companionWindow ||
+    companionWindow.isDestroyed() ||
+    event?.sender !== companionWindow.webContents ||
+    !event?.senderFrame ||
+    event.senderFrame !== event.sender.mainFrame
+  ) {
+    throw new Error('Blocked request from an untrusted Jess companion window or subframe.');
+  }
+}
+
+function clampCompanionValue(value, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return min;
+  return Math.max(min, Math.min(max, number));
 }
 
 function isTrustedAppUrl(value) {
@@ -202,7 +227,10 @@ function createMainWindow(initialPath = '/login') {
   mainWindow.on('restore', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });
   mainWindow.on('minimize', () => { createCompanionWindow(); positionCompanionBottomRight(); });
   mainWindow.on('closed', () => { mainWindow = null; });
-  return mainWindow.loadURL(APP_URL + initialPath);
+  return mainWindow.loadURL(APP_URL + initialPath).catch(error => {
+    console.warn('[Hub-Mind] Workspace could not load; the local Jess companion remains available:', String(error?.message || error).slice(0, 500));
+    return false;
+  });
 }
 
 function positionCompanionBottomRight() {
@@ -228,20 +256,36 @@ function createCompanionWindow(force = false) {
     icon: path.join(__dirname, '..', 'dist', 'hub-mind logo.png'),
     frame: false, transparent: true, resizable: false, movable: true, focusable: true,
     alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
-    title: 'Jess', show: false, webPreferences: { backgroundThrottling: false }
+    title: 'Jess', show: false,
+    webPreferences: {
+      backgroundThrottling: false,
+      preload: path.join(__dirname, 'companion-preload.cjs'),
+    }
   }));
-  guardNavigation(companionWindow);
+  // The offline companion is a bundled local page, not the remote /companion route.
+  // This keeps the visual character available before or without network access.
+  companionWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  companionWindow.webContents.on('will-navigate', event => event.preventDefault());
   companionWindow.setAlwaysOnTop(true, 'screen-saver');
-  companionWindow.setIgnoreMouseEvents(false);
+  // Let transparent pixels pass input to the real desktop. The local renderer
+  // enables interaction only over Jess's declared hit area and the hide control.
+  companionWindow.setIgnoreMouseEvents(true, { forward: true });
   if (saved) companionWindow.setPosition(saved.x, saved.y, false);
   else positionCompanionBottomRight();
   companionWindow.once('ready-to-show', () => companionWindow.showInactive());
+  companionWindow.webContents.on('did-finish-load', () => {
+    if (companionWindow && !companionWindow.isDestroyed()) {
+      companionWindow.webContents.send('hubmind:jess-state', companionVisualState);
+    }
+  });
   companionWindow.on('move', () => {
     if (!companionWindow || companionWindow.isDestroyed()) return;
-    try { fs.writeFileSync(orbPositionPath(), JSON.stringify({ x: companionWindow.getBounds().x, y: companionWindow.getBounds().y }), 'utf8'); } catch {}
+    try { fs.writeFileSync(orbPositionPath(), JSON.stringify({ x: companionWindow.getBounds().x, y: companionWindow.getBounds().y }), { encoding: 'utf8', mode: 0o600 }); } catch {}
   });
   companionWindow.on('closed', () => { companionWindow = null; });
-  companionWindow.loadURL(APP_URL + '/companion');
+  companionWindow.loadFile(path.join(__dirname, 'jess-companion', 'index.html')).catch(error => {
+    console.error('[Jess companion] Could not load the bundled offline renderer:', error);
+  });
 }
 function positionTranscriptOverlayWindow() {
   if (!transcriptOverlayWindow || transcriptOverlayWindow.isDestroyed()) return;
@@ -272,7 +316,10 @@ function createTranscriptOverlayWindow() {
   transcriptOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
   positionTranscriptOverlayWindow();
   transcriptOverlayWindow.on('closed', () => { transcriptOverlayWindow = null; });
-  transcriptOverlayWindow.loadURL(APP_URL + '/companion-transcript');
+  transcriptOverlayWindow.loadURL(APP_URL + '/companion-transcript').catch(error => {
+    // The transcript overlay is cloud-backed; its failure must not affect the local character.
+    console.warn('[Jess transcript] Remote overlay unavailable; the desktop companion remains active:', String(error?.message || error).slice(0, 400));
+  });
   return transcriptOverlayWindow;
 }
 
@@ -340,7 +387,14 @@ async function showWorkspaceVerified() {
       const current = new URL(mainWindow.webContents.getURL());
       shouldNavigate = current.origin === new URL(APP_URL).origin && !current.pathname.startsWith('/workspace');
     } catch {}
-    if (shouldNavigate) await mainWindow.loadURL(APP_URL + '/workspace');
+    if (shouldNavigate) {
+      try {
+        await mainWindow.loadURL(APP_URL + '/workspace');
+      } catch (error) {
+        console.warn('[Hub-Mind] Workspace navigation failed; Jess remains available:', String(error?.message || error).slice(0, 500));
+        return false;
+      }
+    }
   }
   if (!mainWindow || mainWindow.isDestroyed()) return false;
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -1074,6 +1128,97 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.on('hubmind:jess-companion-state', (event, payload) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+    try { assertTrustedSender(event); } catch { return; }
+    const input = payload && typeof payload === 'object' ? payload : {};
+    const states = new Set(['idle', 'listening', 'thinking', 'speaking', 'interrupted', 'muted', 'error', 'waiting_approval', 'success']);
+    const connections = new Set(['connected', 'connecting', 'disconnected', 'error', 'idle']);
+    const finiteLevel = value => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    companionVisualState = {
+      state: states.has(input.state) ? input.state : 'idle',
+      connection: connections.has(input.connection) ? input.connection : 'disconnected',
+      inputLevel: finiteLevel(input.inputLevel),
+      outputLevel: finiteLevel(input.outputLevel),
+      activeTaskCount: Number.isFinite(input.activeTaskCount) ? Math.max(0, Math.min(99, Math.trunc(input.activeTaskCount))) : 0,
+    };
+    if (companionWindow && !companionWindow.isDestroyed() && !companionWindow.webContents.isLoading()) {
+      companionWindow.webContents.send('hubmind:jess-state', companionVisualState);
+    }
+  });
+
+  ipcMain.handle('hubmind:jess-companion-action', async (event, action) => {
+    assertCompanionSender(event);
+    if (action === 'hide') {
+      companionDismissed = true;
+      if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+      return { ok: true };
+    }
+    if (action === 'open-workspace') {
+      const shown = await showMainVerified();
+      return shown ? { ok: true } : { ok: false, error: 'Hub-Mind could not finish opening. Jess will remain available on the desktop.' };
+    }
+    if (action === 'toggle-listening') {
+      if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isLoading()) {
+        return { ok: false, reason: 'workspace-not-ready', error: 'Hub-Mind is still starting or offline. Jess can remain on the desktop while it loads.' };
+      }
+      let expectedOrigin = '';
+      let currentUrl = null;
+      try {
+        expectedOrigin = new URL(APP_URL).origin;
+        currentUrl = new URL(mainWindow.webContents.getURL());
+      } catch {}
+      if (!expectedOrigin || !currentUrl || currentUrl.origin !== expectedOrigin) {
+        return { ok: false, reason: 'workspace-not-ready', error: 'The Hub-Mind workspace is not connected. Jess remains available offline.' };
+      }
+      if (currentUrl.pathname === '/' || currentUrl.pathname === '/login') {
+        return { ok: false, reason: 'authentication-required', error: 'Please sign in to Hub-Mind first. Jess will stay on your desktop.' };
+      }
+      mainWindow.webContents.send('hubmind:jess-companion-command', { type: 'toggle' });
+      return { ok: true };
+    }
+    throw new Error('Unsupported Jess companion action.');
+  });
+
+  ipcMain.handle('hubmind:jess-companion-move', (event, delta) => {
+    assertCompanionSender(event);
+    if (!companionWindow || companionWindow.isDestroyed()) return false;
+    const dx = Number(delta?.dx);
+    const dy = Number(delta?.dy);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy) || Math.abs(dx) > 2500 || Math.abs(dy) > 2500) return false;
+    const bounds = companionWindow.getBounds();
+    const proposed = { x: Math.round(bounds.x + dx), y: Math.round(bounds.y + dy), width: bounds.width, height: bounds.height };
+    const display = screen.getDisplayMatching(proposed);
+    const area = display.workArea;
+    const x = Math.max(area.x, Math.min(area.x + area.width - bounds.width, proposed.x));
+    const y = Math.max(area.y, Math.min(area.y + area.height - bounds.height, proposed.y));
+    companionWindow.setPosition(x, y, false);
+    try { fs.writeFileSync(orbPositionPath(), JSON.stringify({ x, y }), { encoding: 'utf8', mode: 0o600 }); } catch {}
+    return true;
+  });
+
+  ipcMain.handle('hubmind:jess-companion-resize', (event, dimensions) => {
+    assertCompanionSender(event);
+    if (!companionWindow || companionWindow.isDestroyed()) return false;
+    const bounds = companionWindow.getBounds();
+    const display = screen.getDisplayMatching(bounds);
+    const area = display.workArea;
+    const width = Math.round(clampCompanionValue(dimensions?.width, 96, Math.min(420, area.width)));
+    const height = Math.round(clampCompanionValue(dimensions?.height, 96, Math.min(520, area.height)));
+    const x = Math.max(area.x, Math.min(area.x + area.width - width, bounds.x + bounds.width - width));
+    const y = Math.max(area.y, Math.min(area.y + area.height - height, bounds.y + bounds.height - height));
+    companionWindow.setBounds({ x, y, width, height }, false);
+    try { fs.writeFileSync(orbPositionPath(), JSON.stringify({ x, y }), { encoding: 'utf8', mode: 0o600 }); } catch {}
+    return true;
+  });
+
+  ipcMain.handle('hubmind:jess-companion-interactive', (event, interactive) => {
+    assertCompanionSender(event);
+    if (!companionWindow || companionWindow.isDestroyed()) return false;
+    companionWindow.setIgnoreMouseEvents(interactive !== true, { forward: true });
+    return true;
+  });
+
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
   ipcMain.handle('hubmind:show-workspace', async (event) => { assertTrustedSender(event); return await showWorkspaceVerified(); });
   ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); return true; });
@@ -1238,6 +1383,8 @@ app.whenReady().then(() => {
     positionCompanionBottomRightIfNeeded();
   });
   if (!showOrbHotkeyRegistered) console.warn('[Jess orb] Could not register Ctrl+Alt+Shift+O show-orb hotkey.');
+  // Start Jess locally first so the visual companion never waits for the remote workspace.
+  createCompanionWindow(true);
   createMainWindow();
   createTranscriptOverlayWindow();
   createTray();
