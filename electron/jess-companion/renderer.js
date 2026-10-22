@@ -206,7 +206,7 @@
       singleTapTimer = window.setTimeout(() => {
         singleTapTimer = null;
         void performAction('toggle-listening');
-      }, 260);
+      }, 370);
     }
   }
 
@@ -214,7 +214,11 @@
   stage.addEventListener('pointermove', onPointerMove);
   stage.addEventListener('pointerup', onPointerUp);
   stage.addEventListener('pointercancel', onPointerUp);
-  window.addEventListener('mousemove', onPointerMove);
+  // Electron forwards mousemove events while the transparent window is in
+  // click-through mode. Keep this hover-only; pointermove handles actual dragging.
+  window.addEventListener('mousemove', event => {
+    if (!dragging) setInteractive(isInsideHitArea(event));
+  });
   window.addEventListener('blur', () => {
     if (dragging) {
       dragging = false;
