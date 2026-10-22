@@ -28,6 +28,11 @@ test('desktop Jess character loads bundled animations in an offline companion wi
   assert.match(page, /data-state="walk"/);
   assert.match(style, /background: transparent/);
   assert.match(pet, /manifest\.rowAssets\.map\(loadImage\)/);
+  assert.match(pet, /image\.naturalWidth \/ manifest\.columns/);
+  assert.match(pet, /sourceFrameHeight = image\.naturalHeight/);
+  assert.match(pet, /cellWidth !== image\.naturalHeight/);
+  assert.match(manifest, /columns: 5/);
+  assert.doesNotMatch(manifest, /frameWidth: 128|frameHeight: 128/);
   assert.doesNotMatch(pet, /\bfetch\s*\(|XMLHttpRequest|WebSocket|https?:\/\//);
   for (const state of ['idle', 'walk', 'run', 'jump', 'think', 'tired', 'celebrate']) {
     assert.match(manifest, new RegExp(state + ':'));
