@@ -31,9 +31,14 @@
   function drawFrame(frame, targetCtx, width, height) {
     if (!ready || !frame || !strips[frame.row]) return;
     const image = strips[frame.row];
+    // Each strip can have its own source resolution. Never assume all strips use
+    // the same frame size: the source frame is one equal-width cell in that row.
+    const sourceFrameWidth = image.naturalWidth / manifest.columns;
+    const sourceFrameHeight = image.naturalHeight;
+    if (!Number.isInteger(sourceFrameWidth) || sourceFrameWidth <= 0 || sourceFrameHeight <= 0) return;
     targetCtx.clearRect(0, 0, width, height);
-    targetCtx.drawImage(image, frame.col * manifest.frameWidth, 0,
-      manifest.frameWidth, manifest.frameHeight, 0, 0, width, height);
+    targetCtx.drawImage(image, frame.col * sourceFrameWidth, 0,
+      sourceFrameWidth, sourceFrameHeight, 0, 0, width, height);
   }
 
   function drawExpression(name) {
@@ -95,7 +100,13 @@
   async function initialize() {
     try {
       const images = await Promise.all(manifest.rowAssets.map(loadImage));
-      images.forEach((image, index) => { strips[index] = image; });
+      images.forEach((image, index) => {
+        const cellWidth = image.naturalWidth / manifest.columns;
+        if (!Number.isInteger(cellWidth) || cellWidth !== image.naturalHeight) {
+          throw new Error(`Invalid Jess sprite strip at row ${index}: expected equal square frames across ${manifest.columns} columns.`);
+        }
+        strips[index] = image;
+      });
       ready = true;
       setState("idle");
       window.setTimeout(() => say("I'm here. Double-click me or choose Open.", "happy"), 700);
