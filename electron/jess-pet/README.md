@@ -5,7 +5,8 @@ This directory contains the transparent, offline-first character window for Hub-
 - index.html is the local-only entry point.
 - pet.js draws and animates frames from local WebP row strips.
 - manifest.js defines animation states without fetching JSON over file://.
-- preload.cjs exposes only open, hide, move and animation-state events to the pet page.
+- preload.cjs exposes a narrow API for open, hide, move, animation state and short speech messages.
+- Each sprite strip may use its own square frame size; the renderer derives source crop dimensions from the loaded image.
 - assets/rows holds the six generated transparent sprite strips.
 
 The character assets must be included in the installer. Do not replace these paths with CDN URLs. The pet must be able to launch and animate before the main Hub-Mind web UI or any model provider connects.

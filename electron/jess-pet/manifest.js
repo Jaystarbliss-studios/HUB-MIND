@@ -1,7 +1,6 @@
 // Local animation manifest. Kept as a script instead of fetch() so file:// startup is offline-safe.
+// Source frame size is detected per strip: the original strips are 96x96, while the replacement walk strip is 128x128.
 window.JessPetManifest = Object.freeze({
-  frameWidth: 128,
-  frameHeight: 128,
   columns: 5,
   rows: 6,
   animations: {
