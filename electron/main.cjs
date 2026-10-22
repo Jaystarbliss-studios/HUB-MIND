@@ -1118,10 +1118,10 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('hubmind:pet-open-app', (event) => {
+  ipcMain.handle('hubmind:pet-open-app', async (event) => {
     assertPetWindowSender(event);
-    showMain();
-    return { ok: true };
+    const opened = await showMainVerified();
+    return { ok: opened === true };
   });
   ipcMain.handle('hubmind:pet-hide', (event) => {
     assertPetWindowSender(event);
