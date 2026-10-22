@@ -5,9 +5,7 @@
   "atlas": {
     "columns": 5,
     "rows": 6,
-    "frameWidth": 128,
-    "frameHeight": 128,
-    "format": "six transparent WebP row strips"
+    "format": "six transparent WebP row strips; square frame size is detected per strip"
   },
   "animations": {
     "idle": [
