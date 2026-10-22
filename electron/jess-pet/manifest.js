@@ -10,7 +10,7 @@ window.JessPetManifest = Object.freeze({
     run:       { frames: [{ row: 1, col: 0 }, { row: 1, col: 1 }], fps: 8, loop: true, label: "Running" },
     jump:      { frames: [{ row: 1, col: 2 }, { row: 1, col: 3 }], fps: 6, loop: false, label: "Jumping" },
     think:     { frames: [{ row: 1, col: 4 }], fps: 1, loop: true, label: "Thinking" },
-    happy:     { frames: [{ row: 5, col: 2 }, { row: 5, col: 3 }, { row: 5, col: 4 }], fps: 6, loop: false, label: "Happy" },
+    happy:     { frames: [{ row: 5, col: 2 }, { row: 5, col: 3 }, { row: 5, col: 4 }], fps: 6, loop: true, label: "Happy" },
     walk:      { frames: [0, 1, 2, 3, 4].map(col => ({ row: 3, col })), fps: 6, loop: true, label: "Walking" },
     tired:     { frames: [0, 1, 2, 3, 4].map(col => ({ row: 4, col })), fps: 3, loop: true, label: "Tired" },
     celebrate: { frames: [0, 1, 2, 3, 4].map(col => ({ row: 5, col })), fps: 6, loop: false, label: "Celebrating" }
