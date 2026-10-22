@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data:; img-src 'self' file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Jess Companion</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./animation-manifest.js" defer></script>
+  <script src="./renderer.js" defer></script>
+</head>
+<body>
+  <main id="jess-stage" class="jess-stage is-fallback" aria-label="Jess desktop companion">
+    <img id="jess-sprite" src="../../dist/icon.svg" alt="Jess" draggable="false">
+    <span id="jess-status-dot" class="jess-status-dot is-offline" aria-hidden="true"></span>
+  </main>
+  <button id="jess-hide" type="button" aria-label="Hide Jess" title="Hide Jess">×</button>
+  <div id="jess-message" role="status" aria-live="polite"></div>
+</body>
+</html>
