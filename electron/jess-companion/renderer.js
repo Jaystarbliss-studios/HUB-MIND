@@ -219,7 +219,13 @@
   stage.addEventListener('pointerdown', onPointerDown);
   stage.addEventListener('pointermove', onPointerMove);
   stage.addEventListener('pointerup', onPointerUp);
-  stage.addEventListener('pointercancel', onPointerUp);
+  stage.addEventListener('pointercancel', event => {
+    if (!dragging) return;
+    dragging = false;
+    didMove = true;
+    try { stage.releasePointerCapture(event.pointerId); } catch {}
+    setInteractive(false);
+  });
   // Electron forwards mousemove events while the transparent window is in
   // click-through mode. Keep this hover-only; pointermove handles actual dragging.
   window.addEventListener('mousemove', event => {
