@@ -85,6 +85,7 @@ jobs:
       - name: Build web workspace
         run: npm run build
       - name: Prepare optional Windows code-signing certificate
+        id: prepare_signing_certificate
         if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
         shell: pwsh
         env:
@@ -93,18 +94,75 @@ jobs:
         run: |
           if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
             Write-Output 'No signing certificate configured; the installer will remain unsigned.'
+            "has_certificate=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
           $certificatePath = Join-Path $env:RUNNER_TEMP 'hubmind-windows-signing.pfx'
           $certificateBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
           [System.IO.File]::WriteAllBytes($certificatePath, $certificateBytes)
-          "CSC_LINK=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "HUBMIND_SIGNING_CERTIFICATE_PATH=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "HUBMIND_SIGNING_CERTIFICATE_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "has_certificate=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Generate valid 256px Windows icon from official logo
         shell: pwsh
         run: ./scripts/generate-windows-icon.ps1
       - name: Package Windows installer
+        timeout-minutes: 15
+        env:
+          CSC_LINK: ''
+          CSC_KEY_PASSWORD: ''
+          WIN_CSC_LINK: ''
+          WIN_CSC_KEY_PASSWORD: ''
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder --win nsis --publish never
+      - name: Preserve unsigned installer for signing fallback
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path 'release\*.exe' -File | Select-Object -First 1
+          if (-not $installer) { throw 'electron-builder did not produce a Windows installer.' }
+          Copy-Item -LiteralPath $installer.FullName -Destination (Join-Path $env:RUNNER_TEMP 'Hub-Mind-Setup-unsigned.exe') -Force
+      - name: Sign Windows installer (optional)
+        id: sign_installer
+        if: ${{ steps.prepare_signing_certificate.outputs.has_certificate == 'true' }}
+        continue-on-error: true
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+          $sdkRoot = Join-Path $programFilesX86 'Windows Kits\10\bin'
+          if (!(Test-Path -LiteralPath $sdkRoot)) { throw 'Windows SDK not found; installer will remain unsigned.' }
+          $signtool = Get-ChildItem -Path $sdkRoot -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending |
+            ForEach-Object { Join-Path $_.FullName 'x64\signtool.exe' } |
+            Where-Object { Test-Path -LiteralPath $_ } |
+            Select-Object -First 1
+          if (-not $signtool) { throw 'signtool.exe was not found; installer will remain unsigned.' }
+          $installer = Get-ChildItem -Path 'release\*.exe' -File | Select-Object -First 1
+          if (-not $installer) { throw 'No Windows installer was found to sign.' }
+          & $signtool sign /f $env:HUBMIND_SIGNING_CERTIFICATE_PATH /p $env:HUBMIND_SIGNING_CERTIFICATE_PASSWORD /fd SHA256 /tr 'http://timestamp.digicert.com' /td SHA256 /v $installer.FullName
+          if ($LASTEXITCODE -ne 0) { throw "SignTool failed with exit code $LASTEXITCODE." }
+          & $signtool verify /pa /v $installer.FullName
+          if ($LASTEXITCODE -ne 0) { throw "SignTool verification failed with exit code $LASTEXITCODE." }
+      - name: Restore unsigned installer if optional signing fails
+        if: ${{ steps.sign_installer.outcome == 'failure' }}
+        shell: pwsh
+        run: |
+          $backup = Join-Path $env:RUNNER_TEMP 'Hub-Mind-Setup-unsigned.exe'
+          $installer = Get-ChildItem -Path 'release\*.exe' -File | Select-Object -First 1
+          if (!(Test-Path -LiteralPath $backup) -or -not $installer) {
+            throw 'Could not restore the installer after signing failure.'
+          }
+          Copy-Item -LiteralPath $backup -Destination $installer.FullName -Force
+          Write-Output 'Optional signing did not finish successfully; restored the unsigned installer.'
+      - name: Verify Windows installer output
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path 'release\*.exe' -File | Select-Object -First 1
+          if (-not $installer -or $installer.Length -lt 1000000) {
+            throw 'Windows installer output is missing or unexpectedly small.'
+          }
+          Write-Output ("Installer artifact ready: {0} bytes at {1}" -f $installer.Length, $installer.FullName)
       - name: Archive installer as workflow artifact
         uses: actions/upload-artifact@v4
         with:
