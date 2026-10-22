@@ -1001,7 +1001,7 @@ export function JessFloatingAssistant() {
             outputLevel,
             activeBgTasks,
           });
-        } else if (data.type === 'toggle') {
+        } else if (data.type === 'toggle' || data.type === 'toggle-listen') {
           activate();
         } else if (data.type === 'start') {
           void start(data.prompt);
@@ -1018,11 +1018,34 @@ export function JessFloatingAssistant() {
         outputLevel,
         activeBgTasks,
       });
+      const desktopBridge = (window as any).hubMindDesktop;
+      if (typeof desktopBridge?.publishJessCompanionState === 'function') {
+        desktopBridge.publishJessCompanionState({
+          state,
+          connection,
+          inputLevel,
+          outputLevel,
+          activeTaskCount: Array.isArray(activeBgTasks) ? activeBgTasks.length : 0,
+        });
+      }
     } catch {}
     return () => {
       try { channel?.close(); } catch {}
     };
   }, [activate, activeBgTasks, connection, inputLevel, outputLevel, speechState, start, state, stop]);
+
+  // The offline native companion requests live-session changes over a narrowly
+  // scoped Electron IPC bridge. The remote CompanionPage still uses BroadcastChannel.
+  useEffect(() => {
+    const desktopBridge = (window as any).hubMindDesktop;
+    if (typeof desktopBridge?.onJessCompanionCommand !== 'function') return;
+    return desktopBridge.onJessCompanionCommand((command: any) => {
+      if (!command || typeof command !== 'object') return;
+      if (command.type === 'toggle') activate();
+      else if (command.type === 'start') void start(String(command.prompt || '').trim() || undefined);
+      else if (command.type === 'stop') void stop();
+    });
+  }, [activate, start, stop]);
 
   // Passive wake is strictly app-only. Normal browser tabs must never leave a
   // background microphone listener running. Native shells can provide a native
