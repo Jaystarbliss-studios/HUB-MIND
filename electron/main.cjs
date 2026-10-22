@@ -227,7 +227,10 @@ function createMainWindow(initialPath = '/login') {
   mainWindow.on('restore', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });
   mainWindow.on('minimize', () => { createCompanionWindow(); positionCompanionBottomRight(); });
   mainWindow.on('closed', () => { mainWindow = null; });
-  return mainWindow.loadURL(APP_URL + initialPath);
+  return mainWindow.loadURL(APP_URL + initialPath).catch(error => {
+    console.warn('[Hub-Mind] Workspace could not load; the local Jess companion remains available:', String(error?.message || error).slice(0, 500));
+    return false;
+  });
 }
 
 function positionCompanionBottomRight() {
@@ -313,7 +316,10 @@ function createTranscriptOverlayWindow() {
   transcriptOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
   positionTranscriptOverlayWindow();
   transcriptOverlayWindow.on('closed', () => { transcriptOverlayWindow = null; });
-  transcriptOverlayWindow.loadURL(APP_URL + '/companion-transcript');
+  transcriptOverlayWindow.loadURL(APP_URL + '/companion-transcript').catch(error => {
+    // The transcript overlay is cloud-backed; its failure must not affect the local character.
+    console.warn('[Jess transcript] Remote overlay unavailable; the desktop companion remains active:', String(error?.message || error).slice(0, 400));
+  });
   return transcriptOverlayWindow;
 }
 
@@ -381,7 +387,14 @@ async function showWorkspaceVerified() {
       const current = new URL(mainWindow.webContents.getURL());
       shouldNavigate = current.origin === new URL(APP_URL).origin && !current.pathname.startsWith('/workspace');
     } catch {}
-    if (shouldNavigate) await mainWindow.loadURL(APP_URL + '/workspace');
+    if (shouldNavigate) {
+      try {
+        await mainWindow.loadURL(APP_URL + '/workspace');
+      } catch (error) {
+        console.warn('[Hub-Mind] Workspace navigation failed; Jess remains available:', String(error?.message || error).slice(0, 500));
+        return false;
+      }
+    }
   }
   if (!mainWindow || mainWindow.isDestroyed()) return false;
   if (mainWindow.isMinimized()) mainWindow.restore();
