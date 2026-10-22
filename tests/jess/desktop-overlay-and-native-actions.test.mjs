@@ -12,12 +12,14 @@ test('workspace theme remains dark regardless of operating system preference', a
   assert.match(css, /background-color:\s*#020617/i);
 });
 
-test('desktop companion is an icon-only movable orb with a close control', async () => {
+test('desktop companion is a local movable Jess character with close and hide controls', async () => {
   const main = await read('../../electron/main.cjs');
   const page = await read('../../src/pages/CompanionPage.tsx');
-  assert.ok(main.includes('width: 96, height: 96'));
-  assert.ok(main.includes('maxWidth: 420, maxHeight: 520'));
-  assert.ok(main.includes("APP_URL + '/companion'"));
+  assert.ok(main.includes('width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT'));
+  assert.ok(main.includes('maxWidth: JESS_PET_WIDTH, maxHeight: JESS_PET_HEIGHT'));
+  assert.ok(main.includes("loadFile(path.join(__dirname, 'jess-pet', 'index.html'))"));
+  assert.ok(!main.includes('maxWidth: 420, maxHeight: 520'));
+  assert.ok(!main.includes("loadURL(APP_URL + '/companion')"));
   assert.match(main, /hubmind:set-companion-transcript-visible/);
   assert.match(page, /JessOrbVisualizer/);
   assert.ok(page.includes('JessOrbVisualizer'));
