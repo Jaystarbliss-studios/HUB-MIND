@@ -5,8 +5,8 @@
   "atlas": {
     "columns": 5,
     "rows": 6,
-    "frameWidth": 160,
-    "frameHeight": 160,
+    "frameWidth": 96,
+    "frameHeight": 96,
     "format": "six transparent WebP row strips"
   },
   "animations": {
