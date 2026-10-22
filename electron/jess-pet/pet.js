@@ -173,5 +173,10 @@
   });
 
   window.jessPet?.onState?.(state => setState(state));
+  window.jessPet?.onSpeech?.(payload => {
+    if (!payload || typeof payload.text !== "string") return;
+    const allowedFaces = new Set(["happy", "happyEyesClosed", "concerned", "surprised", "annoyed"]);
+    say(payload.text, allowedFaces.has(payload.expression) ? payload.expression : "happy");
+  });
   initialize();
 })();
