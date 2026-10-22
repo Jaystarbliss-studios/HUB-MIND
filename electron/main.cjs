@@ -1143,13 +1143,16 @@ app.whenReady().then(() => {
         return { ok: false, reason: 'workspace-not-ready', error: 'Hub-Mind is still starting or offline. Jess can remain on the desktop while it loads.' };
       }
       let expectedOrigin = '';
-      let currentOrigin = '';
+      let currentUrl = null;
       try {
         expectedOrigin = new URL(APP_URL).origin;
-        currentOrigin = new URL(mainWindow.webContents.getURL()).origin;
+        currentUrl = new URL(mainWindow.webContents.getURL());
       } catch {}
-      if (!expectedOrigin || currentOrigin !== expectedOrigin) {
+      if (!expectedOrigin || !currentUrl || currentUrl.origin !== expectedOrigin) {
         return { ok: false, reason: 'workspace-not-ready', error: 'The Hub-Mind workspace is not connected. Jess remains available offline.' };
+      }
+      if (currentUrl.pathname === '/' || currentUrl.pathname === '/login') {
+        return { ok: false, reason: 'authentication-required', error: 'Please sign in to Hub-Mind first. Jess will stay on your desktop.' };
       }
       mainWindow.webContents.send('hubmind:jess-companion-command', { type: 'toggle' });
       return { ok: true };
