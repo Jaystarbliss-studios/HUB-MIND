@@ -255,6 +255,28 @@ ipcMain.on('hubmind:screen-share-cancel', event => {
   finishDisplaySourceChoice(null);
 });
 
+async function prepareWorkspaceForPetVoiceActivation() {
+  // The native companion has its own window; the authenticated Live session is
+  // owned by the React assistant in the workspace route. Bring that controller
+  // forward before dispatching a click so requests are not lost on /login or
+  // an overlay route. Firebase still decides whether /workspace needs login.
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    await createMainWindow('/workspace');
+  } else {
+    let needsWorkspaceRoute = true;
+    try {
+      const current = new URL(mainWindow.webContents.getURL());
+      needsWorkspaceRoute = current.origin !== new URL(APP_URL).origin || !current.pathname.startsWith('/workspace');
+    } catch {}
+    if (needsWorkspaceRoute) await mainWindow.loadURL(APP_URL + '/workspace');
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  return mainWindow.isVisible() && !mainWindow.isMinimized();
+}
+
 function createMainWindow(initialPath = '/login') {
   mainWindow = new BrowserWindow(secureWindowOptions({ width: 1440, height: 940, minWidth: 900, minHeight: 620, icon: path.join(__dirname, '..', 'dist', 'hub-mind logo.png'), backgroundColor: '#020617', title: 'Hub-Mind', autoHideMenuBar: true, show: false, webPreferences: { backgroundThrottling: false } }));
   guardNavigation(mainWindow);
@@ -1188,6 +1210,8 @@ app.whenReady().then(() => {
 
     const request = { requestId: randomUUID(), requestedAt: Date.now(), gesture };
     pendingJessPetActivation = request;
+    const workspaceReady = await prepareWorkspaceForPetVoiceActivation();
+    if (!workspaceReady) return { ok: false, error: 'Hub-Mind could not open the workspace voice controller. Open the app and check your connection, then double-click Jess to retry.' };
 
     // Bring the actual LiveAudioClient renderer forward before dispatching the
     // activation request. If its page is still loading, the pending request is
