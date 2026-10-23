@@ -38,6 +38,8 @@
     const sourceFrameHeight = image.naturalHeight;
     if (!Number.isInteger(sourceFrameWidth) || sourceFrameWidth <= 0 || sourceFrameHeight <= 0) return;
     targetCtx.clearRect(0, 0, width, height);
+    targetCtx.imageSmoothingEnabled = true;
+    targetCtx.imageSmoothingQuality = "high";
     targetCtx.drawImage(image, frame.col * sourceFrameWidth, 0,
       sourceFrameWidth, sourceFrameHeight, 0, 0, width, height);
   }
@@ -58,7 +60,11 @@
     if (activeState !== "idle") return;
     idleFidgetTimer = window.setTimeout(() => {
       idleFidgetTimer = null;
-      if (activeState === "idle") setState("walk", true);
+      if (activeState !== "idle") return;
+      const dx = Math.round((Math.random() - 0.5) * 18);
+      const dy = Math.round((Math.random() - 0.5) * 8);
+      if (dx || dy) Promise.resolve(window.jessPet?.moveBy?.(dx, dy)).catch(() => {});
+      setState("walk", true);
     }, 10000 + Math.random() * 8000);
   }
 
@@ -108,12 +114,12 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#1e293b";
     ctx.beginPath();
-    ctx.arc(128, 95, 62, 0, Math.PI * 2);
+    ctx.arc(64, 48, 31, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#f8fafc";
-    ctx.font = "700 64px Segoe UI, sans-serif";
+    ctx.font = "700 32px Segoe UI, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("J", 128, 118);
+    ctx.fillText("J", 64, 60);
     status.textContent = "Jess art missing · install the local asset pack";
     say("My animation files are missing. Please install the bundled Jess assets.", "concerned");
   }
@@ -142,13 +148,15 @@
   const SINGLE_CLICK_DELAY_MS = 500;
 
   function requestVoiceActivation(gesture) {
+    if (typeof window.jessPet?.activateVoice !== "function") {
+      say("This Hub-Mind installation needs the Jess voice activation update. Please update the desktop app.", "concerned");
+      return;
+    }
     say("Starting voice chat…", "happy");
-    Promise.resolve(window.jessPet?.activateVoice?.(gesture)).then(result => {
-      if (!result || result.ok !== true) {
-        say("I couldn't start voice chat. Please sign in to Hub-Mind and try again.", "concerned");
-      }
+    Promise.resolve(window.jessPet.activateVoice(gesture)).then(result => {
+      if (!result || result.ok !== true) say(String(result?.error || "Hub-Mind could not reach Jess's voice controller. Open the workspace once and try again.").slice(0, 170), "concerned");
     }).catch(error => {
-      say("I couldn't start voice chat. Please sign in to Hub-Mind and try again.", "concerned");
+      say("Hub-Mind could not reach Jess's voice controller. Open the workspace once and try again.", "concerned");
       console.error("[Jess pet] Voice activation failed:", error);
     });
   }

@@ -9,8 +9,8 @@ const chromeBridge = require('./chromeBridge.cjs');
 const { McpBridge } = require('./mcpBridge.cjs');
 
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
-const JESS_PET_WIDTH = 260;
-const JESS_PET_HEIGHT = 300;
+const JESS_PET_WIDTH = 130;
+const JESS_PET_HEIGHT = 150;
 const JESS_PET_STATES = new Set(['idle', 'stride', 'run', 'jump', 'think', 'happy', 'walk', 'tired', 'celebrate']);
 const JESS_PET_EXPRESSIONS = new Set(['happy', 'happyEyesClosed', 'concerned', 'surprised', 'annoyed']);
 let pendingJessPetState = 'idle';
@@ -393,6 +393,24 @@ async function showWorkspaceVerified() {
   mainWindow.focus();
   if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
   return mainWindow.isVisible();
+}
+
+async function prepareWorkspaceForPetVoiceActivation() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    await createMainWindow('/workspace');
+  } else {
+    let shouldNavigate = true;
+    try {
+      const current = new URL(mainWindow.webContents.getURL());
+      shouldNavigate = current.origin !== new URL(APP_URL).origin || !current.pathname.startsWith('/workspace');
+    } catch {}
+    if (shouldNavigate) await mainWindow.loadURL(APP_URL + '/workspace');
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  return mainWindow.isVisible() && !mainWindow.isMinimized();
 }
 
 function stopOfflineWake() {
@@ -1119,15 +1137,19 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('hubmind:pet-activate-voice', (event, gesture) => {
+  ipcMain.handle('hubmind:pet-activate-voice', async (event, gesture) => {
     assertPetWindowSender(event);
     if (gesture !== 'single' && gesture !== 'double') throw new Error('Unsupported Jess voice activation gesture.');
     const request = { requestId: randomUUID(), requestedAt: Date.now(), gesture };
     pendingJessPetActivation = request;
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
-      mainWindow.webContents.send('hubmind:pet-voice-activation', request);
+    try {
+      const ready = await prepareWorkspaceForPetVoiceActivation();
+      if (!ready) return { ok: false, error: 'Hub-Mind could not bring the workspace forward. Open Hub-Mind once, then click Jess again.' };
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send('hubmind:pet-voice-activation', request);
+      return { ok: true, requestId: request.requestId };
+    } catch (error) {
+      return { ok: false, error: String(error?.message || 'Hub-Mind could not activate Jess.').slice(0, 260) };
     }
-    return { ok: true, requestId: request.requestId };
   });
   ipcMain.handle('hubmind:pet-get-pending-voice-activation', (event) => {
     assertTrustedSender(event);
@@ -1152,6 +1174,20 @@ app.whenReady().then(() => {
     companionDismissed = true;
     if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
     return { ok: true };
+  });
+  ipcMain.handle('hubmind:pet-set-visibility', (event, visible) => {
+    assertTrustedSender(event);
+    if (visible !== true && visible !== false) throw new Error('Jess visibility must be true or false.');
+    if (visible) {
+      companionDismissed = false;
+      createCompanionWindow(true);
+      positionCompanionBottomRightIfNeeded();
+      if (companionWindow && !companionWindow.isDestroyed()) companionWindow.showInactive();
+    } else {
+      companionDismissed = true;
+      if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+    }
+    return { ok: true, visible };
   });
   ipcMain.handle('hubmind:pet-move-by', (event, dx, dy) => {
     assertPetWindowSender(event);
@@ -1185,7 +1221,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
   ipcMain.handle('hubmind:show-workspace', async (event) => { assertTrustedSender(event); return await showWorkspaceVerified(); });
-  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); return true; });
+  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); companionDismissed = false; createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); return true; });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionDismissed = true; companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:set-companion-transcript-visible', (event, _visible) => {
     assertTrustedSender(event);
@@ -1342,11 +1378,16 @@ app.whenReady().then(() => {
   });
   if (!stopHotkeyRegistered) console.warn('[Jess native control] Could not register Ctrl+Alt+Shift+J emergency stop hotkey.');
   const showOrbHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+O', () => {
-    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide();
-    createCompanionWindow(true);
-    positionCompanionBottomRightIfNeeded();
+    if (companionWindow && !companionWindow.isDestroyed() && companionWindow.isVisible()) {
+      companionDismissed = true;
+      companionWindow.hide();
+    } else {
+      companionDismissed = false;
+      createCompanionWindow(true);
+      positionCompanionBottomRightIfNeeded();
+    }
   });
-  if (!showOrbHotkeyRegistered) console.warn('[Jess orb] Could not register Ctrl+Alt+Shift+O show-orb hotkey.');
+  if (!showOrbHotkeyRegistered) console.warn('[Jess orb] Could not register Ctrl+Alt+Shift+O show/hide shortcut.');
   createCompanionWindow(true);
   createMainWindow();
   createTranscriptOverlayWindow();

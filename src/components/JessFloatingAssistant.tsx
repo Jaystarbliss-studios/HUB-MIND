@@ -251,6 +251,7 @@ export function JessFloatingAssistant() {
   const pointerRef = useRef({ dragging: false, moved: false, longPressed: false, holdTimer: null as number | null, startX: 0, startY: 0, originX: 0, originY: 0, lastTap: 0, tapTimer: null as number | null });
   const [position, setPosition] = useState(DEFAULT_POSITION);
   const [connection, setConnection] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
+  const connectionWatchdogRef = useRef<number | null>(null);
   const [state, setState] = useState<JessState>('idle');
   const [inputLevel, setInputLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
@@ -1007,7 +1008,8 @@ export function JessFloatingAssistant() {
   }, [connection, navigate, profile, selectedAudioInputId, stop, stopScreenSharing, updatePreferredName, scheduleFade]);
 
   const activate = useCallback(() => {
-    if (connection === 'connected' || connection === 'connecting') void stop();
+    if (connection === 'connected') void stop();
+    else if (connection === 'connecting') setSpeechState({ text: "I'm still connecting. I'll keep waiting rather than cancelling the connection.", speaker: 'jess', visible: true });
     else void start();
   }, [connection, start, stop]);
 
@@ -1057,11 +1059,14 @@ export function JessFloatingAssistant() {
     setPendingPetVoiceActivation(null);
     void Promise.resolve(bridge?.acknowledgePetVoiceActivation?.(request.requestId)).catch(() => {});
 
-    if (request.gesture === 'double' && (connection === 'connected' || connection === 'connecting')) {
+    if (request.gesture === 'double' && connection === 'connected') {
       void stop();
       return;
     }
-    if (request.gesture === 'single' && connection === 'connecting') return;
+    if (connection === 'connecting') {
+      setSpeechState({ text: "Jess is still connecting to Gemini Live. A second click won't cancel the connection.", speaker: 'jess', visible: true });
+      return;
+    }
     if (request.gesture === 'single' && connection === 'connected') {
       const wasMuted = state === 'muted';
       clientRef.current?.toggleMute();
@@ -1082,6 +1087,40 @@ export function JessFloatingAssistant() {
     if (!isDesktopShell || connection !== 'connected' || speechState.speaker !== 'jess' || !/starting voice chat/i.test(speechState.text)) return;
     setSpeechState({ text: "I'm listening. Go ahead.", speaker: 'jess', visible: true });
   }, [connection, speechState.speaker, speechState.text]);
+
+  // The Live handshake must not leave Jess showing "connecting" indefinitely.
+  useEffect(() => {
+    if (connectionWatchdogRef.current !== null) {
+      window.clearTimeout(connectionWatchdogRef.current);
+      connectionWatchdogRef.current = null;
+    }
+    if (connection !== 'connecting') return;
+    connectionWatchdogRef.current = window.setTimeout(() => {
+      connectionWatchdogRef.current = null;
+      void stop().finally(() => {
+        setConnection('error');
+        setState('error');
+        setSpeechState({ text: 'Jess could not finish connecting to Gemini Live within 35 seconds. Check internet and microphone permission, then double-click Jess to retry.', speaker: 'jess', visible: true });
+      });
+    }, 35000);
+    return () => {
+      if (connectionWatchdogRef.current !== null) {
+        window.clearTimeout(connectionWatchdogRef.current);
+        connectionWatchdogRef.current = null;
+      }
+    };
+  }, [connection, stop]);
+
+  // LiveAudioClient reports failures through callbacks, so release the lease
+  // as soon as an internal provider error occurs, enabling immediate retry.
+  useEffect(() => {
+    if (connection !== 'error') return;
+    const lease = sessionLeaseRef.current;
+    if (!lease) return;
+    sessionLeaseRef.current = null;
+    if (lease.timer !== null) window.clearInterval(lease.timer);
+    void releaseJessSession(lease.userId, lease.sessionId).catch(error => console.warn('[Jess] Could not release failed voice-session lease:', error));
+  }, [connection]);
 
   // Desktop, Chrome-installed PWA, and browser sessions coordinate through the same per-user Firestore lease.
   useEffect(() => {

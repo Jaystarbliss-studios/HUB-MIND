@@ -21,8 +21,8 @@ test('desktop Jess character loads bundled animations in an offline companion wi
   const preload = read('../../electron/jess-pet/preload.cjs');
   const desktopPreload = read('../../electron/preload.cjs');
   const assistant = read('../../src/components/JessFloatingAssistant.tsx');
-  assert.match(main, /const JESS_PET_WIDTH = 260/);
-  assert.match(main, /const JESS_PET_HEIGHT = 300/);
+  assert.match(main, /const JESS_PET_WIDTH = 130/);
+  assert.match(main, /const JESS_PET_HEIGHT = 150/);
   assert.match(main, /loadFile\(path\.join\(__dirname, 'jess-pet', 'index\.html'\)\)/);
   assert.doesNotMatch(main, /loadURL\(APP_URL \+ '\/companion'\)/);
   assert.match(main, /mainWindow\.on\('show', \(\) => \{ createCompanionWindow\(\); positionCompanionBottomRightIfNeeded\(\); \}\)/);
@@ -38,8 +38,12 @@ test('desktop Jess character loads bundled animations in an offline companion wi
   assert.match(preload, /hubmind:pet-activate-voice/);
   assert.match(desktopPreload, /onPetVoiceActivation/);
   assert.match(main, /hubmind:pet-activate-voice/);
+  assert.match(main, /prepareWorkspaceForPetVoiceActivation/);
   assert.match(main, /hubmind:pet-voice-activation/);
+  assert.match(main, /pet-set-visibility/);
   assert.match(assistant, /getPendingPetVoiceActivation/);
+  assert.match(assistant, /connectionWatchdogRef/);
+  assert.match(assistant, /Jess is still connecting/);
   assert.match(assistant, /clientRef\.current\?\.toggleMute\(\)/);
   assert.match(style, /background: transparent/);
   assert.match(pet, /manifest\.rowAssets\.map\(loadImage\)/);
