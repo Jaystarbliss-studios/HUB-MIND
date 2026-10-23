@@ -31,8 +31,8 @@ test('desktop app starts at sign-in and provides the offline Jess character comp
     read('src/pages/companion.css'),
   ]);
   assert.match(main, /function createMainWindow\(initialPath = '\/login'\)/);
-  assert.match(main, /JESS_PET_WIDTH = 260/);
-  assert.match(main, /JESS_PET_HEIGHT = 300/);
+  assert.match(main, /JESS_PET_WIDTH = 130/);
+  assert.match(main, /JESS_PET_HEIGHT = 150/);
   assert.match(main, /loadFile\(path\.join\(__dirname, 'jess-pet', 'index\.html'\)\)/);
   assert.doesNotMatch(main, /loadURL\(APP_URL \+ '\/companion'\)/);
   assert.match(orb, /JessOrbVisualizer/);
