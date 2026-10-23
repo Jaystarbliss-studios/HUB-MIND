@@ -20,6 +20,7 @@ test('desktop transcript is a separate fixed and click-through window', async ()
   assert.match(main, /area\.x \+ \(area\.width - width\) \/ 2/);
   assert.match(main, /hubmind:set-transcript-overlay-visible/);
   assert.ok(main.includes("setBackgroundMaterial('acrylic')"));
+  assert.ok(main.includes("setBackgroundMaterial('acrylic')"));
   assert.match(preload, /setTranscriptOverlayVisible: .*hubmind:set-transcript-overlay-visible/);
   assert.match(page, /hubmind\.jess\.desktopTranscript\.v1/);
   assert.match(page, /setTranscriptOverlayVisible/);
