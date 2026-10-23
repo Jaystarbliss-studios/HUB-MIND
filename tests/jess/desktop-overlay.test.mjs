@@ -10,9 +10,10 @@ const electronMain = readFileSync(new URL('../../electron/main.cjs', import.meta
 
 test('desktop Jess uses a local character window and keeps the transcript overlay separate', () => {
   assert.match(legacyCss, /\.jess-orb-window\s*\{[^}]*width:\s*96px/s);
-  assert.match(petCss, /\.pet-shell\s*\{[^}]*width:\s*260px/s);
-  assert.match(petCss, /height:\s*300px/);
+  assert.match(petCss, /\.pet-shell\s*\{[^}]*width:\s*130px/s);
+  assert.match(petCss, /height:\s*150px/);
   assert.match(petPage, /jess-canvas/);
+  assert.match(petPage, /width="128" height="128"/);
   assert.match(electronMain, /createTranscriptOverlayWindow/);
   assert.match(electronMain, /width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT/);
   assert.match(electronMain, /function createTranscriptOverlayWindow\(\)/);
