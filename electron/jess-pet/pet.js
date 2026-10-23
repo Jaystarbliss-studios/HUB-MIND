@@ -12,15 +12,13 @@ import * as THREE from "./assets/js/three.module.min.js";
   const character = document.getElementById("character");
   const liveStates = new Set(["idle", "listening", "thinking", "speaking", "interrupted", "muted", "error", "walk", "run", "stride", "think", "happy", "celebrate", "jump", "tired"]);
   const allowedConnections = new Set(["disconnected", "connecting", "connected", "error"]);
-  let activeState = "idle";
   let visualState = { connection: "disconnected", state: "idle", inputLevel: 0, outputLevel: 0 };
-  let renderer = null, scene = null, camera = null, avatar = null, headRig = null;
+  let activeState = "idle", renderer = null, scene = null, camera = null, avatar = null, headRig = null;
   let leftArm = null, rightArm = null, leftEye = null, rightEye = null, mouth = null, mouthLip = null;
-  let elapsed = 0, frameHandle = 0, visualFrame = 0, visualPhase = 0;
+  let elapsed = 0, visualPhase = 0, frameHandle = 0, visualFrame = 0;
   let speechTimer = null, idleFidgetTimer = null, activationWatchdogTimer = null;
-  let nextBlinkAt = 0, blink = 0, alive = true;
-  let pointerStart = null, lastPointer = null, isDragging = false;
-  let singleClickTimer = null, suppressNextClick = false;
+  let nextBlinkAt = 2.5, blink = 0, alive = true;
+  let pointerStart = null, lastPointer = null, isDragging = false, singleClickTimer = null, suppressNextClick = false;
   const SINGLE_CLICK_DELAY_MS = 420;
   const clock = new THREE.Clock();
 
@@ -36,18 +34,16 @@ import * as THREE from "./assets/js/three.module.min.js";
   const brow = mat(0x38232a, 0.8), lip = mat(0x702b37, 0.5);
   const mouthInterior = mat(0x260e17, 0.4), mouthTongue = mat(0xb44d60, 0.5);
 
-  function level(value) {
-    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
-  }
+  function level(value) { return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0; }
   function ellipsoid(parent, position, scale, material, geometry = sphereGeometry) {
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(position[0], position[1], position[2]);
-    mesh.scale.set(scale[0], scale[1], scale[2]);
+    mesh.position.set(...position);
+    mesh.scale.set(...scale);
     parent.add(mesh);
     return mesh;
   }
   function tube(parent, points, radius, material, segments = 22) {
-    const curve = new THREE.CatmullRomCurve3(points.map(point => new THREE.Vector3(point[0], point[1], point[2])));
+    const curve = new THREE.CatmullRomCurve3(points.map(point => new THREE.Vector3(...point)));
     const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, segments, radius, 8, false), material);
     parent.add(mesh);
     return mesh;
@@ -90,7 +86,6 @@ import * as THREE from "./assets/js/three.module.min.js";
     headRig = new THREE.Group();
     headRig.position.y = 2.12;
     avatar.add(headRig);
-    // Hair volume, oval face, layered fringe and locks are real geometry, not images.
     ellipsoid(headRig, [0, 0.04, -0.115], [0.56, 0.75, 0.46], hair);
     ellipsoid(headRig, [0, 0.07, 0.005], [0.505, 0.66, 0.405], skin);
     ellipsoid(headRig, [0, 0.39, -0.005], [0.545, 0.37, 0.438], hair);
@@ -139,34 +134,6 @@ import * as THREE from "./assets/js/three.module.min.js";
     tube(avatar, [[-0.60, 1.20, 0.20], [-0.43, 1.34, 0.24], [-0.20, 1.37, 0.30]], 0.014, gold);
     tube(avatar, [[0.60, 1.20, 0.20], [0.43, 1.34, 0.24], [0.20, 1.37, 0.30]], 0.014, gold);
   }
-  function setState(nextState, autonomousWalk = false) {
-    if (!liveStates.has(nextState)) nextState = "idle";
-    if (idleFidgetTimer !== null) window.clearTimeout(idleFidgetTimer);
-    idleFidgetTimer = null;
-    activeState = nextState;
-    const rest = activeState === "idle" || activeState === "listening" || activeState === "muted";
-    if (rest) {
-      leftArm.userData.targetZ = -0.10; rightArm.userData.targetZ = 0.10;
-      headRig.userData.targetZ = activeState === "listening" ? -0.045 : 0;
-    } else if (activeState === "think" || activeState === "thinking") {
-      leftArm.userData.targetZ = -0.08; rightArm.userData.targetZ = -2.08; headRig.userData.targetZ = 0.12;
-    } else if (activeState === "celebrate" || activeState === "happy" || activeState === "jump") {
-      leftArm.userData.targetZ = -2.25; rightArm.userData.targetZ = 2.25; headRig.userData.targetZ = -0.04;
-    } else if (activeState === "error" || activeState === "interrupted" || activeState === "tired") {
-      leftArm.userData.targetZ = -0.30; rightArm.userData.targetZ = 0.22; headRig.userData.targetZ = 0.15;
-    } else if (activeState === "walk" || activeState === "run" || activeState === "stride") {
-      leftArm.userData.targetZ = -0.38; rightArm.userData.targetZ = 0.38; headRig.userData.targetZ = 0;
-    } else {
-      leftArm.userData.targetZ = -0.10; rightArm.userData.targetZ = 0.10;
-      headRig.userData.targetZ = activeState === "speaking" ? -0.015 : 0;
-    }
-    if (activeState === "idle" && visualState.connection === "disconnected") {
-      idleFidgetTimer = window.setTimeout(() => { if (activeState === "idle" && visualState.connection === "disconnected") setState("walk", true); }, 10000 + Math.random() * 8000);
-    } else if (activeState === "walk" && autonomousWalk) {
-      idleFidgetTimer = window.setTimeout(() => { if (activeState === "walk") setState("idle"); }, 1700);
-    }
-    statusLabel.textContent = activeState === "speaking" ? "Jess is speaking" : activeState === "thinking" ? "Jess is thinking" : statusLabel.textContent;
-  }
   function statusMode() {
     if (visualState.connection === "error" || visualState.state === "error") return "error";
     if (visualState.connection === "connecting") return "connecting";
@@ -185,53 +152,27 @@ import * as THREE from "./assets/js/three.module.min.js";
     else if (mode === "connected") statusLabel.textContent = "Connected · listening";
     else statusLabel.textContent = "Double-click Jess to talk";
   }
-  function colorForMode(mode) {
-    if (mode === "connecting") return { line: "192,132,252", solid: "#c084fc" };
-    if (mode === "connected") return { line: "74,222,128", solid: "#4ade80" };
-    if (mode === "muted") return { line: "251,191,36", solid: "#fbbf24" };
-    if (mode === "error") return { line: "248,113,113", solid: "#f87171" };
-    return { line: "148,163,184", solid: "#94a3b8" };
-  }
-  function renderVisualizer() {
-    visualFrame = 0;
-    visualPhase += 0.055;
-    const dpr = Math.min(2.5, Math.max(1, window.devicePixelRatio || 1));
-    const logicalSize = 130, pixelSize = Math.round(logicalSize * dpr);
-    if (visualCanvas.width !== pixelSize || visualCanvas.height !== pixelSize) { visualCanvas.width = pixelSize; visualCanvas.height = pixelSize; }
-    visualCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    visualCtx.clearRect(0, 0, logicalSize, logicalSize);
-    const mode = statusMode(), palette = colorForMode(mode), state = visualState.state;
-    const level = state === "speaking" ? visualState.outputLevel : visualState.inputLevel;
-    const idlePulse = 0.08 + (Math.sin(visualPhase) + 1) * 0.035;
-    const busyPulse = mode === "connecting" ? 0.2 + (Math.sin(visualPhase * 2.2) + 1) * 0.09 : 0;
-    const thinkingPulse = state === "thinking" ? 0.2 + (Math.sin(visualPhase * 1.8) + 1) * 0.11 : 0;
-    const intensity = Math.max(0.08, Math.min(1, state === "speaking" || state === "listening" ? level * 2.5 + 0.08 : busyPulse || thinkingPulse || idlePulse));
-    const cx = logicalSize / 2, cy = logicalSize / 2;
-    const baseRadius = 40 + intensity * 4;
-    const ambient = visualCtx.createRadialGradient(cx, cy, 12, cx, cy, 62);
-    ambient.addColorStop(0, "rgba(" + palette.line + "," + (0.12 + intensity * 0.12) + ")");
-    ambient.addColorStop(0.66, "rgba(" + palette.line + ",0.06)");
-    ambient.addColorStop(1, "rgba(" + palette.line + ",0)");
-    visualCtx.fillStyle = ambient; visualCtx.beginPath(); visualCtx.arc(cx, cy, 62, 0, Math.PI * 2); visualCtx.fill();
-    const rings = mode === "connected" ? 3 : mode === "connecting" || mode === "error" ? 2 : 1;
-    for (let ring = 0; ring < rings; ring += 1) {
-      visualCtx.beginPath();
-      const radius = baseRadius + ring * 6;
-      for (let point = 0; point <= 96; point += 1) {
-        const angle = point / 96 * Math.PI * 2;
-        const waveA = Math.sin(angle * (4 + ring) + visualPhase * (ring % 2 ? -1.3 : 1.5));
-        const waveB = Math.cos(angle * (7 + ring) - visualPhase * 1.8);
-        const wave = (waveA * 0.65 + waveB * 0.35) * intensity * (1.8 + ring * 2);
-        const r = radius + wave, x = cx + r * Math.cos(angle), y = cy + r * Math.sin(angle);
-        if (point === 0) visualCtx.moveTo(x, y); else visualCtx.lineTo(x, y);
-      }
-      visualCtx.closePath();
-      visualCtx.strokeStyle = "rgba(" + palette.line + "," + (mode === "disconnected" ? 0.28 : 0.62 - ring * 0.12) + ")";
-      visualCtx.lineWidth = mode === "connected" && state === "speaking" ? 1.8 : 1.1;
-      visualCtx.shadowColor = palette.solid; visualCtx.shadowBlur = mode === "disconnected" ? 2 : 5 + intensity * 7;
-      visualCtx.stroke(); visualCtx.shadowBlur = 0;
+  function applyState(next) {
+    activeState = liveStates.has(next) ? next : "idle";
+    if (idleFidgetTimer !== null) window.clearTimeout(idleFidgetTimer);
+    idleFidgetTimer = null;
+    if (activeState === "thinking" || activeState === "think") {
+      leftArm.userData.targetZ = -0.08; rightArm.userData.targetZ = -2.08; headRig.userData.targetZ = 0.12;
+    } else if (activeState === "celebrate" || activeState === "happy" || activeState === "jump") {
+      leftArm.userData.targetZ = -2.25; rightArm.userData.targetZ = 2.25; headRig.userData.targetZ = -0.04;
+    } else if (activeState === "error" || activeState === "interrupted" || activeState === "tired") {
+      leftArm.userData.targetZ = -0.30; rightArm.userData.targetZ = 0.22; headRig.userData.targetZ = 0.15;
+    } else if (activeState === "walk" || activeState === "run" || activeState === "stride") {
+      leftArm.userData.targetZ = -0.38; rightArm.userData.targetZ = 0.38; headRig.userData.targetZ = 0;
+    } else {
+      leftArm.userData.targetZ = -0.10; rightArm.userData.targetZ = 0.10;
+      headRig.userData.targetZ = activeState === "listening" ? -0.045 : activeState === "speaking" ? -0.015 : 0;
     }
-    visualFrame = window.requestAnimationFrame(renderVisualizer);
+    if (activeState === "idle" && visualState.connection === "disconnected") {
+      idleFidgetTimer = window.setTimeout(() => { if (activeState === "idle" && visualState.connection === "disconnected") applyState("walk"); }, 10000 + Math.random() * 8000);
+    } else if (activeState === "walk") {
+      idleFidgetTimer = window.setTimeout(() => { if (activeState === "walk") applyState("idle"); }, 1700);
+    }
   }
   function applyVisualState(payload) {
     if (!payload || typeof payload !== "object" || !allowedConnections.has(payload.connection) || !liveStates.has(payload.state)) return;
@@ -241,7 +182,53 @@ import * as THREE from "./assets/js/three.module.min.js";
       activationWatchdogTimer = null;
     }
     updateStatus();
-    if (activeState !== visualState.state) setState(visualState.state);
+    if (activeState !== visualState.state) applyState(visualState.state);
+  }
+  function colorForMode(mode) {
+    if (mode === "connecting") return { line: "192,132,252", solid: "#c084fc" };
+    if (mode === "connected") return { line: "74,222,128", solid: "#4ade80" };
+    if (mode === "muted") return { line: "251,191,36", solid: "#fbbf24" };
+    if (mode === "error") return { line: "248,113,113", solid: "#f87171" };
+    return { line: "148,163,184", solid: "#94a3b8" };
+  }
+  function renderVisualizer() {
+    visualFrame = 0; visualPhase += 0.055;
+    const dpr = Math.min(2.5, Math.max(1, window.devicePixelRatio || 1));
+    const logicalSize = 130, pixels = Math.round(logicalSize * dpr);
+    if (visualCanvas.width !== pixels || visualCanvas.height !== pixels) { visualCanvas.width = pixels; visualCanvas.height = pixels; }
+    visualCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    visualCtx.clearRect(0, 0, logicalSize, logicalSize);
+    const mode = statusMode(), palette = colorForMode(mode), s = visualState.state;
+    const loudness = s === "speaking" ? visualState.outputLevel : visualState.inputLevel;
+    const idlePulse = 0.08 + (Math.sin(visualPhase) + 1) * 0.035;
+    const connectPulse = mode === "connecting" ? 0.2 + (Math.sin(visualPhase * 2.2) + 1) * 0.09 : 0;
+    const thinkingPulse = s === "thinking" ? 0.2 + (Math.sin(visualPhase * 1.8) + 1) * 0.11 : 0;
+    const intensity = Math.max(0.08, Math.min(1, s === "speaking" || s === "listening" ? loudness * 2.5 + 0.08 : connectPulse || thinkingPulse || idlePulse));
+    const cx = logicalSize / 2, cy = logicalSize / 2;
+    const gradient = visualCtx.createRadialGradient(cx, cy, 12, cx, cy, 62);
+    gradient.addColorStop(0, "rgba(" + palette.line + "," + (0.12 + intensity * 0.12) + ")");
+    gradient.addColorStop(0.66, "rgba(" + palette.line + ",0.06)");
+    gradient.addColorStop(1, "rgba(" + palette.line + ",0)");
+    visualCtx.fillStyle = gradient; visualCtx.beginPath(); visualCtx.arc(cx, cy, 62, 0, Math.PI * 2); visualCtx.fill();
+    const rings = mode === "connected" ? 3 : mode === "connecting" || mode === "error" ? 2 : 1;
+    for (let ring = 0; ring < rings; ring += 1) {
+      visualCtx.beginPath();
+      const radius = 40 + intensity * 4 + ring * 6;
+      for (let point = 0; point <= 96; point += 1) {
+        const angle = point / 96 * Math.PI * 2;
+        const a = Math.sin(angle * (4 + ring) + visualPhase * (ring % 2 ? -1.3 : 1.5));
+        const b = Math.cos(angle * (7 + ring) - visualPhase * 1.8);
+        const r = radius + (a * 0.65 + b * 0.35) * intensity * (1.8 + ring * 2);
+        const x = cx + r * Math.cos(angle), y = cy + r * Math.sin(angle);
+        if (point === 0) visualCtx.moveTo(x, y); else visualCtx.lineTo(x, y);
+      }
+      visualCtx.closePath();
+      visualCtx.strokeStyle = "rgba(" + palette.line + "," + (mode === "disconnected" ? 0.28 : 0.62 - ring * 0.12) + ")";
+      visualCtx.lineWidth = mode === "connected" && s === "speaking" ? 1.8 : 1.1;
+      visualCtx.shadowColor = palette.solid; visualCtx.shadowBlur = mode === "disconnected" ? 2 : 5 + intensity * 7;
+      visualCtx.stroke(); visualCtx.shadowBlur = 0;
+    }
+    visualFrame = window.requestAnimationFrame(renderVisualizer);
   }
   function say(message) {
     window.clearTimeout(speechTimer);
@@ -278,7 +265,6 @@ import * as THREE from "./assets/js/three.module.min.js";
     });
   }
   function drawFallback2D() {
-    // Keep a crisp procedural vector fallback if this GPU cannot create WebGL.
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const dpr = Math.min(2.5, Math.max(1, window.devicePixelRatio || 1));
@@ -299,8 +285,7 @@ import * as THREE from "./assets/js/three.module.min.js";
   function resizeRenderer() {
     if (!renderer || !camera || !alive) return;
     const width = Math.max(1, canvas.clientWidth || 130), height = Math.max(1, canvas.clientHeight || 150);
-    renderer.setSize(width, height, false);
-    camera.aspect = width / height; camera.updateProjectionMatrix();
+    renderer.setSize(width, height, false); camera.aspect = width / height; camera.updateProjectionMatrix();
   }
   function animate() {
     if (!alive || !renderer || !scene || !camera) return;
@@ -326,32 +311,86 @@ import * as THREE from "./assets/js/three.module.min.js";
     try {
       renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "high-performance", premultipliedAlpha: false });
       renderer.setPixelRatio(Math.min(2.5, Math.max(1, window.devicePixelRatio || 1)));
-      renderer.setClearColor(0x000000, 0);
-      renderer.outputEncoding = THREE.sRGBEncoding;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.18;
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(34, 130 / 150, .1, 80);
+      renderer.setClearColor(0x000000, 0); renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.18;
+      scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(34, 130 / 150, .1, 80);
       camera.position.set(0, 1.63, 5.45); camera.lookAt(0, 1.60, 0);
       scene.add(new THREE.HemisphereLight(0xffe8dd, 0x263044, 2.05));
       const key = new THREE.DirectionalLight(0xfff0df, 3.2); key.position.set(-2.4, 4.5, 4); scene.add(key);
       const fill = new THREE.DirectionalLight(0x93c5fd, 1.2); fill.position.set(2.8, 2.1, 3); scene.add(fill);
       const rim = new THREE.DirectionalLight(0xb91c1c, 2); rim.position.set(1.8, 3.1, -2.5); scene.add(rim);
-      createAvatar(); setState("idle"); resizeRenderer();
-      nextBlinkAt = 2 + Math.random() * 3;
+      createAvatar(); applyState("idle"); updateStatus(); resizeRenderer();
       window.addEventListener("resize", resizeRenderer);
       if (typeof ResizeObserver !== "undefined") {
         const observer = new ResizeObserver(resizeRenderer); observer.observe(canvas); window.jessPetResizeObserver = observer;
       }
-      animate();
+      nextBlinkAt = 2 + Math.random() * 3; animate();
     } catch (error) {
       console.error("[Jess pet] Three.js initialization failed; using vector fallback:", error);
       drawFallback2D();
     }
   }
-  function createEye(parent, side) { /* generated below */ }
-  function createArm(side) { /* generated below */ }
-  function createHead() { /* generated below */ }
-  function createAvatar() { /* generated below */ }
-  function panel(parent, points, material, z = 0.405) { /* generated below */ }
-  function tube(parent, points, radius, material, segments = 22) { /* generated below */ }
+  character.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    pointerStart = { x: event.screenX, y: event.screenY }; lastPointer = pointerStart; isDragging = false;
+    try { character.setPointerCapture(event.pointerId); } catch {}
+  });
+  character.addEventListener("pointermove", event => {
+    if (!pointerStart || !lastPointer) return;
+    const dx = event.screenX - lastPointer.x, dy = event.screenY - lastPointer.y;
+    if (!isDragging && Math.hypot(dx, dy) > 5) isDragging = true;
+    if (isDragging) {
+      const stepX = event.screenX - lastPointer.x, stepY = event.screenY - lastPointer.y;
+      lastPointer = { x: event.screenX, y: event.screenY };
+      Promise.resolve(window.jessPet?.moveBy?.(stepX, stepY)).catch(error => console.debug(error));
+    }
+  });
+  function finishPointer() {
+    const moved = isDragging; pointerStart = null; lastPointer = null; isDragging = false;
+    if (moved) { suppressNextClick = true; window.setTimeout(() => { suppressNextClick = false; }, 0); }
+  }
+  character.addEventListener("pointerup", finishPointer);
+  character.addEventListener("pointercancel", () => {
+    pointerStart = null; lastPointer = null; isDragging = false; suppressNextClick = true;
+    window.setTimeout(() => { suppressNextClick = false; }, 0);
+  });
+  character.addEventListener("click", event => {
+    if (suppressNextClick) { event.preventDefault(); return; }
+    if (event.detail > 1) { if (singleClickTimer !== null) window.clearTimeout(singleClickTimer); singleClickTimer = null; return; }
+    if (singleClickTimer !== null) window.clearTimeout(singleClickTimer);
+    singleClickTimer = window.setTimeout(() => {
+      singleClickTimer = null;
+      if (visualState.connection === "connected") requestVoiceActivation("mute");
+      else if (visualState.connection === "connecting") say("Jess is still connecting. Please wait a moment.");
+      else requestVoiceActivation("toggle");
+    }, SINGLE_CLICK_DELAY_MS);
+  });
+  character.addEventListener("dblclick", event => {
+    event.preventDefault(); event.stopPropagation();
+    if (singleClickTimer !== null) window.clearTimeout(singleClickTimer);
+    singleClickTimer = null; requestVoiceActivation("toggle");
+  });
+  character.addEventListener("contextmenu", event => {
+    event.preventDefault();
+    Promise.resolve(window.jessPet?.hide?.()).catch(error => console.error(error));
+  });
+  window.jessPet?.onState?.(next => { if (liveStates.has(next)) applyState(next); });
+  window.jessPet?.onVisualState?.(applyVisualState);
+  window.jessPet?.onSpeech?.(payload => {
+    if (!payload || typeof payload.text !== "string") return;
+    // Keep only connection/microphone notices on the avatar. Full utterances
+    // remain visible in the separate, persistent glass transcript overlay.
+    if (/^(Connecting to Jess|Ending voice chat|Starting voice chat|I couldn't activate voice chat|Voice chat did not connect|Microphone is muted|Turning the microphone|Muting the microphone|Jess could not finish connecting|Jess is not connected)/i.test(payload.text.trim())) say(payload.text);
+  });
+  updateStatus(); visualFrame = window.requestAnimationFrame(renderVisualizer); initialize();
+  window.addEventListener("beforeunload", () => {
+    alive = false;
+    if (frameHandle) window.cancelAnimationFrame(frameHandle);
+    if (visualFrame) window.cancelAnimationFrame(visualFrame);
+    if (idleFidgetTimer !== null) window.clearTimeout(idleFidgetTimer);
+    if (activationWatchdogTimer !== null) window.clearTimeout(activationWatchdogTimer);
+    if (speechTimer !== null) window.clearTimeout(speechTimer);
+    if (window.jessPetResizeObserver) window.jessPetResizeObserver.disconnect();
+    if (renderer) renderer.dispose();
+  }, { once: true });
+})();
