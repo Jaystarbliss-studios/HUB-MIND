@@ -1019,8 +1019,10 @@ export function JessFloatingAssistant() {
   }, [connection, navigate, profile, selectedAudioInputId, stop, stopScreenSharing, updatePreferredName, scheduleFade]);
 
   const activate = useCallback(() => {
-    if (connection === 'connected' || connection === 'connecting') void stop();
-    else void start();
+    if (connection === 'connected') void stop();
+    else if (connection === 'connecting') {
+      setSpeechState({ text: "Jess is already connecting to Gemini Live. Please wait; another click won't cancel the attempt.", speaker: 'jess', visible: true });
+    } else void start();
   }, [connection, start, stop]);
 
   // Route desktop-character gestures through the same LiveAudioClient as the former orb.
@@ -1067,7 +1069,11 @@ export function JessFloatingAssistant() {
       if (isDesktopShell && ['/', '/login'].includes(locationPathRef.current)) {
         navigate('/workspace', { replace: true });
       }
-      const ending = connection === 'connected' || connection === 'connecting';
+      if (connection === 'connecting') {
+        setSpeechState({ text: "Jess is already connecting to Gemini Live. Please wait; another click won't cancel the attempt.", speaker: 'jess', visible: true });
+        return;
+      }
+      const ending = connection === 'connected';
       setSpeechState({ text: ending ? 'Ending voice chat…' : 'Connecting to Jess…', speaker: 'jess', visible: true });
       activate();
     };
