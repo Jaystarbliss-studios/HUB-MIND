@@ -8,6 +8,11 @@ const nativeAgent = require('./agentBridge.cjs');
 const chromeBridge = require('./chromeBridge.cjs');
 const { McpBridge } = require('./mcpBridge.cjs');
 
+// Jess is started from a separate transparent desktop window. The activation
+// event reaches the main renderer over IPC, so Chromium must not leave its
+// WebAudio contexts suspended while waiting for a gesture in that other window.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 const JESS_PET_WIDTH = 260;
 const JESS_PET_HEIGHT = 300;
@@ -693,7 +698,8 @@ function createTray() {
   tray.setToolTip('Hub-Mind');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Hub-Mind', click: showMain },
-    { label: 'Show Jess orb', click: () => { if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide(); createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); } },
+    { label: 'Show Jess character', click: () => { createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); } },
+    { label: 'Hide Jess character', click: () => { companionDismissed = true; if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide(); } },
     { label: 'Reset orb to bottom-right', click: resetOrbPosition },
     { label: 'Stop Jess (end Full Control Session)', click: () => stopFullControl('tray-stop') },
     { label: 'Start Hub-Mind at Windows sign-in (this user)', type: 'checkbox', checked: !!app.getLoginItemSettings().openAtLogin, click: item => { try { app.setLoginItemSettings({ openAtLogin: item.checked }); item.checked = !!app.getLoginItemSettings().openAtLogin; } catch (error) { item.checked = !!app.getLoginItemSettings().openAtLogin; console.error('[Hub-Mind] Could not update per-user startup setting:', error); } } },
@@ -1123,11 +1129,27 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('hubmind:pet-activate-voice', (event, gesture) => {
+  ipcMain.handle('hubmind:pet-activate-voice', async (event, gesture) => {
     assertPetWindowSender(event);
     if (gesture !== 'toggle' && gesture !== 'mute') throw new Error('Unsupported Jess voice activation gesture.');
+
     const request = { requestId: randomUUID(), requestedAt: Date.now(), gesture };
     pendingJessPetActivation = request;
+
+    // Bring the actual LiveAudioClient renderer forward before dispatching the
+    // activation request. If its page is still loading, the pending request is
+    // read by the renderer after mount instead of being lost.
+    const workspaceShown = await showMainVerified();
+    if (!workspaceShown) {
+      if (pendingJessPetActivation?.requestId === request.requestId) pendingJessPetActivation = null;
+      const message = { text: 'Hub-Mind could not open its voice workspace. Please open Hub-Mind and try again.', expression: 'concerned', at: Date.now() };
+      pendingJessPetSpeech = message;
+      if (jessPetReady && companionWindow && !companionWindow.isDestroyed()) {
+        companionWindow.webContents.send('hubmind:pet-speech', message);
+      }
+      return { ok: false, error: 'Hub-Mind could not be brought to the foreground.' };
+    }
+
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
       mainWindow.webContents.send('hubmind:pet-voice-activation', request);
     }
@@ -1208,7 +1230,12 @@ app.whenReady().then(() => {
 
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
   ipcMain.handle('hubmind:show-workspace', async (event) => { assertTrustedSender(event); return await showWorkspaceVerified(); });
-  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); return true; });
+  ipcMain.handle('hubmind:show-companion', (event) => {
+    assertTrustedSender(event);
+    createCompanionWindow(true);
+    positionCompanionBottomRightIfNeeded();
+    return true;
+  });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionDismissed = true; companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:set-companion-transcript-visible', (event, _visible) => {
     assertTrustedSender(event);
