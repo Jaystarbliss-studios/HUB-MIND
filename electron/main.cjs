@@ -11,6 +11,7 @@ const { McpBridge } = require('./mcpBridge.cjs');
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
 const JESS_PET_WIDTH = 130;
 const JESS_PET_HEIGHT = 150;
+const JESS_SHOW_SHORTCUTS = new Set(['Control+Alt+Shift+O', 'Control+Alt+Shift+P', 'Control+Alt+Shift+K', 'Control+Alt+Shift+H']);
 const JESS_PET_STATES = new Set(['idle', 'stride', 'run', 'jump', 'think', 'happy', 'walk', 'tired', 'celebrate']);
 const JESS_PET_EXPRESSIONS = new Set(['happy', 'happyEyesClosed', 'concerned', 'surprised', 'annoyed']);
 let pendingJessPetState = 'idle';
@@ -41,9 +42,35 @@ let uiNumberOverlayTimer = null;
 let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
 let offlineWakeConsentLoaded = false;
-let jessPreferences = { permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, confirmHighRiskOutLoud: true, memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true, allowSystemWideFileScan: true, allowAutomatedFileManagement: true, allowShellCommands: true, moodAdaptiveTone: true, conversationStyle: 'adaptive' };
+let jessPreferences = { permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, confirmHighRiskOutLoud: true, memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true, allowSystemWideFileScan: true, allowAutomatedFileManagement: true, allowShellCommands: true, moodAdaptiveTone: true, conversationStyle: 'adaptive', showCompanion: true, petHotkey: 'Control+Alt+Shift+O' };
 let jessPreferencesUserId = null;
 let mcpBridge = null;
+let registeredShowOrbHotkey = null;
+function toggleCompanionVisibility() {
+  if (companionWindow && !companionWindow.isDestroyed() && companionWindow.isVisible()) {
+    companionDismissed = true;
+    companionWindow.hide();
+    return false;
+  }
+  companionDismissed = false;
+  createCompanionWindow(true);
+  positionCompanionBottomRightIfNeeded();
+  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.showInactive();
+  return !!companionWindow && !companionWindow.isDestroyed() && companionWindow.isVisible();
+}
+function registerShowOrbHotkey(requested = jessPreferences.petHotkey) {
+  const desired = JESS_SHOW_SHORTCUTS.has(requested) ? requested : 'Control+Alt+Shift+O';
+  if (registeredShowOrbHotkey === desired && globalShortcut.isRegistered(desired)) return true;
+  const previous = registeredShowOrbHotkey;
+  if (previous) globalShortcut.unregister(previous);
+  if (globalShortcut.register(desired, toggleCompanionVisibility)) {
+    registeredShowOrbHotkey = desired;
+    return true;
+  }
+  if (previous && globalShortcut.register(previous, toggleCompanionVisibility)) registeredShowOrbHotkey = previous;
+  else registeredShowOrbHotkey = null;
+  return false;
+}
 function persistJessPreferences(prefs, userId) {
   const allowedModes = new Set(['ask', 'allow-routine', 'allow-everything']);
   if (!prefs || typeof prefs !== 'object' || !allowedModes.has(prefs.permissionMode)) throw new Error('Invalid Jess permission preferences.');
@@ -62,6 +89,8 @@ function persistJessPreferences(prefs, userId) {
     allowShellCommands: prefs.allowShellCommands !== false,
     moodAdaptiveTone: prefs.moodAdaptiveTone !== false,
     conversationStyle: ['adaptive','friendly','professional','concise'].includes(prefs.conversationStyle) ? prefs.conversationStyle : 'adaptive',
+    showCompanion: prefs.showCompanion !== false,
+    petHotkey: JESS_SHOW_SHORTCUTS.has(prefs.petHotkey) ? prefs.petHotkey : 'Control+Alt+Shift+O',
   };
   jessPreferencesUserId = userId;
   const file = path.join(app.getPath('userData'), 'jess-preferences.json');
@@ -707,7 +736,7 @@ function createTray() {
   tray.setToolTip('Hub-Mind');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Hub-Mind', click: showMain },
-    { label: 'Show Jess orb', click: () => { if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide(); createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); } },
+    { label: 'Show Jess orb', click: () => { companionDismissed = false; createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); } },
     { label: 'Reset orb to bottom-right', click: resetOrbPosition },
     { label: 'Stop Jess (end Full Control Session)', click: () => stopFullControl('tray-stop') },
     { label: 'Start Hub-Mind at Windows sign-in (this user)', type: 'checkbox', checked: !!app.getLoginItemSettings().openAtLogin, click: item => { try { app.setLoginItemSettings({ openAtLogin: item.checked }); item.checked = !!app.getLoginItemSettings().openAtLogin; } catch (error) { item.checked = !!app.getLoginItemSettings().openAtLogin; console.error('[Hub-Mind] Could not update per-user startup setting:', error); } } },
@@ -869,10 +898,28 @@ app.whenReady().then(() => {
       if (choice.response !== 1) return { ok: false, cancelled: true, preferences: jessPreferences, fullControlActive };
       fullControlConsentGranted = true;
     }
-    const result = persistJessPreferences(prefs, userId);
+    const previousVisibility = jessPreferences.showCompanion;
+    const previousHotkey = jessPreferences.petHotkey;
+    let result = persistJessPreferences(prefs, userId);
+    let hotkeyWarning = '';
+    if (jessPreferences.petHotkey !== previousHotkey && !registerShowOrbHotkey(jessPreferences.petHotkey)) {
+      hotkeyWarning = 'Windows could not register that shortcut because another app is using it. Jess kept the previous shortcut.';
+      result = persistJessPreferences({ ...jessPreferences, petHotkey: previousHotkey }, userId);
+      registerShowOrbHotkey(previousHotkey);
+    }
+    if (previousVisibility !== jessPreferences.showCompanion) {
+      if (jessPreferences.showCompanion) {
+        companionDismissed = false;
+        createCompanionWindow(true);
+        positionCompanionBottomRightIfNeeded();
+      } else {
+        companionDismissed = true;
+        if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+      }
+    }
     if (jessPreferences.fullControlEnabled && jessPreferences.permissionMode !== 'ask') activateFullControl('settings-enabled');
     else if (!jessPreferences.fullControlEnabled || jessPreferences.permissionMode === 'ask') stopFullControl('settings-disabled');
-    return { ...result, fullControlActive, startedAt: controlSessionStartedAt, liveState: { ...jessPreferences, fullControlActive, startedAt: controlSessionStartedAt } };
+    return { ...result, hotkeyWarning, fullControlActive, startedAt: controlSessionStartedAt, liveState: { ...jessPreferences, fullControlActive, startedAt: controlSessionStartedAt } };
   });
   ipcMain.handle('hubmind:jess-preferences-get', (event) => {
     assertTrustedSender(event);
@@ -1377,18 +1424,10 @@ app.whenReady().then(() => {
     if (fullControlActive) stopFullControl('global-hotkey');
   });
   if (!stopHotkeyRegistered) console.warn('[Jess native control] Could not register Ctrl+Alt+Shift+J emergency stop hotkey.');
-  const showOrbHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+O', () => {
-    if (companionWindow && !companionWindow.isDestroyed() && companionWindow.isVisible()) {
-      companionDismissed = true;
-      companionWindow.hide();
-    } else {
-      companionDismissed = false;
-      createCompanionWindow(true);
-      positionCompanionBottomRightIfNeeded();
-    }
-  });
-  if (!showOrbHotkeyRegistered) console.warn('[Jess orb] Could not register Ctrl+Alt+Shift+O show/hide shortcut.');
-  createCompanionWindow(true);
+  const showOrbHotkeyRegistered = registerShowOrbHotkey(jessPreferences.petHotkey);
+  if (!showOrbHotkeyRegistered) console.warn('[Jess orb] Could not register the configured Jess show/hide shortcut.');
+  if (jessPreferences.showCompanion) createCompanionWindow(true);
+  else companionDismissed = true;
   createMainWindow();
   createTranscriptOverlayWindow();
   createTray();
