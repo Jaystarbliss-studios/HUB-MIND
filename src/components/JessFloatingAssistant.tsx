@@ -1111,6 +1111,45 @@ export function JessFloatingAssistant() {
     setSpeechState({ text: "I'm listening. Go ahead.", speaker: 'jess', visible: true });
   }, [connection, speechState.speaker, speechState.text]);
 
+  // Avoid leaving the desktop character stuck on "Connecting to Jess…" forever.
+  const connectionWatchdogRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (connectionWatchdogRef.current !== null) {
+      window.clearTimeout(connectionWatchdogRef.current);
+      connectionWatchdogRef.current = null;
+    }
+    if (connection !== 'connecting') return;
+    connectionWatchdogRef.current = window.setTimeout(() => {
+      connectionWatchdogRef.current = null;
+      void stop().finally(() => {
+        setConnection('error');
+        setState('error');
+        setSpeechState({
+          text: 'Jess could not finish connecting to Gemini Live within 35 seconds. Check your internet connection and microphone permission, then double-click Jess to retry.',
+          speaker: 'jess',
+          visible: true,
+        });
+      });
+    }, 35000);
+    return () => {
+      if (connectionWatchdogRef.current !== null) {
+        window.clearTimeout(connectionWatchdogRef.current);
+        connectionWatchdogRef.current = null;
+      }
+    };
+  }, [connection, stop]);
+
+  // A provider error may be reported through the Live status callback rather
+  // than thrown by connect(). Release the lease to allow an immediate retry.
+  useEffect(() => {
+    if (connection !== 'error') return;
+    const lease = sessionLeaseRef.current;
+    if (!lease) return;
+    sessionLeaseRef.current = null;
+    if (lease.timer !== null) window.clearInterval(lease.timer);
+    void releaseJessSession(lease.userId, lease.sessionId).catch(error => console.warn('[Jess] Could not release a failed voice-session lease:', error));
+  }, [connection]);
+
   // Desktop, Chrome-installed PWA, and browser sessions coordinate through the same per-user Firestore lease.
   useEffect(() => {
     if (!profile?.id) { setRemoteJessOwner(null); return; }
