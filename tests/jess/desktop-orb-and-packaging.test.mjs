@@ -33,6 +33,7 @@ test('desktop Jess character loads bundled animations in an offline companion wi
   assert.doesNotMatch(style, /\.pet-toolbar|\.offline-status/);
   assert.match(pet, /requestVoiceActivation\("single"\)/);
   assert.match(pet, /requestVoiceActivation\("double"\)/);
+  assert.match(pet, /character\.addEventListener\("contextmenu",[\s\S]*?jessPet\?\.hide/);
   assert.match(pet, /scheduleIdleFidget/);
   assert.match(preload, /hubmind:pet-activate-voice/);
   assert.match(desktopPreload, /onPetVoiceActivation/);
