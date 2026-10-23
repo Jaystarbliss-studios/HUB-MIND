@@ -17,6 +17,7 @@
   let isDragging = false;
   let lastPointer = null;
   let speechTimer = null;
+  let idleFidgetTimer = null;
   let ready = false;
 
   function loadImage(src) {
@@ -51,14 +52,26 @@
     animationTimer = null;
   }
 
-  function setState(nextState) {
+  function scheduleIdleFidget() {
+    if (idleFidgetTimer !== null) window.clearTimeout(idleFidgetTimer);
+    idleFidgetTimer = null;
+    if (activeState !== "idle") return;
+    idleFidgetTimer = window.setTimeout(() => {
+      idleFidgetTimer = null;
+      if (activeState === "idle") setState("walk", true);
+    }, 10000 + Math.random() * 8000);
+  }
+
+  function setState(nextState, autonomousWalk = false) {
+    if (idleFidgetTimer !== null) window.clearTimeout(idleFidgetTimer);
+    idleFidgetTimer = null;
     if (!manifest.animations[nextState]) nextState = "idle";
     stopAnimation();
     activeState = nextState;
     frameIndex = 0;
     const animation = manifest.animations[nextState];
     drawFrame(animation.frames[0], ctx, canvas.width, canvas.height);
-    status.textContent = "Jess is here · " + animation.label.toLowerCase() + " · offline-ready";
+    status.textContent = "Jess is " + animation.label.toLowerCase() + ".";
     if (animation.frames.length > 1) {
       animationTimer = window.setInterval(() => {
         frameIndex += 1;
@@ -72,6 +85,14 @@
         }
         drawFrame(animation.frames[frameIndex], ctx, canvas.width, canvas.height);
       }, Math.max(65, 1000 / Math.max(1, animation.fps)));
+    }
+    if (nextState === "idle") {
+      scheduleIdleFidget();
+    } else if (nextState === "walk" && autonomousWalk) {
+      idleFidgetTimer = window.setTimeout(() => {
+        idleFidgetTimer = null;
+        if (activeState === "walk") setState("idle");
+      }, 1900);
     }
   }
 
@@ -109,25 +130,30 @@
       });
       ready = true;
       setState("idle");
-      window.setTimeout(() => say("I'm here. Double-click me or choose Open.", "happy"), 700);
+      window.setTimeout(() => say("I'm here. Click me to start a voice conversation.", "happy"), 700);
     } catch (error) {
       fallback();
       console.error("[Jess pet] Offline asset loading failed:", error);
     }
   }
 
-  document.querySelectorAll("[data-state]").forEach(button => {
-    button.addEventListener("click", event => {
-      event.stopPropagation();
-      const name = button.getAttribute("data-state");
-      setState(name);
-      if (name === "celebrate") say("Nice! Task complete.", "happyEyesClosed");
-      if (name === "think") say("Let me think this through.", "concerned");
-    });
-  });
+  let singleClickTimer = null;
+  let suppressNextClick = false;
+  const SINGLE_CLICK_DELAY_MS = 500;
 
-  document.querySelector('[data-action="open"]').addEventListener("click", async event => {
-    event.stopPropagation();
+  function requestVoiceActivation(gesture) {
+    say("Starting voice chat…", "happy");
+    Promise.resolve(window.jessPet?.activateVoice?.(gesture)).then(result => {
+      if (!result || result.ok !== true) {
+        say("I couldn't start voice chat. Please sign in to Hub-Mind and try again.", "concerned");
+      }
+    }).catch(error => {
+      say("I couldn't start voice chat. Please sign in to Hub-Mind and try again.", "concerned");
+      console.error("[Jess pet] Voice activation failed:", error);
+    });
+  }
+
+  async function openHubMind() {
     try {
       const result = await window.jessPet?.openHubMind?.();
       if (!result || result.ok !== true) say("I couldn't open Hub-Mind just now.", "concerned");
@@ -135,12 +161,7 @@
       say("I couldn't open Hub-Mind just now.", "concerned");
       console.error(error);
     }
-  });
-
-  document.querySelector('[data-action="hide"]').addEventListener("click", async event => {
-    event.stopPropagation();
-    try { await window.jessPet?.hide?.(); } catch (error) { console.error(error); }
-  });
+  }
 
   character.addEventListener("pointerdown", event => {
     if (event.button !== 0) return;
@@ -165,22 +186,52 @@
     const moved = isDragging;
     pointerStart = null;
     lastPointer = null;
-    if (!moved && ready) {
-      setState("jump");
-      say("Hi! I'm Jess. I'm ready when you are.", "happy");
-    }
     isDragging = false;
+    if (moved) {
+      suppressNextClick = true;
+      window.setTimeout(() => { suppressNextClick = false; }, 0);
+    }
   }
   character.addEventListener("pointerup", finishPointer);
-  character.addEventListener("pointercancel", finishPointer);
+  character.addEventListener("pointercancel", () => {
+    pointerStart = null;
+    lastPointer = null;
+    isDragging = false;
+    suppressNextClick = true;
+    window.setTimeout(() => { suppressNextClick = false; }, 0);
+  });
+  character.addEventListener("click", event => {
+    if (suppressNextClick) {
+      event.preventDefault();
+      return;
+    }
+    // The second click of a double-click cancels the deferred single-click action.
+    if (event.detail > 1) {
+      if (singleClickTimer !== null) window.clearTimeout(singleClickTimer);
+      singleClickTimer = null;
+      return;
+    }
+    if (singleClickTimer !== null) window.clearTimeout(singleClickTimer);
+    singleClickTimer = window.setTimeout(() => {
+      singleClickTimer = null;
+      requestVoiceActivation("single");
+    }, SINGLE_CLICK_DELAY_MS);
+  });
   character.addEventListener("dblclick", event => {
     event.preventDefault();
     event.stopPropagation();
-    window.jessPet?.openHubMind?.().catch(error => console.error(error));
+    if (singleClickTimer !== null) window.clearTimeout(singleClickTimer);
+    singleClickTimer = null;
+    requestVoiceActivation("double");
+    // Keep the old double-click convenience: open the workspace as well as
+    // sending the activation request to the authenticated Live voice controller.
+    void openHubMind();
   });
   character.addEventListener("contextmenu", event => {
     event.preventDefault();
-    say("Use the buttons to open Hub-Mind or try an animation.", "surprised");
+    // Keep the character unobtrusive without a permanent Hide button.
+    // The Hub-Mind tray menu has a "Show Jess orb" action to restore her.
+    Promise.resolve(window.jessPet?.hide?.()).catch(error => console.error(error));
   });
 
   window.jessPet?.onState?.(state => setState(state));

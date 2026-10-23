@@ -5,6 +5,14 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   setJessPreferences: (prefs, userId) => ipcRenderer.invoke('hubmind:jess-preferences-set', prefs, userId),
   setJessPetState: (state) => ipcRenderer.invoke('hubmind:pet-set-state', state),
   setJessPetSpeech: (text, expression) => ipcRenderer.invoke('hubmind:pet-say', text, expression),
+  onPetVoiceActivation: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, request) => callback(request);
+    ipcRenderer.on('hubmind:pet-voice-activation', listener);
+    return () => ipcRenderer.removeListener('hubmind:pet-voice-activation', listener);
+  },
+  getPendingPetVoiceActivation: () => ipcRenderer.invoke('hubmind:pet-get-pending-voice-activation'),
+  acknowledgePetVoiceActivation: (requestId) => ipcRenderer.invoke('hubmind:pet-ack-voice-activation', requestId),
   getJessPreferences: (userId) => ipcRenderer.invoke('hubmind:jess-preferences-get', userId),
   stopFullControl: () => ipcRenderer.invoke('hubmind:full-control-stop'),
   startAutoScroll: (options) => ipcRenderer.invoke('hubmind:auto-scroll-start', options),

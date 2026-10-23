@@ -15,6 +15,7 @@ const JESS_PET_STATES = new Set(['idle', 'stride', 'run', 'jump', 'think', 'happ
 const JESS_PET_EXPRESSIONS = new Set(['happy', 'happyEyesClosed', 'concerned', 'surprised', 'annoyed']);
 let pendingJessPetState = 'idle';
 let pendingJessPetSpeech = null;
+let pendingJessPetActivation = null;
 let jessPetReady = false;
 let mainWindow;
 let companionWindow;
@@ -1118,6 +1119,29 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('hubmind:pet-activate-voice', (event, gesture) => {
+    assertPetWindowSender(event);
+    if (gesture !== 'single' && gesture !== 'double') throw new Error('Unsupported Jess voice activation gesture.');
+    const request = { requestId: randomUUID(), requestedAt: Date.now(), gesture };
+    pendingJessPetActivation = request;
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('hubmind:pet-voice-activation', request);
+    }
+    return { ok: true, requestId: request.requestId };
+  });
+  ipcMain.handle('hubmind:pet-get-pending-voice-activation', (event) => {
+    assertTrustedSender(event);
+    if (pendingJessPetActivation && (Date.now() - pendingJessPetActivation.requestedAt > 60000 || pendingJessPetActivation.requestedAt > Date.now() + 5000)) {
+      pendingJessPetActivation = null;
+    }
+    return pendingJessPetActivation;
+  });
+  ipcMain.handle('hubmind:pet-ack-voice-activation', (event, requestId) => {
+    assertTrustedSender(event);
+    if (typeof requestId !== 'string') throw new Error('Invalid Jess voice activation request identifier.');
+    if (pendingJessPetActivation?.requestId === requestId) pendingJessPetActivation = null;
+    return { ok: true };
+  });
   ipcMain.handle('hubmind:pet-open-app', async (event) => {
     assertPetWindowSender(event);
     const opened = await showMainVerified();
