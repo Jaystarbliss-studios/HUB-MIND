@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import './jess-chat.css';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
-import { ArrowUp, Copy, Download, History, LoaderCircle, MessageCircle, Monitor, MonitorOff, Plus, Sparkles, X } from 'lucide-react';
+import { ArrowUp, Copy, Download, History, LoaderCircle, Monitor, MonitorOff, Plus, Sparkles, X } from 'lucide-react';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { formatMemoriesForPrompt, getUserMemories, saveUserMemory } from '../services/memoryService';
@@ -15,7 +16,7 @@ const starterPrompts = [
   { label: 'Plan my work', text: 'Help me turn my priorities into a practical plan.' },
 ];
 
-export function JessChatPanel({ onClose }: { onClose: () => void }) {
+export function JessChatPanel({ onClose, pageMode = false }: { onClose: () => void; pageMode?: boolean }) {
   const { profile, user: firebaseUser } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([welcome]);
   const [conversations, setConversations] = useState<SavedConversation[]>([]);
@@ -231,7 +232,7 @@ export function JessChatPanel({ onClose }: { onClose: () => void }) {
   const copyMessage = async (text: string) => { try { await navigator.clipboard.writeText(text); } catch {} };
 
   return (
-    <section className="jess-chat-panel" role="dialog" aria-modal="false" aria-label="Chat with Jess">
+    <section className={pageMode ? "jess-chat-panel jess-chat-page" : "jess-chat-panel"} role={pageMode ? "region" : "dialog"} aria-modal={pageMode ? undefined : false} aria-label="Chat with Jess">
       <header className="jess-chat-header">
         <div className="jess-chat-identity">
           <div className="jess-chat-avatar"><Sparkles size={17}/></div>
@@ -292,6 +293,3 @@ export function JessChatPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function JessChatLauncher({ onClick }: { onClick: () => void }) {
-  return <button type="button" className="jess-chat-launcher" onClick={onClick} aria-label="Open chat with Jess" title="Chat with Jess"><MessageCircle size={19}/><span>Chat with Jess</span></button>;
-}
