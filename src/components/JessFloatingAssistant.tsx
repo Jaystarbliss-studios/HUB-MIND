@@ -198,7 +198,7 @@ interface CurrentSpeechState {
 interface JessPetVoiceActivationRequest {
   requestId: string;
   requestedAt: number;
-  gesture: 'single' | 'double';
+  gesture: 'toggle' | 'mute';
 }
 
 export function JessFloatingAssistant() {
@@ -239,7 +239,6 @@ export function JessFloatingAssistant() {
   const sessionLeaseRef = useRef<{ userId: string; sessionId: string; timer: number | null } | null>(null);
   const activationRequestSeenRef = useRef<string | null>(null);
   const petActivationRequestHandledRef = useRef<string | null>(null);
-  const [pendingPetVoiceActivation, setPendingPetVoiceActivation] = useState<JessPetVoiceActivationRequest | null>(null);
   const [remoteJessOwner, setRemoteJessOwner] = useState<JessSessionOwner | null>(null);
   const sessionEndingRef = useRef(false);
   const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number; axis: 'x' | 'y' }>({ timer: null, running: false, speed: 3, direction: 1, axis: 'y' });
@@ -285,6 +284,19 @@ export function JessFloatingAssistant() {
     const bridge = (window as any).hubMindDesktop;
     void Promise.resolve(bridge?.setJessPetState?.(stateMap[state] || 'idle')).catch(() => {});
   }, [state]);
+
+  // Send actual Live state and mic/speaker analyser levels to the desktop character.
+  // The companion's purple/green/red ring uses these values, not a simulated animation.
+  useEffect(() => {
+    if (!isDesktopShell) return;
+    const bridge = (window as any).hubMindDesktop;
+    void Promise.resolve(bridge?.setJessPetVisualState?.({
+      connection,
+      state,
+      inputLevel: Math.max(0, Math.min(1, Number(inputLevel) || 0)),
+      outputLevel: Math.max(0, Math.min(1, Number(outputLevel) || 0)),
+    })).catch(() => {});
+  }, [connection, state, inputLevel, outputLevel]);
 
   const [activeBgTasks, setActiveBgTasks] = useState<JessBackgroundTask[]>([]);
 
@@ -1011,75 +1023,61 @@ export function JessFloatingAssistant() {
     else void start();
   }, [connection, start, stop]);
 
-  // Receive click requests from the standalone desktop character. The main
-  // window may be hidden or still on the login route, so keep the request until
-  // the authenticated Jess component can safely start the existing Live session.
+  // Route desktop-character gestures through the same LiveAudioClient as the former orb.
+  // The local pet never creates a second model session or owns a separate microphone.
   useEffect(() => {
     if (!isDesktopShell) return;
     const bridge = (window as any).hubMindDesktop;
     if (typeof bridge?.onPetVoiceActivation !== 'function') return;
-    const acceptRequest = (value: any) => {
-      if (!value || typeof value.requestId !== 'string' || !['single', 'double'].includes(value.gesture)) return;
+
+    const handleRequest = (value: any) => {
+      if (!value || typeof value.requestId !== 'string' || !['toggle', 'mute'].includes(value.gesture)) return;
       const requestedAt = Number(value.requestedAt);
-      if (!Number.isFinite(requestedAt) || Date.now() - requestedAt > 60000 || requestedAt > Date.now() + 5000) return;
-      setPendingPetVoiceActivation({
-        requestId: value.requestId,
-        requestedAt,
-        gesture: value.gesture,
-      });
+      if (!Number.isFinite(requestedAt) || Date.now() - requestedAt > 60000 || requestedAt > Date.now() + 5000) {
+        void Promise.resolve(bridge.acknowledgePetVoiceActivation?.(value.requestId)).catch(() => {});
+        return;
+      }
+      if (!profile?.id) return;
+      if (petActivationRequestHandledRef.current === value.requestId) {
+        void Promise.resolve(bridge.acknowledgePetVoiceActivation?.(value.requestId)).catch(() => {});
+        return;
+      }
+      petActivationRequestHandledRef.current = value.requestId;
+      void Promise.resolve(bridge.acknowledgePetVoiceActivation?.(value.requestId)).catch(() => {});
+
+      const gesture = value.gesture as JessPetVoiceActivationRequest['gesture'];
+      if (gesture === 'mute') {
+        if (connection !== 'connected' || !clientRef.current) {
+          setSpeechState({ text: 'Jess is not connected yet. Start a voice conversation first.', speaker: 'jess', visible: true });
+          return;
+        }
+        const wasMuted = state === 'muted';
+        clientRef.current.toggleMute();
+        setSpeechState({
+          text: wasMuted ? 'Microphone is on. Go ahead.' : 'Microphone is muted.',
+          speaker: 'jess',
+          visible: true,
+        });
+        return;
+      }
+
+      const ending = connection === 'connected' || connection === 'connecting';
+      setSpeechState({ text: ending ? 'Ending voice chat…' : 'Connecting to Jess…', speaker: 'jess', visible: true });
+      activate();
     };
-    const removeListener = bridge.onPetVoiceActivation(acceptRequest);
-    void Promise.resolve(bridge.getPendingPetVoiceActivation?.()).then(acceptRequest).catch((error: unknown) => {
-      console.warn('[Jess] Could not check a pending desktop companion activation:', error);
+
+    const removeListener = bridge.onPetVoiceActivation(handleRequest);
+    void Promise.resolve(bridge.getPendingPetVoiceActivation?.()).then(handleRequest).catch((error: unknown) => {
+      console.warn('[Jess] Could not check a pending desktop-character gesture:', error);
     });
     return () => {
       try { removeListener?.(); } catch {}
     };
-  }, []);
+  }, [activate, connection, profile?.id, state]);
 
+  // The text bubble and error message still originate from the same Live voice session.
   useEffect(() => {
-    const request = pendingPetVoiceActivation;
-    if (!isDesktopShell || !request) return;
-    const bridge = (window as any).hubMindDesktop;
-    const age = Date.now() - request.requestedAt;
-    if (age > 60000 || request.requestedAt > Date.now() + 5000) {
-      setPendingPetVoiceActivation(null);
-      void Promise.resolve(bridge?.acknowledgePetVoiceActivation?.(request.requestId)).catch(() => {});
-      return;
-    }
-    if (!profile?.id) return;
-    if (petActivationRequestHandledRef.current === request.requestId) {
-      setPendingPetVoiceActivation(null);
-      void Promise.resolve(bridge?.acknowledgePetVoiceActivation?.(request.requestId)).catch(() => {});
-      return;
-    }
-    petActivationRequestHandledRef.current = request.requestId;
-    setPendingPetVoiceActivation(null);
-    void Promise.resolve(bridge?.acknowledgePetVoiceActivation?.(request.requestId)).catch(() => {});
-
-    if (request.gesture === 'double' && (connection === 'connected' || connection === 'connecting')) {
-      void stop();
-      return;
-    }
-    if (request.gesture === 'single' && connection === 'connecting') return;
-    if (request.gesture === 'single' && connection === 'connected') {
-      const wasMuted = state === 'muted';
-      clientRef.current?.toggleMute();
-      setSpeechState({
-        text: wasMuted ? "Microphone is on. Go ahead." : "Microphone is muted. Double-click Jess to end the conversation.",
-        speaker: 'jess',
-        visible: true,
-      });
-      return;
-    }
-    setSpeechState({ text: 'Starting voice chat…', speaker: 'jess', visible: true });
-    void start();
-  }, [connection, pendingPetVoiceActivation, profile?.id, start, state, stop]);
-
-  // When Live connects successfully, replace the optimistic companion message
-  // with clear feedback that the microphone is listening.
-  useEffect(() => {
-    if (!isDesktopShell || connection !== 'connected' || speechState.speaker !== 'jess' || !/starting voice chat/i.test(speechState.text)) return;
+    if (!isDesktopShell || connection !== 'connected' || speechState.speaker !== 'jess' || !/connecting to jess/i.test(speechState.text)) return;
     setSpeechState({ text: "I'm listening. Go ahead.", speaker: 'jess', visible: true });
   }, [connection, speechState.speaker, speechState.text]);
 

@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('hubMindDesktop', Object.freeze({
   startFullControl: (userId) => ipcRenderer.invoke('hubmind:full-control-start', userId),
   setJessPreferences: (prefs, userId) => ipcRenderer.invoke('hubmind:jess-preferences-set', prefs, userId),
   setJessPetState: (state) => ipcRenderer.invoke('hubmind:pet-set-state', state),
+  setJessPetVisualState: (visualState) => ipcRenderer.invoke('hubmind:pet-set-visual-state', visualState),
   setJessPetSpeech: (text, expression) => ipcRenderer.invoke('hubmind:pet-say', text, expression),
   onPetVoiceActivation: (callback) => {
     if (typeof callback !== 'function') return () => {};

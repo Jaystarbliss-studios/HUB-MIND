@@ -13,7 +13,10 @@ const JESS_PET_WIDTH = 260;
 const JESS_PET_HEIGHT = 300;
 const JESS_PET_STATES = new Set(['idle', 'stride', 'run', 'jump', 'think', 'happy', 'walk', 'tired', 'celebrate']);
 const JESS_PET_EXPRESSIONS = new Set(['happy', 'happyEyesClosed', 'concerned', 'surprised', 'annoyed']);
+const JESS_LIVE_STATES = new Set(['idle', 'listening', 'thinking', 'speaking', 'interrupted', 'muted', 'error']);
+const JESS_CONNECTION_STATES = new Set(['disconnected', 'connecting', 'connected', 'error']);
 let pendingJessPetState = 'idle';
+let pendingJessPetVisualState = { connection: 'disconnected', state: 'idle', inputLevel: 0, outputLevel: 0, at: Date.now() };
 let pendingJessPetSpeech = null;
 let pendingJessPetActivation = null;
 let jessPetReady = false;
@@ -274,6 +277,7 @@ function createCompanionWindow(force = false) {
     if (!companionWindow || companionWindow.isDestroyed()) return;
     jessPetReady = true;
     companionWindow.webContents.send('hubmind:pet-state', pendingJessPetState);
+    companionWindow.webContents.send('hubmind:pet-visual-state', pendingJessPetVisualState);
     if (pendingJessPetSpeech && Date.now() - pendingJessPetSpeech.at < 6000) {
       companionWindow.webContents.send('hubmind:pet-speech', pendingJessPetSpeech);
     }
@@ -1121,7 +1125,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('hubmind:pet-activate-voice', (event, gesture) => {
     assertPetWindowSender(event);
-    if (gesture !== 'single' && gesture !== 'double') throw new Error('Unsupported Jess voice activation gesture.');
+    if (gesture !== 'toggle' && gesture !== 'mute') throw new Error('Unsupported Jess voice activation gesture.');
     const request = { requestId: randomUUID(), requestedAt: Date.now(), gesture };
     pendingJessPetActivation = request;
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
@@ -1168,9 +1172,28 @@ app.whenReady().then(() => {
     assertTrustedSender(event);
     if (typeof state !== 'string' || !JESS_PET_STATES.has(state)) throw new Error('Unsupported Jess animation state.');
     pendingJessPetState = state;
-    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow(true);
+    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow();
     else if (jessPetReady) companionWindow.webContents.send('hubmind:pet-state', state);
     return { ok: true, state };
+  });
+  ipcMain.handle('hubmind:pet-set-visual-state', (event, visualState) => {
+    assertTrustedSender(event);
+    if (!visualState || typeof visualState !== 'object') throw new Error('Invalid Jess live visual state.');
+    if (!JESS_CONNECTION_STATES.has(visualState.connection) || !JESS_LIVE_STATES.has(visualState.state)) {
+      throw new Error('Unsupported Jess live visual state.');
+    }
+    const boundedLevel = value => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    pendingJessPetVisualState = {
+      connection: visualState.connection,
+      state: visualState.state,
+      inputLevel: boundedLevel(visualState.inputLevel),
+      outputLevel: boundedLevel(visualState.outputLevel),
+      at: Date.now()
+    };
+    if (companionWindow && !companionWindow.isDestroyed() && jessPetReady) {
+      companionWindow.webContents.send('hubmind:pet-visual-state', pendingJessPetVisualState);
+    }
+    return { ok: true };
   });
   ipcMain.handle('hubmind:pet-say', (event, message, expression) => {
     assertTrustedSender(event);
@@ -1178,7 +1201,7 @@ app.whenReady().then(() => {
     const text = message.trim().slice(0, 180);
     const face = typeof expression === 'string' && JESS_PET_EXPRESSIONS.has(expression) ? expression : 'happy';
     pendingJessPetSpeech = text ? { text, expression: face, at: Date.now() } : null;
-    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow(true);
+    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow();
     else if (jessPetReady && pendingJessPetSpeech) companionWindow.webContents.send('hubmind:pet-speech', pendingJessPetSpeech);
     return { ok: true };
   });
