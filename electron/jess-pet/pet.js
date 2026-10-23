@@ -219,7 +219,11 @@
       muted: "idle",
       error: "think"
     };
-    setState(animationForState[visualState.state] || "idle");
+    const targetAnimation = animationForState[visualState.state] || "idle";
+    // Audio levels are emitted every 100ms. Update the waveform/status on those
+    // messages, but restart the sprite loop only when the conversation state changes.
+    if (activeState !== targetAnimation) setState(targetAnimation);
+    else updateStatus();
   }
 
   function say(message, expression) {
