@@ -6,18 +6,16 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none';">
   <title>Jess · Hub-Mind Companion</title>
   <link rel="stylesheet" href="./pet.css">
-  <script src="./manifest.js" defer></script>
-  <script src="./pet.js" defer></script>
+  <script type="module" src="./pet.js"></script>
 </head>
 <body>
   <main class="pet-shell" aria-label="Jess desktop companion">
     <div class="speech" id="speech" role="status" aria-live="polite" hidden>
-      <canvas id="expression" width="64" height="64" aria-hidden="true"></canvas>
       <span id="speech-text">I'm here.</span>
     </div>
     <button class="character-hitbox" id="character" type="button" aria-label="Jess. Click to connect or mute; double-click to connect or end the voice session. Drag to move. Right-click to hide.">
-      <canvas id="jess-visualizer" width="236" height="236" aria-hidden="true"></canvas>
-      <canvas id="jess-canvas" width="256" height="256" aria-label="Animated Jess character"></canvas>
+      <canvas id="jess-visualizer" width="130" height="130" aria-hidden="true"></canvas>
+      <canvas id="jess-canvas" width="520" height="600" aria-label="Procedurally modelled 3D Jess character"></canvas>
     </button>
     <div class="connection-status" id="status" data-status="disconnected" role="status" aria-live="polite">
       <span class="connection-dot" aria-hidden="true"></span>
