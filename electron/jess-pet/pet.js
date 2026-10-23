@@ -229,7 +229,9 @@
   });
   character.addEventListener("contextmenu", event => {
     event.preventDefault();
-    say("Click once to talk to me. Double-click to open Hub-Mind.", "surprised");
+    // Keep the character unobtrusive without a permanent Hide button.
+    // The Hub-Mind tray menu has a "Show Jess orb" action to restore her.
+    Promise.resolve(window.jessPet?.hide?.()).catch(error => console.error(error));
   });
 
   window.jessPet?.onState?.(state => setState(state));
