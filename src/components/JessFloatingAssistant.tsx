@@ -274,12 +274,12 @@ export function JessFloatingAssistant() {
     if (!isDesktopShell) return;
     const stateMap: Record<JessState, string> = {
       idle: 'idle',
-      listening: 'idle',
-      thinking: 'think',
-      speaking: 'happy',
-      interrupted: 'think',
-      muted: 'idle',
-      error: 'think',
+      listening: 'listening',
+      thinking: 'thinking',
+      speaking: 'speaking',
+      interrupted: 'interrupted',
+      muted: 'muted',
+      error: 'error',
     };
     const bridge = (window as any).hubMindDesktop;
     void Promise.resolve(bridge?.setJessPetState?.(stateMap[state] || 'idle')).catch(() => {});
@@ -316,18 +316,19 @@ export function JessFloatingAssistant() {
     void Promise.resolve(bridge?.setJessPetState?.('celebrate')).catch(() => {});
   }, [speechState.speaker, speechState.text, speechState.visible]);
 
-  // Forward real assistant/user speech to Jess's local character bubble. Text is
-  // truncated and expression names are validated again in the Electron main process.
+  // Long user/Jess utterances are published to the independent transcript
+  // overlay above all windows. Keep only brief connection and microphone notices
+  // in the tiny desktop companion so the 3D character remains unobscured.
   useEffect(() => {
-    if (!isDesktopShell || !speechState.visible || !speechState.text.trim()) return;
-    const lower = speechState.text.toLowerCase();
-    const expression = speechState.speaker === 'user'
-      ? 'surprised'
-      : (state === 'error' || /could not|failed|unable to|cancelled|denied/.test(lower))
-        ? 'concerned'
-        : state === 'speaking' ? 'happyEyesClosed' : 'happy';
+    if (!isDesktopShell || !speechState.visible || !speechState.text.trim() || speechState.speaker !== 'jess') return;
+    const notice = speechState.text.trim();
+    const isOperationalNotice = state === 'error' ||
+      /^(Starting voice chat|Connecting to Jess|Ending voice chat|I'm listening|Microphone is|Turning the microphone|Muting the microphone|I couldn't activate voice chat|Voice chat did not connect|Gemini is currently rejecting|Gemini Live is temporarily unavailable|Jess could not verify|Jess is already active|Jess was activated|Jess could not finish connecting|Jess is not connected)/i.test(notice);
+    if (!isOperationalNotice) return;
+    const lower = notice.toLowerCase();
+    const expression = state === 'error' || /could not|failed|unable to|cancelled|denied/.test(lower) ? 'concerned' : 'happy';
     const bridge = (window as any).hubMindDesktop;
-    void Promise.resolve(bridge?.setJessPetSpeech?.(speechState.text, expression)).catch(() => {});
+    void Promise.resolve(bridge?.setJessPetSpeech?.(notice, expression)).catch(() => {});
   }, [speechState.text, speechState.speaker, speechState.visible, state]);
 
   const [recentMemorySaved, setRecentMemorySaved] = useState<string | null>(null);
