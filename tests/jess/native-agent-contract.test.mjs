@@ -71,6 +71,6 @@ test('Win32 interop uses a unique namespace, explicit Winapi calling convention 
 test('dismissed Jess orb can be restored with a global shortcut and tray menu',()=>{
  const main=fs.readFileSync(path.resolve('electron/main.cjs'),'utf8');
  assert.ok(main.includes('Control+Alt+Shift+O'));
- assert.ok(main.includes("label: 'Show Jess orb'"));
+ assert.ok(main.includes("label: 'Show Jess character'"));
  assert.ok(main.includes('createCompanionWindow(true)'));
 });
