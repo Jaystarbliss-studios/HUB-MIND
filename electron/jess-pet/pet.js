@@ -1,4 +1,4 @@
-import * as THREE from "./assets/js/three.module.min.js";
+const THREE = window.THREE;
 
 (() => {
   "use strict";
