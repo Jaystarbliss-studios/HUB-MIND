@@ -8,7 +8,8 @@ test('the native companion route never mounts the full workspace assistant overl
   assert.match(app, /function AuthenticatedAssistantWidgets\(\)/);
   assert.match(app, /const location = useLocation\(\)/);
   assert.match(app, /const desktopOverlayRoute = \['\/companion', '\/companion-transcript', '\/orb'\]/);
-  assert.match(app, /if \(desktopOverlayRoute \|\| publicOrLoginRoute\) return null/);
+  assert.match(app, /if \(desktopOverlayRoute \|\| \(publicOrLoginRoute && !isDesktopShell\)\) return null/);
+  assert.match(app, /if \(!user \|\| !profile \|\| profile\.status !== 'active'\) return null/);
   assert.match(app, /<Route path="\/companion" element={<ProtectedRoute><CompanionPage \/><\/ProtectedRoute>} \/>/);
   assert.match(app, /<Route path="\/companion-transcript" element={<JessTranscriptOverlayPage \/>} \/>/);
 });
