@@ -376,7 +376,13 @@ async function showMainVerified(timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
   return await new Promise((resolve) => {
     const check = () => {
-      const ready = !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused();
+      const visibleWindow = !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible();
+      // A newly created window may emit ready-to-show before focus settles.
+      // Keep trying to focus it until it is truly ready to receive the IPC event.
+      if (visibleWindow && !mainWindow.isFocused()) {
+        try { mainWindow.focus(); } catch {}
+      }
+      const ready = visibleWindow && !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused();
       if (ready) { clearInterval(timer); resolve(true); return; }
       if (Date.now() >= deadline) { clearInterval(timer); resolve(false); }
     };
