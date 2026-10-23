@@ -139,7 +139,7 @@
 
   let singleClickTimer = null;
   let suppressNextClick = false;
-  const SINGLE_CLICK_DELAY_MS = 360;
+  const SINGLE_CLICK_DELAY_MS = 500;
 
   function requestVoiceActivation(gesture) {
     say("Starting voice chat…", "happy");
