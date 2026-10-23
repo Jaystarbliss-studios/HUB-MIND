@@ -19,6 +19,7 @@ test('desktop transcript is a separate fixed and click-through window', async ()
   assert.match(main, /function positionTranscriptOverlayWindow\(\)/);
   assert.match(main, /area\.x \+ \(area\.width - width\) \/ 2/);
   assert.match(main, /hubmind:set-transcript-overlay-visible/);
+  assert.ok(main.includes("setBackgroundMaterial('acrylic')"));
   assert.match(preload, /setTranscriptOverlayVisible: .*hubmind:set-transcript-overlay-visible/);
   assert.match(page, /hubmind\.jess\.desktopTranscript\.v1/);
   assert.match(page, /setTranscriptOverlayVisible/);
@@ -69,8 +70,8 @@ test('transcript and screen-share chooser use stronger transparent glass surface
     read('../../electron/main.cjs'),
     read('../../electron/screen-share-picker.html'),
   ]);
-  assert.ok(css.includes('rgba(15, 23, 42, .22)'));
-  assert.ok(css.includes('blur(34px) saturate(190%)'));
+  assert.ok(css.includes('rgba(15, 23, 42, .46)'));
+  assert.ok(css.includes('blur(26px) saturate(165%)'));
   assert.match(main, /picker\.setVisibleOnAllWorkspaces\(true, \{ visibleOnFullScreen: true \}\)/);
   assert.ok(main.includes("title: 'Choose what to share · Jess'"));
   assert.ok(main.includes("backgroundColor: '#00000000'"));
