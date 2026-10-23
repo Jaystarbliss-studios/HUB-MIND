@@ -59,6 +59,7 @@ const CompanionPage = safeLazy(() => import('./pages/CompanionPage'), 'Companion
 const JessTranscriptOverlayPage = safeLazy(() => import('./pages/JessTranscriptOverlayPage'), 'JessTranscriptOverlayPage');
 const JessSettings = safeLazy(() => import('./pages/JessSettings'), 'JessSettings');
 const JessOrbPage = safeLazy(() => import('./pages/JessOrbPage'), 'JessOrbPage');
+const JessChat = safeLazy(() => import('./pages/JessChat'), 'JessChat');
 
 const LoadingScreen = () => <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-slate-400"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
 
@@ -168,6 +169,7 @@ export default function App() {
           <Route path="people" element={<Navigate to="/workspace/colleagues" replace />} />
           <Route path="documents" element={<Documents />} />
           <Route path="documents/:id" element={<DocumentEditor />} />
+          <Route path="jess-chat" element={<JessChat />} />
           <Route path="settings" element={<JessSettings />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
