@@ -12,90 +12,70 @@ test('packaged Windows app unpacks and resolves the Jess PowerShell sidecar', ()
   assert.match(bridge, /existsSync\(scriptPath\)/);
 });
 
-test('desktop Jess character loads bundled animations in an offline companion window', () => {
+test('desktop Jess is a crisp procedural Three.js character connected to the existing Live voice controller', () => {
   const main = read('../../electron/main.cjs');
   const page = read('../../electron/jess-pet/index.html');
   const style = read('../../electron/jess-pet/pet.css');
   const pet = read('../../electron/jess-pet/pet.js');
-  const manifest = read('../../electron/jess-pet/manifest.js');
   const preload = read('../../electron/jess-pet/preload.cjs');
   const desktopPreload = read('../../electron/preload.cjs');
   const assistant = read('../../src/components/JessFloatingAssistant.tsx');
   const app = read('../../src/App.tsx');
   const settings = read('../../src/pages/JessSettings.tsx');
-  assert.match(main, /const JESS_PET_WIDTH = 260/);
-  assert.match(main, /const JESS_PET_HEIGHT = 300/);
+
+  assert.match(main, /const JESS_PET_WIDTH = 130/);
+  assert.match(main, /const JESS_PET_HEIGHT = 150/);
+  assert.match(main, /JESS_PET_STATES = new Set\([\s\S]{0,140}listening[\s\S]{0,100}speaking/);
   assert.match(main, /loadFile\(path\.join\(__dirname, 'jess-pet', 'index\.html'\)\)/);
   assert.doesNotMatch(main, /loadURL\(APP_URL \+ '\/companion'\)/);
-  assert.match(main, /mainWindow\.on\('show', \(\) => \{ createCompanionWindow\(\); positionCompanionBottomRightIfNeeded\(\); \}\)/);
-  assert.match(page, /jess-canvas/);
-  assert.match(page, /id="character"/);
-  assert.match(page, /class="connection-status" id="status"/);
+  assert.match(page, /type="module" src="\.\/pet\.js"/);
+  assert.match(page, /id="jess-canvas"/);
   assert.match(page, /id="jess-visualizer"/);
-  assert.doesNotMatch(page, /pet-toolbar|offline-status|offline-ready|data-state="walk"/);
-  assert.doesNotMatch(style, /\.pet-toolbar|\.offline-status/);
-  assert.match(style, /data-status="connecting"/);
-  assert.match(style, /data-status="connected"/);
-  assert.match(style, /data-status="error"/);
+  assert.match(page, /class="connection-status" id="status"/);
+  assert.doesNotMatch(page, /manifest\.js|pet-toolbar|offline-ready|data-state="walk"/);
+  assert.match(style, /\.pet-shell\s*\{[^}]*width:\s*130px/s);
+  assert.match(style, /height:\s*150px/);
+  assert.match(pet, /import \* as THREE from "\.\/assets\/js\/three\.module\.min\.js"/);
+  assert.match(pet, /new THREE\.WebGLRenderer/);
+  assert.match(pet, /new THREE\.MeshStandardMaterial/);
+  assert.match(pet, /new THREE\.TubeGeometry/);
+  assert.match(pet, /function createHead\(\)/);
+  assert.match(pet, /function createAvatar\(\)/);
+  assert.match(pet, /function applyVisualState\(payload\)/);
   assert.match(pet, /requestVoiceActivation\("toggle"\)/);
   assert.match(pet, /requestVoiceActivation\("mute"\)/);
-  assert.match(pet, /function renderVisualizer\(\)/);
-  assert.match(pet, /activationWatchdogTimer/);
-  assert.match(pet, /Voice chat did not connect/);
   assert.match(pet, /visualState\.inputLevel/);
   assert.match(pet, /visualState\.outputLevel/);
-  assert.match(pet, /character\.addEventListener\("contextmenu",[\s\S]*?jessPet\?\.hide/);
-  assert.match(pet, /scheduleIdleFidget/);
+  assert.doesNotMatch(pet, /manifest\.rowAssets\.map\(loadImage\)|drawImage\(/);
   assert.match(preload, /hubmind:pet-activate-voice/);
   assert.match(preload, /onVisualState/);
   assert.match(desktopPreload, /onPetVoiceActivation/);
   assert.match(desktopPreload, /setJessPetVisualState/);
   assert.match(main, /hubmind:pet-activate-voice/);
   assert.match(main, /hubmind:pet-voice-activation/);
-  assert.match(main, /app\.commandLine\.appendSwitch\(['"]autoplay-policy['"],\s*['"]no-user-gesture-required['"]\)/);
-  assert.match(main, /await showMainVerified\(\)/);
-  assert.match(main, /label: 'Show Jess character'/);
-  assert.match(main, /label: 'Hide Jess character'/);
-  assert.match(main, /hubmind:pet-set-visual-state/);
-  assert.match(main, /hubmind:pet-visual-state/);
   assert.match(assistant, /getPendingPetVoiceActivation/);
-  assert.match(assistant, /setJessPetVisualState/);
-  assert.match(assistant, /could not finish connecting after 30 seconds/i);
-  assert.match(assistant, /navigate\('\/workspace'/);
+  assert.match(assistant, /clientRef\.current\.toggleMute\(\)/);
+  assert.match(assistant, /listening: 'listening'/);
+  assert.match(assistant, /speaking: 'speaking'/);
   assert.match(app, /publicOrLoginRoute && !isDesktopShell/);
-  assert.match(app, /Please sign in to Hub-Mind first/);
   assert.match(settings, /Show Jess character/);
   assert.match(settings, /Hide Jess character/);
-  assert.match(assistant, /clientRef\.current\.toggleMute\(\)/);
-  assert.match(assistant, /activate\(\);/);
+  assert.match(main, /hubmind:pet-set-visual-state/);
+  assert.match(main, /hubmind:pet-visual-state/);
+  assert.match(main, /label: 'Show Jess character'/);
+  assert.match(main, /label: 'Hide Jess character'/);
+  assert.match(main, /await showMainVerified\(\)/);
+  assert.match(main, /app\.commandLine\.appendSwitch\(['"]autoplay-policy['"],\s*['"]no-user-gesture-required['"]\)/);
   assert.match(style, /background: transparent/);
-  assert.match(pet, /manifest\.rowAssets\.map\(loadImage\)/);
-  assert.match(pet, /image\.naturalWidth \/ manifest\.columns/);
-  assert.match(pet, /sourceFrameHeight = image\.naturalHeight/);
-  assert.match(pet, /cellWidth !== image\.naturalHeight/);
-  assert.match(manifest, /columns: 5/);
-  assert.doesNotMatch(manifest, /frameWidth: 128|frameHeight: 128/);
-  assert.doesNotMatch(pet, /\bfetch\s*\(|XMLHttpRequest|WebSocket|https?:\/\//);
-  for (const state of ['idle', 'walk', 'run', 'jump', 'think', 'tired', 'celebrate']) {
-    assert.match(manifest, new RegExp(state + ':'));
-  }
-  assert.match(main, /hubmind:pet-move-by/);
-  assert.match(main, /hubmind:pet-hide/);
-  assert.match(preload, /contextBridge\.exposeInMainWorld\('jessPet'/);
 });
 
-test('all Jess WebP strips contain five square frames, including mixed-resolution walk poses', () => {
-  const readBytes = (path) => readFileSync(new URL(path, import.meta.url));
-  for (let row = 0; row < 6; row += 1) {
-    const asset = readBytes(`../../electron/jess-pet/assets/rows/jess-row-${row}.webp`);
-    assert.equal(asset.toString('ascii', 0, 4), 'RIFF', `row ${row} is a valid RIFF file`);
-    assert.equal(asset.toString('ascii', 8, 12), 'WEBP', `row ${row} is WebP`);
-    assert.equal(asset.toString('ascii', 12, 16), 'VP8X', `row ${row} has an extended WebP header`);
-    const width = asset.readUIntLE(24, 3) + 1;
-    const height = asset.readUIntLE(27, 3) + 1;
-    assert.equal(width % 5, 0, `row ${row} width divides into five frames`);
-    assert.equal(width / 5, height, `row ${row} uses square frames`);
-  }
+test('Three.js is bundled locally and licensed for fully offline avatar rendering', () => {
+  const three = read('../../electron/jess-pet/assets/js/three.module.min.js');
+  const license = read('../../electron/jess-pet/assets/js/THREE-LICENSE.txt');
+  assert.match(three, /Three\.js Authors/);
+  assert.match(three, /WebGLRenderer/);
+  assert.match(license, /MIT License/);
+  assert.doesNotMatch(three, /from ["']https?:\/\//);
 });
 
 test('screen sharing uses Electron capture plumbing and a thumbnail source picker', () => {
