@@ -83,7 +83,7 @@
     const mode = statusMode();
     status.dataset.status = mode;
     if (mode === "connecting") statusLabel.textContent = "Connecting to Jess…";
-    else if (mode === "error") statusLabel.textContent = "Connection error · click to retry";
+    else if (mode === "error") statusLabel.textContent = "Error · double-click to retry";
     else if (mode === "muted") statusLabel.textContent = "Microphone muted";
     else if (mode === "connected" && visualState.state === "speaking") statusLabel.textContent = "Jess is speaking";
     else if (mode === "connected" && visualState.state === "thinking") statusLabel.textContent = "Jess is thinking";
@@ -274,7 +274,11 @@
   }
 
   function requestVoiceActivation(gesture) {
-    const active = visualState.connection === "connected" || visualState.connection === "connecting";
+    if (gesture === "toggle" && visualState.connection === "connecting") {
+      say("I'm still connecting to Gemini Live. Please wait a moment.", "concerned");
+      return;
+    }
+    const active = visualState.connection === "connected";
     if (gesture === "mute") {
       say(visualState.state === "muted" ? "Turning the microphone back on…" : "Muting the microphone…", "happy");
     } else {
@@ -288,7 +292,7 @@
         if (visualState.connection === "connected" || visualState.connection === "error") return;
         visualState = { connection: "error", state: "error", inputLevel: 0, outputLevel: 0 };
         updateStatus();
-        say("Voice chat did not connect. Open Hub-Mind, sign in, and check your internet and microphone permissions before trying again.", "concerned");
+        say("Voice chat did not connect. Check your internet connection and microphone permission, then double-click Jess to retry.", "concerned");
       }, 30000);
     }
 
@@ -298,7 +302,7 @@
         activationWatchdogTimer = null;
         visualState = { connection: "error", state: "error", inputLevel: 0, outputLevel: 0 };
         updateStatus();
-        say("I couldn't activate voice chat. Hub-Mind must be open and you must be signed in.", "concerned");
+        say("Hub-Mind couldn't start the voice session. Check the workspace connection and microphone permission, then double-click Jess to retry.", "concerned");
       }
     }).catch(error => {
       if (activationWatchdogTimer !== null) window.clearTimeout(activationWatchdogTimer);
@@ -365,7 +369,7 @@
       if (visualState.connection === "connected") requestVoiceActivation("mute");
       else if (visualState.connection === "connecting") say("Jess is still connecting. Please wait a moment.", "concerned");
       else requestVoiceActivation("toggle");
-    }, 420);
+    }, 500);
   });
 
   character.addEventListener("dblclick", event => {
