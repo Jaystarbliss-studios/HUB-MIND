@@ -14,9 +14,9 @@ const { McpBridge } = require('./mcpBridge.cjs');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
-const JESS_PET_WIDTH = 260;
-const JESS_PET_HEIGHT = 300;
-const JESS_PET_STATES = new Set(['idle', 'stride', 'run', 'jump', 'think', 'happy', 'walk', 'tired', 'celebrate']);
+const JESS_PET_WIDTH = 130;
+const JESS_PET_HEIGHT = 150;
+const JESS_PET_STATES = new Set(['idle', 'listening', 'thinking', 'speaking', 'interrupted', 'muted', 'error', 'stride', 'run', 'jump', 'think', 'happy', 'walk', 'tired', 'celebrate']);
 const JESS_PET_EXPRESSIONS = new Set(['happy', 'happyEyesClosed', 'concerned', 'surprised', 'annoyed']);
 const JESS_LIVE_STATES = new Set(['idle', 'listening', 'thinking', 'speaking', 'interrupted', 'muted', 'error']);
 const JESS_CONNECTION_STATES = new Set(['disconnected', 'connecting', 'connected', 'error']);
@@ -323,6 +323,11 @@ function createTranscriptOverlayWindow() {
   }));
   guardNavigation(transcriptOverlayWindow);
   transcriptOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  // Native Acrylic is supported on Windows 11 22H2+; the translucent CSS
+  // surface remains the compatible fallback for Windows 10.
+  if (process.platform === 'win32' && typeof transcriptOverlayWindow.setBackgroundMaterial === 'function') {
+    try { transcriptOverlayWindow.setBackgroundMaterial('acrylic'); } catch {}
+  }
   transcriptOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
   positionTranscriptOverlayWindow();
   transcriptOverlayWindow.on('closed', () => { transcriptOverlayWindow = null; });
