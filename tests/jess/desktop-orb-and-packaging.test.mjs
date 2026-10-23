@@ -28,7 +28,7 @@ test('desktop Jess character loads bundled animations in an offline companion wi
   assert.match(main, /mainWindow\.on\('show', \(\) => \{ createCompanionWindow\(\); positionCompanionBottomRightIfNeeded\(\); \}\)/);
   assert.match(page, /jess-canvas/);
   assert.match(page, /id="character"/);
-  assert.match(page, /id="status" class="sr-only"/);
+  assert.match(page, /class="sr-only" id="status"/);
   assert.doesNotMatch(page, /pet-toolbar|offline-status|offline-ready|data-state="walk"/);
   assert.doesNotMatch(style, /\.pet-toolbar|\.offline-status/);
   assert.match(pet, /requestVoiceActivation\("single"\)/);
