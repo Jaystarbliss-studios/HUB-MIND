@@ -17,6 +17,7 @@ test('desktop Jess is a crisp procedural Three.js character connected to the exi
   const page = read('../../electron/jess-pet/index.html');
   const style = read('../../electron/jess-pet/pet.css');
   const pet = read('../../electron/jess-pet/pet.js');
+  const three = read('../../electron/jess-pet/assets/js/three.min.js');
   const preload = read('../../electron/jess-pet/preload.cjs');
   const desktopPreload = read('../../electron/preload.cjs');
   const assistant = read('../../src/components/JessFloatingAssistant.tsx');
@@ -28,14 +29,17 @@ test('desktop Jess is a crisp procedural Three.js character connected to the exi
   assert.match(main, /JESS_PET_STATES = new Set\([\s\S]{0,140}listening[\s\S]{0,100}speaking/);
   assert.match(main, /loadFile\(path\.join\(__dirname, 'jess-pet', 'index\.html'\)\)/);
   assert.doesNotMatch(main, /loadURL\(APP_URL \+ '\/companion'\)/);
-  assert.match(page, /type="module" src="\.\/pet\.js"/);
+  assert.match(page, /src="\.\/assets\/js\/three\.min\.js" defer><\/script>[\s\S]*src="\.\/pet\.js" defer><\/script>/);
+  assert.doesNotMatch(page, /type="module"/);
   assert.match(page, /id="jess-canvas"/);
   assert.match(page, /id="jess-visualizer"/);
   assert.match(page, /class="connection-status" id="status"/);
   assert.doesNotMatch(page, /manifest\.js|pet-toolbar|offline-ready|data-state="walk"/);
   assert.match(style, /\.pet-shell\s*\{[^}]*width:\s*130px/s);
   assert.match(style, /height:\s*150px/);
-  assert.match(pet, /import \* as THREE from "\.\/assets\/js\/three\.module\.min\.js"/);
+  assert.match(pet, /const THREE = window\.THREE/);
+  assert.match(three, /WebGLRenderer/);
+  assert.match(three, /Copyright 2010-2023 Three\.js Authors/);
   assert.match(pet, /new THREE\.WebGLRenderer/);
   assert.match(pet, /new THREE\.MeshStandardMaterial/);
   assert.match(pet, /new THREE\.TubeGeometry/);
@@ -70,7 +74,7 @@ test('desktop Jess is a crisp procedural Three.js character connected to the exi
 });
 
 test('Three.js is bundled locally and licensed for fully offline avatar rendering', () => {
-  const three = read('../../electron/jess-pet/assets/js/three.module.min.js');
+  const three = read('../../electron/jess-pet/assets/js/three.min.js');
   const license = read('../../electron/jess-pet/assets/js/THREE-LICENSE.txt');
   assert.match(three, /Three\.js Authors/);
   assert.match(three, /WebGLRenderer/);
