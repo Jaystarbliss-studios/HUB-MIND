@@ -6,8 +6,17 @@ import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { JessMcpServersSettings } from '../components/JessMcpServersSettings';
 
+const JESS_VISIBILITY_HOTKEYS = [
+  'Control+Alt+Shift+O',
+  'Control+Alt+Shift+P',
+  'Control+Alt+Shift+K',
+  'Control+Alt+Shift+H',
+] as const;
+
 type JessPreferences = {
   permissionMode: 'ask' | 'allow-routine' | 'allow-everything';
+  showCompanion: boolean;
+  petHotkey: typeof JESS_VISIBILITY_HOTKEYS[number];
   fullControlEnabled: boolean;
   startInFullControl: boolean;
   confirmHighRiskOutLoud: boolean;
@@ -27,6 +36,7 @@ const DEFAULTS: JessPreferences = {
   personalization: '', webResearchEnabled: true, screenVerificationEnabled: true,
   allowSystemWideFileScan: true, allowAutomatedFileManagement: true, allowShellCommands: true,
   moodAdaptiveTone: true, conversationStyle: 'adaptive',
+  showCompanion: true, petHotkey: 'Control+Alt+Shift+O',
 };
 
 export function JessSettings() {
@@ -49,6 +59,8 @@ export function JessSettings() {
     return onSnapshot(doc(db, 'users', profile.id, 'private', 'jessSettings'), snapshot => {
       const raw = snapshot.exists() ? snapshot.data() : {};
       const loaded = Object.fromEntries(Object.keys(DEFAULTS).map(key => [key, raw[key] ?? (DEFAULTS as any)[key]])) as JessPreferences;
+      loaded.showCompanion = loaded.showCompanion !== false;
+      if (!JESS_VISIBILITY_HOTKEYS.includes(loaded.petHotkey)) loaded.petHotkey = DEFAULTS.petHotkey;
       setPrefs(current => JSON.stringify(current) === JSON.stringify(loaded) ? current : loaded);
       setHydrated(true);
       try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(loaded)); } catch {}
@@ -155,6 +167,19 @@ export function JessSettings() {
             <button type="button" onClick={() => void setDesktopCharacterVisible(true)} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="rounded-lg bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40">Show Jess character</button>
             <button type="button" onClick={() => void setDesktopCharacterVisible(false)} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 disabled:opacity-40">Hide Jess character</button>
           </div>
+          <label className="mt-4 flex items-center justify-between gap-4 border-t border-slate-800 py-3">
+            <span><strong className="block text-sm">Show Jess when Hub-Mind opens</strong><span className="mt-1 block text-xs text-slate-400">Keep Jess visible when the Windows desktop app starts. Turn this off to start Hub-Mind with Jess hidden in the tray.</span></span>
+            <input type="checkbox" checked={prefs.showCompanion} onChange={e => update('showCompanion', e.target.checked)} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="h-5 w-5 accent-teal-400 disabled:opacity-40"/>
+          </label>
+          <label className="flex flex-col gap-2 border-t border-slate-800 py-3">
+            <span><strong className="block text-sm">Show / hide keyboard shortcut</strong><span className="mt-1 block text-xs text-slate-400">Use this global Windows shortcut to toggle Jess without opening the workspace.</span></span>
+            <select value={prefs.petHotkey} onChange={e => update('petHotkey', e.target.value as JessPreferences['petHotkey'])} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 disabled:opacity-40">
+              <option value="Control+Alt+Shift+O">Ctrl + Alt + Shift + O</option>
+              <option value="Control+Alt+Shift+P">Ctrl + Alt + Shift + P</option>
+              <option value="Control+Alt+Shift+K">Ctrl + Alt + Shift + K</option>
+              <option value="Control+Alt+Shift+H">Ctrl + Alt + Shift + H</option>
+            </select>
+          </label>
           {companionVisibilityMessage && <p role="status" aria-live="polite" className="mt-3 text-xs text-slate-300">{companionVisibilityMessage}</p>}
           <p className="mt-3 text-xs text-slate-500">You can also use the Windows Hub-Mind tray menu. Hiding Jess does not quit Hub-Mind or end an active voice conversation.</p>
         </section>
