@@ -21,6 +21,8 @@ test('desktop Jess character loads bundled animations in an offline companion wi
   const preload = read('../../electron/jess-pet/preload.cjs');
   const desktopPreload = read('../../electron/preload.cjs');
   const assistant = read('../../src/components/JessFloatingAssistant.tsx');
+  const app = read('../../src/App.tsx');
+  const settings = read('../../src/pages/JessSettings.tsx');
   assert.match(main, /const JESS_PET_WIDTH = 260/);
   assert.match(main, /const JESS_PET_HEIGHT = 300/);
   assert.match(main, /loadFile\(path\.join\(__dirname, 'jess-pet', 'index\.html'\)\)/);
@@ -38,6 +40,8 @@ test('desktop Jess character loads bundled animations in an offline companion wi
   assert.match(pet, /requestVoiceActivation\("toggle"\)/);
   assert.match(pet, /requestVoiceActivation\("mute"\)/);
   assert.match(pet, /function renderVisualizer\(\)/);
+  assert.match(pet, /activationWatchdogTimer/);
+  assert.match(pet, /Voice chat did not connect/);
   assert.match(pet, /visualState\.inputLevel/);
   assert.match(pet, /visualState\.outputLevel/);
   assert.match(pet, /character\.addEventListener\("contextmenu",[\s\S]*?jessPet\?\.hide/);
@@ -48,10 +52,20 @@ test('desktop Jess character loads bundled animations in an offline companion wi
   assert.match(desktopPreload, /setJessPetVisualState/);
   assert.match(main, /hubmind:pet-activate-voice/);
   assert.match(main, /hubmind:pet-voice-activation/);
+  assert.match(main, /app\.commandLine\.appendSwitch\(['"]autoplay-policy['"],\s*['"]no-user-gesture-required['"]\)/);
+  assert.match(main, /await showMainVerified\(\)/);
+  assert.match(main, /label: 'Show Jess character'/);
+  assert.match(main, /label: 'Hide Jess character'/);
   assert.match(main, /hubmind:pet-set-visual-state/);
   assert.match(main, /hubmind:pet-visual-state/);
   assert.match(assistant, /getPendingPetVoiceActivation/);
   assert.match(assistant, /setJessPetVisualState/);
+  assert.match(assistant, /could not finish connecting after 30 seconds/i);
+  assert.match(assistant, /navigate\('\/workspace'/);
+  assert.match(app, /publicOrLoginRoute && !isDesktopShell/);
+  assert.match(app, /Please sign in to Hub-Mind first/);
+  assert.match(settings, /Show Jess character/);
+  assert.match(settings, /Hide Jess character/);
   assert.match(assistant, /clientRef\.current\.toggleMute\(\)/);
   assert.match(assistant, /activate\(\);/);
   assert.match(style, /background: transparent/);

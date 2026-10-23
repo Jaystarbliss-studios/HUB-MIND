@@ -24,6 +24,7 @@
   let visualFrame = null;
   let visualPhase = 0;
   let singleClickTimer = null;
+  let activationWatchdogTimer = null;
   let suppressNextClick = false;
   let ready = false;
   let visualState = {
@@ -209,6 +210,10 @@
       inputLevel: clampLevel(payload.inputLevel),
       outputLevel: clampLevel(payload.outputLevel)
     };
+    if (visualState.connection === 'connected' || visualState.connection === 'error') {
+      if (activationWatchdogTimer !== null) window.clearTimeout(activationWatchdogTimer);
+      activationWatchdogTimer = null;
+    }
     updateStatus();
     const animationForState = {
       idle: "idle",
@@ -231,7 +236,7 @@
     drawExpression(expression || "happy");
     speechText.textContent = String(message || "").slice(0, 180);
     speech.hidden = false;
-    speechTimer = window.setTimeout(() => { speech.hidden = true; }, 3200);
+    speechTimer = window.setTimeout(() => { speech.hidden = true; }, 5500);
   }
 
   function fallback() {
@@ -275,12 +280,32 @@
     } else {
       say(active ? "Ending voice chat…" : "Connecting to Jess…", active ? "concerned" : "happy");
     }
+
+    if (gesture === "toggle" && !active) {
+      if (activationWatchdogTimer !== null) window.clearTimeout(activationWatchdogTimer);
+      activationWatchdogTimer = window.setTimeout(() => {
+        activationWatchdogTimer = null;
+        if (visualState.connection === "connected" || visualState.connection === "error") return;
+        visualState = { connection: "error", state: "error", inputLevel: 0, outputLevel: 0 };
+        updateStatus();
+        say("Voice chat did not connect. Open Hub-Mind, sign in, and check your internet and microphone permissions before trying again.", "concerned");
+      }, 30000);
+    }
+
     Promise.resolve(window.jessPet?.activateVoice?.(gesture)).then(result => {
       if (!result || result.ok !== true) {
-        say("I couldn't activate voice chat. Check that Hub-Mind is open and you're signed in.", "concerned");
+        if (activationWatchdogTimer !== null) window.clearTimeout(activationWatchdogTimer);
+        activationWatchdogTimer = null;
+        visualState = { connection: "error", state: "error", inputLevel: 0, outputLevel: 0 };
+        updateStatus();
+        say("I couldn't activate voice chat. Hub-Mind must be open and you must be signed in.", "concerned");
       }
     }).catch(error => {
-      say("I couldn't activate voice chat. Check that Hub-Mind is open and you're signed in.", "concerned");
+      if (activationWatchdogTimer !== null) window.clearTimeout(activationWatchdogTimer);
+      activationWatchdogTimer = null;
+      visualState = { connection: "error", state: "error", inputLevel: 0, outputLevel: 0 };
+      updateStatus();
+      say("I couldn't activate voice chat. Hub-Mind must be open and you must be signed in.", "concerned");
       console.error("[Jess pet] Voice activation failed:", error);
     });
   }

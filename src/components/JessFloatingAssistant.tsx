@@ -1061,6 +1061,12 @@ export function JessFloatingAssistant() {
         return;
       }
 
+      // The desktop companion can be activated while the hidden workspace is
+      // still on its login/home route. Once the account is authenticated, move to
+      // the real workspace before starting the existing LiveAudioClient.
+      if (isDesktopShell && ['/', '/login'].includes(locationPathRef.current)) {
+        navigate('/workspace', { replace: true });
+      }
       const ending = connection === 'connected' || connection === 'connecting';
       setSpeechState({ text: ending ? 'Ending voice chat…' : 'Connecting to Jess…', speaker: 'jess', visible: true });
       activate();
@@ -1073,7 +1079,27 @@ export function JessFloatingAssistant() {
     return () => {
       try { removeListener?.(); } catch {}
     };
-  }, [activate, connection, profile?.id, state]);
+  }, [activate, connection, navigate, profile?.id, state]);
+
+  // If microphone setup, token minting, or the Live handshake stalls, do not
+  // leave Jess forever in a connecting state. Disconnect partial audio resources
+  // and return a clear, retryable error on the desktop character.
+  useEffect(() => {
+    if (connection !== 'connecting') return;
+    const timeout = window.setTimeout(() => {
+      void stop().finally(() => {
+        setConnection('error');
+        setState('error');
+        setSpeechState({
+          text: 'Jess could not finish connecting after 30 seconds. Check your internet connection and microphone permission, then click Jess to retry.',
+          speaker: 'jess',
+          visible: true,
+        });
+        scheduleFade(15000);
+      });
+    }, 30000);
+    return () => window.clearTimeout(timeout);
+  }, [connection, scheduleFade, stop]);
 
   // The text bubble and error message still originate from the same Live voice session.
   useEffect(() => {
