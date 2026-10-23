@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, Users, Calendar, Folder, Bell, LogOut, Settings, Inbox, Plus, X, Brain, Book, Briefcase, Search, Clock3, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Users, Calendar, Folder, Bell, LogOut, Settings, Inbox, Plus, X, Brain, Book, Briefcase, Search, Clock3, ShieldCheck, MessageCircle } from 'lucide-react';
 import { auth, db } from '../firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { collection, addDoc, query, where, onSnapshot, getDocs, updateDoc, doc } from 'firebase/firestore';
@@ -29,6 +29,7 @@ const navItems = [
   { to: '/workspace/clients', label: 'Clients', icon: Book },
   { to: '/workspace/knowledge', label: 'Knowledge', icon: Brain },
   { to: '/workspace/follow-ups', label: 'Follow-ups', icon: Clock3 },
+  { to: '/workspace/jess-chat', label: 'Chat with Jess', icon: MessageCircle },
   { to: '/workspace/settings', label: 'Jess settings', icon: Settings },
 ];
 
