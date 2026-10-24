@@ -6,8 +6,17 @@ import { db } from '../firebaseConfig';
 import { useAuth } from '../lib/auth';
 import { JessMcpServersSettings } from '../components/JessMcpServersSettings';
 
+const JESS_VISIBILITY_HOTKEYS = [
+  'Control+Alt+Shift+O',
+  'Control+Alt+Shift+P',
+  'Control+Alt+Shift+K',
+  'Control+Alt+Shift+H',
+] as const;
+
 type JessPreferences = {
   permissionMode: 'ask' | 'allow-routine' | 'allow-everything';
+  showCompanion: boolean;
+  petHotkey: typeof JESS_VISIBILITY_HOTKEYS[number];
   fullControlEnabled: boolean;
   startInFullControl: boolean;
   confirmHighRiskOutLoud: boolean;
@@ -27,6 +36,7 @@ const DEFAULTS: JessPreferences = {
   personalization: '', webResearchEnabled: true, screenVerificationEnabled: true,
   allowSystemWideFileScan: true, allowAutomatedFileManagement: true, allowShellCommands: true,
   moodAdaptiveTone: true, conversationStyle: 'adaptive',
+  showCompanion: true, petHotkey: 'Control+Alt+Shift+O',
 };
 
 export function JessSettings() {
@@ -42,12 +52,15 @@ export function JessSettings() {
   const [chromeBridgeState, setChromeBridgeState] = useState<{ available?: boolean; serverListening?: boolean; connected?: boolean; authenticated?: boolean; pendingRequests?: number; lastHandshakeAt?: string | null; lastDisconnectAt?: string | null; lastError?: string | null; transport?: string; pipe?: string } | null>(null);
   const [chromeSetupBusy, setChromeSetupBusy] = useState(false);
   const [chromeSetupMessage, setChromeSetupMessage] = useState('');
+  const [companionVisibilityMessage, setCompanionVisibilityMessage] = useState('');
 
   useEffect(() => {
     if (!profile?.id) { setLoading(false); return; }
     return onSnapshot(doc(db, 'users', profile.id, 'private', 'jessSettings'), snapshot => {
       const raw = snapshot.exists() ? snapshot.data() : {};
       const loaded = Object.fromEntries(Object.keys(DEFAULTS).map(key => [key, raw[key] ?? (DEFAULTS as any)[key]])) as JessPreferences;
+      loaded.showCompanion = loaded.showCompanion !== false;
+      if (!JESS_VISIBILITY_HOTKEYS.includes(loaded.petHotkey)) loaded.petHotkey = DEFAULTS.petHotkey;
       setPrefs(current => JSON.stringify(current) === JSON.stringify(loaded) ? current : loaded);
       setHydrated(true);
       try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(loaded)); } catch {}
@@ -79,6 +92,22 @@ export function JessSettings() {
     const timer = window.setInterval(() => { void refresh(); }, 4000);
     return () => { disposed = true; window.clearInterval(timer); };
   }, []);
+
+  const setDesktopCharacterVisible = async (visible: boolean) => {
+    const desktop = (window as any).hubMindDesktop;
+    const action = visible ? desktop?.showCompanion : desktop?.hideCompanion;
+    if (typeof action !== 'function') {
+      setCompanionVisibilityMessage('Desktop character controls are available in the installed Windows app.');
+      return;
+    }
+    try {
+      const result = await action();
+      if (result === false || result?.ok === false) throw new Error('Hub-Mind could not update the character window.');
+      setCompanionVisibilityMessage(visible ? 'Jess is visible on the desktop.' : 'Jess is hidden. Use Show Jess character in the Windows tray menu to restore her.');
+    } catch (controlError: any) {
+      setCompanionVisibilityMessage(controlError?.message || 'Could not update Jess visibility.');
+    }
+  };
 
   const setupChromeBridge = async () => {
     const desktop = (window as any).hubMindDesktop;
@@ -132,6 +161,28 @@ export function JessSettings() {
       </div>
       {error && <div role="alert" className="mb-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
       <div className="space-y-5">
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
+          <div className="flex items-center gap-3 mb-4"><MonitorCog className="text-teal-300" size={20}/><div><h2 className="font-semibold">Desktop character</h2><p className="text-xs text-slate-400 mt-1">Keep Jess available while you work, or hide her until you need her again.</p></div></div>
+          <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={() => void setDesktopCharacterVisible(true)} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="rounded-lg bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40">Show Jess character</button>
+            <button type="button" onClick={() => void setDesktopCharacterVisible(false)} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 disabled:opacity-40">Hide Jess character</button>
+          </div>
+          <label className="mt-4 flex items-center justify-between gap-4 border-t border-slate-800 py-3">
+            <span><strong className="block text-sm">Show Jess when Hub-Mind opens</strong><span className="mt-1 block text-xs text-slate-400">Keep Jess visible when the Windows desktop app starts. Turn this off to start Hub-Mind with Jess hidden in the tray.</span></span>
+            <input type="checkbox" checked={prefs.showCompanion} onChange={e => update('showCompanion', e.target.checked)} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="h-5 w-5 accent-teal-400 disabled:opacity-40"/>
+          </label>
+          <label className="flex flex-col gap-2 border-t border-slate-800 py-3">
+            <span><strong className="block text-sm">Show / hide keyboard shortcut</strong><span className="mt-1 block text-xs text-slate-400">Use this global Windows shortcut to toggle Jess without opening the workspace.</span></span>
+            <select value={prefs.petHotkey} onChange={e => update('petHotkey', e.target.value as JessPreferences['petHotkey'])} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 disabled:opacity-40">
+              <option value="Control+Alt+Shift+O">Ctrl + Alt + Shift + O</option>
+              <option value="Control+Alt+Shift+P">Ctrl + Alt + Shift + P</option>
+              <option value="Control+Alt+Shift+K">Ctrl + Alt + Shift + K</option>
+              <option value="Control+Alt+Shift+H">Ctrl + Alt + Shift + H</option>
+            </select>
+          </label>
+          {companionVisibilityMessage && <p role="status" aria-live="polite" className="mt-3 text-xs text-slate-300">{companionVisibilityMessage}</p>}
+          <p className="mt-3 text-xs text-slate-500">You can also use the Windows Hub-Mind tray menu. Hiding Jess does not quit Hub-Mind or end an active voice conversation.</p>
+        </section>
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
           <div className="flex items-center gap-3 mb-4"><ShieldCheck className="text-teal-300" size={20}/><div><h2 className="font-semibold">Desktop permissions</h2><p className="text-xs text-slate-400 mt-1">Changes auto-save and the desktop reports its live session state.</p></div></div>
           <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-800 p-4 mb-4"><span><strong className="block text-sm">Full Control</strong><span className="block text-xs text-slate-400 mt-1">Enable Windows and connected Chrome controls when the desktop session is active.</span></span><input type="checkbox" checked={prefs.fullControlEnabled} onChange={e => update('fullControlEnabled', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>

@@ -59,6 +59,7 @@ const CompanionPage = safeLazy(() => import('./pages/CompanionPage'), 'Companion
 const JessTranscriptOverlayPage = safeLazy(() => import('./pages/JessTranscriptOverlayPage'), 'JessTranscriptOverlayPage');
 const JessSettings = safeLazy(() => import('./pages/JessSettings'), 'JessSettings');
 const JessOrbPage = safeLazy(() => import('./pages/JessOrbPage'), 'JessOrbPage');
+const JessChat = safeLazy(() => import('./pages/JessChat'), 'JessChat');
 
 const LoadingScreen = () => <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-slate-400"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
 
@@ -89,14 +90,48 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
 }
 
 function AuthenticatedAssistantWidgets() {
-  const { user, profile } = useAuth();
+  const { user, profile, loading, authorizationError } = useAuth();
   const location = useLocation();
+  const isDesktopShell = (window as any).hubMindDesktop?.isDesktopApp === true;
+
+  // If the desktop character is clicked while the user is signed out, explain
+  // why voice cannot start instead of leaving the pet stuck on "Connecting".
+  React.useEffect(() => {
+    if (!isDesktopShell) return;
+    const bridge = (window as any).hubMindDesktop;
+    if (typeof bridge?.onPetVoiceActivation !== 'function') return;
+
+    const explainUnavailableAccount = (request: any) => {
+      if (!request || typeof request.requestId !== 'string' || loading) return;
+      // The authenticated assistant below owns requests when the profile is ready.
+      if (user && profile?.status === 'active') return;
+
+      const message = !user
+        ? 'Please sign in to Hub-Mind first. Once you are signed in, click me again and we can talk.'
+        : profile?.status && profile.status !== 'active'
+          ? 'Your Hub-Mind account is not active yet. Please check your account access.'
+          : authorizationError || 'I could not load your Hub-Mind account profile. Open Hub-Mind and sign in again.';
+
+      void Promise.resolve(bridge.setJessPetSpeech?.(message, 'concerned')).catch(() => {});
+      void Promise.resolve(bridge.setJessPetVisualState?.({
+        connection: 'error', state: 'error', inputLevel: 0, outputLevel: 0,
+      })).catch(() => {});
+      void Promise.resolve(bridge.acknowledgePetVoiceActivation?.(request.requestId)).catch(() => {});
+    };
+
+    const unsubscribe = bridge.onPetVoiceActivation(explainUnavailableAccount);
+    void Promise.resolve(bridge.getPendingPetVoiceActivation?.()).then(explainUnavailableAccount).catch(() => {});
+    return () => { try { unsubscribe?.(); } catch {} };
+  }, [isDesktopShell, loading, user?.uid, profile?.id, profile?.status, authorizationError]);
+
   // The native orb and caption run in dedicated Electron windows. Keep the actual
   // Jess session mounted across authenticated route changes so navigation never
-  // disconnects the microphone/Live client or resets the transcript.
+  // disconnects the microphone/Live client or resets the transcript. The desktop
+  // shell is allowed to mount Jess on / and /login once an authenticated profile
+  // is available, because that is where a desktop click may arrive after launch.
   const desktopOverlayRoute = ['/companion', '/companion-transcript', '/orb'].includes(location.pathname);
   const publicOrLoginRoute = location.pathname === '/' || location.pathname === '/login';
-  if (desktopOverlayRoute || publicOrLoginRoute) return null;
+  if (desktopOverlayRoute || (publicOrLoginRoute && !isDesktopShell)) return null;
   if (!user || !profile || profile.status !== 'active') return null;
   return <><JessDocumentBridge /><JessFloatingAssistant /></>;
 }
@@ -134,6 +169,7 @@ export default function App() {
           <Route path="people" element={<Navigate to="/workspace/colleagues" replace />} />
           <Route path="documents" element={<Documents />} />
           <Route path="documents/:id" element={<DocumentEditor />} />
+          <Route path="jess-chat" element={<JessChat />} />
           <Route path="settings" element={<JessSettings />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
