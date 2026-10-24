@@ -195,6 +195,12 @@ interface CurrentSpeechState {
   visible: boolean;
 }
 
+interface JessPetVoiceActivationRequest {
+  requestId: string;
+  requestedAt: number;
+  gesture: 'toggle' | 'mute';
+}
+
 export function JessFloatingAssistant() {
   const { user, profile, updatePreferredName } = useAuth();
   const jessPreferencesRef = useRef({
@@ -232,6 +238,7 @@ export function JessFloatingAssistant() {
   const spokenHighRiskApprovalRef = useRef<{ fingerprint: string; at: number } | null>(null);
   const sessionLeaseRef = useRef<{ userId: string; sessionId: string; timer: number | null } | null>(null);
   const activationRequestSeenRef = useRef<string | null>(null);
+  const petActivationRequestHandledRef = useRef<string | null>(null);
   const [remoteJessOwner, setRemoteJessOwner] = useState<JessSessionOwner | null>(null);
   const sessionEndingRef = useRef(false);
   const screenControlRef = useRef<{ timer: number | null; running: boolean; speed: number; direction: number; axis: 'x' | 'y' }>({ timer: null, running: false, speed: 3, direction: 1, axis: 'y' });
@@ -259,6 +266,38 @@ export function JessFloatingAssistant() {
       }));
     } catch { /* Cross-window animation state is best-effort only. */ }
   }, [state, inputLevel, outputLevel, connection]);
+
+  // Drive the local desktop character from the real Live session state.
+  // The pet is a separate transparent BrowserWindow and never depends on this
+  // React tree being the visible foreground window.
+  useEffect(() => {
+    if (!isDesktopShell) return;
+    const stateMap: Record<JessState, string> = {
+      idle: 'idle',
+      listening: 'listening',
+      thinking: 'thinking',
+      speaking: 'speaking',
+      interrupted: 'interrupted',
+      muted: 'muted',
+      error: 'error',
+    };
+    const bridge = (window as any).hubMindDesktop;
+    void Promise.resolve(bridge?.setJessPetState?.(stateMap[state] || 'idle')).catch(() => {});
+  }, [state]);
+
+  // Send actual Live state and mic/speaker analyser levels to the desktop character.
+  // The companion's purple/green/red ring uses these values, not a simulated animation.
+  useEffect(() => {
+    if (!isDesktopShell) return;
+    const bridge = (window as any).hubMindDesktop;
+    void Promise.resolve(bridge?.setJessPetVisualState?.({
+      connection,
+      state,
+      inputLevel: Math.max(0, Math.min(1, Number(inputLevel) || 0)),
+      outputLevel: Math.max(0, Math.min(1, Number(outputLevel) || 0)),
+    })).catch(() => {});
+  }, [connection, state, inputLevel, outputLevel]);
+
   const [activeBgTasks, setActiveBgTasks] = useState<JessBackgroundTask[]>([]);
 
   // 70% transparent transient Gemini Live style subtitle overlay
@@ -267,6 +306,31 @@ export function JessFloatingAssistant() {
     speaker: 'user',
     visible: false,
   });
+
+  // Celebrate naturally when Jess reports a successful completion instead of
+  // requiring the user to click a separate "Yay" control on the desktop pet.
+  useEffect(() => {
+    if (!isDesktopShell || !speechState.visible || speechState.speaker !== 'jess') return;
+    if (!/\b(?:done|completed|success(?:ful(?:ly)?)?|great work|well done|nailed it|all set)\b/i.test(speechState.text)) return;
+    const bridge = (window as any).hubMindDesktop;
+    void Promise.resolve(bridge?.setJessPetState?.('celebrate')).catch(() => {});
+  }, [speechState.speaker, speechState.text, speechState.visible]);
+
+  // Long user/Jess utterances are published to the independent transcript
+  // overlay above all windows. Keep only brief connection and microphone notices
+  // in the tiny desktop companion so the 3D character remains unobscured.
+  useEffect(() => {
+    if (!isDesktopShell || !speechState.visible || !speechState.text.trim() || speechState.speaker !== 'jess') return;
+    const notice = speechState.text.trim();
+    const isOperationalNotice = state === 'error' ||
+      /^(Starting voice chat|Connecting to Jess|Ending voice chat|I'm listening|Microphone is|Turning the microphone|Muting the microphone|I couldn't activate voice chat|Voice chat did not connect|Gemini is currently rejecting|Gemini Live is temporarily unavailable|Jess could not verify|Jess is already active|Jess was activated|Jess could not finish connecting|Jess is not connected)/i.test(notice);
+    if (!isOperationalNotice) return;
+    const lower = notice.toLowerCase();
+    const expression = state === 'error' || /could not|failed|unable to|cancelled|denied/.test(lower) ? 'concerned' : 'happy';
+    const bridge = (window as any).hubMindDesktop;
+    void Promise.resolve(bridge?.setJessPetSpeech?.(notice, expression)).catch(() => {});
+  }, [speechState.text, speechState.speaker, speechState.visible, state]);
+
   const [recentMemorySaved, setRecentMemorySaved] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
 
@@ -960,6 +1024,89 @@ export function JessFloatingAssistant() {
     else void start();
   }, [connection, start, stop]);
 
+  // Route desktop-character gestures through the same LiveAudioClient as the former orb.
+  // The local pet never creates a second model session or owns a separate microphone.
+  useEffect(() => {
+    if (!isDesktopShell) return;
+    const bridge = (window as any).hubMindDesktop;
+    if (typeof bridge?.onPetVoiceActivation !== 'function') return;
+
+    const handleRequest = (value: any) => {
+      if (!value || typeof value.requestId !== 'string' || !['toggle', 'mute'].includes(value.gesture)) return;
+      const requestedAt = Number(value.requestedAt);
+      if (!Number.isFinite(requestedAt) || Date.now() - requestedAt > 60000 || requestedAt > Date.now() + 5000) {
+        void Promise.resolve(bridge.acknowledgePetVoiceActivation?.(value.requestId)).catch(() => {});
+        return;
+      }
+      if (!profile?.id) return;
+      if (petActivationRequestHandledRef.current === value.requestId) {
+        void Promise.resolve(bridge.acknowledgePetVoiceActivation?.(value.requestId)).catch(() => {});
+        return;
+      }
+      petActivationRequestHandledRef.current = value.requestId;
+      void Promise.resolve(bridge.acknowledgePetVoiceActivation?.(value.requestId)).catch(() => {});
+
+      const gesture = value.gesture as JessPetVoiceActivationRequest['gesture'];
+      if (gesture === 'mute') {
+        if (connection !== 'connected' || !clientRef.current) {
+          setSpeechState({ text: 'Jess is not connected yet. Start a voice conversation first.', speaker: 'jess', visible: true });
+          return;
+        }
+        const wasMuted = state === 'muted';
+        clientRef.current.toggleMute();
+        setSpeechState({
+          text: wasMuted ? 'Microphone is on. Go ahead.' : 'Microphone is muted.',
+          speaker: 'jess',
+          visible: true,
+        });
+        return;
+      }
+
+      // The desktop companion can be activated while the hidden workspace is
+      // still on its login/home route. Once the account is authenticated, move to
+      // the real workspace before starting the existing LiveAudioClient.
+      if (isDesktopShell && ['/', '/login'].includes(locationPathRef.current)) {
+        navigate('/workspace', { replace: true });
+      }
+      const ending = connection === 'connected' || connection === 'connecting';
+      setSpeechState({ text: ending ? 'Ending voice chat…' : 'Connecting to Jess…', speaker: 'jess', visible: true });
+      activate();
+    };
+
+    const removeListener = bridge.onPetVoiceActivation(handleRequest);
+    void Promise.resolve(bridge.getPendingPetVoiceActivation?.()).then(handleRequest).catch((error: unknown) => {
+      console.warn('[Jess] Could not check a pending desktop-character gesture:', error);
+    });
+    return () => {
+      try { removeListener?.(); } catch {}
+    };
+  }, [activate, connection, navigate, profile?.id, state]);
+
+  // If microphone setup, token minting, or the Live handshake stalls, do not
+  // leave Jess forever in a connecting state. Disconnect partial audio resources
+  // and return a clear, retryable error on the desktop character.
+  useEffect(() => {
+    if (connection !== 'connecting') return;
+    const timeout = window.setTimeout(() => {
+      void stop().finally(() => {
+        setConnection('error');
+        setState('error');
+        setSpeechState({
+          text: 'Jess could not finish connecting after 30 seconds. Check your internet connection and microphone permission, then click Jess to retry.',
+          speaker: 'jess',
+          visible: true,
+        });
+        scheduleFade(15000);
+      });
+    }, 30000);
+    return () => window.clearTimeout(timeout);
+  }, [connection, scheduleFade, stop]);
+
+  // The text bubble and error message still originate from the same Live voice session.
+  useEffect(() => {
+    if (!isDesktopShell || connection !== 'connected' || speechState.speaker !== 'jess' || !/connecting to jess/i.test(speechState.text)) return;
+    setSpeechState({ text: "I'm listening. Go ahead.", speaker: 'jess', visible: true });
+  }, [connection, speechState.speaker, speechState.text]);
 
   // Desktop, Chrome-installed PWA, and browser sessions coordinate through the same per-user Firestore lease.
   useEffect(() => {

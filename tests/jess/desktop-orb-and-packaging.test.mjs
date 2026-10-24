@@ -12,15 +12,74 @@ test('packaged Windows app unpacks and resolves the Jess PowerShell sidecar', ()
   assert.match(bridge, /existsSync\(scriptPath\)/);
 });
 
-test('desktop orb is a compact draggable icon-only surface', () => {
+test('desktop Jess is a crisp procedural Three.js character connected to the existing Live voice controller', () => {
   const main = read('../../electron/main.cjs');
-  const orb = read('../../src/pages/CompanionPage.tsx');
-  assert.match(main, /width: 96, height: 96/);
-  assert.match(main, /APP_URL \+ '\/companion'/);
-  assert.match(main, /mainWindow\.on\('show', \(\) => \{ createCompanionWindow\(\); positionCompanionBottomRightIfNeeded\(\); \}\)/);
-  assert.match(orb, /JessOrbVisualizer/);
-  assert.match(orb, /moveCompanionBy/);
-  assert.match(orb, /setCompanionTranscriptVisible/);
+  const page = read('../../electron/jess-pet/index.html');
+  const style = read('../../electron/jess-pet/pet.css');
+  const pet = read('../../electron/jess-pet/pet.js');
+  const three = read('../../electron/jess-pet/assets/js/three.min.js');
+  const preload = read('../../electron/jess-pet/preload.cjs');
+  const desktopPreload = read('../../electron/preload.cjs');
+  const assistant = read('../../src/components/JessFloatingAssistant.tsx');
+  const app = read('../../src/App.tsx');
+  const settings = read('../../src/pages/JessSettings.tsx');
+
+  assert.match(main, /const JESS_PET_WIDTH = 130/);
+  assert.match(main, /const JESS_PET_HEIGHT = 150/);
+  assert.match(main, /JESS_PET_STATES = new Set\([\s\S]{0,140}listening[\s\S]{0,100}speaking/);
+  assert.match(main, /loadFile\(path\.join\(__dirname, 'jess-pet', 'index\.html'\)\)/);
+  assert.doesNotMatch(main, /loadURL\(APP_URL \+ '\/companion'\)/);
+  assert.match(page, /src="\.\/assets\/js\/three\.min\.js" defer><\/script>[\s\S]*src="\.\/pet\.js" defer><\/script>/);
+  assert.doesNotMatch(page, /type="module"/);
+  assert.match(page, /id="jess-canvas"/);
+  assert.match(page, /id="jess-visualizer"/);
+  assert.match(page, /class="connection-status" id="status"/);
+  assert.doesNotMatch(page, /manifest\.js|pet-toolbar|offline-ready|data-state="walk"/);
+  assert.match(style, /\.pet-shell\s*\{[^}]*width:\s*130px/s);
+  assert.match(style, /height:\s*150px/);
+  assert.match(pet, /const THREE = window\.THREE/);
+  assert.match(three, /WebGLRenderer/);
+  assert.match(three, /Copyright 2010-2023 Three\.js Authors/);
+  assert.match(pet, /new THREE\.WebGLRenderer/);
+  assert.match(pet, /new THREE\.MeshStandardMaterial/);
+  assert.match(pet, /new THREE\.TubeGeometry/);
+  assert.match(pet, /function createHead\(\)/);
+  assert.match(pet, /function createAvatar\(\)/);
+  assert.match(pet, /function applyVisualState\(payload\)/);
+  assert.match(pet, /requestVoiceActivation\("toggle"\)/);
+  assert.match(pet, /requestVoiceActivation\("mute"\)/);
+  assert.match(pet, /visualState\.inputLevel/);
+  assert.match(pet, /visualState\.outputLevel/);
+  assert.doesNotMatch(pet, /manifest\.rowAssets\.map\(loadImage\)|drawImage\(/);
+  assert.match(preload, /hubmind:pet-activate-voice/);
+  assert.match(preload, /onVisualState/);
+  assert.match(desktopPreload, /onPetVoiceActivation/);
+  assert.match(desktopPreload, /setJessPetVisualState/);
+  assert.match(main, /hubmind:pet-activate-voice/);
+  assert.match(main, /hubmind:pet-voice-activation/);
+  assert.match(assistant, /getPendingPetVoiceActivation/);
+  assert.match(assistant, /clientRef\.current\.toggleMute\(\)/);
+  assert.match(assistant, /listening: 'listening'/);
+  assert.match(assistant, /speaking: 'speaking'/);
+  assert.match(app, /publicOrLoginRoute && !isDesktopShell/);
+  assert.match(settings, /Show Jess character/);
+  assert.match(settings, /Hide Jess character/);
+  assert.match(main, /hubmind:pet-set-visual-state/);
+  assert.match(main, /hubmind:pet-visual-state/);
+  assert.match(main, /label: 'Show Jess character'/);
+  assert.match(main, /label: 'Hide Jess character'/);
+  assert.match(main, /await showMainVerified\(\)/);
+  assert.match(main, /app\.commandLine\.appendSwitch\(['"]autoplay-policy['"],\s*['"]no-user-gesture-required['"]\)/);
+  assert.match(style, /background: transparent/);
+});
+
+test('Three.js is bundled locally and licensed for fully offline avatar rendering', () => {
+  const three = read('../../electron/jess-pet/assets/js/three.min.js');
+  const license = read('../../electron/jess-pet/assets/js/THREE-LICENSE.txt');
+  assert.match(three, /Three\.js Authors/);
+  assert.match(three, /WebGLRenderer/);
+  assert.match(license, /MIT License/);
+  assert.doesNotMatch(three, /from ["']https?:\/\//);
 });
 
 test('screen sharing uses Electron capture plumbing and a thumbnail source picker', () => {

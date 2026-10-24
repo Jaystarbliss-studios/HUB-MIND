@@ -4,13 +4,14 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
-test('native Jess orb remains visible over workspace and returns after minimize or close', () => {
+test('native Jess character remains visible over workspace and returns after minimize or close', () => {
   const main = read('../../electron/main.cjs');
   assert.ok(main.includes("mainWindow.on('show', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });"));
   assert.ok(main.includes("mainWindow.on('restore', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });"));
   assert.ok(main.includes("mainWindow.on('minimize', () => { createCompanionWindow();"));
   assert.ok(main.includes("mainWindow.on('close', (event) => { if (!quitting)"));
-  assert.ok(main.includes('width: 96, height: 96'));
+  assert.ok(main.includes('width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT'));
+  assert.ok(main.includes("loadFile(path.join(__dirname, 'jess-pet', 'index.html'))"));
   assert.ok(main.includes('hubmind:move-companion-by'));
   assert.ok(main.includes('hubmind:hide-companion'));
 });

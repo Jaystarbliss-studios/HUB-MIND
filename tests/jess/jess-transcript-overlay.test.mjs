@@ -19,6 +19,8 @@ test('desktop transcript is a separate fixed and click-through window', async ()
   assert.match(main, /function positionTranscriptOverlayWindow\(\)/);
   assert.match(main, /area\.x \+ \(area\.width - width\) \/ 2/);
   assert.match(main, /hubmind:set-transcript-overlay-visible/);
+  assert.ok(main.includes("setBackgroundMaterial('acrylic')"));
+  assert.ok(main.includes("setBackgroundMaterial('acrylic')"));
   assert.match(preload, /setTranscriptOverlayVisible: .*hubmind:set-transcript-overlay-visible/);
   assert.match(page, /hubmind\.jess\.desktopTranscript\.v1/);
   assert.match(page, /setTranscriptOverlayVisible/);
@@ -43,13 +45,15 @@ test('workspace route changes do not unmount Jess or rebuild Live callbacks', as
   assert.doesNotMatch(assistant, /\}, \[connection, location\.pathname, navigate, profile/);
 });
 
-test('movable companion stays icon-sized when transcript appears', async () => {
+test('movable Jess character keeps its own size when transcript appears', async () => {
   const [main, css] = await Promise.all([
     read('../../electron/main.cjs'),
     read('../../src/pages/companion.css'),
   ]);
-  assert.match(main, /width: 96, height: 96, minWidth: 96, minHeight: 96/);
-  assert.match(main, /hubmind:set-companion-transcript-visible[\s\S]{0,220}Legacy compatibility only/);
+  assert.match(main, /width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT/);
+  assert.match(main, /minWidth: JESS_PET_WIDTH, minHeight: JESS_PET_HEIGHT/);
+  assert.match(main, /hubmind:set-companion-transcript-visible/);
+  assert.match(main, /Legacy compatibility route only; the native companion now renders Jess from bundled local sprites/);
   assert.match(main, /createTranscriptOverlayWindow/);
 });
 
@@ -67,8 +71,8 @@ test('transcript and screen-share chooser use stronger transparent glass surface
     read('../../electron/main.cjs'),
     read('../../electron/screen-share-picker.html'),
   ]);
-  assert.ok(css.includes('rgba(15, 23, 42, .22)'));
-  assert.ok(css.includes('blur(34px) saturate(190%)'));
+  assert.ok(css.includes('rgba(15, 23, 42, .46)'));
+  assert.ok(css.includes('blur(26px) saturate(165%)'));
   assert.match(main, /picker\.setVisibleOnAllWorkspaces\(true, \{ visibleOnFullScreen: true \}\)/);
   assert.ok(main.includes("title: 'Choose what to share · Jess'"));
   assert.ok(main.includes("backgroundColor: '#00000000'"));
