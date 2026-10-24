@@ -30,13 +30,14 @@ test('transparent companion styles stay scoped to the companion route', () => {
   assert.ok(!app.includes("import './pages/companion.css';"));
 });
 
-test('desktop workspace and icon-only orb visibility follow the current lifecycle', () => {
+test('desktop workspace and local Jess character visibility follow the current lifecycle', () => {
   assert.ok(electron.includes("mainWindow.on('show', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });"));
   assert.ok(electron.includes("mainWindow.on('restore', () => { createCompanionWindow(); positionCompanionBottomRightIfNeeded(); });"));
   assert.ok(electron.includes("mainWindow.on('minimize', () => { createCompanionWindow();"));
   assert.ok(electron.includes("mainWindow.on('close', (event) => { if (!quitting)"));
-  assert.ok(electron.includes('width: 96, height: 96'));
-  assert.ok(electron.includes("APP_URL + '/companion'"));
+  assert.ok(electron.includes('width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT'));
+  assert.ok(electron.includes("loadFile(path.join(__dirname, 'jess-pet', 'index.html'))"));
+  assert.ok(!electron.includes("loadURL(APP_URL + '/companion')"));
   assert.ok(electron.includes('hubmind:set-companion-transcript-visible'));
   assert.ok(electron.includes('hubmind:hide-companion'));
   assert.ok(electron.includes('hubmind:move-companion-by'));

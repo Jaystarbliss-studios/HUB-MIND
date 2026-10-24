@@ -49,6 +49,7 @@ const DocumentEditor = safeLazy(() => import('./pages/DocumentEditor'), 'Documen
 const Calendar = safeLazy(() => import('./pages/Calendar'), 'Calendar');
 const Colleagues = safeLazy(() => import('./pages/People'), 'Colleagues');
 const AdminUsers = safeLazy(() => import('./pages/AdminUsers'), 'AdminUsers');
+const JessChat = safeLazy(() => import('./pages/JessChat'), 'JessChat');
 const Notifications = safeLazy(() => import('./pages/Notifications'), 'Notifications');
 const Projects = safeLazy(() => import('./pages/Projects'), 'Projects');
 const ProjectDetail = safeLazy(() => import('./pages/ProjectDetail'), 'ProjectDetail');
@@ -134,6 +135,7 @@ export default function App() {
           <Route path="people" element={<Navigate to="/workspace/colleagues" replace />} />
           <Route path="documents" element={<Documents />} />
           <Route path="documents/:id" element={<DocumentEditor />} />
+          <Route path="jess-chat" element={<JessChat />} />
           <Route path="settings" element={<JessSettings />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>} />

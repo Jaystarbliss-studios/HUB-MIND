@@ -3,7 +3,6 @@ import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   LogOut, 
-  Settings, 
   Pin, 
   PinOff,
   ChevronRight,
@@ -223,42 +222,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             );
           })}
 
-          {/* Admin Centre Link */}
-          {profile?.role === 'admin' && (
-            <NavLink
-              to="/admin"
-              title={!isExpanded ? "Admin Centre" : undefined}
-              className={({ isActive }) => cn(
-                "flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-medium transition-all duration-150 group relative h-9",
-                isActive
-                  ? "bg-slate-800 text-teal-300 font-semibold shadow-xs border border-teal-500/20"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 active:scale-[0.98]"
-              )}
-            >
-              <div className="relative flex items-center justify-center shrink-0 w-5 h-5">
-                <Settings className="w-4 h-4 text-teal-400 transition-transform duration-150 group-hover:rotate-45" />
-              </div>
-
-              <AnimatePresence initial={false}>
-                {isExpanded && (
-                  <motion.div
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -8 }}
-                    transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="flex items-center justify-between flex-1 min-w-0 overflow-hidden whitespace-nowrap"
-                  >
-                    <span className="truncate text-xs font-medium tracking-tight">
-                      Admin Centre
-                    </span>
-                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold uppercase">
-                      Admin
-                    </span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </NavLink>
-          )}
         </nav>
 
         {/* User Profile & Sign Out Footer */}

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none';">
+  <title>Jess · Hub-Mind Companion</title>
+  <link rel="stylesheet" href="./pet.css">
+  <script src="./manifest.js" defer></script>
+  <script src="./pet.js" defer></script>
+</head>
+<body>
+  <main class="pet-shell" aria-label="Jess desktop companion">
+    <div class="speech" id="speech" role="status" aria-live="polite" hidden>
+      <canvas id="expression" width="32" height="32" aria-hidden="true"></canvas>
+      <span id="speech-text">I'm here.</span>
+    </div>
+    <button class="character-hitbox" id="character" type="button" aria-label="Jess. Click once to start voice chat; click again to mute or unmute. Double-click to open Hub-Mind or end the session.">
+      <canvas id="jess-canvas" width="128" height="128" aria-label="Animated Jess character"></canvas>
+    </button>
+    <span class="sr-only" id="status" aria-live="polite">Jess is ready. Click her to talk.</span>
+  </main>
+</body>
+</html>

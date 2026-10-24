@@ -12,15 +12,77 @@ test('packaged Windows app unpacks and resolves the Jess PowerShell sidecar', ()
   assert.match(bridge, /existsSync\(scriptPath\)/);
 });
 
-test('desktop orb is a compact draggable icon-only surface', () => {
+test('desktop Jess character loads bundled animations in an offline companion window', () => {
   const main = read('../../electron/main.cjs');
-  const orb = read('../../src/pages/CompanionPage.tsx');
-  assert.match(main, /width: 96, height: 96/);
-  assert.match(main, /APP_URL \+ '\/companion'/);
+  const page = read('../../electron/jess-pet/index.html');
+  const style = read('../../electron/jess-pet/pet.css');
+  const pet = read('../../electron/jess-pet/pet.js');
+  const manifest = read('../../electron/jess-pet/manifest.js');
+  const preload = read('../../electron/jess-pet/preload.cjs');
+  const desktopPreload = read('../../electron/preload.cjs');
+  const assistant = read('../../src/components/JessFloatingAssistant.tsx');
+  assert.match(main, /const JESS_PET_WIDTH = 130/);
+  assert.match(main, /const JESS_PET_HEIGHT = 150/);
+  assert.match(main, /loadFile\(path\.join\(__dirname, 'jess-pet', 'index\.html'\)\)/);
+  assert.doesNotMatch(main, /loadURL\(APP_URL \+ '\/companion'\)/);
   assert.match(main, /mainWindow\.on\('show', \(\) => \{ createCompanionWindow\(\); positionCompanionBottomRightIfNeeded\(\); \}\)/);
-  assert.match(orb, /JessOrbVisualizer/);
-  assert.match(orb, /moveCompanionBy/);
-  assert.match(orb, /setCompanionTranscriptVisible/);
+  assert.match(page, /jess-canvas/);
+  assert.match(page, /id="character"/);
+  assert.match(page, /class="sr-only" id="status"/);
+  assert.doesNotMatch(page, /pet-toolbar|offline-status|offline-ready|data-state="walk"/);
+  assert.doesNotMatch(style, /\.pet-toolbar|\.offline-status/);
+  assert.match(pet, /requestVoiceActivation\("single"\)/);
+  assert.match(pet, /requestVoiceActivation\("double"\)/);
+  assert.match(pet, /character\.addEventListener\("contextmenu",[\s\S]*?jessPet\?\.hide/);
+  assert.match(pet, /scheduleIdleFidget/);
+  assert.match(preload, /hubmind:pet-activate-voice/);
+  assert.match(desktopPreload, /onPetVoiceActivation/);
+  assert.match(main, /hubmind:pet-activate-voice/);
+  assert.match(main, /prepareWorkspaceForPetVoiceActivation/);
+  assert.match(main, /hubmind:pet-voice-activation/);
+  assert.match(main, /pet-set-visibility/);
+  assert.match(main, /registerShowOrbHotkey/);
+  assert.match(assistant, /getPendingPetVoiceActivation/);
+  assert.match(assistant, /connectionWatchdogRef/);
+  assert.match(assistant, /Jess is still connecting/);
+  assert.match(assistant, /clientRef\.current\?\.toggleMute\(\)/);
+  const settings = read('../../src/pages/JessSettings.tsx');
+  const layout = read('../../src/components/Layout.tsx');
+  const sidebar = read('../../src/components/DesktopSidebar.tsx');
+  const app = read('../../src/App.tsx');
+  assert.match(settings, /Show Jess desktop character/);
+  assert.match(settings, /Show \/ hide keyboard shortcut/);
+  assert.match(layout, /label: 'Chat with Jess'/);
+  assert.match(app, /path="jess-chat"/);
+  assert.doesNotMatch(sidebar, /Admin Centre Link/);
+  assert.match(style, /background: transparent/);
+  assert.match(pet, /manifest\.rowAssets\.map\(loadImage\)/);
+  assert.match(pet, /image\.naturalWidth \/ manifest\.columns/);
+  assert.match(pet, /sourceFrameHeight = image\.naturalHeight/);
+  assert.match(pet, /cellWidth !== image\.naturalHeight/);
+  assert.match(manifest, /columns: 5/);
+  assert.doesNotMatch(manifest, /frameWidth: 128|frameHeight: 128/);
+  assert.doesNotMatch(pet, /\bfetch\s*\(|XMLHttpRequest|WebSocket|https?:\/\//);
+  for (const state of ['idle', 'walk', 'run', 'jump', 'think', 'tired', 'celebrate']) {
+    assert.match(manifest, new RegExp(state + ':'));
+  }
+  assert.match(main, /hubmind:pet-move-by/);
+  assert.match(main, /hubmind:pet-hide/);
+  assert.match(preload, /contextBridge\.exposeInMainWorld\('jessPet'/);
+});
+
+test('all Jess WebP strips contain five square frames, including mixed-resolution walk poses', () => {
+  const readBytes = (path) => readFileSync(new URL(path, import.meta.url));
+  for (let row = 0; row < 6; row += 1) {
+    const asset = readBytes(`../../electron/jess-pet/assets/rows/jess-row-${row}.webp`);
+    assert.equal(asset.toString('ascii', 0, 4), 'RIFF', `row ${row} is a valid RIFF file`);
+    assert.equal(asset.toString('ascii', 8, 12), 'WEBP', `row ${row} is WebP`);
+    assert.equal(asset.toString('ascii', 12, 16), 'VP8X', `row ${row} has an extended WebP header`);
+    const width = asset.readUIntLE(24, 3) + 1;
+    const height = asset.readUIntLE(27, 3) + 1;
+    assert.equal(width % 5, 0, `row ${row} width divides into five frames`);
+    assert.equal(width / 5, height, `row ${row} uses square frames`);
+  }
 });
 
 test('screen sharing uses Electron capture plumbing and a thumbnail source picker', () => {

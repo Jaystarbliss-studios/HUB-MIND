@@ -21,12 +21,15 @@ type JessPreferences = {
   allowShellCommands: boolean;
   moodAdaptiveTone: boolean;
   conversationStyle: 'adaptive' | 'friendly' | 'professional' | 'concise';
+  showCompanion: boolean;
+  petHotkey: 'Control+Alt+Shift+O' | 'Control+Alt+Shift+P' | 'Control+Alt+Shift+K' | 'Control+Alt+Shift+H';
 };
 const DEFAULTS: JessPreferences = {
   permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, confirmHighRiskOutLoud: true, memoryEnabled: true, contextEnabled: true,
   personalization: '', webResearchEnabled: true, screenVerificationEnabled: true,
   allowSystemWideFileScan: true, allowAutomatedFileManagement: true, allowShellCommands: true,
   moodAdaptiveTone: true, conversationStyle: 'adaptive',
+  showCompanion: true, petHotkey: 'Control+Alt+Shift+O',
 };
 
 export function JessSettings() {
@@ -112,6 +115,10 @@ export function JessSettings() {
         if (desktop?.setJessPreferences) {
           const live = await desktop.setJessPreferences(prefs, profile.id);
           if (!cancelled) setDesktopState({ active: live?.fullControlActive === true, startedAt: live?.startedAt || null, permissionMode: live?.preferences?.permissionMode || prefs.permissionMode });
+          if (live?.hotkeyWarning && !cancelled) {
+            setPrefs(current => ({ ...current, petHotkey: (live.preferences?.petHotkey || DEFAULTS.petHotkey) as JessPreferences['petHotkey'] }));
+            setError(live.hotkeyWarning);
+          }
           if (live?.cancelled && !cancelled) { setPrefs({ ...DEFAULTS, ...(live.preferences || {}) }); setError('Full Control was not enabled because the native confirmation was cancelled.'); }
         }
         try { localStorage.setItem('hubmind.jess.preferences', JSON.stringify(prefs)); } catch {}
@@ -132,6 +139,27 @@ export function JessSettings() {
       </div>
       {error && <div role="alert" className="mb-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
       <div className="space-y-5">
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
+          <div className="flex items-center gap-3 mb-4"><MonitorCog className="text-teal-300" size={20}/><div><h2 className="font-semibold">Desktop companion</h2><p className="text-xs text-slate-400 mt-1">Show, hide, and set a keyboard shortcut for Jess's character window.</p></div></div>
+          <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-800 p-4">
+            <span><strong className="block text-sm">Show Jess desktop character</strong><span className="block text-xs text-slate-400 mt-1">Keep Jess visible when Hub-Mind starts. Right-click her to hide her temporarily.</span></span>
+            <input type="checkbox" checked={prefs.showCompanion} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} onChange={e => update('showCompanion', e.target.checked)} className="w-5 h-5 accent-teal-400 disabled:opacity-40"/>
+          </label>
+          <label className="block mt-4"><span className="text-sm font-medium">Show / hide keyboard shortcut</span>
+            <select value={prefs.petHotkey} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} onChange={e => update('petHotkey', e.target.value as JessPreferences['petHotkey'])} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-100 focus:border-teal-400 focus:outline-none disabled:opacity-40">
+              <option value="Control+Alt+Shift+O">Ctrl + Alt + Shift + O</option>
+              <option value="Control+Alt+Shift+P">Ctrl + Alt + Shift + P</option>
+              <option value="Control+Alt+Shift+K">Ctrl + Alt + Shift + K</option>
+              <option value="Control+Alt+Shift+H">Ctrl + Alt + Shift + H</option>
+            </select>
+            <span className="mt-1 block text-xs text-slate-400">This toggles Jess's character only. Ctrl + Alt + Shift + J remains the emergency stop shortcut.</span>
+          </label>
+          <div className="flex flex-wrap gap-2 mt-4">
+            <button type="button" disabled={!((window as any).hubMindDesktop?.setJessPetVisibility)} onClick={() => { void (async () => { try { const result = await (window as any).hubMindDesktop?.setJessPetVisibility?.(true); if (result?.ok) update('showCompanion', true); else setError('Could not show Jess. Try the configured shortcut or tray menu.'); } catch (e: any) { setError(e?.message || 'Could not show Jess.'); } })(); }} className="rounded-lg bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40">Show Jess now</button>
+            <button type="button" disabled={!((window as any).hubMindDesktop?.setJessPetVisibility)} onClick={() => { void (async () => { try { const result = await (window as any).hubMindDesktop?.setJessPetVisibility?.(false); if (result?.ok) update('showCompanion', false); else setError('Could not hide Jess.'); } catch (e: any) { setError(e?.message || 'Could not hide Jess.'); } })(); }} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:opacity-40">Hide Jess</button>
+          </div>
+          {!((window as any).hubMindDesktop?.isDesktopApp) && <p className="mt-3 text-xs text-slate-500">Install the Windows desktop app to use these controls.</p>}
+        </section>
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
           <div className="flex items-center gap-3 mb-4"><ShieldCheck className="text-teal-300" size={20}/><div><h2 className="font-semibold">Desktop permissions</h2><p className="text-xs text-slate-400 mt-1">Changes auto-save and the desktop reports its live session state.</p></div></div>
           <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-800 p-4 mb-4"><span><strong className="block text-sm">Full Control</strong><span className="block text-xs text-slate-400 mt-1">Enable Windows and connected Chrome controls when the desktop session is active.</span></span><input type="checkbox" checked={prefs.fullControlEnabled} onChange={e => update('fullControlEnabled', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>

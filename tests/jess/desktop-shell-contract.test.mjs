@@ -18,9 +18,10 @@ test('Windows shell identifies itself as an installed app and uses the native di
   assert.match(main, /screen-share-picker\.html/);
 });
 
-test('Jess desktop overlay is a compact, movable, closeable orb', () => {
-  assert.ok(main.includes('width: 96, height: 96'));
-  assert.ok(main.includes("APP_URL + '/companion'"));
+test('Jess desktop character is movable, closeable and rendered locally', () => {
+  assert.ok(main.includes('width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT'));
+  assert.ok(main.includes("loadFile(path.join(__dirname, 'jess-pet', 'index.html'))"));
+  assert.ok(!main.includes("loadURL(APP_URL + '/companion')"));
   assert.match(main, /transparent: true/);
   assert.match(main, /alwaysOnTop: true/);
   assert.match(main, /hubmind:move-companion-by/);

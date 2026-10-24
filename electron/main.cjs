@@ -3,11 +3,21 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { execFile, spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
+const { pathToFileURL } = require('node:url');
 const nativeAgent = require('./agentBridge.cjs');
 const chromeBridge = require('./chromeBridge.cjs');
 const { McpBridge } = require('./mcpBridge.cjs');
 
 const APP_URL = process.env.HUBMIND_APP_URL || 'https://hub-mind.netlify.app';
+const JESS_PET_WIDTH = 130;
+const JESS_PET_HEIGHT = 150;
+const JESS_SHOW_SHORTCUTS = new Set(['Control+Alt+Shift+O', 'Control+Alt+Shift+P', 'Control+Alt+Shift+K', 'Control+Alt+Shift+H']);
+const JESS_PET_STATES = new Set(['idle', 'stride', 'run', 'jump', 'think', 'happy', 'walk', 'tired', 'celebrate']);
+const JESS_PET_EXPRESSIONS = new Set(['happy', 'happyEyesClosed', 'concerned', 'surprised', 'annoyed']);
+let pendingJessPetState = 'idle';
+let pendingJessPetSpeech = null;
+let pendingJessPetActivation = null;
+let jessPetReady = false;
 let mainWindow;
 let companionWindow;
 let transcriptOverlayWindow;
@@ -32,9 +42,35 @@ let uiNumberOverlayTimer = null;
 let offlineWakeConsentAsked = false;
 let offlineWakeConsentGranted = false;
 let offlineWakeConsentLoaded = false;
-let jessPreferences = { permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, confirmHighRiskOutLoud: true, memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true, allowSystemWideFileScan: true, allowAutomatedFileManagement: true, allowShellCommands: true, moodAdaptiveTone: true, conversationStyle: 'adaptive' };
+let jessPreferences = { permissionMode: 'ask', fullControlEnabled: false, startInFullControl: false, confirmHighRiskOutLoud: true, memoryEnabled: true, contextEnabled: true, personalization: '', webResearchEnabled: true, screenVerificationEnabled: true, allowSystemWideFileScan: true, allowAutomatedFileManagement: true, allowShellCommands: true, moodAdaptiveTone: true, conversationStyle: 'adaptive', showCompanion: true, petHotkey: 'Control+Alt+Shift+O' };
 let jessPreferencesUserId = null;
 let mcpBridge = null;
+let registeredShowOrbHotkey = null;
+function toggleCompanionVisibility() {
+  if (companionWindow && !companionWindow.isDestroyed() && companionWindow.isVisible()) {
+    companionDismissed = true;
+    companionWindow.hide();
+    return false;
+  }
+  companionDismissed = false;
+  createCompanionWindow(true);
+  positionCompanionBottomRightIfNeeded();
+  if (companionWindow && !companionWindow.isDestroyed()) companionWindow.showInactive();
+  return !!companionWindow && !companionWindow.isDestroyed() && companionWindow.isVisible();
+}
+function registerShowOrbHotkey(requested = jessPreferences.petHotkey) {
+  const desired = JESS_SHOW_SHORTCUTS.has(requested) ? requested : 'Control+Alt+Shift+O';
+  if (registeredShowOrbHotkey === desired && globalShortcut.isRegistered(desired)) return true;
+  const previous = registeredShowOrbHotkey;
+  if (previous) globalShortcut.unregister(previous);
+  if (globalShortcut.register(desired, toggleCompanionVisibility)) {
+    registeredShowOrbHotkey = desired;
+    return true;
+  }
+  if (previous && globalShortcut.register(previous, toggleCompanionVisibility)) registeredShowOrbHotkey = previous;
+  else registeredShowOrbHotkey = null;
+  return false;
+}
 function persistJessPreferences(prefs, userId) {
   const allowedModes = new Set(['ask', 'allow-routine', 'allow-everything']);
   if (!prefs || typeof prefs !== 'object' || !allowedModes.has(prefs.permissionMode)) throw new Error('Invalid Jess permission preferences.');
@@ -53,6 +89,8 @@ function persistJessPreferences(prefs, userId) {
     allowShellCommands: prefs.allowShellCommands !== false,
     moodAdaptiveTone: prefs.moodAdaptiveTone !== false,
     conversationStyle: ['adaptive','friendly','professional','concise'].includes(prefs.conversationStyle) ? prefs.conversationStyle : 'adaptive',
+    showCompanion: prefs.showCompanion !== false,
+    petHotkey: JESS_SHOW_SHORTCUTS.has(prefs.petHotkey) ? prefs.petHotkey : 'Control+Alt+Shift+O',
   };
   jessPreferencesUserId = userId;
   const file = path.join(app.getPath('userData'), 'jess-preferences.json');
@@ -122,6 +160,24 @@ function guardNavigation(win) {
   win.webContents.on('will-navigate', (event, url) => {
     if (!isTrustedAppUrl(url)) event.preventDefault();
   });
+}
+
+
+function guardPetNavigation(win) {
+  const allowedUrl = pathToFileURL(path.join(__dirname, 'jess-pet', 'index.html')).href;
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url !== allowedUrl) event.preventDefault();
+  });
+  win.webContents.on('will-redirect', (event, url) => {
+    if (url !== allowedUrl) event.preventDefault();
+  });
+}
+
+function assertPetWindowSender(event) {
+  if (!companionWindow || companionWindow.isDestroyed() || event.sender !== companionWindow.webContents) {
+    throw new Error('Blocked request from an untrusted Jess pet window.');
+  }
 }
 
 function finishDisplaySourceChoice(source = null) {
@@ -224,24 +280,42 @@ function createCompanionWindow(force = false) {
   }
   const saved = readOrbPosition();
   companionWindow = new BrowserWindow(secureWindowOptions({
-    width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 420, maxHeight: 520,
+    width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT,
+    minWidth: JESS_PET_WIDTH, minHeight: JESS_PET_HEIGHT,
+    maxWidth: JESS_PET_WIDTH, maxHeight: JESS_PET_HEIGHT,
     icon: path.join(__dirname, '..', 'dist', 'hub-mind logo.png'),
     frame: false, transparent: true, resizable: false, movable: true, focusable: true,
     alwaysOnTop: true, skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
-    title: 'Jess', show: false, webPreferences: { backgroundThrottling: false }
+    title: 'Jess', show: false,
+    webPreferences: {
+      backgroundThrottling: false,
+      preload: path.join(__dirname, 'jess-pet', 'preload.cjs')
+    }
   }));
-  guardNavigation(companionWindow);
+  guardPetNavigation(companionWindow);
   companionWindow.setAlwaysOnTop(true, 'screen-saver');
   companionWindow.setIgnoreMouseEvents(false);
   if (saved) companionWindow.setPosition(saved.x, saved.y, false);
   else positionCompanionBottomRight();
   companionWindow.once('ready-to-show', () => companionWindow.showInactive());
+  jessPetReady = false;
+  companionWindow.webContents.on('did-finish-load', () => {
+    if (!companionWindow || companionWindow.isDestroyed()) return;
+    jessPetReady = true;
+    companionWindow.webContents.send('hubmind:pet-state', pendingJessPetState);
+    if (pendingJessPetSpeech && Date.now() - pendingJessPetSpeech.at < 6000) {
+      companionWindow.webContents.send('hubmind:pet-speech', pendingJessPetSpeech);
+    }
+  });
   companionWindow.on('move', () => {
     if (!companionWindow || companionWindow.isDestroyed()) return;
     try { fs.writeFileSync(orbPositionPath(), JSON.stringify({ x: companionWindow.getBounds().x, y: companionWindow.getBounds().y }), 'utf8'); } catch {}
   });
-  companionWindow.on('closed', () => { companionWindow = null; });
-  companionWindow.loadURL(APP_URL + '/companion');
+  companionWindow.on('closed', () => { companionWindow = null; jessPetReady = false; });
+  companionWindow.loadFile(path.join(__dirname, 'jess-pet', 'index.html')).catch(error => {
+    console.error('[Jess pet] Failed to load local companion page:', error);
+    auditNativeAction({ event: 'jess-pet-local-load-failed', error: String(error?.message || error).slice(0, 500) });
+  });
 }
 function positionTranscriptOverlayWindow() {
   if (!transcriptOverlayWindow || transcriptOverlayWindow.isDestroyed()) return;
@@ -280,9 +354,9 @@ function orbPositionPath() { return path.join(app.getPath('userData'), 'jess-orb
 function readOrbPosition() {
   try {
     const value = JSON.parse(fs.readFileSync(orbPositionPath(), 'utf8'));
-    const display = screen.getDisplayMatching({ x: value.x, y: value.y, width: 96, height: 96 });
+    const display = screen.getDisplayMatching({ x: value.x, y: value.y, width: JESS_PET_WIDTH, height: JESS_PET_HEIGHT });
     const area = display.workArea;
-    if (Number.isFinite(value.x) && Number.isFinite(value.y) && value.x >= area.x && value.y >= area.y && value.x + 96 <= area.x + area.width && value.y + 96 <= area.y + area.height) return value;
+    if (Number.isFinite(value.x) && Number.isFinite(value.y) && value.x >= area.x && value.y >= area.y && value.x + JESS_PET_WIDTH <= area.x + area.width && value.y + JESS_PET_HEIGHT <= area.y + area.height) return value;
   } catch {}
   return null;
 }
@@ -348,6 +422,24 @@ async function showWorkspaceVerified() {
   mainWindow.focus();
   if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
   return mainWindow.isVisible();
+}
+
+async function prepareWorkspaceForPetVoiceActivation() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    await createMainWindow('/workspace');
+  } else {
+    let shouldNavigate = true;
+    try {
+      const current = new URL(mainWindow.webContents.getURL());
+      shouldNavigate = current.origin !== new URL(APP_URL).origin || !current.pathname.startsWith('/workspace');
+    } catch {}
+    if (shouldNavigate) await mainWindow.loadURL(APP_URL + '/workspace');
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  return mainWindow.isVisible() && !mainWindow.isMinimized();
 }
 
 function stopOfflineWake() {
@@ -644,7 +736,7 @@ function createTray() {
   tray.setToolTip('Hub-Mind');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Hub-Mind', click: showMain },
-    { label: 'Show Jess orb', click: () => { if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide(); createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); } },
+    { label: 'Show Jess orb', click: () => { companionDismissed = false; createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); } },
     { label: 'Reset orb to bottom-right', click: resetOrbPosition },
     { label: 'Stop Jess (end Full Control Session)', click: () => stopFullControl('tray-stop') },
     { label: 'Start Hub-Mind at Windows sign-in (this user)', type: 'checkbox', checked: !!app.getLoginItemSettings().openAtLogin, click: item => { try { app.setLoginItemSettings({ openAtLogin: item.checked }); item.checked = !!app.getLoginItemSettings().openAtLogin; } catch (error) { item.checked = !!app.getLoginItemSettings().openAtLogin; console.error('[Hub-Mind] Could not update per-user startup setting:', error); } } },
@@ -806,10 +898,28 @@ app.whenReady().then(() => {
       if (choice.response !== 1) return { ok: false, cancelled: true, preferences: jessPreferences, fullControlActive };
       fullControlConsentGranted = true;
     }
-    const result = persistJessPreferences(prefs, userId);
+    const previousVisibility = jessPreferences.showCompanion;
+    const previousHotkey = jessPreferences.petHotkey;
+    let result = persistJessPreferences(prefs, userId);
+    let hotkeyWarning = '';
+    if (jessPreferences.petHotkey !== previousHotkey && !registerShowOrbHotkey(jessPreferences.petHotkey)) {
+      hotkeyWarning = 'Windows could not register that shortcut because another app is using it. Jess kept the previous shortcut.';
+      result = persistJessPreferences({ ...jessPreferences, petHotkey: previousHotkey }, userId);
+      registerShowOrbHotkey(previousHotkey);
+    }
+    if (previousVisibility !== jessPreferences.showCompanion) {
+      if (jessPreferences.showCompanion) {
+        companionDismissed = false;
+        createCompanionWindow(true);
+        positionCompanionBottomRightIfNeeded();
+      } else {
+        companionDismissed = true;
+        if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+      }
+    }
     if (jessPreferences.fullControlEnabled && jessPreferences.permissionMode !== 'ask') activateFullControl('settings-enabled');
     else if (!jessPreferences.fullControlEnabled || jessPreferences.permissionMode === 'ask') stopFullControl('settings-disabled');
-    return { ...result, fullControlActive, startedAt: controlSessionStartedAt, liveState: { ...jessPreferences, fullControlActive, startedAt: controlSessionStartedAt } };
+    return { ...result, hotkeyWarning, fullControlActive, startedAt: controlSessionStartedAt, liveState: { ...jessPreferences, fullControlActive, startedAt: controlSessionStartedAt } };
   });
   ipcMain.handle('hubmind:jess-preferences-get', (event) => {
     assertTrustedSender(event);
@@ -1074,13 +1184,95 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('hubmind:pet-activate-voice', async (event, gesture) => {
+    assertPetWindowSender(event);
+    if (gesture !== 'single' && gesture !== 'double') throw new Error('Unsupported Jess voice activation gesture.');
+    const request = { requestId: randomUUID(), requestedAt: Date.now(), gesture };
+    pendingJessPetActivation = request;
+    try {
+      const ready = await prepareWorkspaceForPetVoiceActivation();
+      if (!ready) return { ok: false, error: 'Hub-Mind could not bring the workspace forward. Open Hub-Mind once, then click Jess again.' };
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send('hubmind:pet-voice-activation', request);
+      return { ok: true, requestId: request.requestId };
+    } catch (error) {
+      return { ok: false, error: String(error?.message || 'Hub-Mind could not activate Jess.').slice(0, 260) };
+    }
+  });
+  ipcMain.handle('hubmind:pet-get-pending-voice-activation', (event) => {
+    assertTrustedSender(event);
+    if (pendingJessPetActivation && (Date.now() - pendingJessPetActivation.requestedAt > 60000 || pendingJessPetActivation.requestedAt > Date.now() + 5000)) {
+      pendingJessPetActivation = null;
+    }
+    return pendingJessPetActivation;
+  });
+  ipcMain.handle('hubmind:pet-ack-voice-activation', (event, requestId) => {
+    assertTrustedSender(event);
+    if (typeof requestId !== 'string') throw new Error('Invalid Jess voice activation request identifier.');
+    if (pendingJessPetActivation?.requestId === requestId) pendingJessPetActivation = null;
+    return { ok: true };
+  });
+  ipcMain.handle('hubmind:pet-open-app', async (event) => {
+    assertPetWindowSender(event);
+    const opened = await showMainVerified();
+    return { ok: opened === true };
+  });
+  ipcMain.handle('hubmind:pet-hide', (event) => {
+    assertPetWindowSender(event);
+    companionDismissed = true;
+    if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+    return { ok: true };
+  });
+  ipcMain.handle('hubmind:pet-set-visibility', (event, visible) => {
+    assertTrustedSender(event);
+    if (visible !== true && visible !== false) throw new Error('Jess visibility must be true or false.');
+    if (visible) {
+      companionDismissed = false;
+      createCompanionWindow(true);
+      positionCompanionBottomRightIfNeeded();
+      if (companionWindow && !companionWindow.isDestroyed()) companionWindow.showInactive();
+    } else {
+      companionDismissed = true;
+      if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide();
+    }
+    return { ok: true, visible };
+  });
+  ipcMain.handle('hubmind:pet-move-by', (event, dx, dy) => {
+    assertPetWindowSender(event);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy) || Math.abs(dx) > 300 || Math.abs(dy) > 300) throw new Error('Invalid Jess drag movement.');
+    const display = screen.getDisplayMatching(companionWindow.getBounds()) || screen.getPrimaryDisplay();
+    const area = display.workArea;
+    const [x, y] = companionWindow.getPosition();
+    const nextX = Math.max(area.x, Math.min(area.x + area.width - JESS_PET_WIDTH, x + dx));
+    const nextY = Math.max(area.y, Math.min(area.y + area.height - JESS_PET_HEIGHT, y + dy));
+    companionWindow.setPosition(Math.round(nextX), Math.round(nextY), false);
+    return { ok: true };
+  });
+  ipcMain.handle('hubmind:pet-set-state', (event, state) => {
+    assertTrustedSender(event);
+    if (typeof state !== 'string' || !JESS_PET_STATES.has(state)) throw new Error('Unsupported Jess animation state.');
+    pendingJessPetState = state;
+    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow(true);
+    else if (jessPetReady) companionWindow.webContents.send('hubmind:pet-state', state);
+    return { ok: true, state };
+  });
+  ipcMain.handle('hubmind:pet-say', (event, message, expression) => {
+    assertTrustedSender(event);
+    if (typeof message !== 'string') throw new Error('Jess pet speech must be text.');
+    const text = message.trim().slice(0, 180);
+    const face = typeof expression === 'string' && JESS_PET_EXPRESSIONS.has(expression) ? expression : 'happy';
+    pendingJessPetSpeech = text ? { text, expression: face, at: Date.now() } : null;
+    if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow(true);
+    else if (jessPetReady && pendingJessPetSpeech) companionWindow.webContents.send('hubmind:pet-speech', pendingJessPetSpeech);
+    return { ok: true };
+  });
+
   ipcMain.handle('hubmind:show-main', async (event) => { assertTrustedSender(event); return await showMainVerified(); });
   ipcMain.handle('hubmind:show-workspace', async (event) => { assertTrustedSender(event); return await showWorkspaceVerified(); });
-  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) { companionWindow?.hide(); return false; } createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); return true; });
+  ipcMain.handle('hubmind:show-companion', (event) => { assertTrustedSender(event); companionDismissed = false; createCompanionWindow(true); positionCompanionBottomRightIfNeeded(); return true; });
   ipcMain.handle('hubmind:hide-companion', (event) => { assertTrustedSender(event); companionDismissed = true; companionWindow?.hide(); return true; });
   ipcMain.handle('hubmind:set-companion-transcript-visible', (event, _visible) => {
     assertTrustedSender(event);
-    // Legacy compatibility only. The movable companion remains an icon-only window.
+    // Legacy compatibility route only; the native companion now renders Jess from bundled local sprites.
     return true;
   });
   ipcMain.handle('hubmind:set-transcript-overlay-visible', (event, visible) => {
@@ -1232,12 +1424,10 @@ app.whenReady().then(() => {
     if (fullControlActive) stopFullControl('global-hotkey');
   });
   if (!stopHotkeyRegistered) console.warn('[Jess native control] Could not register Ctrl+Alt+Shift+J emergency stop hotkey.');
-  const showOrbHotkeyRegistered = globalShortcut.register('Control+Alt+Shift+O', () => {
-    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide();
-    createCompanionWindow(true);
-    positionCompanionBottomRightIfNeeded();
-  });
-  if (!showOrbHotkeyRegistered) console.warn('[Jess orb] Could not register Ctrl+Alt+Shift+O show-orb hotkey.');
+  const showOrbHotkeyRegistered = registerShowOrbHotkey(jessPreferences.petHotkey);
+  if (!showOrbHotkeyRegistered) console.warn('[Jess orb] Could not register the configured Jess show/hide shortcut.');
+  if (jessPreferences.showCompanion) createCompanionWindow(true);
+  else companionDismissed = true;
   createMainWindow();
   createTranscriptOverlayWindow();
   createTray();
