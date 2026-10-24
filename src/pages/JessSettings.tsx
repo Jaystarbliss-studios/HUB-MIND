@@ -42,6 +42,7 @@ export function JessSettings() {
   const [chromeBridgeState, setChromeBridgeState] = useState<{ available?: boolean; serverListening?: boolean; connected?: boolean; authenticated?: boolean; pendingRequests?: number; lastHandshakeAt?: string | null; lastDisconnectAt?: string | null; lastError?: string | null; transport?: string; pipe?: string } | null>(null);
   const [chromeSetupBusy, setChromeSetupBusy] = useState(false);
   const [chromeSetupMessage, setChromeSetupMessage] = useState('');
+  const [companionVisibilityMessage, setCompanionVisibilityMessage] = useState('');
 
   useEffect(() => {
     if (!profile?.id) { setLoading(false); return; }
@@ -79,6 +80,22 @@ export function JessSettings() {
     const timer = window.setInterval(() => { void refresh(); }, 4000);
     return () => { disposed = true; window.clearInterval(timer); };
   }, []);
+
+  const setDesktopCharacterVisible = async (visible: boolean) => {
+    const desktop = (window as any).hubMindDesktop;
+    const action = visible ? desktop?.showCompanion : desktop?.hideCompanion;
+    if (typeof action !== 'function') {
+      setCompanionVisibilityMessage('Desktop character controls are available in the installed Windows app.');
+      return;
+    }
+    try {
+      const result = await action();
+      if (result === false || result?.ok === false) throw new Error('Hub-Mind could not update the character window.');
+      setCompanionVisibilityMessage(visible ? 'Jess is visible on the desktop.' : 'Jess is hidden. Use Show Jess character in the Windows tray menu to restore her.');
+    } catch (controlError: any) {
+      setCompanionVisibilityMessage(controlError?.message || 'Could not update Jess visibility.');
+    }
+  };
 
   const setupChromeBridge = async () => {
     const desktop = (window as any).hubMindDesktop;
@@ -132,6 +149,15 @@ export function JessSettings() {
       </div>
       {error && <div role="alert" className="mb-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
       <div className="space-y-5">
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
+          <div className="flex items-center gap-3 mb-4"><MonitorCog className="text-teal-300" size={20}/><div><h2 className="font-semibold">Desktop character</h2><p className="text-xs text-slate-400 mt-1">Keep Jess available while you work, or hide her until you need her again.</p></div></div>
+          <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={() => void setDesktopCharacterVisible(true)} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="rounded-lg bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40">Show Jess character</button>
+            <button type="button" onClick={() => void setDesktopCharacterVisible(false)} disabled={!((window as any).hubMindDesktop?.isDesktopApp)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 disabled:opacity-40">Hide Jess character</button>
+          </div>
+          {companionVisibilityMessage && <p role="status" aria-live="polite" className="mt-3 text-xs text-slate-300">{companionVisibilityMessage}</p>}
+          <p className="mt-3 text-xs text-slate-500">You can also use the Windows Hub-Mind tray menu. Hiding Jess does not quit Hub-Mind or end an active voice conversation.</p>
+        </section>
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 md:p-6">
           <div className="flex items-center gap-3 mb-4"><ShieldCheck className="text-teal-300" size={20}/><div><h2 className="font-semibold">Desktop permissions</h2><p className="text-xs text-slate-400 mt-1">Changes auto-save and the desktop reports its live session state.</p></div></div>
           <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-800 p-4 mb-4"><span><strong className="block text-sm">Full Control</strong><span className="block text-xs text-slate-400 mt-1">Enable Windows and connected Chrome controls when the desktop session is active.</span></span><input type="checkbox" checked={prefs.fullControlEnabled} onChange={e => update('fullControlEnabled', e.target.checked)} className="w-5 h-5 accent-teal-400"/></label>
