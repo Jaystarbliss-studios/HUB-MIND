@@ -1135,26 +1135,19 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('hubmind:pet-activate-voice', async (event, gesture) => {
+  ipcMain.handle('hubmind:pet-activate-voice', (event, gesture) => {
     assertPetWindowSender(event);
     if (gesture !== 'toggle' && gesture !== 'mute') throw new Error('Unsupported Jess voice activation gesture.');
 
     const request = { requestId: randomUUID(), requestedAt: Date.now(), gesture };
+    // Store the request before waking the workspace. If the renderer is still
+    // loading, it will consume this pending request as soon as its listener mounts.
     pendingJessPetActivation = request;
 
-    // Bring the actual LiveAudioClient renderer forward before dispatching the
-    // activation request. If its page is still loading, the pending request is
-    // read by the renderer after mount instead of being lost.
-    const workspaceShown = await showMainVerified();
-    if (!workspaceShown) {
-      if (pendingJessPetActivation?.requestId === request.requestId) pendingJessPetActivation = null;
-      const message = { text: 'Hub-Mind could not open its voice workspace. Please open Hub-Mind and try again.', expression: 'concerned', at: Date.now() };
-      pendingJessPetSpeech = message;
-      if (jessPetReady && companionWindow && !companionWindow.isDestroyed()) {
-        companionWindow.webContents.send('hubmind:pet-speech', message);
-      }
-      return { ok: false, error: 'Hub-Mind could not be brought to the foreground.' };
-    }
+    // Do not block voice activation on Electron focus settling. showMainVerified()
+    // can wait five seconds (or fail entirely when Windows denies focus); that
+    // was making a normal click feel unresponsive and could discard the request.
+    showMain();
 
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
       mainWindow.webContents.send('hubmind:pet-voice-activation', request);

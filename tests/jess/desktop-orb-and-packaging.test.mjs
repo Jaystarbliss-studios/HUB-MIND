@@ -53,7 +53,9 @@ test('desktop Jess character loads bundled animations in an offline companion wi
   assert.match(main, /hubmind:pet-activate-voice/);
   assert.match(main, /hubmind:pet-voice-activation/);
   assert.match(main, /app\.commandLine\.appendSwitch\(['"]autoplay-policy['"],\s*['"]no-user-gesture-required['"]\)/);
-  assert.match(main, /await showMainVerified\(\)/);
+  assert.match(main, /pendingJessPetActivation = request;[\s\S]*?showMain\(\);[\s\S]*?hubmind:pet-voice-activation/);
+  assert.doesNotMatch(main, /hubmind:pet-activate-voice'[\s\S]{0,900}?await showMainVerified\(\)/);
+  assert.match(pet, /}, 250\);/);
   assert.match(main, /label: 'Show Jess character'/);
   assert.match(main, /label: 'Hide Jess character'/);
   assert.match(main, /hubmind:pet-set-visual-state/);

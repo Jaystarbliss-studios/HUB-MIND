@@ -365,7 +365,7 @@
       if (visualState.connection === "connected") requestVoiceActivation("mute");
       else if (visualState.connection === "connecting") say("Jess is still connecting. Please wait a moment.", "concerned");
       else requestVoiceActivation("toggle");
-    }, 420);
+    }, 250);
   });
 
   character.addEventListener("dblclick", event => {
